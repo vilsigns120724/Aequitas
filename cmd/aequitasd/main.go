@@ -94,6 +94,8 @@ fmt.Println()
 
 p2pNode.Start()
 
+	humanKeeper.StartSync()
+
 multiaddr := p2pNode.GetMultiaddr()
 fmt.Println("── Share this address to join network ───")
 fmt.Printf("%s\n", multiaddr)
