@@ -1,0 +1,27 @@
+{
+  "chain_id": "aequitas-1",
+  "genesis_time": "2026-06-13T00:00:00Z",
+  "app_state": {
+    "humanity": {
+      "humans": [],
+      "total_humans": 0,
+      "params": {
+        "initial_grant": "1000000000000000000000",
+        "max_inflation_bps": 150,
+        "fee_bps": 10
+      }
+    },
+    "bank": {
+      "total_supply": "0aeq"
+    }
+  },
+  "consensus_params": {
+    "block": {
+      "max_bytes": "22020096",
+      "max_gas": "-1"
+    },
+    "validator": {
+      "pub_key_types": ["ed25519"]
+    }
+  }
+}
