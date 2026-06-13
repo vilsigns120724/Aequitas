@@ -13,14 +13,15 @@ libp2p "github.com/libp2p/go-libp2p"
 )
 
 const (
-ProtocolID = "/aequitas/1.0.0"
-ListenPort = 4001
+ProtocolID      = "/aequitas/1.0.0"
+ListenPort      = 4001
+BootstrapNode   = "/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWAAYkKMBeChZZRdb4Ydn2hoM2sWsGmAWsQieoi6dzoweY"
 )
 
 type P2PNode struct {
-host    host.Host
-keeper  *Keeper
-peers   []peer.AddrInfo
+host   host.Host
+keeper *Keeper
+peers  []peer.AddrInfo
 }
 
 func NewP2PNode(keeper *Keeper) (*P2PNode, error) {
@@ -38,9 +39,7 @@ host:   h,
 keeper: keeper,
 }
 
-// Register protocol handler
 h.SetStreamHandler(protocol.ID(ProtocolID), node.handleStream)
-
 return node, nil
 }
 
@@ -54,7 +53,6 @@ return
 msg := string(buf[:count])
 fmt.Printf("[P2P] Message from %s: %s\n", s.Conn().RemotePeer().String()[:12], msg)
 
-// Respond with node status
 response := fmt.Sprintf("AEQUITAS_NODE|humans=%d|chainid=aequitas-1",
 n.keeper.TotalHumans())
 s.Write([]byte(response))
@@ -68,6 +66,17 @@ for _, addr := range n.host.Addrs() {
 fmt.Printf("✓ Address: %s/p2p/%s\n", addr, n.host.ID())
 }
 fmt.Println()
+
+// Connect to bootstrap node if we are not the bootstrap node
+if n.host.ID().String() != "12D3KooWAAYkKMBeChZZRdb4Ydn2hoM2sWsGmAWsQieoi6dzoweY" {
+fmt.Println("── Connecting to Bootstrap Node ─────────")
+if err := n.ConnectToPeer(BootstrapNode); err != nil {
+fmt.Printf("✗ Bootstrap connection failed: %v\n", err)
+} else {
+fmt.Println("✓ Connected to Aequitas Bootstrap Node")
+}
+fmt.Println()
+}
 }
 
 func (n *P2PNode) ConnectToPeer(peerAddr string) error {
