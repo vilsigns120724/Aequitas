@@ -49,6 +49,7 @@ mux.HandleFunc("/", a.handleUI)
 mux.HandleFunc("/api/status", a.handleStatus)
 mux.HandleFunc("/api/blocks", a.handleBlocks)
 mux.HandleFunc("/api/humans", a.handleHumans)
+	mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 addr := fmt.Sprintf(":%d", port)
 fmt.Printf("✓ API Server listening on port %d\n", port)
 go http.ListenAndServe(addr, mux)
@@ -418,7 +419,7 @@ async function update(){
     const [status,blocks,humans]=await Promise.all([
       fetch('/api/status').then(r=>r.json()),
       fetch('/api/blocks').then(r=>r.json()),
-      fetch('/api/humans').then(r=>r.json())
+      fetch('/api/sepolia/humans').then(r=>r.json())
     ]);
 
     // Stats
@@ -497,4 +498,18 @@ setInterval(update,6000);
 </script>
 </body>
 </html>`)
+}
+
+func (a *APIServer) handleSepoliaHumans(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+resp, err := http.Get("https://aequitas-proof-server-production.up.railway.app/humans")
+if err != nil {
+json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+return
+}
+defer resp.Body.Close()
+var data map[string]interface{}
+json.NewDecoder(resp.Body).Decode(&data)
+json.NewEncoder(w).Encode(data)
 }
