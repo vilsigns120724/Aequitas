@@ -102,3 +102,7 @@ return ""
 }
 return fmt.Sprintf("%s/p2p/%s", n.host.Addrs()[0], n.host.ID())
 }
+
+func (n *P2PNode) GetNodeID() string {
+return n.host.ID().String()
+}
