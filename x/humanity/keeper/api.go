@@ -478,7 +478,7 @@ async function update(){
     document.getElementById('humans-list').innerHTML=list.map((h,i)=>{
       const addr=h.address||'';
       const isWallet=addr.startsWith('0x');
-      const short=isWallet?addr.slice(0,8)+'...'+addr.slice(-4):addr;
+      const short=isWallet?addr.slice(0,10)+'...'+addr.slice(-4):addr;
       const init=isWallet?addr.slice(2,4).toUpperCase():addr.slice(0,2).toUpperCase();
       const color=avatarColors[i%avatarColors.length];
       return '<div class="human-item">'+
