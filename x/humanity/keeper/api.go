@@ -484,7 +484,7 @@ async function update(){
       return '<div class="human-item">'+
         '<div class="human-avatar" style="background:'+color+'">'+init+'</div>'+
         '<span class="human-addr" title="'+addr+'">'+short+'</span>'+
-        '<span class="human-balance">1,000 AEQ</span>'+
+        '<span class="human-balance">'+h.balance+' AEQ</span>'+
         '<span class="human-badge">✓</span>'+
       '</div>';
     }).join('');
