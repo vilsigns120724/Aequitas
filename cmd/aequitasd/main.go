@@ -4,6 +4,8 @@ import (
 "encoding/json"
 "fmt"
 "os"
+"os/signal"
+"syscall"
 "time"
 
 "github.com/hanoi96international-gif/aequitas-chain/x/humanity/keeper"
@@ -43,7 +45,6 @@ fmt.Printf("Version:       %s\n", VERSION)
 fmt.Printf("Chain ID:      %s\n", CHAIN_ID)
 fmt.Printf("Contract V5:   %s\n", CONTRACT_V5)
 fmt.Printf("Proof Server:  %s\n", PROOF_SERVER)
-fmt.Printf("Initial Grant: %d AEQ per human\n", INITIAL_GRANT)
 fmt.Println()
 
 // Load Genesis
@@ -60,7 +61,6 @@ fmt.Println()
 // Initialize Humanity Keeper
 humanKeeper := keeper.NewKeeper()
 
-// Real humans from V5 contract (4 registered)
 realHumans := []struct {
 address    string
 commitment string
@@ -71,32 +71,41 @@ commitment string
 {"sepolia_human_4", "sepolia_commitment_4"},
 }
 
-fmt.Println("── Loading Verified Humans from V5 ──────")
+fmt.Println("── Loading Verified Humans ──────────────")
 for _, h := range realHumans {
 err := humanKeeper.RegisterHuman(h.address, h.commitment, time.Now().Unix())
-if err != nil {
-fmt.Printf("✗ Failed: %s\n", h.address)
-} else {
+if err == nil {
 fmt.Printf("✓ Human: %s (+%d AEQ)\n", h.address, INITIAL_GRANT)
 }
 }
 
 fmt.Println()
-fmt.Println("── Network Status ───────────────────────")
 fmt.Printf("Total Humans:  %d\n", humanKeeper.TotalHumans())
 fmt.Printf("Total Supply:  %d AEQ\n", humanKeeper.TotalHumans()*INITIAL_GRANT)
-fmt.Printf("Fair Share:    %d AEQ\n", INITIAL_GRANT)
-fmt.Printf("Max Cap:       %d AEQ\n", humanKeeper.TotalHumans()*INITIAL_GRANT)
-
 fmt.Println()
-fmt.Println("── Proof of Humanity Validators ─────────")
-fmt.Println("Every verified human = 1 validator = 1 equal vote")
-fmt.Printf("Active Validators: %d\n", humanKeeper.TotalHumans())
-fmt.Println("Consensus: Byzantine Fault Tolerant (2/3 majority)")
 
+// Start P2P Node
+p2pNode, err := keeper.NewP2PNode(humanKeeper)
+if err != nil {
+fmt.Printf("✗ P2P Error: %v\n", err)
+return
+}
+p2pNode.Start()
+
+// Print multiaddr for others to connect
+multiaddr := p2pNode.GetMultiaddr()
+fmt.Println("── Share this address to join network ───")
+fmt.Printf("%s\n", multiaddr)
 fmt.Println()
+
 fmt.Println("╔════════════════════════════════════════╗")
-fmt.Println("║     Aequitas Chain Node Ready ✓        ║")
-fmt.Println("║     Waiting for P2P connections...     ║")
+fmt.Println("║     Aequitas Node Running ✓            ║")
+fmt.Println("║     Press Ctrl+C to stop               ║")
 fmt.Println("╚════════════════════════════════════════╝")
+
+// Keep running
+quit := make(chan os.Signal, 1)
+signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+<-quit
+fmt.Println("\nNode stopped.")
 }
