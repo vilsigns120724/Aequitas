@@ -19,7 +19,7 @@ libp2p "github.com/libp2p/go-libp2p"
 const (
 ProtocolID    = "/aequitas/1.0.0"
 ListenPort    = 4001
-BootstrapNode = "/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWAAYkKMBeChZZRdb4Ydn2hoM2sWsGmAWsQieoi6dzoweY"
+BootstrapNode = "/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R"
 )
 
 type P2PNode struct {
@@ -112,7 +112,7 @@ fmt.Printf("✓ Address: %s/p2p/%s\n", addr, n.host.ID())
 fmt.Println()
 
 selfID := n.host.ID().String()
-if selfID != "12D3KooWAAYkKMBeChZZRdb4Ydn2hoM2sWsGmAWsQieoi6dzoweY" {
+if selfID != "12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R" {
 fmt.Println("── Connecting to Bootstrap Node ─────────")
 if err := n.ConnectToPeer(BootstrapNode); err != nil {
 fmt.Printf("✗ Bootstrap connection failed: %v\n", err)
