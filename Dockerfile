@@ -9,5 +9,6 @@ FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/aequitasd .
 COPY --from=builder /app/genesis.json .
+EXPOSE 8080
 EXPOSE 4001
 CMD ["./aequitasd"]

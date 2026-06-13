@@ -12,12 +12,13 @@ import (
 )
 
 const (
-VERSION       = "v0.2.0"
+VERSION       = "v0.3.0"
 CONTRACT_V5   = "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5"
 PROOF_SERVER  = "https://aequitas-proof-server-production.up.railway.app"
 INITIAL_GRANT = 1000
 CHAIN_ID      = "aequitas-1"
 BLOCK_TIME    = 6 * time.Second
+API_PORT      = 8080
 )
 
 type Genesis struct {
@@ -47,7 +48,6 @@ fmt.Printf("Chain ID:      %s\n", CHAIN_ID)
 fmt.Printf("Block Time:    %s\n", BLOCK_TIME)
 fmt.Println()
 
-// Load Genesis
 fmt.Println("── Loading Genesis Block ────────────────")
 genesis, err := loadGenesis()
 if err != nil {
@@ -58,7 +58,6 @@ fmt.Printf("✓ Genesis Time: %s\n", genesis.GenesisTime)
 }
 fmt.Println()
 
-// Initialize Humanity Keeper
 humanKeeper := keeper.NewKeeper()
 
 realHumans := []struct {
@@ -83,7 +82,6 @@ fmt.Printf("Total Humans:  %d\n", humanKeeper.TotalHumans())
 fmt.Printf("Total Supply:  %d AEQ\n", humanKeeper.TotalHumans()*INITIAL_GRANT)
 fmt.Println()
 
-// Initialize Blockchain
 fmt.Println("── Initializing Blockchain ──────────────")
 p2pNode, err := keeper.NewP2PNode(humanKeeper)
 if err != nil {
@@ -94,7 +92,6 @@ return
 bc := keeper.NewBlockchain(humanKeeper, p2pNode.GetNodeID())
 fmt.Println()
 
-// Start P2P
 p2pNode.Start()
 
 multiaddr := p2pNode.GetMultiaddr()
@@ -102,7 +99,11 @@ fmt.Println("── Share this address to join network ───")
 fmt.Printf("%s\n", multiaddr)
 fmt.Println()
 
-// Start block production
+fmt.Println("── Starting API Server ──────────────────")
+api := keeper.NewAPIServer(bc, p2pNode, humanKeeper)
+api.Start(API_PORT)
+fmt.Println()
+
 fmt.Println("── Starting Block Production ────────────")
 go func() {
 ticker := time.NewTicker(BLOCK_TIME)
@@ -120,7 +121,6 @@ time.Unix(block.Timestamp, 0).Format("15:04:05"),
 fmt.Println("╔════════════════════════════════════════╗")
 fmt.Println("║     Aequitas Node Running ✓            ║")
 fmt.Println("║     Producing blocks every 6 seconds   ║")
-fmt.Println("║     Press Ctrl+C to stop               ║")
 fmt.Println("╚════════════════════════════════════════╝")
 
 quit := make(chan os.Signal, 1)
