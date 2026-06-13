@@ -2,10 +2,14 @@ package keeper
 
 import (
 "context"
+"crypto/rand"
+"encoding/base64"
 "fmt"
+"os"
 "time"
 
 libp2p "github.com/libp2p/go-libp2p"
+"github.com/libp2p/go-libp2p/core/crypto"
 "github.com/libp2p/go-libp2p/core/host"
 "github.com/libp2p/go-libp2p/core/network"
 "github.com/libp2p/go-libp2p/core/peer"
@@ -13,9 +17,9 @@ libp2p "github.com/libp2p/go-libp2p"
 )
 
 const (
-ProtocolID      = "/aequitas/1.0.0"
-ListenPort      = 4001
-BootstrapNode   = "/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWAAYkKMBeChZZRdb4Ydn2hoM2sWsGmAWsQieoi6dzoweY"
+ProtocolID    = "/aequitas/1.0.0"
+ListenPort    = 4001
+BootstrapNode = "/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWAAYkKMBeChZZRdb4Ydn2hoM2sWsGmAWsQieoi6dzoweY"
 )
 
 type P2PNode struct {
@@ -24,8 +28,48 @@ keeper *Keeper
 peers  []peer.AddrInfo
 }
 
+func loadOrCreateKey() (crypto.PrivKey, error) {
+// Try load from environment variable
+if keyStr := os.Getenv("NODE_KEY"); keyStr != "" {
+keyBytes, err := base64.StdEncoding.DecodeString(keyStr)
+if err == nil {
+priv, err := crypto.UnmarshalPrivateKey(keyBytes)
+if err == nil {
+fmt.Println("✓ Node key loaded from environment")
+return priv, nil
+}
+}
+}
+
+// Generate new key
+fmt.Println("⚠ No NODE_KEY found – generating new key...")
+priv, _, err := crypto.GenerateKeyPairWithReader(crypto.Ed25519, -1, rand.Reader)
+if err != nil {
+return nil, err
+}
+
+// Export and print so we can save it
+keyBytes, err := crypto.MarshalPrivateKey(priv)
+if err != nil {
+return nil, err
+}
+encoded := base64.StdEncoding.EncodeToString(keyBytes)
+fmt.Println("════════════════════════════════════════")
+fmt.Println("SAVE THIS AS NODE_KEY ENVIRONMENT VAR:")
+fmt.Println(encoded)
+fmt.Println("════════════════════════════════════════")
+
+return priv, nil
+}
+
 func NewP2PNode(keeper *Keeper) (*P2PNode, error) {
+priv, err := loadOrCreateKey()
+if err != nil {
+return nil, fmt.Errorf("failed to load key: %w", err)
+}
+
 h, err := libp2p.New(
+libp2p.Identity(priv),
 libp2p.ListenAddrStrings(
 fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", ListenPort),
 ),
@@ -67,8 +111,8 @@ fmt.Printf("✓ Address: %s/p2p/%s\n", addr, n.host.ID())
 }
 fmt.Println()
 
-// Connect to bootstrap node if we are not the bootstrap node
-if n.host.ID().String() != "12D3KooWAAYkKMBeChZZRdb4Ydn2hoM2sWsGmAWsQieoi6dzoweY" {
+selfID := n.host.ID().String()
+if selfID != "12D3KooWAAYkKMBeChZZRdb4Ydn2hoM2sWsGmAWsQieoi6dzoweY" {
 fmt.Println("── Connecting to Bootstrap Node ─────────")
 if err := n.ConnectToPeer(BootstrapNode); err != nil {
 fmt.Printf("✗ Bootstrap connection failed: %v\n", err)
