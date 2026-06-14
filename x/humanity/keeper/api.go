@@ -2,6 +2,7 @@ package keeper
 
 import (
 "encoding/json"
+	"strings"
 "fmt"
 "io"
 "net/http"
@@ -53,6 +54,7 @@ mux.HandleFunc("/api/blocks", a.handleBlocks)
 mux.HandleFunc("/api/humans", a.handleHumans)
 mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 	mux.HandleFunc("/api/register", a.handleRegister)
+	mux.HandleFunc("/api/balance", a.handleBalance)
 	// EVM JSON-RPC
 	evmRPC := NewEVMRPCServer(a.blockchain, a.state)
 	mux.HandleFunc("/rpc", evmRPC.handleRPC)
@@ -601,4 +603,21 @@ setInterval(update,6000);
 </script>
 </body>
 </html>`)
+}
+
+func (a *APIServer) handleBalance(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+wallet := strings.ToLower(r.URL.Query().Get("wallet"))
+if wallet == "" {
+json.NewEncoder(w).Encode(map[string]interface{}{"balance": 0, "is_human": false})
+return
+}
+balance := a.state.GetBalance(wallet)
+isHuman := a.state.IsHuman(wallet)
+json.NewEncoder(w).Encode(map[string]interface{}{
+"wallet":   wallet,
+"balance":  balance,
+"is_human": isHuman,
+})
 }
