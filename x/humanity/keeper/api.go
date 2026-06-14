@@ -9,14 +9,14 @@ import (
 )
 
 type APIServer struct {
-blockchain    *Blockchain
+blockchain    *BlockDAG
 p2pNode       *P2PNode
 keeper        *Keeper
 startTime     time.Time
 sepoliaStatus map[string]interface{}
 }
 
-func NewAPIServer(bc *Blockchain, p2p *P2PNode, k *Keeper) *APIServer {
+func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper) *APIServer {
 s := &APIServer{
 blockchain:    bc,
 p2pNode:       p2p,
