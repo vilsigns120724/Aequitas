@@ -3,6 +3,7 @@ package keeper
 import (
 "encoding/json"
 "fmt"
+	"math/big"
 "net/http"
 "strings"
 )
@@ -123,8 +124,11 @@ case "eth_getBalance":
 if len(params) > 0 {
 addr := strings.ToLower(fmt.Sprintf("%v", params[0]))
 balance := e.state.GetBalance(addr)
-aeqWei := uint64(balance) * 1000000000000000000
-return fmt.Sprintf("0x%x", aeqWei), nil
+if balance > 0 {
+decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+aeqWei := new(big.Int).Mul(big.NewInt(int64(balance)), decimals)
+return "0x" + fmt.Sprintf("%x", aeqWei), nil
+}
 }
 return "0x0", nil
 
