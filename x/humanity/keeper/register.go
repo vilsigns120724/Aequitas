@@ -66,7 +66,7 @@ fmt.Printf("[REGISTER] Registering wallet: %s\n", wallet)
 
 a.state.RegisterHuman(wallet)
 
-txHash := fmt.Sprintf("0x%x", a.blockchain.LatestBlock().Height)
+txHash := fmt.Sprintf("0x%x%x", len(wallet), len(wallet)*1000)
 fmt.Printf("[REGISTER] ✓ Human registered: %s | 1000 AEQ granted (gasless)\n", wallet)
 
 json.NewEncoder(w).Encode(RegisterResponse{
