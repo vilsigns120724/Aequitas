@@ -625,7 +625,7 @@ func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
 	wallet := r.URL.Query().Get("wallet")
 	success := r.URL.Query().Get("success")
 	
-	intentURL := fmt.Sprintf("intent://registered?success=%s&wallet=%s#Intent;scheme=aequitas;package=com.aequitasbio;end", success, wallet)
+	intentURL := fmt.Sprintf("aequitas://registered?success=%s&wallet=%s", success, wallet)
 	
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
