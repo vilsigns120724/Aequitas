@@ -539,6 +539,29 @@ header{background:linear-gradient(180deg,#080F1E 0%,#050A14 100%);border-bottom:
   </div>
 </div>
 
+
+    <div class="index-card" style="grid-column:1/-1">
+      <div class="index-title">The Gini Coefficient — Measuring Inequality</div>
+      <div class="index-desc">The Gini coefficient is the most widely used measure of economic inequality. It ranges from 0 (perfect equality) to 1 (maximum inequality). Aequitas uses it as a core metric to evaluate the health of the monetary system and trigger redistribution mechanisms automatically.</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px">
+        <div class="metric-box" style="border:1px solid #1A4A2A"><div class="metric-val" style="color:var(--green)">0.00</div><div class="metric-label">Perfect Equality</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px">Every person has identical wealth</div></div>
+        <div class="metric-box" style="border:1px solid #1A2D45"><div class="metric-val" style="color:var(--blue)">0.27</div><div class="metric-label">Low Inequality</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px">Scandinavia average</div></div>
+        <div class="metric-box" style="border:1px solid #3A2800"><div class="metric-val" style="color:var(--gold)">0.41</div><div class="metric-label">Moderate</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px">USA average</div></div>
+        <div class="metric-box" style="border:1px solid #4A1A1A"><div class="metric-val" style="color:var(--red)">0.63</div><div class="metric-label">High Inequality</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px">South Africa</div></div>
+      </div>
+    </div>
+
+    <div class="index-card" style="grid-column:1/-1">
+      <div class="index-title">The Story of Aequitas</div>
+      <div class="index-desc" style="font-size:0.73rem;line-height:2">
+        <p style="margin-bottom:14px">The global financial system was not designed for equality. Today, the richest 1% own more wealth than the bottom 50% of humanity combined. Traditional cryptocurrencies like Bitcoin replicated this problem — early adopters accumulated vast wealth while latecomers were priced out.</p>
+        <p style="margin-bottom:14px"><span style="color:var(--gold)">Aequitas</span> — Latin for "fairness" and "equality" — was founded on a single principle: <em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p>
+        <p style="margin-bottom:14px">Every verified human receives exactly 1,000 AEQ. No more, no less. The total supply always equals verified humans x 1,000. When a new human registers, 1,000 new AEQ are created. The money supply grows with humanity itself.</p>
+        <p style="margin-bottom:14px">The verification system uses <span style="color:var(--blue)">Groth16 Zero-Knowledge Proofs</span> — your fingerprint never leaves your device. Only a mathematical proof of humanity is transmitted. One person, one wallet, forever.</p>
+        <p>The <span style="color:var(--purple)">Aequitas Index</span> continuously monitors economic equality. When wealth concentration exceeds safe thresholds, the protocol automatically redistributes through smart contract mechanisms — no human intervention required. Mathematics, not politics, governs the money supply.</p>
+      </div>
+    </div>
+
 <!-- NETWORK TAB -->
 <div id="tab-network" class="tab-content">
   <div class="net-wrap">
