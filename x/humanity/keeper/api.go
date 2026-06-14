@@ -14,6 +14,7 @@ p2pNode       *P2PNode
 keeper        *Keeper
 startTime     time.Time
 sepoliaStatus map[string]interface{}
+	balances      *BalanceStore
 }
 
 func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper) *APIServer {
@@ -23,6 +24,7 @@ p2pNode:       p2p,
 keeper:        k,
 startTime:     time.Now(),
 sepoliaStatus: map[string]interface{}{},
+		balances:      NewBalanceStore(),
 }
 go s.syncSepoliaStatus()
 return s
@@ -50,6 +52,7 @@ mux.HandleFunc("/api/status", a.handleStatus)
 mux.HandleFunc("/api/blocks", a.handleBlocks)
 mux.HandleFunc("/api/humans", a.handleHumans)
 mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
+	mux.HandleFunc("/api/register", a.handleRegister)
 	// EVM JSON-RPC
 	evmRPC := NewEVMRPCServer(a.blockchain)
 	mux.HandleFunc("/rpc", evmRPC.handleRPC)
