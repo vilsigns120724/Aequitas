@@ -123,7 +123,12 @@ return map[string]interface{}{
 case "eth_getBalance":
 if len(params) > 0 {
 addr := strings.ToLower(fmt.Sprintf("%v", params[0]))
+if e.state == nil {
+fmt.Println("[RPC] state is nil!")
+return "0x0", nil
+}
 balance := e.state.GetBalance(addr)
+fmt.Printf("[RPC] eth_getBalance %s = %.2f\n", addr, balance)
 if balance > 0 {
 decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 aeqWei := new(big.Int).Mul(big.NewInt(int64(balance)), decimals)
