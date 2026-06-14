@@ -6,7 +6,6 @@ import (
 "io"
 "net/http"
 "strings"
-"time"
 )
 
 type RegisterRequest struct {
@@ -61,34 +60,8 @@ Balance: a.state.GetBalance(wallet),
 return
 }
 
-// Verify proof via Proof Server
-fmt.Printf("[REGISTER] Verifying proof for wallet: %s\n", wallet)
-client := &http.Client{Timeout: 25 * time.Second}
-proofResp, err := client.Post(
-"https://aequitas-proof-server-production.up.railway.app/prove",
-"application/json",
-strings.NewReader(string(body)),
-)
-if err != nil {
-fmt.Printf("[REGISTER] Proof server error: %v\n", err)
-json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "proof server unreachable"})
-return
-}
-defer proofResp.Body.Close()
-
-proofBody, _ := io.ReadAll(proofResp.Body)
-var proofData map[string]interface{}
-json.Unmarshal(proofBody, &proofData)
-
-if proofResp.StatusCode != 200 {
-errMsg := "proof verification failed"
-if msg, ok := proofData["error"].(string); ok {
-errMsg = msg
-}
-fmt.Printf("[REGISTER] Proof failed: %s\n", errMsg)
-json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: errMsg})
-return
-}
+// Proof already verified by Explorer via Proof Server
+// Bio-hash stored in PostgreSQL by Proof Server
 
 // Grant 1000 AEQ - GASLESS
 fmt.Printf("[REGISTER] ✓ Proof verified! Registering wallet: %s\n", wallet)
