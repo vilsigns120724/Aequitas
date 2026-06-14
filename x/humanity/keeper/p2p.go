@@ -4,6 +4,7 @@ import (
 "context"
 "crypto/rand"
 "encoding/base64"
+"encoding/json"
 "fmt"
 "os"
 "time"
@@ -17,19 +18,20 @@ libp2p "github.com/libp2p/go-libp2p"
 )
 
 const (
-ProtocolID    = "/aequitas/1.0.0"
-ListenPort    = 4001
-BootstrapNode = "/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R"
+ProtocolID      = "/aequitas/1.0.0"
+BlockProtocolID = "/aequitas/blocks/1.0.0"
+ListenPort      = 4001
+BootstrapNode   = "/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R"
 )
 
 type P2PNode struct {
 host   host.Host
 keeper *Keeper
+dag    *BlockDAG
 peers  []peer.AddrInfo
 }
 
 func loadOrCreateKey() (crypto.PrivKey, error) {
-// Try load from environment variable
 if keyStr := os.Getenv("NODE_KEY"); keyStr != "" {
 keyBytes, err := base64.StdEncoding.DecodeString(keyStr)
 if err == nil {
@@ -41,14 +43,12 @@ return priv, nil
 }
 }
 
-// Generate new key
 fmt.Println("⚠ No NODE_KEY found – generating new key...")
 priv, _, err := crypto.GenerateKeyPairWithReader(crypto.Ed25519, -1, rand.Reader)
 if err != nil {
 return nil, err
 }
 
-// Export and print so we can save it
 keyBytes, err := crypto.MarshalPrivateKey(priv)
 if err != nil {
 return nil, err
@@ -84,9 +84,15 @@ keeper: keeper,
 }
 
 h.SetStreamHandler(protocol.ID(ProtocolID), node.handleStream)
+h.SetStreamHandler(protocol.ID(BlockProtocolID), node.handleBlockStream)
 return node, nil
 }
 
+func (n *P2PNode) SetDAG(dag *BlockDAG) {
+n.dag = dag
+}
+
+// handleStream — status messages
 func (n *P2PNode) handleStream(s network.Stream) {
 defer s.Close()
 buf := make([]byte, 1024)
@@ -96,10 +102,61 @@ return
 }
 msg := string(buf[:count])
 fmt.Printf("[P2P] Message from %s: %s\n", s.Conn().RemotePeer().String()[:12], msg)
-
-response := fmt.Sprintf("AEQUITAS_NODE|humans=%d|chainid=aequitas-1",
-n.keeper.TotalHumans())
+response := fmt.Sprintf("AEQUITAS_NODE|humans=%d|chainid=aequitas-1", n.keeper.TotalHumans())
 s.Write([]byte(response))
+}
+
+// handleBlockStream — receive blocks from peers
+func (n *P2PNode) handleBlockStream(s network.Stream) {
+defer s.Close()
+if n.dag == nil {
+return
+}
+
+buf := make([]byte, 4096)
+count, err := s.Read(buf)
+if err != nil {
+return
+}
+
+var block Block
+if err := json.Unmarshal(buf[:count], &block); err != nil {
+fmt.Printf("[BLOCK-SYNC] Parse error: %v\n", err)
+return
+}
+
+// Add peer block as tip to our DAG
+n.dag.AddPeerBlock(&block)
+fmt.Printf("[BLOCK-SYNC] ✓ Received block #%d from peer %s\n",
+block.Height, s.Conn().RemotePeer().String()[:12])
+}
+
+// BroadcastBlock — send new block to all connected peers
+func (n *P2PNode) BroadcastBlock(block *Block) {
+peers := n.host.Network().Peers()
+if len(peers) == 0 {
+return
+}
+
+data, err := json.Marshal(block)
+if err != nil {
+return
+}
+
+for _, peerID := range peers {
+go func(pid peer.ID) {
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+s, err := n.host.NewStream(ctx, pid, protocol.ID(BlockProtocolID))
+if err != nil {
+return
+}
+defer s.Close()
+s.Write(data)
+fmt.Printf("[BLOCK-SYNC] → Sent block #%d to %s\n", block.Height, pid.String()[:12])
+}(peerID)
+}
 }
 
 func (n *P2PNode) Start() {
@@ -149,4 +206,8 @@ return fmt.Sprintf("%s/p2p/%s", n.host.Addrs()[0], n.host.ID())
 
 func (n *P2PNode) GetNodeID() string {
 return n.host.ID().String()
+}
+
+func (n *P2PNode) ConnectedPeers() int {
+return len(n.host.Network().Peers())
 }

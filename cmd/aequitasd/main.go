@@ -92,7 +92,8 @@ return
 bc := keeper.NewBlockchain(humanKeeper, p2pNode.GetNodeID())
 fmt.Println()
 
-p2pNode.Start()
+p2pNode.SetDAG(bc)
+	p2pNode.Start()
 
 	humanKeeper.StartSync()
 
@@ -111,6 +112,7 @@ go func() {
 ticker := time.NewTicker(BLOCK_TIME)
 for range ticker.C {
 block := bc.ProduceBlock()
+			p2pNode.BroadcastBlock(block)
 fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
 block.Height,
 block.Hash[:16],

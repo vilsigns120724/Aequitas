@@ -145,3 +145,25 @@ dag.mu.RLock()
 defer dag.mu.RUnlock()
 return dag.tips
 }
+
+// AddPeerBlock adds a block received from a peer as a new DAG tip
+func (dag *BlockDAG) AddPeerBlock(block *Block) {
+dag.mu.Lock()
+defer dag.mu.Unlock()
+
+// Skip if already known
+if _, exists := dag.blocks[block.Hash]; exists {
+return
+}
+
+dag.blocks[block.Hash] = block
+
+// Add as tip if not already referenced
+dag.tips = append(dag.tips, block.Hash)
+
+if block.Height > dag.height {
+dag.height = block.Height
+}
+
+fmt.Printf("[DAG] Added peer block #%d | Tips: %d\n", block.Height, len(dag.tips))
+}
