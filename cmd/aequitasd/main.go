@@ -78,6 +78,9 @@ p2pNode.SetDAG(bc)
 	// HTTP Block Sync between nodes
 	bc.StartHTTPBlockSync("https://aequitas-production-9fba.up.railway.app")
 	p2pNode.Start()
+	// Reconstruct state from blockchain
+	time.Sleep(3 * time.Second)
+	bc.ReconstructState(chainState)
 
 	// humanKeeper.StartSync() - disabled, humans register natively
 

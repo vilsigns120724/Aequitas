@@ -215,3 +215,23 @@ tips = append(tips, hash)
 }
 return tips
 }
+
+func (dag *BlockDAG) ReconstructState(state *ChainState) {
+dag.mu.RLock()
+defer dag.mu.RUnlock()
+
+count := 0
+for _, block := range dag.blocks {
+for _, tx := range block.Transactions {
+if tx.Type == "register_human" && tx.Wallet != "" {
+if !state.IsHuman(tx.Wallet) {
+state.RegisterHuman(tx.Wallet)
+count++
+}
+}
+}
+}
+if count > 0 {
+fmt.Printf("[CHAIN] ✓ Reconstructed %d registrations from blockchain\n", count)
+}
+}
