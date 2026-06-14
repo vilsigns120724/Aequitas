@@ -62,7 +62,8 @@ return
 }
 
 // Verify proof via Proof Server
-client := &http.Client{Timeout: 30 * time.Second}
+fmt.Printf("[REGISTER] Calling proof server...\n")
+	client := &http.Client{Timeout: 10 * time.Second}
 proofResp, err := client.Post(
 "https://aequitas-proof-server-production.up.railway.app/prove",
 "application/json",
