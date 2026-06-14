@@ -68,6 +68,15 @@ fmt.Printf("[REGISTER] ✓ Proof verified! Registering wallet: %s\n", wallet)
 a.state.RegisterHuman(wallet)
 
 txHash := fmt.Sprintf("0x%x%x", len(wallet), len(wallet)*1000)
+
+// Add transaction to blockchain
+a.blockchain.AddTransaction(Transaction{
+Type:   "register_human",
+Wallet: wallet,
+Amount: 1000,
+TxHash: txHash,
+})
+
 fmt.Printf("[REGISTER] ✓ Human registered: %s | 1000 AEQ granted (gasless)\n", wallet)
 
 json.NewEncoder(w).Encode(RegisterResponse{

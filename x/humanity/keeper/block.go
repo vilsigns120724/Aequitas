@@ -9,6 +9,13 @@ import (
 "time"
 )
 
+type Transaction struct {
+	Type   string  `json:"type"`
+	Wallet string  `json:"wallet"`
+	Amount float64 `json:"amount,omitempty"`
+	TxHash string  `json:"tx_hash"`
+}
+
 type Block struct {
 Height       int64    `json:"height"`
 Timestamp    int64    `json:"timestamp"`
@@ -18,15 +25,24 @@ Proposer     string   `json:"proposer"`
 Humans       int      `json:"humans"`
 IsGenesis    bool     `json:"is_genesis,omitempty"`
 	StateRoot    string   `json:"state_root,omitempty"`
+	Transactions  []Transaction `json:"transactions,omitempty"`
 }
 
 type BlockDAG struct {
-blocks map[string]*Block
-tips   map[string]bool // hash -> is tip
-mu     sync.RWMutex
-keeper *Keeper
-nodeID string
-height int64
+blocks     map[string]*Block
+tips       map[string]bool
+mu         sync.RWMutex
+keeper     *Keeper
+nodeID     string
+height     int64
+pendingTxs []Transaction
+txMu       sync.Mutex
+}
+
+func (dag *BlockDAG) AddTransaction(tx Transaction) {
+dag.txMu.Lock()
+defer dag.txMu.Unlock()
+dag.pendingTxs = append(dag.pendingTxs, tx)
 }
 
 func NewBlockchain(keeper *Keeper, nodeID string) *BlockDAG {
@@ -88,12 +104,19 @@ maxParentHeight = parent.Height
 }
 }
 
+dag.txMu.Lock()
+txs := make([]Transaction, len(dag.pendingTxs))
+copy(txs, dag.pendingTxs)
+dag.pendingTxs = nil
+dag.txMu.Unlock()
+
 block := &Block{
 Height:       maxParentHeight + 1,
 Timestamp:    time.Now().Unix(),
 ParentHashes: parentHashes,
 Proposer:     dag.nodeID,
 Humans:       dag.keeper.TotalHumans(),
+Transactions: txs,
 }
 block.Hash = dag.calculateHash(block)
 
