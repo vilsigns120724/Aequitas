@@ -26,7 +26,13 @@ cs := &ChainState{
 accounts: make(map[string]*AccountState),
 dataFile: dataFile,
 }
+// Allow reset via environment variable
+if os.Getenv("RESET_STATE") == "true" {
+fmt.Println("✓ RESET_STATE=true — starting with fresh state")
+os.Remove(dataFile)
+} else {
 cs.load()
+}
 return cs
 }
 
