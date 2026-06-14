@@ -93,6 +93,9 @@ bc := keeper.NewBlockchain(humanKeeper, p2pNode.GetNodeID())
 fmt.Println()
 
 p2pNode.SetDAG(bc)
+
+	// HTTP Block Sync between nodes
+	bc.StartHTTPBlockSync("https://aequitas-production-9fba.up.railway.app")
 	p2pNode.Start()
 
 	humanKeeper.StartSync()
