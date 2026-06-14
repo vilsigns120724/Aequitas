@@ -407,11 +407,17 @@ header{background:#0d1117;border-bottom:1px solid var(--border);padding:18px 32p
         <div class="reg-proof-val" id="proof-val">—</div>
       </div>
 
+      <div style="background:#1a1a2e;border:1px solid #2d1b4e;border-radius:8px;padding:16px;margin-bottom:12px;text-align:center">
+        <div style="font-size:1.5rem;margin-bottom:8px">📱</div>
+        <div style="color:#bc8cff;font-size:0.8rem;font-weight:bold;margin-bottom:6px">REGISTRATION VIA ANDROID APP ONLY</div>
+        <div style="color:#8b949e;font-size:0.7rem;line-height:1.6">Proof of Humanity requires biometric verification.<br>Download the Aequitas App, scan your fingerprint,<br>and your 1,000 AEQ will be granted automatically.</div>
+      </div>
+
       <button class="reg-btn reg-btn-connect" id="btn-connect" onclick="connectWallet()">🦊 CONNECT METAMASK</button>
       <button class="reg-btn reg-btn-register" id="btn-register" onclick="register()" disabled>🔐 REGISTER ON-CHAIN</button>
 
       <div class="reg-status" id="reg-status">
-        <span class="info">// Connect MetaMask to start registration...</span>
+        <span class="info">// Open Aequitas Android App to generate your proof...</span>
       </div>
     </div>
 
