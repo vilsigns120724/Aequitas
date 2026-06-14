@@ -807,6 +807,9 @@ async function connectWallet() {
     box.style.display = 'block';
     document.getElementById('wallet-addr').textContent = walletAddr;
     document.getElementById('btn-register').disabled = !proofParams;
+    document.getElementById('btn-connect').textContent = '✓ ' + walletAddr.slice(0,10) + '...' + walletAddr.slice(-4);
+    document.getElementById('btn-connect').style.background = 'var(--green)';
+    document.getElementById('btn-connect').style.color = '#0A0E1A';
     log('✓ Wallet connected: ' + walletAddr.slice(0,12) + '...', 'ok');
   } catch(e) {
     log('✗ ' + e.message, 'err');
