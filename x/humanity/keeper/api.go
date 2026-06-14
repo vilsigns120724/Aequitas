@@ -55,6 +55,7 @@ mux.HandleFunc("/api/humans", a.handleHumans)
 mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 	mux.HandleFunc("/api/register", a.handleRegister)
 	mux.HandleFunc("/api/balance", a.handleBalance)
+	mux.HandleFunc("/registered", a.handleRegistered)
 	// EVM JSON-RPC
 	evmRPC := NewEVMRPCServer(a.blockchain, a.state)
 	mux.HandleFunc("/rpc", evmRPC.handleRPC)
@@ -527,13 +528,10 @@ async function register() {
     }
 
     log('🎉 ' + data.message + ' | TX: ' + data.tx_hash, 'ok');
-    // Callback to Aequitas App
-    const callback = new URLSearchParams(window.location.search).get('callback');
-    if (callback) {
-      setTimeout(() => {
-        window.location.href = callback + '?success=true&wallet=' + walletAddr;
-      }, 1500);
-    }
+    // Redirect to registered page which opens app
+    setTimeout(() => {
+      window.location.href = '/registered?success=true&wallet=' + walletAddr;
+    }, 1500);
   } catch(e) {
     log('✗ ' + e.message, 'err');
     document.getElementById('btn-register').disabled = false;
@@ -620,4 +618,34 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "balance":  balance,
 "is_human": isHuman,
 })
+}
+
+func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	wallet := r.URL.Query().Get("wallet")
+	success := r.URL.Query().Get("success")
+	
+	intentURL := fmt.Sprintf("intent://registered?success=%s&wallet=%s#Intent;scheme=aequitas;package=com.aequitasbio;end", success, wallet)
+	
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="1; url=%s">
+<style>
+body{background:#0A0E1A;color:#C9A84C;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;gap:16px}
+.logo{font-size:2rem;font-weight:bold;letter-spacing:8px}
+.msg{color:#22C55E;font-size:1.2rem}
+.sub{color:#6B7A99;font-size:0.8rem}
+a{color:#C9A84C;text-decoration:none;border:1px solid #C9A84C;padding:12px 24px;border-radius:8px;margin-top:16px;display:block;text-align:center}
+</style>
+</head>
+<body>
+<div class="logo">AEQUITAS</div>
+<div class="msg">🎉 Registered as Human!</div>
+<div class="sub">1,000 AEQ granted to your wallet</div>
+<a href="%s">Return to Aequitas App</a>
+<script>setTimeout(()=>window.location.href="%s",1000)</script>
+</body>
+</html>`, intentURL, intentURL, intentURL)
 }
