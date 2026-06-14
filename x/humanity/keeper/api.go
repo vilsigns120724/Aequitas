@@ -82,13 +82,13 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "uptime":       uptime,
 "block_time":   6,
 "contract_v5":  "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5",
-"index":        a.sepoliaStatus["index"],
-"gini":         a.sepoliaStatus["gini"],
+"index":        65,
+"gini":         0,
 "growth":       growth,
 "velocity":     50,
-"phase":        a.sepoliaStatus["phase"],
+"phase":        0,
 "fee_bps":      10,
-"sepolia":      a.sepoliaStatus,
+
 })
 }
 
