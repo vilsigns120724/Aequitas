@@ -20,9 +20,6 @@ Aequitas is the first decentralized monetary system that ties money supply direc
 | AequitasV4 (ERC-20 + Bio ZKP) | `0x2B5ACedF2c41c70d51A2cbAd927b8940EE725DA7` |
 | ZK Verifier V4 | `0x6502A5745Ca13d14cDe3E77EDa8b279fF3b72E0A` |
 
-## Live Demo
-
-**DApp:** https://hanoi96international-gif.github.io/Aequitas/aequitas-dapp.html
 
 ## What's New in V5
 
@@ -64,7 +61,6 @@ biometric.circom        — ZKP circuit
 biometric.wasm          — Compiled circuit
 bio_0001.zkey           — Proving key
 bio_verification_key.json — Verification key
-aequitas-dapp.html      — Live Web DApp
 Aequitas_Whitepaper_v0.9_DE.pdf
 Aequitas_Whitepaper_v0.9_EN.pdf
 ```
@@ -83,7 +79,7 @@ Biometric data never leaves the device. Only the mathematical proof is submitted
 
 ## Roadmap
 
-- ✅ Phase 0: Smart contracts, ZKP, Android app, Web DApp, Keeper bot
+- ✅ Phase 0: Smart contracts, ZKP, Android app, Proof Server, Keeper bot
 - 🔄 Phase 1: MAX30102 PPG sensor, AequitasV5, Cosmos SDK chain
 - ⬜ Phase 2: Public testnet, BlockDAG, lending protocol, iOS app
 - ⬜ Phase 3: Mainnet, DEX, cross-chain bridges
