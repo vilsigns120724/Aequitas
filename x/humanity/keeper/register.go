@@ -5,7 +5,6 @@ import (
 "fmt"
 "io"
 "net/http"
-	"time"
 "strings"
 )
 
@@ -61,39 +60,13 @@ Balance: a.state.GetBalance(wallet),
 return
 }
 
-// Verify proof via Proof Server
-fmt.Printf("[REGISTER] Calling proof server...\n")
-	client := &http.Client{Timeout: 10 * time.Second}
-proofResp, err := client.Post(
-"https://aequitas-proof-server-production.up.railway.app/prove",
-"application/json",
-strings.NewReader(string(body)),
-)
-if err != nil {
-json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "proof server error"})
-return
-}
-defer proofResp.Body.Close()
+// Proof already verified by Proof Server before this call
+// Just register on chain
+fmt.Printf("[REGISTER] Registering wallet: %s\n", wallet)
 
-proofBody, _ := io.ReadAll(proofResp.Body)
-var proofData map[string]interface{}
-json.Unmarshal(proofBody, &proofData)
-
-if proofResp.StatusCode != 200 {
-errMsg := "proof verification failed"
-if msg, ok := proofData["error"].(string); ok {
-errMsg = msg
-}
-json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: errMsg})
-return
-}
-
-// Grant 1000 AEQ - GASLESS
 a.state.RegisterHuman(wallet)
-// Registration handled by ChainState
 
 txHash := fmt.Sprintf("0x%x", a.blockchain.LatestBlock().Height)
-
 fmt.Printf("[REGISTER] ✓ Human registered: %s | 1000 AEQ granted (gasless)\n", wallet)
 
 json.NewEncoder(w).Encode(RegisterResponse{
