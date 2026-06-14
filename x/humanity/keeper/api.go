@@ -504,12 +504,12 @@ async function register() {
   if (!proofParams) { log('✗ No proof parameters. Use the Android app first.', 'err'); return; }
 
   try {
-    log('✓ ZK Proof generated! Step 2/2: Registering on chain...', 'ok');
-    document.getElementById('btn-register').disabled = true;
-
     log('⏳ Step 1/2: Generating ZK proof...', 'info');
-    const proveData = await proveResp.json(); if (!proveResp.ok) { log('✗ ' + (proveData.error || 'Proof failed'), 'err'); document.getElementById('btn-register').disabled = false; return; }
+    document.getElementById('btn-register').disabled = true;
     const proveResp = await fetch(PROOF_SERVER + '/prove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bio: proofParams.bio, salt: proofParams.salt, wallet: walletAddr }) });
+    const proveData = await proveResp.json();
+    if (!proveResp.ok) { log('✗ ' + (proveData.error || 'Proof failed'), 'err'); document.getElementById('btn-register').disabled = false; return; }
+    log('✓ ZK Proof generated! Step 2/2: Registering on chain...', 'ok');
     const resp = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
