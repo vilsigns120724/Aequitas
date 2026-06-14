@@ -60,26 +60,6 @@ fmt.Println()
 
 humanKeeper := keeper.NewKeeper()
 
-realHumans := []struct {
-address    string
-commitment string
-}{
-{"0x0BE8b961CBf6564bd1931B0803D35C0659E0D016", "sepolia_commitment_1"},
-{"sepolia_human_2", "sepolia_commitment_2"},
-{"sepolia_human_3", "sepolia_commitment_3"},
-{"sepolia_human_4", "sepolia_commitment_4"},
-}
-
-fmt.Println("── Loading Verified Humans ──────────────")
-for _, h := range realHumans {
-err := humanKeeper.RegisterHuman(h.address, h.commitment, time.Now().Unix())
-if err == nil {
-fmt.Printf("✓ Human: %s (+%d AEQ)\n", h.address, INITIAL_GRANT)
-}
-}
-fmt.Println()
-fmt.Printf("Total Humans:  %d\n", humanKeeper.TotalHumans())
-fmt.Printf("Total Supply:  %d AEQ\n", humanKeeper.TotalHumans()*INITIAL_GRANT)
 fmt.Println()
 
 fmt.Println("── Initializing Blockchain ──────────────")
