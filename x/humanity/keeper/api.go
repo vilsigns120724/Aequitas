@@ -522,6 +522,13 @@ async function register() {
     }
 
     log('🎉 ' + data.message + ' | TX: ' + data.tx_hash, 'ok');
+    // Callback to Aequitas App
+    const callback = new URLSearchParams(window.location.search).get('callback');
+    if (callback) {
+      setTimeout(() => {
+        window.location.href = callback + '?success=true&wallet=' + walletAddr;
+      }, 1500);
+    }
   } catch(e) {
     log('✗ ' + e.message, 'err');
     document.getElementById('btn-register').disabled = false;
