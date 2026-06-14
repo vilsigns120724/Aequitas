@@ -5,6 +5,7 @@ import (
 "fmt"
 "io"
 "net/http"
+	"time"
 "strings"
 )
 
@@ -61,7 +62,8 @@ return
 }
 
 // Verify proof via Proof Server
-proofResp, err := http.Post(
+client := &http.Client{Timeout: 30 * time.Second}
+proofResp, err := client.Post(
 "https://aequitas-proof-server-production.up.railway.app/prove",
 "application/json",
 strings.NewReader(string(body)),
