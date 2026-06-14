@@ -52,9 +52,7 @@ fmt.Printf("✓ Loaded chain state: %d accounts\n", len(accounts))
 }
 
 func (cs *ChainState) save() {
-cs.mu.RLock()
 data, _ := json.Marshal(cs.accounts)
-cs.mu.RUnlock()
 os.WriteFile(cs.dataFile, data, 0644)
 }
 
