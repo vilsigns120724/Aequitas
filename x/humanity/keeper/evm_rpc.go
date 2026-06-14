@@ -122,7 +122,9 @@ return map[string]interface{}{
 
 case "eth_getBalance":
 if len(params) > 0 {
-addr := strings.ToLower(fmt.Sprintf("%v", params[0]))
+var addr string
+json.Unmarshal(params[0], &addr)
+addr = strings.ToLower(addr)
 if e.state == nil {
 fmt.Println("[RPC] state is nil!")
 return "0x0", nil
