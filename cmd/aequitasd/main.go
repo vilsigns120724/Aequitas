@@ -87,7 +87,7 @@ fmt.Println()
 
 fmt.Println("── Starting API Server ──────────────────")
 api := keeper.NewAPIServer(bc, p2pNode, humanKeeper)
-api.Start(API_PORT)
+go api.Start(API_PORT)
 
 fmt.Println()
 
