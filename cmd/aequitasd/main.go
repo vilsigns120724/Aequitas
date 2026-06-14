@@ -98,7 +98,7 @@ p2pNode.SetDAG(bc)
 	bc.StartHTTPBlockSync("https://aequitas-production-9fba.up.railway.app")
 	p2pNode.Start()
 
-	humanKeeper.StartSync()
+	// humanKeeper.StartSync() - disabled, humans register natively
 
 multiaddr := p2pNode.GetMultiaddr()
 fmt.Println("── Share this address to join network ───")

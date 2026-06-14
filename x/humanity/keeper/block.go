@@ -17,6 +17,7 @@ Hash         string   `json:"hash"`
 Proposer     string   `json:"proposer"`
 Humans       int      `json:"humans"`
 IsGenesis    bool     `json:"is_genesis,omitempty"`
+	StateRoot    string   `json:"state_root,omitempty"`
 }
 
 type BlockDAG struct {

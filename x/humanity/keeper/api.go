@@ -14,7 +14,7 @@ p2pNode       *P2PNode
 keeper        *Keeper
 startTime     time.Time
 sepoliaStatus map[string]interface{}
-	balances      *BalanceStore
+	state         *ChainState
 }
 
 func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper) *APIServer {
@@ -24,7 +24,7 @@ p2pNode:       p2p,
 keeper:        k,
 startTime:     time.Now(),
 sepoliaStatus: map[string]interface{}{},
-		balances:      NewBalanceStore(),
+		state:         NewChainState("/tmp/aequitas_state.json"),
 }
 go s.syncSepoliaStatus()
 return s

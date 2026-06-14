@@ -51,11 +51,11 @@ return
 }
 
 // Check if already registered on this chain
-if a.balances.GetBalance(wallet) > 0 {
+if a.state.GetBalance(wallet) > 0 {
 json.NewEncoder(w).Encode(RegisterResponse{
 Success: false,
 Message: "already registered on Aequitas Chain",
-Balance: a.balances.GetBalance(wallet),
+Balance: a.state.GetBalance(wallet),
 })
 return
 }
@@ -86,7 +86,7 @@ return
 }
 
 // Grant 1000 AEQ - GASLESS
-a.balances.Grant(wallet, InitialGrant)
+a.state.RegisterHuman(wallet)
 a.keeper.RegisterHuman(wallet, "zkp-verified", 0)
 
 txHash := fmt.Sprintf("0x%x", a.blockchain.LatestBlock().Height)
@@ -96,7 +96,7 @@ fmt.Printf("[REGISTER] ✓ Human registered: %s | 1000 AEQ granted (gasless)\n",
 json.NewEncoder(w).Encode(RegisterResponse{
 Success: true,
 Message: "✓ Registered as human! 1,000 AEQ granted.",
-Balance: InitialGrant,
+Balance: 1000,
 TxHash:  txHash,
 })
 }
