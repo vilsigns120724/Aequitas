@@ -181,11 +181,11 @@ header{background:linear-gradient(180deg,#080F1E 0%,#050A14 100%);border-bottom:
 .stat-label{font-size:0.6rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
 .stat-value{font-size:2rem;font-weight:900;line-height:1;margin-bottom:6px}
 .stat-sub{font-size:0.65rem;color:var(--muted);line-height:1.6}
-.c-green .stat-value,.c-green .stat-accent{color:var(--green);background:var(--green)}
-.c-blue .stat-value,.c-blue .stat-accent{color:var(--blue);background:var(--blue)}
-.c-gold .stat-value,.c-gold .stat-accent{color:var(--gold);background:var(--gold)}
-.c-purple .stat-value,.c-purple .stat-accent{color:var(--purple);background:var(--purple)}
-.c-teal .stat-value,.c-teal .stat-accent{color:var(--teal);background:var(--teal)}
+.c-green .stat-value{color:#00E676!important}.c-green .stat-accent{background:#00E676}
+.c-blue .stat-value{color:#4FC3F7!important}.c-blue .stat-accent{background:#4FC3F7}
+.c-gold .stat-value{color:#FFB300!important}.c-gold .stat-accent{background:#FFB300}
+.c-purple .stat-value{color:#CE93D8!important}.c-purple .stat-accent{background:#CE93D8}
+.c-teal .stat-value{color:#4DD0E1!important}.c-teal .stat-accent{background:#4DD0E1}
 .mission-banner{background:linear-gradient(135deg,#0D1E3A,#111E2E);border:1px solid #1A3A5C;border-radius:12px;padding:28px;margin-bottom:28px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:20px}
 @media(max-width:800px){.mission-banner{grid-template-columns:1fr 1fr}}
 @media(max-width:500px){.mission-banner{grid-template-columns:1fr}}
@@ -686,7 +686,7 @@ async function addToMetaMask(){
 async function loadStatus(){
   try{
     const d=await(await fetch('/api/status')).json();
-    document.getElementById('s-height').textContent=fmt(d.block_height);
+    document.getElementById('s-height').textContent=fmt(d.height);
     document.getElementById('s-humans').textContent=fmt(d.total_humans);
     document.getElementById('s-supply').textContent=d.total_supply||'—';
     document.getElementById('s-index').textContent=fmt(d.index);
