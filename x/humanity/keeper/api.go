@@ -603,7 +603,7 @@ async function update(){
     document.getElementById('block-count').textContent=fmt(status.height)+' blocks';
     document.getElementById('blocks-list').innerHTML=[...blocks].reverse().map(b=>{
       const t=new Date(b.timestamp*1000).toLocaleTimeString();
-      return '<div class="block-item"><span class="block-height">#'+b.height+'</span><span class="block-hash">'+b.hash+'</span><span class="block-humans">👤 '+b.humans+'</span><span class="block-time">'+t+'</span></div>';
+      const parents=b.parent_hashes||[];const isMerge=parents.length>1;const mergeTag=isMerge?'<span style="background:#2d1b4e;color:#bc8cff;font-size:0.62rem;padding:2px 6px;border-radius:4px;margin-left:4px">🔀 MERGE</span>':'<span style="color:#8b949e;font-size:0.62rem;margin-left:4px">·'+parents.length+'p</span>';return '<div class="block-item" style="'+(isMerge?'border-left:3px solid #bc8cff;':'')+'"><span class="block-height">#'+b.height+'</span><span class="block-hash">'+b.hash.slice(0,14)+'...</span>'+mergeTag+'<span class="block-humans">👤 '+b.humans+'</span><span class="block-time">'+t+'</span></div>';
     }).join('');
     document.getElementById('human-count').textContent=(humans.total||0)+' registered';
     const list=humans.humans||[];
