@@ -480,17 +480,13 @@ async function connectWallet() {
     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
     walletAddr = accounts[0];
 
-    // Check network
-    const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-    if (chainId !== '0xaa36a7') {
-      log('⚠ Please switch MetaMask to Sepolia testnet (Chain ID: 11155111)', 'err');
-      try {
-        await window.ethereum.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: '0xaa36a7' }]
-        });
-      } catch(e) { return; }
-    }
+    // Switch to Aequitas Chain
+    try {
+      await window.ethereum.request({
+        method: 'wallet_addEthereumChain',
+        params: [{ chainId: '0x2329', chainName: 'Aequitas Chain', nativeCurrency: { name: 'AEQ', symbol: 'AEQ', decimals: 18 }, rpcUrls: ['https://aequitas-production-9fba.up.railway.app/rpc'] }]
+      });
+    } catch(e) {}
 
     document.getElementById('wallet-box').style.display = 'block';
     document.getElementById('wallet-addr').textContent = walletAddr;
@@ -514,10 +510,10 @@ async function register() {
   if (!proofParams) { log('✗ No proof parameters. Use the Android app first.', 'err'); return; }
 
   try {
-    log('Sending proof to server...', 'info');
+    log('⏳ Registering on Aequitas Chain (gasless)...', 'info');
     document.getElementById('btn-register').disabled = true;
 
-    const resp = await fetch(PROOF_SERVER + '/prove', {
+    const resp = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bio: proofParams.bio, salt: proofParams.salt, wallet: walletAddr })
@@ -525,45 +521,13 @@ async function register() {
 
     const data = await resp.json();
 
-    if (!resp.ok) {
-      if (data.registered) {
-        log('✗ Already registered: ' + data.error, 'err');
-      } else {
-        log('✗ Proof error: ' + data.error, 'err');
-      }
+    if (!data.success) {
+      log('✗ ' + data.message, 'err');
       document.getElementById('btn-register').disabled = false;
       return;
     }
 
-    log('✓ ZK Proof generated! Submitting on-chain via MetaMask...', 'ok');
-
-    // Submit to contract via MetaMask
-    const iface = {
-      encodeFunctionData: (name, args) => {
-        // Manual ABI encoding for registerHuman
-        const sig = '0x' + Array.from(new TextEncoder().encode('registerHuman(uint256[2],uint256[2][2],uint256[2],uint256[2])'))
-          .map(b => b.toString(16).padStart(2,'0')).join('');
-        return sig;
-      }
-    };
-
-    // Use eth_sendTransaction with encoded data
-    const { pA, pB, pC, pubSignals } = data;
-
-    // Encode using ethers if available, otherwise prompt user to use MetaMask directly
-    if (window.ethers) {
-      const provider = new window.ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const contract = new window.ethers.Contract(CONTRACT, CONTRACT_ABI, signer);
-      const tx = await contract.registerHuman(pA, pB, pC, pubSignals);
-      log('TX submitted: ' + tx.hash.slice(0,16) + '... waiting...', 'info');
-      await tx.wait();
-      log('🎉 Registration successful! 1,000 AEQ credited to your wallet.', 'ok');
-    } else {
-      log('✓ Proof ready! Opening Etherscan to complete registration manually...', 'ok');
-      const etherscanUrl = 'https://sepolia.etherscan.io/address/' + CONTRACT + '#writeContract';
-      window.open(etherscanUrl, '_blank');
-    }
+    log('🎉 ' + data.message + ' | TX: ' + data.tx_hash, 'ok');
   } catch(e) {
     log('✗ ' + e.message, 'err');
     document.getElementById('btn-register').disabled = false;
