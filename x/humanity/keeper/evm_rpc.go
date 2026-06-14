@@ -3,7 +3,6 @@ package keeper
 import (
 "encoding/json"
 "fmt"
-"math/big"
 "net/http"
 "strings"
 )
@@ -120,7 +119,7 @@ return map[string]interface{}{
 }, nil
 
 case "eth_getBalance":
-return "0x" + fmt.Sprintf("%x", new(big.Int).Mul(big.NewInt(1000), new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))), nil
+return "0x0", nil
 
 case "eth_gasPrice":
 return "0x3B9ACA00", nil // 1 Gwei
