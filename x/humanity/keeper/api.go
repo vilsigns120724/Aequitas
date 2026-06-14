@@ -297,19 +297,7 @@ header{background:#0d1117;border-bottom:1px solid var(--border);padding:18px 32p
     </div>
   </div>
 
-  <div class="sepolia-wrap">
-    <div class="sepolia-card">
-      <div class="section-title" style="display:flex;align-items:center;gap:8px"><span class="pulse"></span>Sepolia Contract V5 — Live</div>
-      <div class="sepolia-grid">
-        <div class="sepolia-item"><div class="sepolia-item-label">Registrations</div><div class="sepolia-item-val" id="sep-humans">—</div></div>
-        <div class="sepolia-item"><div class="sepolia-item-label">Supply</div><div class="sepolia-item-val" id="sep-supply">—</div></div>
-        <div class="sepolia-item"><div class="sepolia-item-label">Gini</div><div class="sepolia-item-val" id="sep-gini">—</div></div>
-        <div class="sepolia-item"><div class="sepolia-item-label">Index</div><div class="sepolia-item-val" id="sep-index">—</div></div>
-        <div class="sepolia-item"><div class="sepolia-item-label">Phase</div><div class="sepolia-item-val" id="sep-phase-val">—</div></div>
-        <div class="sepolia-item"><div class="sepolia-item-label">Status</div><div class="sepolia-item-val" style="color:#3fb950" id="sep-status">—</div></div>
-      </div>
-    </div>
-  </div>
+
 
   <div class="main">
     <div class="section">
