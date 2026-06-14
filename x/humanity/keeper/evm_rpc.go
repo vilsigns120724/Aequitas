@@ -23,10 +23,11 @@ Error   interface{} `json:"error,omitempty"`
 
 type EVMRPCServer struct {
 dag *BlockDAG
+state *ChainState
 }
 
-func NewEVMRPCServer(dag *BlockDAG) *EVMRPCServer {
-return &EVMRPCServer{dag: dag}
+func NewEVMRPCServer(dag *BlockDAG, state *ChainState) *EVMRPCServer {
+return &EVMRPCServer{dag: dag, state: state}
 }
 
 func (e *EVMRPCServer) Start(port int) {
@@ -119,6 +120,12 @@ return map[string]interface{}{
 }, nil
 
 case "eth_getBalance":
+if len(params) > 0 {
+addr := strings.ToLower(fmt.Sprintf("%v", params[0]))
+balance := e.state.GetBalance(addr)
+aeqWei := uint64(balance) * 1000000000000000000
+return fmt.Sprintf("0x%x", aeqWei), nil
+}
 return "0x0", nil
 
 case "eth_gasPrice":

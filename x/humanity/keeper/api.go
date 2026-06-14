@@ -54,7 +54,7 @@ mux.HandleFunc("/api/humans", a.handleHumans)
 mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 	mux.HandleFunc("/api/register", a.handleRegister)
 	// EVM JSON-RPC
-	evmRPC := NewEVMRPCServer(a.blockchain)
+	evmRPC := NewEVMRPCServer(a.blockchain, a.state)
 	mux.HandleFunc("/rpc", evmRPC.handleRPC)
 addr := fmt.Sprintf(":%d", port)
 fmt.Printf("✓ API Server listening on port %d\n", port)
