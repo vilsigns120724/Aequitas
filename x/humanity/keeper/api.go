@@ -109,11 +109,22 @@ json.NewEncoder(w).Encode(blocks[start:])
 func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
-json.NewEncoder(w).Encode(map[string]interface{}{
-"total":  a.keeper.TotalHumans(),
-"humans": a.keeper.GetAllHumans(),
+accounts := a.state.GetAllAccounts()
+humans := []map[string]interface{}{}
+for _, acc := range accounts {
+if acc.IsHuman {
+humans = append(humans, map[string]interface{}{
+"address": acc.Address,
+"balance": acc.Balance,
 })
 }
+}
+json.NewEncoder(w).Encode(map[string]interface{}{
+"total":  len(humans),
+"humans": humans,
+})
+}
+
 
 func (a *APIServer) handleSepoliaHumans(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
