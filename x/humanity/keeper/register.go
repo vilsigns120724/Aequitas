@@ -87,7 +87,7 @@ return
 
 // Grant 1000 AEQ - GASLESS
 a.state.RegisterHuman(wallet)
-a.keeper.RegisterHuman(wallet, "zkp-verified", 0)
+// Registration handled by ChainState
 
 txHash := fmt.Sprintf("0x%x", a.blockchain.LatestBlock().Height)
 
