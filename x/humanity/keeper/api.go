@@ -265,7 +265,7 @@ header{background:#0d1117;border-bottom:1px solid var(--border);padding:18px 32p
   </div>
   <div class="header-right">
     <div class="live-badge"><span class="pulse"></span>LIVE</div>
-    <div class="chain-badge">aequitas-1</div>
+    <div class="chain-badge">BLOCKDAG</div>
   </div>
 </header>
 
@@ -315,10 +315,10 @@ header{background:#0d1117;border-bottom:1px solid var(--border);padding:18px 32p
         <div class="info-row"><span class="info-key">Block Time</span><span class="info-val green">6 seconds</span></div>
         <div class="info-row"><span class="info-key">Fee</span><span class="info-val gold">0.1% per tx</span></div>
         <div class="info-row"><span class="info-key">Initial Grant</span><span class="info-val gold">1,000 AEQ</span></div>
-        <div class="info-row"><span class="info-key">Sepolia Sync</span><span class="info-val green">✓ Active</span></div>
-        <div class="info-row"><span class="info-key">Contract V5</span><span class="info-val blue">0x4f147d...f0B8b5</span></div>
+        <div class="info-row"><span class="info-key">Consensus</span><span class="info-val green">✓ BlockDAG</span></div>
+        <div class="info-row"><span class="info-key">EVM RPC</span><span class="info-val blue">/rpc · Chain ID 9001</span></div>
         <div class="link-row">
-          <a class="ext-link" href="https://sepolia.etherscan.io/address/0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5" target="_blank">Etherscan ↗</a>
+          
           <a class="ext-link" href="https://github.com/hanoi96international-gif/Aequitas" target="_blank">GitHub ↗</a>
           <a class="ext-link" href="/api/status" target="_blank">API ↗</a>
         </div>
@@ -410,11 +410,11 @@ header{background:#0d1117;border-bottom:1px solid var(--border);padding:18px 32p
     </div>
 
     <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;font-size:0.7rem;color:#8b949e;line-height:1.8">
-      <div style="color:#f0f6fc;margin-bottom:8px;font-size:0.75rem">Contract: AequitasV5 (Sepolia)</div>
-      <div>Address: <span style="color:var(--blue)">0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5</span></div>
-      <div>Fee: <span style="color:var(--gold)">0.1% per transaction</span></div>
+      <div style="color:#f0f6fc;margin-bottom:8px;font-size:0.75rem">Aequitas Chain (BlockDAG)</div>
+      <div>RPC: <span style="color:var(--blue)">aequitas-production-9fba.up.railway.app/rpc</span></div>
+      <div>Chain ID: <span style="color:var(--gold)">9001</span></div>
       <div>Initial Grant: <span style="color:var(--gold)">1,000 AEQ</span></div>
-      <div>Network: <span style="color:var(--green)">Sepolia Testnet (Chain ID: 11155111)</span></div>
+      <div>Network: <span style="color:var(--green)">Aequitas Chain · BlockDAG · Gasless</span></div>
     </div>
   </div>
 </div>
