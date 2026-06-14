@@ -109,9 +109,6 @@ fmt.Println("── Starting API Server ─────────────�
 api := keeper.NewAPIServer(bc, p2pNode, humanKeeper)
 api.Start(API_PORT)
 
-	// EVM JSON-RPC Server (MetaMask kompatibel)
-	evmRPC := keeper.NewEVMRPCServer(bc)
-	evmRPC.Start(8545)
 fmt.Println()
 
 fmt.Println("── Starting Block Production ────────────")
