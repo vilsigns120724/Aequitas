@@ -33,6 +33,7 @@ blocks     map[string]*Block
 tips       map[string]bool
 mu         sync.RWMutex
 keeper     *Keeper
+state      *ChainState
 nodeID     string
 height     int64
 pendingTxs []Transaction
@@ -45,11 +46,12 @@ defer dag.txMu.Unlock()
 dag.pendingTxs = append(dag.pendingTxs, tx)
 }
 
-func NewBlockchain(keeper *Keeper, nodeID string) *BlockDAG {
+func NewBlockchain(keeper *Keeper, nodeID string, state *ChainState) *BlockDAG {
 dag := &BlockDAG{
 blocks: make(map[string]*Block),
 tips:   make(map[string]bool),
 keeper: keeper,
+state:  state,
 nodeID: nodeID,
 }
 dag.createGenesisBlock()
@@ -62,7 +64,7 @@ Height:       0,
 Timestamp:    time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC).Unix(),
 ParentHashes: []string{},
 Proposer:     "genesis",
-Humans:       dag.keeper.TotalHumans(),
+Humans:       dag.state.TotalHumans(),
 IsGenesis:    true,
 }
 genesis.Hash = dag.calculateHash(genesis)
@@ -115,7 +117,7 @@ Height:       maxParentHeight + 1,
 Timestamp:    time.Now().Unix(),
 ParentHashes: parentHashes,
 Proposer:     dag.nodeID,
-Humans:       dag.keeper.TotalHumans(),
+Humans:       dag.state.TotalHumans(),
 Transactions: txs,
 }
 block.Hash = dag.calculateHash(block)

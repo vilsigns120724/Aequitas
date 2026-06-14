@@ -69,7 +69,8 @@ fmt.Printf("✗ P2P Error: %v\n", err)
 return
 }
 
-bc := keeper.NewBlockchain(humanKeeper, p2pNode.GetNodeID())
+chainState := keeper.NewChainState("/tmp/aequitas_state.json")
+bc := keeper.NewBlockchain(humanKeeper, p2pNode.GetNodeID(), chainState)
 fmt.Println()
 
 p2pNode.SetDAG(bc)
@@ -86,7 +87,7 @@ fmt.Printf("%s\n", multiaddr)
 fmt.Println()
 
 fmt.Println("── Starting API Server ──────────────────")
-api := keeper.NewAPIServer(bc, p2pNode, humanKeeper)
+api := keeper.NewAPIServer(bc, p2pNode, humanKeeper, chainState)
 go api.Start(API_PORT)
 
 fmt.Println()

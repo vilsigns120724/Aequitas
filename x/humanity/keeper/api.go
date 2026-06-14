@@ -18,14 +18,14 @@ sepoliaStatus map[string]interface{}
 	state         *ChainState
 }
 
-func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper) *APIServer {
+func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper, state *ChainState) *APIServer {
 s := &APIServer{
 blockchain:    bc,
 p2pNode:       p2p,
 keeper:        k,
 startTime:     time.Now(),
 sepoliaStatus: map[string]interface{}{},
-		state:         NewChainState("/tmp/aequitas_state.json"),
+		state:         state,
 }
 go s.syncSepoliaStatus()
 return s
