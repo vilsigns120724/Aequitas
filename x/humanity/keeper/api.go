@@ -897,29 +897,33 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	wallet := r.URL.Query().Get("wallet")
-	success := r.URL.Query().Get("success")
-	
-	intentURL := fmt.Sprintf("aequitas://registered?success=%s&wallet=%s", success, wallet)
-	
+
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="1; url=%s">
 <style>
-body{background:#0A0E1A;color:#C9A84C;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;gap:16px}
+body{background:#0A0E1A;color:#C9A84C;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column;gap:16px;text-align:center;padding:20px}
 .logo{font-size:2rem;font-weight:bold;letter-spacing:8px}
-.msg{color:#22C55E;font-size:1.2rem}
-.sub{color:#6B7A99;font-size:0.8rem}
-a{color:#C9A84C;text-decoration:none;border:1px solid #C9A84C;padding:12px 24px;border-radius:8px;margin-top:16px;display:block;text-align:center}
+.msg{color:#22C55E;font-size:1.4rem;font-weight:bold}
+.wallet{color:#6B7A99;font-size:0.75rem;margin-top:4px;word-break:break-all}
+.sub{color:#6B7A99;font-size:0.85rem;line-height:1.8;max-width:400px}
+.highlight{color:#C9A84C}
+.box{background:#111827;border:1px solid #1E2D45;border-radius:12px;padding:24px;max-width:420px;width:100%%}
 </style>
 </head>
 <body>
 <div class="logo">AEQUITAS</div>
+<div class="box">
 <div class="msg">🎉 Registered as Human!</div>
-<div class="sub">1,000 AEQ granted to your wallet</div>
-<a href="%s">Return to Aequitas App</a>
-<script>setTimeout(()=>window.location.href="%s",1000)</script>
+<div class="wallet">%s</div>
+<div style="margin:16px 0;border-top:1px solid #1E2D45"></div>
+<div class="sub">
+<span class="highlight">1,000 AEQ</span> has been credited to your wallet.<br><br>
+Return to the <span class="highlight">Aequitas App</span> to see your registration status.<br><br>
+The app will confirm automatically.
+</div>
+</div>
 </body>
-</html>`, intentURL, intentURL, intentURL)
+</html>`, wallet)
 }
