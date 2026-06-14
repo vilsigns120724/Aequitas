@@ -149,122 +149,176 @@ fmt.Fprint(w, `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Aequitas Chain Explorer</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:#060810;color:#c9d1d9;font-family:'Courier New',monospace;min-height:100vh}
-:root{--green:#3fb950;--blue:#58a6ff;--gold:#e3b341;--red:#f85149;--border:#21262d;--card:#0d1117;--purple:#bc8cff}
-header{background:#0d1117;border-bottom:1px solid var(--border);padding:18px 32px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.logo{display:flex;align-items:center;gap:12px}
-.logo-text{font-size:1.2rem;font-weight:bold;color:#f0f6fc;letter-spacing:2px}
-.logo-sub{font-size:0.7rem;color:#8b949e;letter-spacing:1px}
-.header-right{display:flex;align-items:center;gap:12px}
-.live-badge{display:flex;align-items:center;gap:6px;background:#1a3a2a;border:1px solid #2ea04326;padding:5px 12px;border-radius:20px;font-size:0.72rem;color:var(--green)}
-.pulse{width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-.chain-badge{font-size:0.72rem;color:#8b949e;background:#161b22;border:1px solid var(--border);padding:5px 12px;border-radius:20px}
-.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:#0d1117;padding:0 32px}
-.tab{padding:12px 20px;font-size:0.75rem;color:#8b949e;cursor:pointer;border-bottom:2px solid transparent;letter-spacing:1px;text-transform:uppercase;transition:all 0.2s}
-.tab:hover{color:#f0f6fc}
-.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
-.tab-content{display:none}
-.tab-content.active{display:block}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;padding:24px 32px 0}
-.stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;position:relative;overflow:hidden}
-.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
-.stat.green::before{background:var(--green)}
-.stat.blue::before{background:var(--blue)}
-.stat.gold::before{background:var(--gold)}
-.stat.purple::before{background:var(--purple)}
-.stat-label{font-size:0.65rem;color:#8b949e;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px}
-.stat-value{font-size:1.7rem;font-weight:bold;line-height:1}
-.stat.green .stat-value{color:var(--green)}
-.stat.blue .stat-value{color:var(--blue)}
-.stat.gold .stat-value{color:var(--gold)}
-.stat.purple .stat-value{color:var(--purple)}
-.stat-sub{font-size:0.68rem;color:#8b949e;margin-top:5px}
-.pools-wrap{padding:16px 32px 0}
-.pools-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px}
-.section-title{font-size:0.7rem;color:#8b949e;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px}
-.pools-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-@media(max-width:700px){.pools-grid{grid-template-columns:repeat(2,1fr)}}
-.pool-item{background:#161b22;border-radius:8px;padding:14px;text-align:center}
-.pool-icon{font-size:1.2rem;margin-bottom:6px}
-.pool-label{font-size:0.62rem;color:#8b949e;margin-bottom:4px}
-.pool-val{font-size:1rem;font-weight:bold;color:var(--gold)}
-.pool-pct{font-size:0.6rem;color:#8b949e;margin-top:2px}
-.sepolia-wrap{padding:16px 32px 0}
-.sepolia-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px}
-.sepolia-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
-.sepolia-item{background:#161b22;border-radius:6px;padding:12px}
-.sepolia-item-label{font-size:0.6rem;color:#8b949e;margin-bottom:4px}
-.sepolia-item-val{font-size:1rem;font-weight:bold;color:var(--blue)}
-.main{display:grid;grid-template-columns:1fr 360px;gap:16px;padding:16px 32px 32px}
-@media(max-width:900px){.main{grid-template-columns:1fr}}
-.section{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
-.section-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.section-count{font-size:0.68rem;color:#8b949e;background:#161b22;padding:2px 8px;border-radius:10px}
-.block-item{padding:11px 20px;border-bottom:1px solid #161b22;display:grid;grid-template-columns:80px 1fr 60px 85px;gap:10px;align-items:center}
-.block-item:hover{background:#161b2270}
-.block-item:last-child{border-bottom:none}
-.block-height{color:var(--blue);font-weight:bold;font-size:0.82rem}
-.block-hash{color:#8b949e;font-size:0.72rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.block-humans{color:var(--gold);font-size:0.72rem;text-align:right}
-.block-time{color:var(--green);font-size:0.72rem;text-align:right}
-.human-item{padding:11px 18px;border-bottom:1px solid #161b22;display:flex;align-items:center;gap:10px}
-.human-item:last-child{border-bottom:none}
-.human-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.72rem;color:white;font-weight:bold;flex-shrink:0}
-.human-addr{font-size:0.72rem;color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-.human-balance{font-size:0.7rem;color:var(--gold);flex-shrink:0;margin-right:6px}
-.human-badge{font-size:0.62rem;color:var(--green);background:#1a3a2a;padding:2px 7px;border-radius:8px;flex-shrink:0}
-.info-panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:14px}
-.info-title{font-size:0.68rem;color:#8b949e;text-transform:uppercase;letter-spacing:2px;margin-bottom:12px}
-.info-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #161b22}
-.info-row:last-child{border-bottom:none}
-.info-key{font-size:0.7rem;color:#8b949e}
-.info-val{font-size:0.7rem;color:#f0f6fc;text-align:right;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.info-val.green{color:var(--green)}
-.info-val.blue{color:var(--blue)}
-.info-val.gold{color:var(--gold)}
-.link-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.ext-link{font-size:0.68rem;color:var(--blue);background:#1c2d40;border:1px solid #1f6feb30;padding:5px 11px;border-radius:6px;text-decoration:none}
-.ext-link:hover{background:#1f6feb20}
-.index-bar-wrap{padding:20px 32px 0}
-.index-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px}
-.index-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
-.index-metric{text-align:center;background:#161b22;border-radius:8px;padding:12px}
-.index-metric-label{font-size:0.62rem;color:#8b949e;margin-bottom:4px}
-.index-metric-val{font-size:1.3rem;font-weight:bold;color:var(--gold)}
-.index-bar-bg{height:10px;background:#161b22;border-radius:5px;overflow:hidden}
-.index-bar-fill{height:100%;border-radius:5px;transition:width 1.5s ease;background:linear-gradient(90deg,var(--red) 0%,var(--gold) 40%,var(--green) 100%)}
-.index-labels{display:flex;justify-content:space-between;font-size:0.6rem;color:#8b949e;margin-top:6px}
-.index-phase{margin-top:10px;font-size:0.7rem;color:#8b949e;text-align:center}
+:root {
+  --bg: #0A0E1A;
+  --card: #111827;
+  --border: #1E2D45;
+  --green: #22C55E;
+  --blue: #3B82F6;
+  --gold: #C9A84C;
+  --purple: #BC8CFF;
+  --red: #EF4444;
+  --text: #E8EDF5;
+  --muted: #6B7A99;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Courier New', monospace; min-height: 100vh; }
+
+/* HEADER */
+header { display: flex; align-items: center; justify-content: space-between; padding: 16px 32px; border-bottom: 1px solid var(--border); background: #0d1117; position: sticky; top: 0; z-index: 100; }
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-text { font-size: 1.4rem; font-weight: bold; color: var(--gold); letter-spacing: 6px; }
+.logo-sub { font-size: 0.65rem; color: var(--muted); letter-spacing: 3px; margin-top: 2px; }
+.header-right { display: flex; gap: 8px; align-items: center; }
+.live-badge { display: flex; align-items: center; gap: 6px; background: #0d1a0d; border: 1px solid #1a3020; padding: 5px 12px; border-radius: 20px; font-size: 0.72rem; color: var(--green); }
+.pulse { width: 7px; height: 7px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.chain-badge { font-size: 0.72rem; color: var(--purple); background: #0D1220; border: 1px solid #1A2040; padding: 5px 12px; border-radius: 20px; }
+
+/* TABS */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: #0d1117; padding: 0 32px; overflow-x: auto; }
+.tab { padding: 12px 20px; font-size: 0.75rem; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; letter-spacing: 1px; text-transform: uppercase; transition: all 0.2s; white-space: nowrap; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* HERO STATS */
+.hero { padding: 24px 32px 0; }
+.hero-title { font-size: 0.65rem; color: var(--muted); letter-spacing: 3px; text-transform: uppercase; margin-bottom: 16px; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.stat { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; position: relative; overflow: hidden; }
+.stat::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+.stat.green::before { background: var(--green); }
+.stat.blue::before { background: var(--blue); }
+.stat.gold::before { background: var(--gold); }
+.stat.purple::before { background: var(--purple); }
+.stat-label { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
+.stat-value { font-size: 1.7rem; font-weight: bold; line-height: 1; }
+.stat.green .stat-value { color: var(--green); }
+.stat.blue .stat-value { color: var(--blue); }
+.stat.gold .stat-value { color: var(--gold); }
+.stat.purple .stat-value { color: var(--purple); }
+.stat-sub { font-size: 0.65rem; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+
+/* EXPLAINER BOX */
+.explainer { background: #0D1220; border: 1px solid #1A2040; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
+.explainer-title { font-size: 0.7rem; color: var(--purple); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+.explainer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.explainer-item { }
+.explainer-item-title { font-size: 0.7rem; color: var(--gold); margin-bottom: 4px; }
+.explainer-item-text { font-size: 0.68rem; color: var(--muted); line-height: 1.6; }
+
+/* MAIN GRID */
+.main { display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 0 32px 32px; }
+@media(max-width: 900px) { .main { grid-template-columns: 1fr; } }
+
+/* SECTIONS */
+.section { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.section-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.section-title { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
+.section-count { font-size: 0.68rem; color: var(--muted); background: #161b22; padding: 2px 8px; border-radius: 10px; }
+.section-desc { font-size: 0.65rem; color: var(--muted); padding: 10px 20px; border-bottom: 1px solid var(--border); line-height: 1.6; background: #0d1117; }
+
+/* BLOCKS */
+.block-item { padding: 12px 20px; border-bottom: 1px solid #161b22; display: grid; grid-template-columns: 70px 1fr auto; gap: 10px; align-items: center; transition: background 0.2s; }
+.block-item:hover { background: #161b2250; }
+.block-item:last-child { border-bottom: none; }
+.block-height { color: var(--blue); font-weight: bold; font-size: 0.82rem; }
+.block-info { }
+.block-hash { color: var(--muted); font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 2px; }
+.block-meta { font-size: 0.65rem; color: #4a5568; }
+.block-right { text-align: right; }
+.block-humans { color: var(--gold); font-size: 0.7rem; }
+.block-time { color: var(--green); font-size: 0.65rem; margin-top: 2px; }
+.merge-badge { display: inline-block; background: #2d1b4e; color: var(--purple); font-size: 0.6rem; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+.tx-badge { display: inline-block; background: #1a3a2a; color: var(--green); font-size: 0.6rem; padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+
+/* HUMANS */
+.human-item { padding: 12px 18px; border-bottom: 1px solid #161b22; display: flex; align-items: center; gap: 12px; }
+.human-item:last-child { border-bottom: none; }
+.human-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: white; font-weight: bold; flex-shrink: 0; border: 2px solid var(--green); }
+.human-info { flex: 1; min-width: 0; }
+.human-addr { font-size: 0.72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.human-balance { font-size: 0.78rem; color: var(--gold); font-weight: bold; }
+.human-badge { font-size: 0.6rem; color: var(--green); background: #1a3a2a; padding: 2px 8px; border-radius: 8px; flex-shrink: 0; }
+.empty-state { padding: 40px; text-align: center; color: var(--muted); font-size: 0.75rem; line-height: 2; }
+
+/* RIGHT PANEL */
+.right-panel { display: flex; flex-direction: column; gap: 14px; }
+.info-panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+.info-title { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 14px; }
+.info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #161b22; }
+.info-row:last-child { border-bottom: none; }
+.info-key { font-size: 0.68rem; color: var(--muted); }
+.info-val { font-size: 0.68rem; color: var(--text); text-align: right; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info-val.green { color: var(--green); }
+.info-val.blue { color: var(--blue); }
+.info-val.gold { color: var(--gold); }
+.info-val.purple { color: var(--purple); }
+
+/* METAMASK CONFIG */
+.mm-config { background: #0D1220; border: 1px solid #1A2040; border-radius: 8px; padding: 14px; margin-top: 2px; }
+.mm-title { font-size: 0.65rem; color: var(--purple); letter-spacing: 2px; margin-bottom: 10px; }
+.mm-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #1A2040; }
+.mm-row:last-child { border-bottom: none; }
+.mm-key { font-size: 0.65rem; color: var(--muted); }
+.mm-val { font-size: 0.65rem; color: var(--purple); }
+.copy-btn { font-size: 0.6rem; color: var(--blue); cursor: pointer; margin-left: 6px; background: none; border: none; font-family: monospace; }
+
+/* PHILOSOPHY */
+.philosophy { background: linear-gradient(135deg, #0D1220, #111827); border: 1px solid var(--border); border-radius: 10px; padding: 20px; text-align: center; }
+.philosophy-quote { font-size: 0.85rem; color: var(--gold); font-style: italic; line-height: 1.8; margin-bottom: 8px; }
+.philosophy-sub { font-size: 0.65rem; color: var(--muted); }
 
 /* REGISTER TAB */
-.reg-wrap{padding:24px 32px;max-width:600px;margin:0 auto}
-.reg-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px;margin-bottom:16px}
-.reg-title{font-size:1rem;font-weight:bold;color:#f0f6fc;margin-bottom:6px}
-.reg-sub{font-size:0.75rem;color:#8b949e;margin-bottom:24px;line-height:1.6}
-.reg-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px}
-.reg-step{text-align:center;padding:12px 8px;background:#161b22;border-radius:8px}
-.reg-step-num{width:28px;height:28px;background:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-weight:bold;font-size:0.8rem}
-.reg-step-title{font-size:0.65rem;color:#f0f6fc;margin-bottom:3px}
-.reg-step-desc{font-size:0.6rem;color:#8b949e;line-height:1.4}
-.reg-btn{width:100%;padding:16px;border-radius:8px;border:none;cursor:pointer;font-family:monospace;font-size:0.85rem;font-weight:bold;letter-spacing:1px;transition:all 0.2s;margin-bottom:10px}
-.reg-btn-connect{background:var(--blue);color:#0d1117}
-.reg-btn-connect:hover{opacity:0.85}
-.reg-btn-register{background:var(--gold);color:#0d1117}
-.reg-btn-register:hover{opacity:0.85}
-.reg-btn:disabled{opacity:0.4;cursor:not-allowed}
-.reg-status{background:#161b22;border-radius:8px;padding:14px;font-size:0.72rem;line-height:1.8;min-height:60px}
-.reg-status .ok{color:var(--green)}
-.reg-status .err{color:var(--red)}
-.reg-status .info{color:var(--gold)}
-.reg-wallet-box{background:#161b22;border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;display:none}
-.reg-wallet-label{font-size:0.62rem;color:#8b949e;margin-bottom:4px}
-.reg-wallet-addr{font-size:0.78rem;color:var(--green)}
-.reg-proof-box{background:#161b22;border:1px solid #e3b34130;border-radius:8px;padding:12px;margin-bottom:12px;display:none}
-.reg-proof-label{font-size:0.62rem;color:var(--gold);margin-bottom:4px}
-.reg-proof-val{font-size:0.7rem;color:#8b949e}
-.privacy-badge{background:#0d1a0d;border:1px solid #1a3020;border-radius:6px;padding:10px;margin-bottom:16px;font-size:0.7rem;color:var(--green);text-align:center}
+.reg-wrap { padding: 24px 32px; max-width: 640px; margin: 0 auto; }
+.reg-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin-bottom: 16px; }
+.reg-title { font-size: 1rem; font-weight: bold; color: var(--text); margin-bottom: 8px; }
+.reg-sub { font-size: 0.75rem; color: var(--muted); margin-bottom: 24px; line-height: 1.7; }
+.reg-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 24px; }
+@media(max-width: 600px) { .reg-steps { grid-template-columns: repeat(2, 1fr); } }
+.reg-step { text-align: center; padding: 14px 8px; background: #161b22; border-radius: 8px; border: 1px solid var(--border); }
+.reg-step-num { width: 28px; height: 28px; background: var(--blue); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 8px; font-weight: bold; font-size: 0.8rem; color: white; }
+.reg-step-title { font-size: 0.65rem; color: var(--text); margin-bottom: 4px; font-weight: bold; }
+.reg-step-desc { font-size: 0.6rem; color: var(--muted); line-height: 1.5; }
+.app-only-box { background: #0D1220; border: 1px solid #1A2040; border-radius: 10px; padding: 20px; text-align: center; margin-bottom: 16px; }
+.app-only-icon { font-size: 2rem; margin-bottom: 8px; }
+.app-only-title { font-size: 0.8rem; color: var(--purple); font-weight: bold; letter-spacing: 2px; margin-bottom: 8px; }
+.app-only-text { font-size: 0.72rem; color: var(--muted); line-height: 1.7; }
+.reg-btn { width: 100%; padding: 16px; border-radius: 8px; border: none; cursor: pointer; font-family: monospace; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px; transition: all 0.2s; margin-bottom: 10px; }
+.reg-btn-connect { background: var(--blue); color: white; }
+.reg-btn-connect:hover { opacity: 0.85; }
+.reg-btn-register { background: var(--gold); color: #0A0E1A; }
+.reg-btn-register:hover { opacity: 0.85; }
+.reg-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.reg-status { background: #161b22; border-radius: 8px; padding: 14px; font-size: 0.72rem; line-height: 1.9; min-height: 60px; }
+.reg-status .ok { color: var(--green); }
+.reg-status .err { color: var(--red); }
+.reg-status .info { color: var(--gold); }
+.reg-wallet-box { background: #0d1a0d; border: 1px solid #1a3020; border-radius: 8px; padding: 12px; margin-bottom: 12px; display: none; }
+.reg-wallet-label { font-size: 0.62rem; color: var(--muted); margin-bottom: 4px; }
+.reg-wallet-addr { font-size: 0.78rem; color: var(--green); }
+.reg-proof-box { background: #161b22; border: 1px solid #e3b34130; border-radius: 8px; padding: 12px; margin-bottom: 12px; display: none; }
+.reg-proof-label { font-size: 0.62rem; color: var(--gold); margin-bottom: 4px; }
+.reg-proof-val { font-size: 0.7rem; color: var(--muted); }
+.privacy-badge { background: #0d1a0d; border: 1px solid #1a3020; border-radius: 6px; padding: 10px; margin-bottom: 16px; font-size: 0.7rem; color: var(--green); text-align: center; }
+
+/* INDEX TAB */
+.index-wrap { padding: 24px 32px; }
+.index-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 24px; margin-bottom: 16px; }
+.index-title { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+.index-desc { font-size: 0.72rem; color: var(--muted); line-height: 1.7; margin-bottom: 20px; }
+.index-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+@media(max-width: 600px) { .index-grid { grid-template-columns: repeat(2, 1fr); } }
+.index-metric { text-align: center; background: #161b22; border-radius: 8px; padding: 16px; }
+.index-metric-label { font-size: 0.62rem; color: var(--muted); margin-bottom: 6px; }
+.index-metric-val { font-size: 1.4rem; font-weight: bold; color: var(--gold); }
+.index-metric-sub { font-size: 0.6rem; color: var(--muted); margin-top: 4px; }
+.index-bar-bg { height: 12px; background: #161b22; border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
+.index-bar-fill { height: 100%; border-radius: 6px; transition: width 1.5s ease; background: linear-gradient(90deg, var(--red) 0%, var(--gold) 50%, var(--green) 100%); }
+.index-labels { display: flex; justify-content: space-between; font-size: 0.6rem; color: var(--muted); }
+.index-phase { margin-top: 12px; font-size: 0.72rem; color: var(--muted); text-align: center; padding: 10px; background: #161b22; border-radius: 8px; }
 </style>
 </head>
 <body>
@@ -279,105 +333,249 @@ header{background:#0d1117;border-bottom:1px solid var(--border);padding:18px 32p
   </div>
   <div class="header-right">
     <div class="live-badge"><span class="pulse"></span>LIVE</div>
-    <div class="chain-badge">BLOCKDAG</div>
+    <div class="chain-badge">● BLOCKDAG</div>
   </div>
 </header>
 
 <div class="tabs">
-  <div class="tab active" onclick="showTab('explorer')">Explorer</div>
-  <div class="tab" onclick="showTab('index')">Aequitas Index</div>
-  <div class="tab" onclick="showTab('register')">Register</div>
+  <div class="tab active" onclick="showTab('explorer')">🔍 Explorer</div>
+  <div class="tab" onclick="showTab('humans')">👥 Humans</div>
+  <div class="tab" onclick="showTab('index')">📊 Aequitas Index</div>
+  <div class="tab" onclick="showTab('network')">🌐 Network</div>
+  <div class="tab" onclick="showTab('register')">🔐 Register</div>
 </div>
 
 <!-- TAB: EXPLORER -->
 <div id="tab-explorer" class="tab-content active">
-  <div class="stats">
-    <div class="stat blue"><div class="stat-label">Block Height</div><div class="stat-value" id="s-height">—</div><div class="stat-sub">every 6 seconds</div></div>
-    <div class="stat green"><div class="stat-label">Verified Humans</div><div class="stat-value" id="s-humans">—</div><div class="stat-sub">Proof of Humanity</div></div>
-    <div class="stat gold"><div class="stat-label">Total Supply</div><div class="stat-value" id="s-supply">—</div><div class="stat-sub">AEQ · dynamic cap</div></div>
-    <div class="stat purple"><div class="stat-label">Aequitas Index</div><div class="stat-value" id="s-index">—</div><div class="stat-sub" id="s-phase">—</div></div>
-    <div class="stat green"><div class="stat-label">Uptime</div><div class="stat-value" id="s-uptime" style="font-size:1.1rem">—</div><div class="stat-sub" id="s-version">—</div></div>
-  </div>
+  <div class="hero">
+    <div class="hero-title">⚡ Live Chain Statistics</div>
+    <div class="stats-grid">
+      <div class="stat blue">
+        <div class="stat-label">Block Height</div>
+        <div class="stat-value" id="s-height">—</div>
+        <div class="stat-sub">New block every 6 seconds<br>BlockDAG consensus</div>
+      </div>
+      <div class="stat green">
+        <div class="stat-label">Verified Humans</div>
+        <div class="stat-value" id="s-humans">—</div>
+        <div class="stat-sub">Biometric Proof of Humanity<br>One person, one wallet</div>
+      </div>
+      <div class="stat gold">
+        <div class="stat-label">Total Supply</div>
+        <div class="stat-value" id="s-supply">—</div>
+        <div class="stat-sub">= Humans × 1,000 AEQ<br>Supply follows humanity</div>
+      </div>
+      <div class="stat purple">
+        <div class="stat-label">Aequitas Index</div>
+        <div class="stat-value" id="s-index">—</div>
+        <div class="stat-sub">0 = perfect equality<br>100 = maximum inequality</div>
+      </div>
+      <div class="stat green">
+        <div class="stat-label">Node Uptime</div>
+        <div class="stat-value" id="s-uptime" style="font-size:1.1rem">—</div>
+        <div class="stat-sub" id="s-version">Aequitas Chain v0.3</div>
+      </div>
+    </div>
 
-  <div class="pools-wrap">
-    <div class="pools-card">
-      <div class="section-title">💰 Fee Pools (0.1% per transaction)</div>
-      <div class="pools-grid">
-        <div class="pool-item"><div class="pool-icon">⛏</div><div class="pool-label">Validators</div><div class="pool-val" id="pool-v">0 AEQ</div><div class="pool-pct">40% of fees</div></div>
-        <div class="pool-item"><div class="pool-icon">💧</div><div class="pool-label">Liquidity</div><div class="pool-val" id="pool-l">0 AEQ</div><div class="pool-pct">30% of fees</div></div>
-        <div class="pool-item"><div class="pool-icon">🌍</div><div class="pool-label">UBI</div><div class="pool-val" id="pool-u">0 AEQ</div><div class="pool-pct">20% of fees</div></div>
-        <div class="pool-item"><div class="pool-icon">🏛</div><div class="pool-label">Treasury</div><div class="pool-val" id="pool-t">0 AEQ</div><div class="pool-pct">10% of fees</div></div>
+    <div class="explainer">
+      <div class="explainer-title">💡 How Aequitas Works</div>
+      <div class="explainer-grid">
+        <div class="explainer-item">
+          <div class="explainer-item-title">🧬 Proof of Humanity</div>
+          <div class="explainer-item-text">Every AEQ holder must prove they are a unique human via biometric verification. No bots, no duplicates, no fake accounts.</div>
+        </div>
+        <div class="explainer-item">
+          <div class="explainer-item-title">⚖ Fair Distribution</div>
+          <div class="explainer-item-text">Every verified human receives exactly 1,000 AEQ. No pre-mine, no investor allocation. Total supply = verified humans × 1,000.</div>
+        </div>
+        <div class="explainer-item">
+          <div class="explainer-item-title">🔗 BlockDAG Chain</div>
+          <div class="explainer-item-text">Aequitas uses a Directed Acyclic Graph (DAG) for blocks, allowing parallel block production and higher throughput than traditional blockchains.</div>
+        </div>
+        <div class="explainer-item">
+          <div class="explainer-item-title">⛽ Gasless</div>
+          <div class="explainer-item-text">Registration is completely free. No gas fees, no ETH needed. If you're human, you can register. Period.</div>
+        </div>
       </div>
     </div>
   </div>
-
-
 
   <div class="main">
-    <div class="section">
-      <div class="section-header">
-        <span class="section-title" style="font-size:0.72rem;color:#8b949e;text-transform:uppercase;letter-spacing:2px">Recent Blocks</span>
-        <span class="section-count" id="block-count">—</span>
-      </div>
-      <div id="blocks-list"></div>
-    </div>
     <div>
-      <div class="info-panel">
-        <div class="info-title">Node Info</div>
-        <div class="info-row"><span class="info-key">Node ID</span><span class="info-val blue" id="i-nodeid">—</span></div>
-        <div class="info-row"><span class="info-key">Latest Hash</span><span class="info-val" id="i-hash">—</span></div>
-        <div class="info-row"><span class="info-key">Block Time</span><span class="info-val green">6 seconds</span></div>
-        <div class="info-row"><span class="info-key">Fee</span><span class="info-val gold">0.1% per tx</span></div>
-        <div class="info-row"><span class="info-key">Initial Grant</span><span class="info-val gold">1,000 AEQ</span></div>
-        <div class="info-row"><span class="info-key">Consensus</span><span class="info-val green">✓ BlockDAG</span></div>
-        <div class="info-row"><span class="info-key">EVM RPC</span><span class="info-val blue">/rpc · Chain ID 9001</span></div>
-        <div class="link-row">
-          
-          <a class="ext-link" href="https://github.com/hanoi96international-gif/Aequitas" target="_blank">GitHub ↗</a>
-          <a class="ext-link" href="/api/status" target="_blank">API ↗</a>
-        </div>
-      </div>
       <div class="section">
         <div class="section-header">
-          <span class="section-title" style="font-size:0.72rem;color:#8b949e;text-transform:uppercase;letter-spacing:2px">Verified Humans</span>
-          <span class="section-count" id="human-count">—</span>
+          <div class="section-title">Recent Blocks</div>
+          <div class="section-count" id="block-count">Loading...</div>
         </div>
-        <div id="humans-list"></div>
+        <div class="section-desc">Each block contains transactions and is linked to previous blocks via cryptographic hashes. 🔀 = merged multiple tips (BlockDAG feature). ✅ = contains registration transactions.</div>
+        <div id="blocks-list"><div class="empty-state">Loading blocks...</div></div>
       </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="info-panel">
+        <div class="info-title">🌐 Network Info</div>
+        <div class="info-row"><span class="info-key">Chain ID</span><span class="info-val blue">9001</span></div>
+        <div class="info-row"><span class="info-key">Symbol</span><span class="info-val gold">AEQ</span></div>
+        <div class="info-row"><span class="info-key">Block Time</span><span class="info-val">6 seconds</span></div>
+        <div class="info-row"><span class="info-key">Consensus</span><span class="info-val purple">BlockDAG PoH</span></div>
+        <div class="info-row"><span class="info-key">Nodes</span><span class="info-val green">2 Active</span></div>
+        <div class="info-row"><span class="info-key">RPC</span><span class="info-val blue">/rpc</span></div>
+      </div>
+
+      <div class="mm-config">
+        <div class="mm-title">🦊 ADD TO METAMASK</div>
+        <div class="mm-row"><span class="mm-key">Network Name</span><span class="mm-val">Aequitas Chain</span></div>
+        <div class="mm-row"><span class="mm-key">RPC URL</span><span class="mm-val" style="font-size:0.55rem">aequitas-production-9fba.up.railway.app/rpc</span></div>
+        <div class="mm-row"><span class="mm-key">Chain ID</span><span class="mm-val">9001</span></div>
+        <div class="mm-row"><span class="mm-key">Symbol</span><span class="mm-val">AEQ</span></div>
+        <button onclick="addToMetaMask()" style="width:100%;margin-top:10px;padding:8px;background:var(--blue);color:white;border:none;border-radius:6px;cursor:pointer;font-family:monospace;font-size:0.72rem;letter-spacing:1px">+ ADD NETWORK</button>
+      </div>
+
+      <div class="philosophy">
+        <div class="philosophy-quote">"Money exists because people exist.<br>Nothing more, nothing less."</div>
+        <div class="philosophy-sub">The Aequitas Principle</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB: HUMANS -->
+<div id="tab-humans" class="tab-content">
+  <div class="hero">
+    <div class="hero-title">👥 Verified Humans on Aequitas Chain</div>
+    <div class="explainer" style="margin-bottom:16px">
+      <div class="explainer-title">🔒 Proof of Humanity</div>
+      <div class="explainer-grid">
+        <div class="explainer-item">
+          <div class="explainer-item-title">What is it?</div>
+          <div class="explainer-item-text">Each address listed here has been verified as a unique human using biometric data (fingerprint). The actual biometric data never leaves the device — only a cryptographic proof is used.</div>
+        </div>
+        <div class="explainer-item">
+          <div class="explainer-item-title">How does it work?</div>
+          <div class="explainer-item-text">A Groth16 Zero-Knowledge Proof (ZKP) is generated from your biometric hash. This proves you are human without revealing any personal data. One human = one wallet = 1,000 AEQ.</div>
+        </div>
+      </div>
+    </div>
+    <div class="section" style="margin:0 32px 32px">
+      <div class="section-header">
+        <div class="section-title">Registered Humans</div>
+        <div class="section-count" id="human-count-tab">0 humans</div>
+      </div>
+      <div class="section-desc">All verified humans on the Aequitas Chain. Each human received 1,000 AEQ upon registration. Registration is permanent and cannot be transferred.</div>
+      <div id="humans-list"><div class="empty-state">No humans registered yet.<br>Download the Aequitas App to register.</div></div>
     </div>
   </div>
 </div>
 
 <!-- TAB: INDEX -->
 <div id="tab-index" class="tab-content">
-  <div class="index-bar-wrap" style="padding:24px 32px">
+  <div class="index-wrap">
     <div class="index-card">
-      <div class="section-title">⚖ Aequitas Index — Economic Health</div>
+      <div class="index-title">📊 Aequitas Index</div>
+      <div class="index-desc">The Aequitas Index measures economic equality on the chain. It combines the Gini coefficient (wealth distribution) with network growth metrics to produce a single score from 0 (perfect equality) to 100 (maximum inequality). The goal is to keep this index as low as possible through the automatic wealth redistribution mechanisms built into the protocol.</div>
       <div class="index-grid">
-        <div class="index-metric"><div class="index-metric-label">Velocity</div><div class="index-metric-val" id="idx-velocity">—</div></div>
-        <div class="index-metric"><div class="index-metric-label">Growth</div><div class="index-metric-val" id="idx-growth">—</div></div>
-        <div class="index-metric"><div class="index-metric-label">Gini</div><div class="index-metric-val" id="idx-gini">—</div></div>
-        <div class="index-metric"><div class="index-metric-label">Index Score</div><div class="index-metric-val" id="idx-score">—</div></div>
+        <div class="index-metric">
+          <div class="index-metric-label">Index Score</div>
+          <div class="index-metric-val" id="idx-score">—</div>
+          <div class="index-metric-sub">0=equal, 100=unequal</div>
+        </div>
+        <div class="index-metric">
+          <div class="index-metric-label">Gini Coefficient</div>
+          <div class="index-metric-val" id="idx-gini">—</div>
+          <div class="index-metric-sub">wealth distribution</div>
+        </div>
+        <div class="index-metric">
+          <div class="index-metric-label">Total Supply</div>
+          <div class="index-metric-val" id="idx-supply">—</div>
+          <div class="index-metric-sub">AEQ in circulation</div>
+        </div>
+        <div class="index-metric">
+          <div class="index-metric-label">Phase</div>
+          <div class="index-metric-val" id="idx-phase">—</div>
+          <div class="index-metric-sub">protocol phase</div>
+        </div>
       </div>
-      <div class="index-bar-bg"><div class="index-bar-fill" id="idx-bar" style="width:0%"></div></div>
-      <div class="index-labels"><span>Recession (&lt;40)</span><span>Neutral (40-60)</span><span>Boom (&gt;60)</span></div>
-      <div class="index-phase" id="idx-phase">—</div>
+      <div class="index-bar-bg">
+        <div class="index-bar-fill" id="idx-bar" style="width:0%"></div>
+      </div>
+      <div class="index-labels">
+        <span>0 — Perfect Equality</span>
+        <span>50 — Moderate</span>
+        <span>100 — Max Inequality</span>
+      </div>
+      <div class="index-phase" id="idx-phase-desc">Loading...</div>
+    </div>
+
+    <div class="index-card">
+      <div class="index-title">🏦 Automatic Redistribution</div>
+      <div class="index-desc">When economic inequality exceeds certain thresholds, the protocol automatically activates redistribution mechanisms. These include wealth caps, inflation adjustments, and pool transfers — all governed by smart contract logic, not human decisions.</div>
+      <div class="index-grid">
+        <div class="index-metric">
+          <div class="index-metric-label">Velocity Pool</div>
+          <div class="index-metric-val" id="pool-v">—</div>
+          <div class="index-metric-sub">transaction incentives</div>
+        </div>
+        <div class="index-metric">
+          <div class="index-metric-label">Liquidity Pool</div>
+          <div class="index-metric-val" id="pool-l">—</div>
+          <div class="index-metric-sub">market stability</div>
+        </div>
+        <div class="index-metric">
+          <div class="index-metric-label">Unity Pool</div>
+          <div class="index-metric-val" id="pool-u">—</div>
+          <div class="index-metric-sub">new registrations</div>
+        </div>
+        <div class="index-metric">
+          <div class="index-metric-label">Treasury</div>
+          <div class="index-metric-val" id="pool-t">—</div>
+          <div class="index-metric-sub">protocol development</div>
+        </div>
+      </div>
     </div>
   </div>
-  <div style="padding:16px 32px">
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:24px">
-      <div class="section-title" style="margin-bottom:16px">How the Aequitas Index Works</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px">
-        <div style="background:#161b22;border-radius:8px;padding:16px"><div style="color:var(--gold);font-size:0.8rem;margin-bottom:6px">40% — Velocity</div><div style="font-size:0.7rem;color:#8b949e;line-height:1.6">How fast AEQ moves through the economy. High velocity = healthy circulation.</div></div>
-        <div style="background:#161b22;border-radius:8px;padding:16px"><div style="color:var(--green);font-size:0.8rem;margin-bottom:6px">35% — Growth</div><div style="font-size:0.7rem;color:#8b949e;line-height:1.6">Rate of new human registrations. More humans = expanding network.</div></div>
-        <div style="background:#161b22;border-radius:8px;padding:16px"><div style="color:var(--blue);font-size:0.8rem;margin-bottom:6px">25% — Gini Score</div><div style="font-size:0.7rem;color:#8b949e;line-height:1.6">Inverted Gini coefficient. Low inequality = high score. Measures fairness.</div></div>
-      </div>
-      <div style="margin-top:16px;padding:16px;background:#161b22;border-radius:8px">
-        <div style="font-size:0.7rem;color:#8b949e;line-height:1.8">
-          <span style="color:var(--red)">Index &lt; 40</span> → Inflation triggered (0–1.5% annual, equal distribution)<br>
-          <span style="color:var(--gold)">Index 40–60</span> → Neutral, no monetary action<br>
-          <span style="color:var(--green)">Index &gt; 60</span> → Wealth cap active, overflow redistributed equally
+</div>
+
+<!-- TAB: NETWORK -->
+<div id="tab-network" class="tab-content">
+  <div class="index-wrap">
+    <div class="index-card">
+      <div class="index-title">🌐 Network Topology</div>
+      <div class="index-desc">The Aequitas network currently runs on 2 nodes — one on Railway (primary) and one on Render (secondary). Both nodes participate in block production and sync with each other via HTTP block sync and libp2p P2P networking.</div>
+      <div class="index-grid" style="grid-template-columns: repeat(2, 1fr)">
+        <div class="index-metric">
+          <div class="index-metric-label">Node 1 — Railway</div>
+          <div class="index-metric-val" style="font-size:0.9rem;color:var(--green)">● Online</div>
+          <div class="index-metric-sub">aequitas-production-9fba.up.railway.app</div>
         </div>
+        <div class="index-metric">
+          <div class="index-metric-label">Node 2 — Render</div>
+          <div class="index-metric-val" style="font-size:0.9rem;color:var(--green)">● Online</div>
+          <div class="index-metric-sub">aequitas-node-2.onrender.com</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="index-card">
+      <div class="index-title">🔗 Bootstrap Node</div>
+      <div class="index-desc">To join the Aequitas network, connect to the bootstrap node using libp2p. New nodes can sync the full block history and participate in consensus.</div>
+      <div style="background:#161b22;border-radius:8px;padding:14px;font-size:0.68rem;color:var(--purple);word-break:break-all;line-height:1.8">
+        /dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R
+      </div>
+    </div>
+
+    <div class="index-card">
+      <div class="index-title">⚙ Technical Specifications</div>
+      <div class="index-desc">Aequitas Chain technical details for developers and node operators.</div>
+      <div style="display:grid;gap:8px">
+        <div class="info-row" style="padding:8px 0;border-bottom:1px solid #161b22"><span class="info-key">Chain ID</span><span class="info-val blue">9001</span></div>
+        <div class="info-row" style="padding:8px 0;border-bottom:1px solid #161b22"><span class="info-key">EVM Compatible</span><span class="info-val green">Yes (JSON-RPC)</span></div>
+        <div class="info-row" style="padding:8px 0;border-bottom:1px solid #161b22"><span class="info-key">Block Time</span><span class="info-val">6 seconds</span></div>
+        <div class="info-row" style="padding:8px 0;border-bottom:1px solid #161b22"><span class="info-key">Consensus</span><span class="info-val purple">BlockDAG + Proof of Humanity</span></div>
+        <div class="info-row" style="padding:8px 0;border-bottom:1px solid #161b22"><span class="info-key">P2P Protocol</span><span class="info-val">libp2p</span></div>
+        <div class="info-row" style="padding:8px 0;border-bottom:1px solid #161b22"><span class="info-key">ZKP System</span><span class="info-val">Groth16 (snarkjs)</span></div>
+        <div class="info-row" style="padding:8px 0;border-bottom:1px solid #161b22"><span class="info-key">State Storage</span><span class="info-val green">PostgreSQL (persistent)</span></div>
+        <div class="info-row" style="padding:8px 0"><span class="info-key">Source Code</span><span class="info-val blue"><a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--blue)">GitHub ↗</a></span></div>
       </div>
     </div>
   </div>
@@ -387,17 +585,39 @@ header{background:#0d1117;border-bottom:1px solid var(--border);padding:18px 32p
 <div id="tab-register" class="tab-content">
   <div class="reg-wrap">
     <div class="reg-card">
-      <div class="reg-title">⚖ Register as a Verified Human</div>
-      <div class="reg-sub">Prove your humanity with a Zero-Knowledge Proof from the Aequitas Android app. Your biometric data never leaves your device.</div>
+      <div class="reg-title">🔐 Register as Human</div>
+      <div class="reg-sub">Join the Aequitas network and receive your 1,000 AEQ. Registration requires biometric verification via the Android app to ensure you are a unique human. No gas fees required.</div>
 
-      <div class="privacy-badge">🔒 Zero-Knowledge Proof · Biometric data stays on device · No central authority</div>
+      <div class="app-only-box">
+        <div class="app-only-icon">📱</div>
+        <div class="app-only-title">REGISTRATION VIA ANDROID APP ONLY</div>
+        <div class="app-only-text">Proof of Humanity requires biometric verification on your device.<br>Download the Aequitas App, scan your fingerprint,<br>and your 1,000 AEQ will be granted automatically.<br><br>Your biometric data <strong style="color:var(--gold)">never leaves your device</strong>.<br>Only a cryptographic proof is transmitted.</div>
+      </div>
 
       <div class="reg-steps">
-        <div class="reg-step"><div class="reg-step-num">1</div><div class="reg-step-title">Android App</div><div class="reg-step-desc">Scan fingerprint in Aequitas app</div></div>
-        <div class="reg-step"><div class="reg-step-num">2</div><div class="reg-step-title">Generate Proof</div><div class="reg-step-desc">ZK proof created on device</div></div>
-        <div class="reg-step"><div class="reg-step-num">3</div><div class="reg-step-title">Connect Wallet</div><div class="reg-step-desc">Connect MetaMask here</div></div>
-        <div class="reg-step"><div class="reg-step-num">4</div><div class="reg-step-title">Receive AEQ</div><div class="reg-step-desc">1,000 AEQ to your wallet</div></div>
+        <div class="reg-step">
+          <div class="reg-step-num">1</div>
+          <div class="reg-step-title">Biometric Scan</div>
+          <div class="reg-step-desc">Fingerprint scanned via Hardware Secure Element on your device</div>
+        </div>
+        <div class="reg-step">
+          <div class="reg-step-num">2</div>
+          <div class="reg-step-title">ZKP Generation</div>
+          <div class="reg-step-desc">Groth16 Zero-Knowledge Proof generated — proves humanity without revealing data</div>
+        </div>
+        <div class="reg-step">
+          <div class="reg-step-num">3</div>
+          <div class="reg-step-title">Connect Wallet</div>
+          <div class="reg-step-desc">Connect MetaMask or any Web3 wallet to receive your AEQ</div>
+        </div>
+        <div class="reg-step">
+          <div class="reg-step-num">4</div>
+          <div class="reg-step-title">1,000 AEQ</div>
+          <div class="reg-step-desc">Instantly credited to your wallet. No gas fees. No waiting.</div>
+        </div>
       </div>
+
+      <div class="privacy-badge">🔒 Hardware Secure Element · Real Groth16 ZKP · No gas fees · Permanent Sybil protection</div>
 
       <div class="reg-wallet-box" id="wallet-box">
         <div class="reg-wallet-label">CONNECTED WALLET</div>
@@ -409,12 +629,6 @@ header{background:#0d1117;border-bottom:1px solid var(--border);padding:18px 32p
         <div class="reg-proof-val" id="proof-val">—</div>
       </div>
 
-      <div style="background:#1a1a2e;border:1px solid #2d1b4e;border-radius:8px;padding:16px;margin-bottom:12px;text-align:center">
-        <div style="font-size:1.5rem;margin-bottom:8px">📱</div>
-        <div style="color:#bc8cff;font-size:0.8rem;font-weight:bold;margin-bottom:6px">REGISTRATION VIA ANDROID APP ONLY</div>
-        <div style="color:#8b949e;font-size:0.7rem;line-height:1.6">Proof of Humanity requires biometric verification.<br>Download the Aequitas App, scan your fingerprint,<br>and your 1,000 AEQ will be granted automatically.</div>
-      </div>
-
       <button class="reg-btn reg-btn-connect" id="btn-connect" onclick="connectWallet()">🦊 CONNECT METAMASK</button>
       <button class="reg-btn reg-btn-register" id="btn-register" onclick="register()" disabled>🔐 REGISTER ON-CHAIN</button>
 
@@ -423,123 +637,214 @@ header{background:#0d1117;border-bottom:1px solid var(--border);padding:18px 32p
       </div>
     </div>
 
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;font-size:0.7rem;color:#8b949e;line-height:1.8">
-      <div style="color:#f0f6fc;margin-bottom:8px;font-size:0.75rem">Aequitas Chain (BlockDAG)</div>
-      <div>RPC: <span style="color:var(--blue)">aequitas-production-9fba.up.railway.app/rpc</span></div>
-      <div>Chain ID: <span style="color:var(--gold)">9001</span></div>
-      <div>Initial Grant: <span style="color:var(--gold)">1,000 AEQ</span></div>
-      <div>Network: <span style="color:var(--green)">Aequitas Chain · BlockDAG · Gasless</span></div>
+    <div class="info-panel">
+      <div class="info-title">ℹ Registration Details</div>
+      <div class="info-row"><span class="info-key">Network</span><span class="info-val purple">Aequitas Chain (BlockDAG)</span></div>
+      <div class="info-row"><span class="info-key">RPC URL</span><span class="info-val blue" style="font-size:0.6rem">aequitas-production-9fba.up.railway.app/rpc</span></div>
+      <div class="info-row"><span class="info-key">Chain ID</span><span class="info-val gold">9001</span></div>
+      <div class="info-row"><span class="info-key">Grant Amount</span><span class="info-val gold">1,000 AEQ</span></div>
+      <div class="info-row"><span class="info-key">Gas Fee</span><span class="info-val green">FREE (gasless)</span></div>
+      <div class="info-row"><span class="info-key">Registrations</span><span class="info-val">Once per human, permanent</span></div>
     </div>
   </div>
 </div>
 
 <script>
-const CONTRACT = "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5";
-const PROOF_SERVER = "https://aequitas-proof-server-production.up.railway.app";
-const CONTRACT_ABI = [
-  {"inputs":[{"name":"_pA","type":"uint256[2]"},{"name":"_pB","type":"uint256[2][2]"},{"name":"_pC","type":"uint256[2]"},{"name":"_pubSignals","type":"uint256[2]"}],"name":"registerHuman","outputs":[],"stateMutability":"nonpayable","type":"function"},
-  {"inputs":[{"name":"","type":"address"}],"name":"isHuman","outputs":[{"name":"","type":"bool"}],"stateMutability":"view","type":"function"}
-];
-
-let walletAddr = null;
+const PROOF_SERVER = 'https://aequitas-proof-server-production.up.railway.app';
+let walletAddr = '';
 let proofParams = null;
-let uptimeBase = 0;
 
-function log(msg, type='info') {
-  document.getElementById('reg-status').innerHTML = '<span class="'+type+'">'+msg+'</span>';
+function showTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
 }
 
-function fmt(n){return Number(n||0).toLocaleString()}
-function fmtUptime(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return(h?h+'h ':'')+m+'m '+sec+'s'}
-
-function showTab(name){
-  document.querySelectorAll('.tab').forEach((t,i)=>{
-    const names=['explorer','index','register'];
-    t.classList.toggle('active',names[i]===name);
-  });
-  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-  document.getElementById('tab-'+name).classList.add('active');
+function fmt(n) {
+  if (n === undefined || n === null || n === '—') return '—';
+  if (typeof n === 'number') return n.toLocaleString();
+  return n;
 }
 
-// Check for proof params from Android app
+function timeAgo(ts) {
+  const diff = Math.floor(Date.now()/1000) - ts;
+  if (diff < 60) return diff + 's ago';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  return Math.floor(diff/3600) + 'h ago';
+}
+
+function shortHash(h) {
+  return h ? h.slice(0,8) + '...' + h.slice(-6) : '—';
+}
+
+function shortAddr(a) {
+  return a ? a.slice(0,8) + '...' + a.slice(-4) : '—';
+}
+
+function avatarColor(addr) {
+  const colors = ['#3B82F6','#22C55E','#C9A84C','#BC8CFF','#EF4444','#F97316'];
+  const idx = parseInt(addr.slice(2,4), 16) % colors.length;
+  return colors[idx];
+}
+
+async function addToMetaMask() {
+  if (!window.ethereum) { alert('MetaMask not found'); return; }
+  try {
+    await window.ethereum.request({
+      method: 'wallet_addEthereumChain',
+      params: [{
+        chainId: '0x2329',
+        chainName: 'Aequitas Chain',
+        nativeCurrency: { name: 'AEQ', symbol: 'AEQ', decimals: 18 },
+        rpcUrls: ['https://aequitas-production-9fba.up.railway.app/rpc'],
+        blockExplorerUrls: ['https://aequitas-production-9fba.up.railway.app']
+      }]
+    });
+  } catch(e) { console.error(e); }
+}
+
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    document.getElementById('s-height').textContent = fmt(d.block_height);
+    document.getElementById('s-humans').textContent = fmt(d.total_humans);
+    document.getElementById('s-supply').textContent = d.total_supply || '—';
+    document.getElementById('s-index').textContent = fmt(d.index);
+    document.getElementById('s-uptime').textContent = d.uptime || '—';
+    document.getElementById('idx-score').textContent = fmt(d.index);
+    document.getElementById('idx-gini').textContent = fmt(d.gini);
+    document.getElementById('idx-supply').textContent = d.total_supply || '—';
+    document.getElementById('idx-phase').textContent = fmt(d.phase);
+    document.getElementById('human-count-tab').textContent = fmt(d.total_humans) + ' humans';
+    if (d.index !== undefined) {
+      document.getElementById('idx-bar').style.width = Math.min(d.index, 100) + '%';
+      const phase = d.phase || 0;
+      const phases = ['Phase 0: Bootstrap — Building the network','Phase 1: Growth — Expanding human registry','Phase 2: Stability — Wealth redistribution active','Phase 3: Maturity — Full decentralization'];
+      document.getElementById('idx-phase-desc').textContent = phases[phase] || 'Phase ' + phase;
+    }
+  } catch(e) {}
+}
+
+async function loadBlocks() {
+  try {
+    const r = await fetch('/api/blocks?limit=20');
+    const blocks = await r.json();
+    const list = document.getElementById('blocks-list');
+    if (!blocks || !blocks.length) { list.innerHTML = '<div class="empty-state">No blocks yet</div>'; return; }
+    document.getElementById('block-count').textContent = blocks.length + ' blocks';
+    list.innerHTML = blocks.map(b => {
+      const isMerge = b.parent_hashes && b.parent_hashes.length > 1;
+      const hasTx = b.transactions && b.transactions.length > 0;
+      return ` + "`" + `<div class="block-item">
+        <div class="block-height">#${b.height}</div>
+        <div class="block-info">
+          <div class="block-hash">${shortHash(b.hash)}${isMerge ? '<span class="merge-badge">🔀 MERGE</span>' : ''}${hasTx ? '<span class="tx-badge">✅ TX</span>' : ''}</div>
+          <div class="block-meta">${b.parent_hashes ? b.parent_hashes.length + ' parent(s)' : ''}</div>
+        </div>
+        <div class="block-right">
+          <div class="block-humans">${b.humans || 0} humans</div>
+          <div class="block-time">${timeAgo(b.timestamp)}</div>
+        </div>
+      </div>` + "`" + `;
+    }).join('');
+  } catch(e) {}
+}
+
+async function loadHumans() {
+  try {
+    const r = await fetch('/api/humans');
+    const d = await r.json();
+    const list = document.getElementById('humans-list');
+    if (!d.humans || !d.humans.length) {
+      list.innerHTML = '<div class="empty-state">No humans registered yet.<br><br>Be the first! Download the Aequitas App<br>and scan your fingerprint to register.</div>';
+      return;
+    }
+    list.innerHTML = d.humans.map(h => {
+      const color = avatarColor(h.address || '0x00');
+      const initials = (h.address || '?').slice(2,4).toUpperCase();
+      return ` + "`" + `<div class="human-item">
+        <div class="human-avatar" style="background:${color}">${initials}</div>
+        <div class="human-info">
+          <div class="human-balance">${fmt(h.balance)} AEQ</div>
+          <div class="human-addr">${h.address}</div>
+        </div>
+        <div class="human-badge">✓ HUMAN</div>
+      </div>` + "`" + `;
+    }).join('');
+  } catch(e) {}
+}
+
+// Check for proof params from app
 function checkProofParams() {
   const params = new URLSearchParams(window.location.search);
   const proof = params.get('proof');
   if (proof) {
     try {
       proofParams = JSON.parse(decodeURIComponent(proof));
-      document.getElementById('proof-box').style.display = 'block';
-      document.getElementById('proof-val').textContent = 'bio: ' + proofParams.bio.slice(0,12) + '... | salt: ' + proofParams.salt.slice(0,8) + '...';
-      log('✓ Proof parameters received from Aequitas app', 'ok');
+      const box = document.getElementById('proof-box');
+      box.style.display = 'block';
+      document.getElementById('proof-val').textContent =
+        'bio: ' + proofParams.bio.slice(0,15) + '... | salt: ' + proofParams.salt.slice(0,10) + '...';
+      log('⚡ Proof parameters detected from app', 'info');
       showTab('register');
-    } catch(e) {
-      console.error('Proof parse error:', e);
-    }
+      document.querySelectorAll('.tab')[4].classList.add('active');
+    } catch(e) {}
   }
 }
 
 async function connectWallet() {
   if (!window.ethereum) {
-    log('✗ MetaMask not found. Please install MetaMask.', 'err');
+    log('✗ MetaMask not found', 'err');
     return;
   }
   try {
-    log('Connecting to MetaMask...', 'info');
+    await addToMetaMask();
     const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
     walletAddr = accounts[0];
-
-    // Switch to Aequitas Chain
-    try {
-      await window.ethereum.request({
-        method: 'wallet_addEthereumChain',
-        params: [{ chainId: '0x2329', chainName: 'Aequitas Chain', nativeCurrency: { name: 'AEQ', symbol: 'AEQ', decimals: 18 }, rpcUrls: ['https://aequitas-production-9fba.up.railway.app/rpc'] }]
-      });
-    } catch(e) {}
-
-    document.getElementById('wallet-box').style.display = 'block';
+    const box = document.getElementById('wallet-box');
+    box.style.display = 'block';
     document.getElementById('wallet-addr').textContent = walletAddr;
-    document.getElementById('btn-connect').textContent = '✓ ' + walletAddr.slice(0,10) + '...' + walletAddr.slice(-4);
-    document.getElementById('btn-connect').style.background = '#1a3a2a';
-    document.getElementById('btn-connect').style.color = '#3fb950';
-
-    if (proofParams) {
-      document.getElementById('btn-register').disabled = false;
-      log('✓ Wallet connected. Ready to register!', 'ok');
-    } else {
-      log('✓ Wallet connected. Open the Aequitas Android app to generate your proof, then return here.', 'ok');
-    }
+    document.getElementById('btn-register').disabled = !proofParams;
+    log('✓ Wallet connected: ' + walletAddr.slice(0,12) + '...', 'ok');
   } catch(e) {
     log('✗ ' + e.message, 'err');
   }
 }
 
+function log(msg, type) {
+  const el = document.getElementById('reg-status');
+  el.innerHTML += ` + "`" + `<div><span class="${type}">${msg}</span></div>` + "`" + `;
+}
+
 async function register() {
   if (!walletAddr) { log('✗ Connect wallet first', 'err'); return; }
   if (!proofParams) { log('✗ No proof parameters. Use the Android app first.', 'err'); return; }
-
   try {
     log('⏳ Step 1/2: Generating ZK proof...', 'info');
     document.getElementById('btn-register').disabled = true;
     const proveResp = await fetch(PROOF_SERVER + '/prove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bio: proofParams.bio, salt: proofParams.salt, wallet: walletAddr }) });
     const proveData = await proveResp.json();
-    if (!proveResp.ok) { log('✗ ' + (proveData.error || 'Proof failed'), 'err'); document.getElementById('btn-register').disabled = false; return; }
+    if (!proveResp.ok) {
+      log('✗ ' + (proveData.error || 'Proof failed'), 'err');
+      document.getElementById('btn-register').disabled = false;
+      return;
+    }
     log('✓ ZK Proof generated! Step 2/2: Registering on chain...', 'ok');
     const resp = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bio: proofParams.bio, salt: proofParams.salt, wallet: walletAddr })
     });
-
     const data = await resp.json();
-
     if (!data.success) {
       log('✗ ' + data.message, 'err');
       document.getElementById('btn-register').disabled = false;
       return;
     }
-
     log('🎉 ' + data.message + ' | TX: ' + data.tx_hash, 'ok');
-    // Redirect to registered page which opens app
+    // Redirect to registered page
     setTimeout(() => {
       window.location.href = '/registered?success=true&wallet=' + walletAddr;
     }, 1500);
@@ -549,69 +854,27 @@ async function register() {
   }
 }
 
-const avatarColors=['#1f6feb','#388bfd','#e3b341','#3fb950','#f85149','#bc8cff','#fd8c73','#58a6ff'];
-
-async function update(){
-  try{
-    const [status,blocks,humans]=await Promise.all([
-      fetch('/api/status').then(r=>r.json()),
-      fetch('/api/blocks').then(r=>r.json()),
-      fetch('/api/sepolia/humans').then(r=>r.json())
-    ]);
-    document.getElementById('s-height').textContent='#'+fmt(status.height);
-    document.getElementById('s-humans').textContent=fmt(status.total_humans);
-    document.getElementById('s-supply').textContent=status.total_supply||'—';
-    document.getElementById('s-index').textContent=status.index||'—';
-    document.getElementById('s-phase').textContent='Phase '+(status.phase??'0');
-    document.getElementById('s-version').textContent=status.version||'';
-    uptimeBase=status.uptime||0;
-    document.getElementById('i-nodeid').textContent=(status.node_id||'').slice(0,16)+'...';
-    document.getElementById('i-hash').textContent=(status.latest_hash||'').slice(0,12)+'...';
-    document.getElementById('idx-velocity').textContent=status.velocity??'—';
-    document.getElementById('idx-growth').textContent=status.growth??'—';
-    document.getElementById('idx-gini').textContent=status.gini??'—';
-    document.getElementById('idx-score').textContent=status.index??'—';
-    document.getElementById('idx-bar').style.width=(status.index||0)+'%';
-    const idx=status.index||0;
-    document.getElementById('idx-phase').textContent=idx<40?'⚠ Recession — Inflation may be triggered':idx>60?'✓ Boom — Wealth cap active':'◎ Neutral — No monetary action';
-    document.getElementById('pool-v').textContent='0 AEQ';
-    document.getElementById('pool-l').textContent='0 AEQ';
-    document.getElementById('pool-u').textContent='0 AEQ';
-    document.getElementById('pool-t').textContent='0 AEQ';
-    const sep=status.sepolia||{};
-    document.getElementById('sep-humans').textContent=sep.registrations??'—';
-    document.getElementById('sep-supply').textContent=sep.supply??'—';
-    document.getElementById('sep-gini').textContent=sep.gini??'—';
-    document.getElementById('sep-index').textContent=sep.index??'—';
-    document.getElementById('sep-phase-val').textContent='Phase '+(sep.phase??'—');
-    document.getElementById('sep-status').textContent=sep.status==='ok'?'✓ Online':'connecting...';
-    document.getElementById('block-count').textContent=fmt(status.height)+' blocks';
-    document.getElementById('blocks-list').innerHTML=[...blocks].reverse().map(b=>{
-      const t=new Date(b.timestamp*1000).toLocaleTimeString();
-      const parents=b.parent_hashes||[];const isMerge=parents.length>1;const mergeTag=isMerge?'<span style="background:#2d1b4e;color:#bc8cff;font-size:0.62rem;padding:2px 6px;border-radius:4px;margin-left:4px">🔀 MERGE</span>':'<span style="color:#8b949e;font-size:0.62rem;margin-left:4px">·'+parents.length+'p</span>';return '<div class="block-item" style="'+(isMerge?'border-left:3px solid #bc8cff;':'')+'"><span class="block-height">#'+b.height+'</span><span class="block-hash">'+b.hash.slice(0,14)+'...</span>'+mergeTag+'<span class="block-humans">👤 '+b.humans+'</span><span class="block-time">'+t+'</span></div>';
-    }).join('');
-    document.getElementById('human-count').textContent=(humans.total||0)+' registered';
-    const list=humans.humans||[];
-    document.getElementById('humans-list').innerHTML=list.map((h,i)=>{
-      const addr=h.address||'';
-      const isWallet=addr.startsWith('0x');
-      const short=isWallet?addr.slice(0,10)+'...'+addr.slice(-4):addr;
-      const init=isWallet?addr.slice(2,4).toUpperCase():addr.slice(0,2).toUpperCase();
-      return '<div class="human-item"><div class="human-avatar" style="background:'+avatarColors[i%avatarColors.length]+'">'+init+'</div><span class="human-addr" title="'+addr+'">'+short+'</span><span class="human-balance">'+h.balance+' AEQ</span><span class="human-badge">✓</span></div>';
-    }).join('');
-    if(walletAddr&&!proofParams){
-      document.getElementById('btn-register').disabled=true;
-    }
-  }catch(e){console.error(e)}
-}
-
-setInterval(()=>{if(uptimeBase){uptimeBase++;document.getElementById('s-uptime').textContent=fmtUptime(uptimeBase);}},1000);
+// Init
 checkProofParams();
-update();
-setInterval(update,6000);
+loadStatus();
+loadBlocks();
+loadHumans();
+setInterval(loadStatus, 6000);
+setInterval(loadBlocks, 6000);
+setInterval(loadHumans, 10000);
+
+window.ethereum?.on('accountsChanged', (accounts) => {
+  walletAddr = accounts[0] || '';
+  if (walletAddr) {
+    document.getElementById('wallet-box').style.display = 'block';
+    document.getElementById('wallet-addr').textContent = walletAddr;
+    document.getElementById('btn-register').disabled = !proofParams;
+  }
+});
 </script>
 </body>
-</html>`)
+</html>
+`)
 }
 
 func (a *APIServer) handleBalance(w http.ResponseWriter, r *http.Request) {
