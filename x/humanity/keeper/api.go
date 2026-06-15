@@ -332,12 +332,14 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
     <div><div class="logo-text">AEQUITAS</div><div class="logo-sub">CHAIN EXPLORER</div></div>
   </div>
   <div class="header-center">
-    <button onclick="setLang('en')" class="lang-btn active" id="lb-en">EN</button>
-    <button onclick="setLang('de')" class="lang-btn" id="lb-de">DE</button>
-    <button onclick="setLang('es')" class="lang-btn" id="lb-es">ES</button>
-    <button onclick="setLang('ru')" class="lang-btn" id="lb-ru">RU</button>
-    <button onclick="setLang('zh')" class="lang-btn" id="lb-zh">ZH</button>
-    <button onclick="setLang('id')" class="lang-btn" id="lb-id">ID</button>
+    <select onchange="setLang(this.value)" id="lang-select" style="background:#080F1E;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:5px 10px;cursor:pointer;font-family:monospace;font-size:0.65rem;letter-spacing:1px">
+      <option value="en">🌐 EN</option>
+      <option value="de">🌐 DE</option>
+      <option value="es">🌐 ES</option>
+      <option value="ru">🌐 RU</option>
+      <option value="zh">🌐 ZH</option>
+      <option value="id">🌐 ID</option>
+    </select>
   </div>
   <div class="header-right">
     <div class="badge badge-live"><span class="pulse"></span><span data-i18n="live">LIVE</span></div>
@@ -1046,7 +1048,7 @@ zh:'<p><span style="color:var(--gold);font-weight:bold">为什么Aequitas需要�
 id:'<p><span style="color:var(--gold);font-weight:bold">Mengapa Aequitas memerlukan mekanisme inflasi?</span>Di dunia di mana orang berdagang, menabung, berinvestasi, dan kehilangan uang, kesetaraan sempurna tidak dapat dipertahankan selamanya bahkan dengan distribusi awal yang sama. Tanpa mekanisme koreksi, Aequitas akhirnya akan terlihat seperti sistem moneter tidak setara lainnya.</p><p><strong style="color:var(--blue)">Inflasi Dasar:</strong>Satu-satunya sumber AEQ baru adalah registrasi manusia. Ketika manusia baru diverifikasi, tepat 1.000 AEQ dibuat. Tidak ada hadiah penambangan, tidak ada hadiah staking, tidak ada emisi sembarangan. Pasokan tumbuh jika dan hanya jika jumlah manusia terverifikasi tumbuh.</p><p><strong style="color:var(--gold)">Batas Kekayaan:</strong>Ketika saldo dompet mana pun melebihi batas dinamis, semua AEQ baru yang diperoleh dompet tersebut diarahkan ke empat pool redistribusi.</p><p><strong style="color:var(--purple)">Siklus Redistribusi Dinamis:</strong>Jika koefisien Gini melebihi 0,25, sebagian Pool Kecepatan didistribusikan secara merata ke semua manusia terverifikasi. Semakin tinggi ketidaksetaraan, semakin agresif koreksinya.</p><p><strong style="color:var(--green)">Insentif Kecepatan:</strong>Pool Kecepatan secara langsung memerangi penimbunan dengan memberi penghargaan kepada dompet yang bertransaksi secara teratur.</p><p><strong style="color:var(--teal)">Tata Kelola Matematis:</strong>Setiap aturan dikodekan dalam kode kontrak pintar yang tidak dapat diubah. Tidak ada yang bisa mengubah aturan-aturan ini. Matematika mengatur pasokan uang Aequitas.</p>'
 };
 
-function setLang(lang){
+function setLang(lang){document.getElementById("lang-select").value=lang;
   currentLang=lang;
   document.querySelectorAll('.lang-btn').forEach(b=>b.classList.remove('active'));
   const lb=document.getElementById('lb-'+lang);
