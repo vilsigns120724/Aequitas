@@ -85,11 +85,11 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "uptime":       uptime,
 "block_time":   6,
 "contract_v5":  "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5",
-"index":        65,
-"gini":         0,
+"index":        a.state.CalcAequitasIndex(),
+"gini":         a.state.CalcGini(),
 "growth":       growth,
 "velocity":     50,
-"phase":        0,
+"phase":        a.state.CalcPhase(),
 "fee_bps":      10,
 
 })

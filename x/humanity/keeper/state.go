@@ -227,3 +227,76 @@ cs.mu.RUnlock()
 hash := sha256.Sum256(data)
 return hex.EncodeToString(hash[:])
 }
+
+func (cs *ChainState) CalcGini() float64 {
+cs.mu.RLock()
+defer cs.mu.RUnlock()
+if len(cs.accounts) < 2 {
+return 0.0
+}
+balances := []float64{}
+for _, acc := range cs.accounts {
+if acc.Balance > 0 {
+balances = append(balances, acc.Balance)
+}
+}
+n := len(balances)
+if n < 2 {
+return 0.0
+}
+// Sort ascending
+for i := 0; i < n; i++ {
+for j := i + 1; j < n; j++ {
+if balances[j] < balances[i] {
+balances[i], balances[j] = balances[j], balances[i]
+}
+}
+}
+// Gini formula
+sum := 0.0
+for _, b := range balances {
+sum += b
+}
+if sum == 0 {
+return 0.0
+}
+numerator := 0.0
+for i, b := range balances {
+numerator += float64(2*i-n+1) * b
+}
+gini := numerator / (float64(n) * sum)
+if gini < 0 {
+gini = -gini
+}
+return gini
+}
+
+func (cs *ChainState) CalcAequitasIndex() float64 {
+gini := cs.CalcGini()
+humans := float64(cs.TotalHumans())
+// Base index from Gini (0-100)
+index := gini * 100.0
+// Adjust for network size (small networks have inherently low inequality)
+if humans < 10 {
+// Bootstrap phase - index reflects growth potential
+index = index * (humans / 10.0)
+}
+// Round to 1 decimal
+return float64(int(index*10)) / 10.0
+}
+
+func (cs *ChainState) CalcPhase() int {
+humans := cs.TotalHumans()
+supply := cs.TotalSupply()
+gini := cs.CalcGini()
+switch {
+case humans >= 1000000 && gini < 0.3:
+return 3
+case humans >= 10000 || supply >= 10000000:
+return 2
+case humans >= 100:
+return 1
+default:
+return 0
+}
+}
