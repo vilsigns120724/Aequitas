@@ -11,6 +11,7 @@ import (
 
 "github.com/ethereum/go-ethereum/core/types"
 "github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type JSONRPCRequest struct {
@@ -229,6 +230,20 @@ e.nonces[senderAddr]++
 return txHash, nil
 
 case "eth_call":
+if len(params) >= 1 && e.evm != nil {
+var callObj map[string]string
+if err := json.Unmarshal(params[0], &callObj); err == nil {
+from := common.HexToAddress(callObj["from"])
+to := common.HexToAddress(callObj["to"])
+data, _ := hex.DecodeString(strings.TrimPrefix(callObj["data"], "0x"))
+result, err := e.evm.CallContract(from, to, data, big.NewInt(0))
+if err != nil {
+fmt.Printf("[RPC] eth_call error: %v\n", err)
+return "0x", nil
+}
+return "0x" + hex.EncodeToString(result), nil
+}
+}
 return "0x", nil
 
 case "eth_getCode":
