@@ -49,6 +49,8 @@ e.stateDB.SetBalance(addr, balanceWei)
 func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *big.Int) (common.Address, []byte, error) {
 chainConfig := params.AllEthashProtocolChanges
 chainConfig.ChainID = big.NewInt(9001)
+	shanghai := uint64(0)
+	chainConfig.ShanghaiTime = &shanghai
 
 blockCtx := vm.BlockContext{
 CanTransfer: func(db vm.StateDB, addr common.Address, amount *big.Int) bool { return true },
@@ -90,6 +92,8 @@ return contractAddr, ret, nil
 
 func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int) ([]byte, error) {
 chainConfig := params.AllEthashProtocolChanges
+	shanghai2 := uint64(0)
+	chainConfig.ShanghaiTime = &shanghai2
 chainConfig.ChainID = big.NewInt(9001)
 
 blockCtx := vm.BlockContext{
