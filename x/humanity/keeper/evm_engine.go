@@ -7,7 +7,6 @@ import (
 "strings"
 
 "github.com/ethereum/go-ethereum/common"
-"github.com/ethereum/go-ethereum/core/rawdb"
 "github.com/ethereum/go-ethereum/core/state"
 "github.com/ethereum/go-ethereum/core/vm"
 "github.com/ethereum/go-ethereum/params"
@@ -20,8 +19,7 @@ contracts  map[common.Address][]byte
 }
 
 func NewEVMEngine(cs *ChainState) (*EVMEngine, error) {
-memDB := rawdb.NewMemoryDatabase()
-stateDB, err := state.New(common.Hash{}, state.NewDatabase(memDB), nil)
+stateDB, err := NewPersistentStateDB(cs)
 if err != nil {
 return nil, fmt.Errorf("failed to create stateDB: %w", err)
 }
@@ -32,7 +30,6 @@ stateDB:    stateDB,
 contracts:  make(map[common.Address][]byte),
 }
 
-engine.syncFromChainState()
 return engine, nil
 }
 
@@ -105,6 +102,11 @@ return common.Address{}, nil, fmt.Errorf("deployment failed: %w", err)
 e.contracts[contractAddr] = ret
 e.stateDB.SetNonce(from, nonce+1)
 e.stateDB.Commit(1, false)
+
+// Persist contract to PostgreSQL
+addrStr := strings.ToLower(contractAddr.Hex())
+e.chainState.SaveContract(addrStr, ret, strings.ToLower(from.Hex()))
+e.chainState.SaveNonce(strings.ToLower(from.Hex()), nonce+1)
 
 fmt.Printf("[EVM] ✓ Contract deployed at %s\n", contractAddr.Hex())
 return contractAddr, ret, nil

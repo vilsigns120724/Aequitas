@@ -69,6 +69,22 @@ return cs
 }
 
 func (cs *ChainState) initDB() {
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS evm_contracts (
+address TEXT PRIMARY KEY,
+bytecode TEXT NOT NULL,
+deployer TEXT,
+deployed_at TIMESTAMP DEFAULT NOW()
+)`)
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS evm_storage (
+address TEXT NOT NULL,
+slot TEXT NOT NULL,
+value TEXT NOT NULL,
+PRIMARY KEY (address, slot)
+)`)
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS evm_nonces (
+address TEXT PRIMARY KEY,
+nonce BIGINT DEFAULT 0
+)`)
 cs.db.Exec(`CREATE TABLE IF NOT EXISTS chain_accounts (
 address TEXT PRIMARY KEY,
 balance FLOAT NOT NULL DEFAULT 0,
