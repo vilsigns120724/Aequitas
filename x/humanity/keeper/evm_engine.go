@@ -71,7 +71,7 @@ Coinbase:    common.Address{},
 BlockNumber: big.NewInt(1),
 Time:        1000000,
 Difficulty:  big.NewInt(0),
-GasLimit:    10000000,
+GasLimit:    30000000,
 BaseFee:     big.NewInt(0),
 }
 
@@ -86,7 +86,7 @@ nonce := e.stateDB.GetNonce(from)
 ret, contractAddr, _, err := evm.Create(
 vm.AccountRef(from),
 bytecode,
-10000000,
+30000000,
 value,
 )
 if err != nil {
@@ -126,7 +126,7 @@ Coinbase:    common.Address{},
 BlockNumber: big.NewInt(1),
 Time:        1000000,
 Difficulty:  big.NewInt(0),
-GasLimit:    10000000,
+GasLimit:    30000000,
 BaseFee:     big.NewInt(0),
 }
 
@@ -141,7 +141,7 @@ ret, _, err := evm.Call(
 vm.AccountRef(from),
 to,
 data,
-10000000,
+30000000,
 value,
 )
 if err != nil {

@@ -9,9 +9,9 @@ pragma solidity ^0.8.19;
  * CORE PRINCIPLE:
  * "Money exists because people exist. Nothing more, nothing less."
  *
- * ═══════════════════════════════════════════════════════════════════
+ * ===================================================================
  * KEY MECHANISMS
- * ═══════════════════════════════════════════════════════════════════
+ * ===================================================================
  *
  * 1. REGISTRATION
  *    Every verified human receives exactly 1,000 AEQ.
@@ -22,7 +22,7 @@ pragma solidity ^0.8.19;
  * 2. PROOF OF ALIVE
  *    Every 2 years, a human must confirm they are still active.
  *    3 warnings (60 days apart) before any action is taken.
- *    After 3 warnings: AEQ → personal Escrow (NOT UBI Pool yet).
+ *    After 3 warnings: AEQ -> personal Escrow (NOT UBI Pool yet).
  *    Escrow held for 2 additional years before entering UBI Pool.
  *    This protects: prisoners, sick, disaster zones, no connectivity.
  *
@@ -35,27 +35,27 @@ pragma solidity ^0.8.19;
  *
  *    STRICT LIMITS (5 security fixes):
  *
- *    FIX 1 — Guardian has ZERO transaction rights.
+ *    FIX 1 - Guardian has ZERO transaction rights.
  *    Guardian can ONLY call confirmAlive(). Nothing else.
  *    Cannot transfer, approve, or touch AEQ in any way.
  *    The ward's Private Key is the only way to move funds.
  *
- *    FIX 2 — 7-day Timelock on Guardian assignment.
+ *    FIX 2 - 7-day Timelock on Guardian assignment.
  *    Setting a Guardian takes 7 days to become active.
  *    Prevents forced Guardian assignment under immediate duress.
  *    Ward can cancel during the 7-day window.
  *
- *    FIX 3 — Guardian confirmations are limited (max 3 consecutive).
+ *    FIX 3 - Guardian confirmations are limited (max 3 consecutive).
  *    After 3 Guardian confirmations without ward self-activity,
  *    a secondary review flag is raised on-chain.
  *    The ward must eventually confirm themselves to reset the flag.
  *    Prevents permanent proxy control over someone's humanity status.
  *
- *    FIX 4 — No circular Guardian relationships.
+ *    FIX 4 - No circular Guardian relationships.
  *    If A is Guardian of B, then B cannot be Guardian of A.
  *    Prevents mutual coercion lock ("I control you, you control me").
  *
- *    FIX 5 — A Guardian cannot themselves have a Guardian.
+ *    FIX 5 - A Guardian cannot themselves have a Guardian.
  *    If you are a Guardian for someone, you cannot appoint a Guardian.
  *    And if you have a Guardian, you cannot become someone else's Guardian.
  *    Prevents layered control chains.
@@ -67,35 +67,35 @@ pragma solidity ^0.8.19;
  *    Getting fairShare on return = fair, not punitive.
  *
  * 5. WEALTH CAP (active from human #1, always on)
- *    Phase 0 (≤100):     50x fairShare  — generous for early growth
- *    Phase 1 (≤1,000):   20x fairShare
- *    Phase 2 (≤10,000):  10x fairShare
- *    Phase 3 (≤100,000):  5x fairShare
+ *    Phase 0 (100):     50x fairShare  - generous for early growth
+ *    Phase 1 (1,000):   20x fairShare
+ *    Phase 2 (10,000):  10x fairShare
+ *    Phase 3 (100,000):  5x fairShare
  *    Phase 4 (100,000+):  3x fairShare
- *    Overflow → redistributed equally to ALL active humans instantly.
+ *    Overflow -> redistributed equally to ALL active humans instantly.
  *
  * 6. DEMURRAGE (anti-hoarding, 1% annual on excess above fairShare)
  *    Charged monthly on balance ABOVE fairShare only.
- *    Does NOT reduce total supply — moves to UBI Pool.
+ *    Does NOT reduce total supply - moves to UBI Pool.
  *    UBI Pool distributed equally to all active humans.
  *    Encourages circulation without punishing normal holdings.
  *
  * 7. TRANSACTION FEE (0.1%)
- *    40% → Validator Pool
- *    30% → Liquidity Pool
- *    20% → UBI Pool
- *    10% → Treasury
+ *    40% -> Validator Pool
+ *    30% -> Liquidity Pool
+ *    20% -> UBI Pool
+ *    10% -> Treasury
  *
  * 8. NO ALGORITHMIC INFLATION
  *    The ONLY money creation event: new human = +1,000 AEQ.
  *    No external parameters. No oracle. No manipulation possible.
- *    Total supply = verified active humans × 1,000 AEQ (baseline).
+ *    Total supply = verified active humans  1,000 AEQ (baseline).
  *
  * 9. GINI COEFFICIENT
  *    Measured off-chain by Keeper Bot (gas-efficient, accurate).
  *    Written on-chain as a read-only transparency metric.
  *    NOT used to control money supply. Mathematics, not politics.
- * ═══════════════════════════════════════════════════════════════════
+ * ===================================================================
  */
 
 interface IBioVerifier {
@@ -109,7 +109,7 @@ interface IBioVerifier {
 
 contract AequitasV6 {
 
-    // ─── ERC-20 ──────────────────────────────────────────────────────────────────
+    //  ERC-20 
     string public constant name     = "Aequitas";
     string public constant symbol   = "AEQ";
     uint8  public constant decimals = 18;
@@ -117,7 +117,7 @@ contract AequitasV6 {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
-    // ─── CORE STATE ──────────────────────────────────────────────────────────────
+    //  CORE STATE 
     IBioVerifier public verifier;
 
     mapping(uint256 => bool)    public usedCommitments;
@@ -131,7 +131,7 @@ contract AequitasV6 {
     uint256   public totalSupply;
     uint256   public totalHumans;
 
-    // ─── PROOF OF ALIVE ──────────────────────────────────────────────────────────
+    //  PROOF OF ALIVE 
     mapping(address => uint8)   public warningCount;
     mapping(address => uint256) public lastWarningAt;
     mapping(address => uint256) public escrowBalance;
@@ -141,10 +141,10 @@ contract AequitasV6 {
     uint256 public constant WARNING_INTERVAL   = 60 days;
     uint256 public constant ESCROW_HOLD_PERIOD = 730 days; // 2 years in escrow
 
-    // ─── GUARDIAN SYSTEM ─────────────────────────────────────────────────────────
+    //  GUARDIAN SYSTEM 
 
-    mapping(address => address)   public guardianOf;          // human → guardian
-    mapping(address => address[]) public guardianFor;         // guardian → wards
+    mapping(address => address)   public guardianOf;          // human -> guardian
+    mapping(address => address[]) public guardianFor;         // guardian -> wards
     mapping(address => uint8)     public guardianConfirmCount; // consecutive guardian confirmations without self-activity
     mapping(address => bool)      public reviewFlagged;       // flagged for community review
 
@@ -156,26 +156,26 @@ contract AequitasV6 {
     uint256 public constant GUARDIAN_TIMELOCK      = 7 days;
     uint8   public constant MAX_GUARDIAN_CONFIRMS  = 3; // FIX 3
 
-    // ─── IMMUTABLE CONSTANTS ─────────────────────────────────────────────────────
+    //  IMMUTABLE CONSTANTS 
     uint256 public constant INITIAL_GRANT     = 1000 * 10**18;
     uint256 public constant FEE_BPS           = 10;   // 0.1%
     uint256 public constant DEMURRAGE_BPS     = 100;  // 1% annual
     uint256 public constant DEMURRAGE_MONTHS  = 12;
 
-    // ─── FEE POOLS ───────────────────────────────────────────────────────────────
+    //  FEE POOLS 
     uint256 public validatorPool;
     uint256 public lpPool;
     uint256 public ubiPool;
     uint256 public treasury;
 
-    // ─── GINI + INDEX ────────────────────────────────────────────────────────────
+    //  GINI + INDEX 
     uint256 public giniCoefficient;
     uint256 public aequitasIndex;
     uint256 public lastGiniUpdate;
     uint256 public lastDemurrageRun;
     address public keeperBot;
 
-    // ─── EVENTS ──────────────────────────────────────────────────────────────────
+    //  EVENTS 
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
@@ -202,7 +202,7 @@ contract AequitasV6 {
     event FeeCollected(uint256 validatorShare, uint256 lpShare, uint256 ubiShare, uint256 treasuryShare);
     event GiniUpdated(uint256 gini, uint256 index);
 
-    // ─── CONSTRUCTOR ─────────────────────────────────────────────────────────────
+    //  CONSTRUCTOR 
 
     constructor(address _verifier, address _keeperBot) {
         verifier         = IBioVerifier(_verifier);
@@ -210,7 +210,7 @@ contract AequitasV6 {
         lastDemurrageRun = block.timestamp;
     }
 
-    // ─── MODIFIERS ───────────────────────────────────────────────────────────────
+    //  MODIFIERS 
 
     modifier onlyKeeper() {
         require(msg.sender == keeperBot, "Only Keeper Bot");
@@ -222,7 +222,7 @@ contract AequitasV6 {
         _;
     }
 
-    // ─── ERC-20 ──────────────────────────────────────────────────────────────────
+    //  ERC-20 
 
     function transfer(address to, uint256 amount) external returns (bool) {
         _transferWithFee(msg.sender, to, amount);
@@ -290,7 +290,7 @@ contract AequitasV6 {
         }
     }
 
-    // ─── REGISTRATION ────────────────────────────────────────────────────────────
+    //  REGISTRATION 
 
     function registerHuman(
         uint[2] calldata _pA,
@@ -326,7 +326,7 @@ contract AequitasV6 {
         emit HumanRegistered(msg.sender, totalHumans, block.timestamp);
     }
 
-    // ─── PROOF OF ALIVE ──────────────────────────────────────────────────────────
+    //  PROOF OF ALIVE 
 
     /**
      * @notice Confirm you are alive and active.
@@ -340,7 +340,7 @@ contract AequitasV6 {
      */
     function confirmAlive(address human) external {
         require(isHuman[human],       "Not a registered human");
-        require(!isInactive[human],   "Already flagged inactive — use reactivate()");
+        require(!isInactive[human],   "Already flagged inactive - use reactivate()");
 
         bool calledBySelf     = (msg.sender == human);
         bool calledByGuardian = (msg.sender == guardianOf[human]);
@@ -359,11 +359,11 @@ contract AequitasV6 {
             guardianConfirmCount[human] += 1;
 
             if (guardianConfirmCount[human] >= MAX_GUARDIAN_CONFIRMS) {
-                // Raise community review flag — ward has not been self-active
+                // Raise community review flag - ward has not been self-active
                 reviewFlagged[human] = true;
                 emit ReviewFlagged(
                     human,
-                    "Guardian confirmed 3x without self-activity — community review needed"
+                    "Guardian confirmed 3x without self-activity - community review needed"
                 );
             }
         }
@@ -376,13 +376,13 @@ contract AequitasV6 {
     }
 
     /**
-     * @notice Issue inactivity warning. Permissionless — anyone can call.
+     * @notice Issue inactivity warning. Permissionless - anyone can call.
      * Enables community and Keeper Bot to flag inactive humans.
      */
     function issueInactivityWarning(address human) external {
         require(isHuman[human],        "Not a registered human");
         require(!isInactive[human],    "Already inactive");
-        require(warningCount[human] < 3, "Already at 3 warnings — use flagInactive()");
+        require(warningCount[human] < 3, "Already at 3 warnings - use flagInactive()");
 
         uint256 sinceLastActivity = block.timestamp - lastActivityAt[human];
         uint256 sinceLastWarning  = block.timestamp - lastWarningAt[human];
@@ -402,7 +402,7 @@ contract AequitasV6 {
 
     /**
      * @notice After 3 warnings and final interval elapsed, flag as inactive.
-     * AEQ moves to personal Escrow — held for 2 years before UBI Pool.
+     * AEQ moves to personal Escrow - held for 2 years before UBI Pool.
      * isHuman stays true to allow reactivation.
      */
     function flagInactive(address human) external {
@@ -430,7 +430,7 @@ contract AequitasV6 {
 
     /**
      * @notice Release escrow to UBI Pool after 2-year hold period.
-     * Permissionless — anyone can call after hold period elapsed.
+     * Permissionless - anyone can call after hold period elapsed.
      */
     function releaseEscrowToUBI(address human) external {
         require(isInactive[human],    "Not inactive");
@@ -504,14 +504,14 @@ contract AequitasV6 {
         emit HumanReactivated(msg.sender, escrowReturned, share);
     }
 
-    // ─── GUARDIAN SYSTEM ─────────────────────────────────────────────────────────
+    //  GUARDIAN SYSTEM 
 
     /**
      * @notice Propose a Guardian. Activates after 7-day Timelock. (FIX 2)
      *
      * SECURITY CHECKS:
-     * FIX 4 — No circular relationships (A guards B, B cannot guard A)
-     * FIX 5 — Guardian cannot have a Guardian, and Ward cannot be a Guardian
+     * FIX 4 - No circular relationships (A guards B, B cannot guard A)
+     * FIX 5 - Guardian cannot have a Guardian, and Ward cannot be a Guardian
      */
     function proposeGuardian(address guardian) external onlyActiveHuman {
         require(guardian != msg.sender, "Cannot be your own Guardian");
@@ -545,7 +545,7 @@ contract AequitasV6 {
         // (prevents layered control chains)
         require(
             guardianFor[msg.sender].length == 0,
-            "You are already a Guardian for others — cannot also have a Guardian (FIX 5)"
+            "You are already a Guardian for others - cannot also have a Guardian (FIX 5)"
         );
 
         // FIX 2: Set pending guardian with timelock
@@ -572,13 +572,13 @@ contract AequitasV6 {
 
     /**
      * @notice Activate a pending Guardian after 7-day timelock.
-     * Can be called by anyone — timelock is the protection.
+     * Can be called by anyone - timelock is the protection.
      */
     function activateGuardian(address human) external {
         require(pendingGuardian[human] != address(0),          "No pending Guardian");
         require(
             block.timestamp >= pendingGuardianSince[human] + GUARDIAN_TIMELOCK,
-            "Timelock not elapsed — 7 days required"
+            "Timelock not elapsed - 7 days required"
         );
 
         address guardian = pendingGuardian[human];
@@ -626,7 +626,7 @@ contract AequitasV6 {
     /**
      * @notice Penalize a Guardian for false confirmation.
      * Only Keeper Bot after community governance decision.
-     * Guardian loses isHuman status → AEQ to Escrow.
+     * Guardian loses isHuman status -> AEQ to Escrow.
      */
     function penalizeGuardian(address guardian, string calldata reason) external onlyKeeper {
         require(isHuman[guardian], "Not a human");
@@ -638,7 +638,7 @@ contract AequitasV6 {
         }
         delete guardianFor[guardian];
 
-        // Flag guardian inactive → AEQ to Escrow
+        // Flag guardian inactive -> AEQ to Escrow
         uint256 balance           = balanceOf[guardian];
         balanceOf[guardian]       = 0;
         escrowBalance[guardian]   = balance;
@@ -651,7 +651,7 @@ contract AequitasV6 {
         emit Transfer(guardian, address(this), balance);
     }
 
-    // ─── WEALTH CAP (always active from human #1) ────────────────────────────────
+    //  WEALTH CAP (always active from human #1) 
 
     function _applyWealthCap(address wallet) internal {
         if (totalHumans == 0) return;
@@ -682,7 +682,7 @@ contract AequitasV6 {
         uint256 share = fairShare();
         if (share == 0) return 0;
 
-        // Always active — no phase with zero cap
+        // Always active - no phase with zero cap
         if (totalHumans <= 100)    return share * 50;
         if (totalHumans <= 1000)   return share * 20;
         if (totalHumans <= 10000)  return share * 10;
@@ -690,12 +690,12 @@ contract AequitasV6 {
         return share * 3;
     }
 
-    // ─── DEMURRAGE (1% annual on excess above fairShare) ─────────────────────────
+    //  DEMURRAGE (1% annual on excess above fairShare) 
 
     /**
      * @notice Charge monthly demurrage on balances above fairShare.
-     * 1% annual ÷ 12 = ~0.0833% per month on EXCESS only.
-     * Collected → UBI Pool → distributed equally to all active humans.
+     * 1% annual  12 = ~0.0833% per month on EXCESS only.
+     * Collected -> UBI Pool -> distributed equally to all active humans.
      * Called by Keeper Bot monthly.
      */
     function runMonthlyDemurrage() external onlyKeeper {
@@ -757,7 +757,7 @@ contract AequitasV6 {
         emit UBIDistributed(perHuman);
     }
 
-    // ─── GINI + INDEX (written by Keeper Bot, off-chain measured) ────────────────
+    //  GINI + INDEX (written by Keeper Bot, off-chain measured) 
 
     function updateGini(uint256 _gini, uint256 _index) external onlyKeeper {
         require(_gini  <= 100, "Gini must be 0-100");
@@ -770,7 +770,7 @@ contract AequitasV6 {
         emit GiniUpdated(_gini, _index);
     }
 
-    // ─── INTERNAL HELPERS ────────────────────────────────────────────────────────
+    //  INTERNAL HELPERS 
 
     function _removeFromHumanList(address human) internal {
         for (uint256 i = 0; i < humanList.length; i++) {
@@ -809,7 +809,7 @@ contract AequitasV6 {
         delete guardianFor[human];
     }
 
-    // ─── VIEW FUNCTIONS ──────────────────────────────────────────────────────────
+    //  VIEW FUNCTIONS 
 
     function fairShare() public view returns (uint256) {
         if (totalHumans == 0) return 0;
