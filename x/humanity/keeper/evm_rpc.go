@@ -2,6 +2,7 @@ package keeper
 
 import (
 "encoding/hex"
+	"io"
 "encoding/json"
 "fmt"
 "math/big"
@@ -57,29 +58,39 @@ w.WriteHeader(200)
 return
 }
 
-var req JSONRPCRequest
-if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-json.NewEncoder(w).Encode(JSONRPCResponse{
-JSONRPC: "2.0",
-Error:   map[string]interface{}{"code": -32700, "message": "parse error"},
-})
+bodyBytes, _ := io.ReadAll(r.Body)
+trimmed := strings.TrimSpace(string(bodyBytes))
+
+if len(trimmed) > 0 && trimmed[0] == '[' {
+var reqs []JSONRPCRequest
+if err := json.Unmarshal(bodyBytes, &reqs); err != nil {
+json.NewEncoder(w).Encode(JSONRPCResponse{JSONRPC: "2.0", Error: map[string]interface{}{"code": -32700, "message": "parse error"}})
+return
+}
+var responses []JSONRPCResponse
+for _, req := range reqs {
+result, err := e.handleMethod(req.Method, req.Params)
+if err != nil {
+responses = append(responses, JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Error: map[string]interface{}{"code": -32603, "message": err.Error()}})
+} else {
+responses = append(responses, JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: result})
+}
+}
+json.NewEncoder(w).Encode(responses)
 return
 }
 
-result, err := e.handleMethod(req.Method, req.Params)
-if err != nil {
-json.NewEncoder(w).Encode(JSONRPCResponse{
-JSONRPC: "2.0",
-ID:      req.ID,
-Error:   map[string]interface{}{"code": -32603, "message": err.Error()},
-})
+var req JSONRPCRequest
+if err := json.Unmarshal(bodyBytes, &req); err != nil {
+json.NewEncoder(w).Encode(JSONRPCResponse{JSONRPC: "2.0", Error: map[string]interface{}{"code": -32700, "message": "parse error"}})
 return
 }
-json.NewEncoder(w).Encode(JSONRPCResponse{
-JSONRPC: "2.0",
-ID:      req.ID,
-Result:  result,
-})
+result, err := e.handleMethod(req.Method, req.Params)
+if err != nil {
+json.NewEncoder(w).Encode(JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Error: map[string]interface{}{"code": -32603, "message": err.Error()}})
+return
+}
+json.NewEncoder(w).Encode(JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: result})
 }
 
 func (e *EVMRPCServer) handleMethod(method string, params []json.RawMessage) (interface{}, error) {
