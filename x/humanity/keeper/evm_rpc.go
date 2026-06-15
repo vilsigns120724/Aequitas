@@ -110,10 +110,10 @@ height = latest.Height
 
 switch method {
 case "eth_chainId":
-return "0x11F83", nil // 9001
+return "0x786", nil // 73571
 
 case "net_version":
-return "73571", nil
+return "1926", nil
 
 case "eth_blockNumber":
 return "0x" + fmt.Sprintf("%x", height), nil
@@ -169,11 +169,11 @@ return nil, fmt.Errorf("invalid transaction: %v", err)
 }
 
 // Get sender
-signer := types.LatestSignerForChainID(big.NewInt(73571))
+signer := types.LatestSignerForChainID(big.NewInt(1926))
 sender, err := types.Sender(signer, tx)
 if err != nil {
 // Try legacy signer
-signer = types.NewEIP155Signer(big.NewInt(73571))
+signer = types.NewEIP155Signer(big.NewInt(1926))
 sender, err = types.Sender(signer, tx)
 if err != nil {
 return nil, fmt.Errorf("cannot recover sender: %v", err)
