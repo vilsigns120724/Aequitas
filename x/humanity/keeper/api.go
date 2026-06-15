@@ -322,6 +322,7 @@ header{background:linear-gradient(180deg,#080F1E 0%,#050A14 100%);border-bottom:
     </div>
   </div>
   <div class="header-right">
+    <div style="display:flex;gap:4px" id="lang-btns"><button onclick="setLang('en')" class="lang-btn active" id="lb-en">EN</button><button onclick="setLang('de')" class="lang-btn" id="lb-de">DE</button><button onclick="setLang('es')" class="lang-btn" id="lb-es">ES</button><button onclick="setLang('ru')" class="lang-btn" id="lb-ru">RU</button><button onclick="setLang('zh')" class="lang-btn" id="lb-zh">ZH</button><button onclick="setLang('id')" class="lang-btn" id="lb-id">ID</button></div>
     <div class="badge badge-live"><span class="pulse"></span>LIVE</div>
     <div class="badge badge-dag">● BLOCKDAG</div>
   </div>
