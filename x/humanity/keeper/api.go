@@ -495,16 +495,8 @@ header{background:linear-gradient(180deg,#080F1E 0%,#050A14 100%);border-bottom:
 
 <!-- INDEX TAB -->
 <div id="tab-index" class="tab-content">
-  <div style="padding:24px 32px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-    <div class="hero-label" style="margin-bottom:0">Economic Analysis</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap" id="lang-btns">
-      <button onclick="setLang(` + "`" + `en` + "`" + `)" class="lang-btn active" id="lb-en">EN</button>
-      <button onclick="setLang(` + "`" + `de` + "`" + `)" class="lang-btn" id="lb-de">DE</button>
-      <button onclick="setLang(` + "`" + `es` + "`" + `)" class="lang-btn" id="lb-es">ES</button>
-      <button onclick="setLang(` + "`" + `ru` + "`" + `)" class="lang-btn" id="lb-ru">RU</button>
-      <button onclick="setLang(` + "`" + `zh` + "`" + `)" class="lang-btn" id="lb-zh">ZH</button>
-      <button onclick="setLang(` + "`" + `id` + "`" + `)" class="lang-btn" id="lb-id">ID</button>
-    </div>
+  <div style="padding:24px 32px 0">
+    <div class="hero-label">Economic Analysis</div>
   </div>
   <div class="index-wrap">
 
