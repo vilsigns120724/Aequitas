@@ -47,10 +47,21 @@ e.stateDB.SetBalance(addr, balanceWei)
 }
 
 func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *big.Int) (common.Address, []byte, error) {
-chainConfig := params.AllEthashProtocolChanges
-chainConfig.ChainID = big.NewInt(9001)
-	shanghai := uint64(0)
-	chainConfig.ShanghaiTime = &shanghai
+shanghai := uint64(0)
+chainConfig := &params.ChainConfig{
+	ChainID: big.NewInt(9001),
+	HomesteadBlock: big.NewInt(0),
+	EIP150Block: big.NewInt(0),
+	EIP155Block: big.NewInt(0),
+	EIP158Block: big.NewInt(0),
+	ByzantiumBlock: big.NewInt(0),
+	ConstantinopleBlock: big.NewInt(0),
+	PetersburgBlock: big.NewInt(0),
+	IstanbulBlock: big.NewInt(0),
+	BerlinBlock: big.NewInt(0),
+	LondonBlock: big.NewInt(0),
+	ShanghaiTime: &shanghai,
+}
 
 blockCtx := vm.BlockContext{
 CanTransfer: func(db vm.StateDB, addr common.Address, amount *big.Int) bool { return true },
@@ -91,10 +102,21 @@ return contractAddr, ret, nil
 }
 
 func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int) ([]byte, error) {
-chainConfig := params.AllEthashProtocolChanges
-	shanghai2 := uint64(0)
-	chainConfig.ShanghaiTime = &shanghai2
-chainConfig.ChainID = big.NewInt(9001)
+shanghai2 := uint64(0)
+chainConfig2 := &params.ChainConfig{
+	ChainID: big.NewInt(9001),
+	HomesteadBlock: big.NewInt(0),
+	EIP150Block: big.NewInt(0),
+	EIP155Block: big.NewInt(0),
+	EIP158Block: big.NewInt(0),
+	ByzantiumBlock: big.NewInt(0),
+	ConstantinopleBlock: big.NewInt(0),
+	PetersburgBlock: big.NewInt(0),
+	IstanbulBlock: big.NewInt(0),
+	BerlinBlock: big.NewInt(0),
+	LondonBlock: big.NewInt(0),
+	ShanghaiTime: &shanghai2,
+}
 
 blockCtx := vm.BlockContext{
 CanTransfer: func(db vm.StateDB, addr common.Address, amount *big.Int) bool { return true },
@@ -113,7 +135,7 @@ Origin:   from,
 GasPrice: big.NewInt(0),
 }
 
-evm := vm.NewEVM(blockCtx, txCtx, e.stateDB, chainConfig, vm.Config{})
+evm := vm.NewEVM(blockCtx, txCtx, e.stateDB, chainConfig2, vm.Config{})
 
 ret, _, err := evm.Call(
 vm.AccountRef(from),
