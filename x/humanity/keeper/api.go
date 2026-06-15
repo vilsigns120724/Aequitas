@@ -1126,13 +1126,13 @@ async function loadHumans(){
 function checkProofParams(){
   const p=new URLSearchParams(window.location.search);
   const proof=p.get('proof');
-  if(proof){
+  const proofId=p.get('proofId');
+  if(proofId){
+    fetch("https://aequitas-proof-server-production.up.railway.app/get/"+proofId).then(r=>r.json()).then(pd=>{proofParams=pd;document.getElementById("proof-box").style.display="block";document.getElementById("btn-register").disabled=!walletAddr;document.querySelectorAll(".tab")[4].click();}).catch(e=>console.error(e));
+  } else if(proof){
     try{
       proofParams=JSON.parse(decodeURIComponent(proof));
       document.getElementById('proof-box').style.display='block';
-      document.getElementById('proof-val').textContent='bio: '+proofParams.bio.slice(0,15)+'... | salt: '+proofParams.salt.slice(0,10)+'...';
-      document.querySelectorAll('.tab')[4].click();
-    }catch(e){}
   }
 }
 
