@@ -46,7 +46,16 @@ e.stateDB.SetBalance(addr, balanceWei)
 }
 }
 
-func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *big.Int) (common.Address, []byte, error) {
+func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *big.Int) (addr common.Address, ret []byte, err error) {
+	// Recover from any EVM panic
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("EVM panic recovered: %v", r)
+			addr = common.Address{}
+			ret = nil
+		}
+	}()
+	_ = addr; _ = ret; _ = err
 shanghai := uint64(0)
 chainConfig := &params.ChainConfig{
 	ChainID: big.NewInt(9001),
@@ -101,7 +110,13 @@ fmt.Printf("[EVM] ✓ Contract deployed at %s\n", contractAddr.Hex())
 return contractAddr, ret, nil
 }
 
-func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int) ([]byte, error) {
+func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int) (ret []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("EVM panic recovered: %v", r)
+			ret = nil
+		}
+	}()
 shanghai2 := uint64(0)
 chainConfig2 := &params.ChainConfig{
 	ChainID: big.NewInt(9001),
@@ -137,7 +152,7 @@ GasPrice: big.NewInt(0),
 
 evm := vm.NewEVM(blockCtx, txCtx, e.stateDB, chainConfig2, vm.Config{})
 
-ret, _, err := evm.Call(
+ret, _, err = evm.Call(
 vm.AccountRef(from),
 to,
 data,
