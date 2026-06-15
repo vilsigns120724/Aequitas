@@ -1144,10 +1144,21 @@ async function connectWallet(){
     walletAddr=accounts[0];
     document.getElementById('wallet-box').style.display='block';
     document.getElementById('wallet-addr').textContent=walletAddr;
-    document.getElementById('btn-register').disabled=!proofParams;
     const btn=document.getElementById('btn-connect');
     btn.textContent='✓ '+walletAddr.slice(0,10)+'...'+walletAddr.slice(-4);
     btn.style.background='var(--green)';btn.style.color='#050A14';
+    // Check if already registered
+    try{
+      const br=await fetch('/api/balance?wallet='+walletAddr);
+      const bd=await br.json();
+      if(bd.is_human){
+        log('✓ Already registered! Balance: '+bd.balance+' AEQ','ok');
+        document.getElementById('btn-register').disabled=true;
+        document.getElementById('btn-register').textContent='✓ ALREADY REGISTERED';
+      } else {
+        document.getElementById('btn-register').disabled=!proofParams;
+      }
+    }catch(e){ document.getElementById('btn-register').disabled=!proofParams; }
   }catch(e){}
 }
 
@@ -1156,13 +1167,9 @@ function log(msg,type){const el=document.getElementById('reg-status');el.innerHT
 async function register(){
   if(!walletAddr||!proofParams)return;
   try{
-    log('⏳ Step 1/2: Generating ZK proof...','info');
+    log('Registering on Aequitas V6...','info');
     document.getElementById('btn-register').disabled=true;
-    const pr=await fetch(PROOF_SERVER+'/prove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bio:proofParams.bio,salt:proofParams.salt,wallet:walletAddr})});
-    const pd=await pr.json();
-    if(!pr.ok){log('✗ '+(pd.error||'Proof failed'),'err');document.getElementById('btn-register').disabled=false;return}
-    log('✓ ZK Proof generated! Step 2/2: Registering on chain...','ok');
-    const r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wallet:walletAddr,pA:pd.pA,pB:pd.pB,pC:pd.pC,pubSignals:pd.pubSignals})});
+    const r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wallet:walletAddr,pA:proofParams.pA,pB:proofParams.pB,pC:proofParams.pC,pubSignals:proofParams.pubSignals})});
     const d=await r.json();
     if(!d.success){log('✗ '+d.message,'err');document.getElementById('btn-register').disabled=false;return}
     log('🎉 '+d.message+' | TX: '+d.tx_hash,'ok');
