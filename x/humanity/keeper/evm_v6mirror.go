@@ -9,7 +9,7 @@ import (
 "github.com/ethereum/go-ethereum/crypto"
 )
 
-const V6_CONTRACT_ADDR = "0x371C577B1e2c49A07123B32F556bCcdf79317A0C"
+const V6_CONTRACT_ADDR = "0xA76cA3bf34F2Ae5dFA0608696627e42b81180488"
 
 // After each registerHuman TX on V6, mirror the state to PostgreSQL
 func (e *EVMEngine) MirrorV6Registration(wallet, commitment string) {
