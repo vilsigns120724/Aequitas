@@ -200,8 +200,10 @@ fmt.Printf("[RPC] ✓ Transfer %.2f AEQ: %s → %s\n", valueFloat, senderAddr, t
 
 // Handle contract deployment or contract call (data present)
 if len(tx.Data()) > 0 && e.evm != nil {
+fmt.Printf("[EVM] evm engine is nil: %v\n", e.evm == nil)
 if tx.To() == nil {
 // Contract deployment
+fmt.Printf("[EVM] Deploying contract, bytecode=%d bytes\n", len(tx.Data()))
 contractAddr, _, err := e.evm.DeployContract(sender, tx.Data(), tx.Value())
 if err != nil {
 fmt.Printf("[RPC] ✗ Deploy failed: %v\n", err)
