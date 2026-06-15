@@ -107,6 +107,7 @@ e.stateDB.Commit(1, false)
 addrStr := strings.ToLower(contractAddr.Hex())
 e.chainState.SaveContract(addrStr, ret, strings.ToLower(from.Hex()))
 e.chainState.SaveNonce(strings.ToLower(from.Hex()), nonce+1)
+e.PersistContractStorage(contractAddr)
 
 fmt.Printf("[EVM] ✓ Contract deployed at %s\n", contractAddr.Hex())
 return contractAddr, ret, nil
@@ -166,6 +167,7 @@ return nil, fmt.Errorf("call failed: %w", err)
 }
 
 e.syncToChainState()
+e.PersistContractStorage(to)
 return ret, nil
 }
 

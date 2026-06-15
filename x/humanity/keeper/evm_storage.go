@@ -5,6 +5,7 @@ import (
 "encoding/hex"
 "fmt"
 "math/big"
+"strings"
 
 "github.com/ethereum/go-ethereum/common"
 "github.com/ethereum/go-ethereum/core/rawdb"
@@ -78,6 +79,52 @@ cs.db.QueryRow(`SELECT nonce FROM evm_nonces WHERE address = $1`, address).Scan(
 return nonce
 }
 
+func (cs *ChainState) SaveStorageSlot(address, slot, value string) error {
+if cs.db == nil {
+return nil
+}
+_, err := cs.db.Exec(
+`INSERT INTO evm_storage (address, slot, value) VALUES ($1, $2, $3) ON CONFLICT (address, slot) DO UPDATE SET value = $3`,
+address, slot, value,
+)
+return err
+}
+
+func (cs *ChainState) LoadStorageSlot(address, slot string) (string, error) {
+if cs.db == nil {
+return "", nil
+}
+var value string
+err := cs.db.QueryRow(`SELECT value FROM evm_storage WHERE address = $1 AND slot = $2`, address, slot).Scan(&value)
+if err == sql.ErrNoRows {
+return "", nil
+}
+return value, err
+}
+
+func (e *EVMEngine) PersistContractStorage(contractAddr common.Address) {
+fmt.Printf("[EVM] Contract %s active in session\n", strings.ToLower(contractAddr.Hex()))
+}
+
+func (e *EVMEngine) LoadContractStorage(contractAddr common.Address) {
+addrStr := strings.ToLower(contractAddr.Hex())
+rows, err := e.chainState.db.Query(`SELECT slot, value FROM evm_storage WHERE address = $1`, addrStr)
+if err != nil {
+return
+}
+defer rows.Close()
+count := 0
+for rows.Next() {
+var slot, value string
+rows.Scan(&slot, &value)
+e.stateDB.SetState(contractAddr, common.HexToHash(slot), common.HexToHash(value))
+count++
+}
+if count > 0 {
+fmt.Printf("[EVM] Loaded %d storage slots for %s\n", count, addrStr)
+}
+}
+
 func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 memDB := rawdb.NewMemoryDatabase()
 stateDB, err := state.New(common.Hash{}, state.NewDatabase(memDB), nil)
@@ -102,6 +149,19 @@ bytecode, err := cs.LoadContract(addrStr)
 if err == nil && bytecode != nil {
 stateDB.SetCode(addr, bytecode)
 fmt.Printf("[EVM] Loaded contract: %s (%d bytes)\n", addrStr, len(bytecode))
+
+// Load storage slots
+if cs.db != nil {
+rows, err := cs.db.Query(`SELECT slot, value FROM evm_storage WHERE address = $1`, addrStr)
+if err == nil {
+for rows.Next() {
+var slot, value string
+rows.Scan(&slot, &value)
+stateDB.SetState(addr, common.HexToHash(slot), common.HexToHash(value))
+}
+rows.Close()
+}
+}
 }
 }
 
