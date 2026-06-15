@@ -30,6 +30,10 @@ stateDB:    stateDB,
 contracts:  make(map[common.Address][]byte),
 }
 
+// Initialize V6 state tables and restore state
+cs.InitV6StateTables()
+engine.RestoreV6FromMirror()
+
 return engine, nil
 }
 

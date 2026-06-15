@@ -331,3 +331,143 @@ cs.saveAccountToDB(acc)
 }
 }
 
+
+// V6 Contract State Mirror - persists EVM contract state to PostgreSQL
+func (cs *ChainState) InitV6StateTables() {
+if cs.db == nil {
+return
+}
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS v6_state (
+key TEXT PRIMARY KEY,
+value TEXT NOT NULL,
+updated_at TIMESTAMP DEFAULT NOW()
+)`)
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS v6_humans (
+address TEXT PRIMARY KEY,
+commitment TEXT,
+is_human BOOLEAN DEFAULT true,
+is_inactive BOOLEAN DEFAULT false,
+registered_at TIMESTAMP DEFAULT NOW(),
+last_activity TIMESTAMP DEFAULT NOW()
+)`)
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS v6_balances (
+address TEXT PRIMARY KEY,
+balance_wei TEXT NOT NULL,
+updated_at TIMESTAMP DEFAULT NOW()
+)`)
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS v6_commitments (
+commitment TEXT PRIMARY KEY,
+wallet TEXT NOT NULL,
+used_at TIMESTAMP DEFAULT NOW()
+)`)
+fmt.Println("[V6] State tables initialized")
+}
+
+func (cs *ChainState) SaveV6State(key, value string) {
+if cs.db == nil {
+return
+}
+cs.db.Exec(
+`INSERT INTO v6_state (key, value) VALUES ($1, $2)
+ ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
+key, value,
+)
+}
+
+func (cs *ChainState) LoadV6State(key string) string {
+if cs.db == nil {
+return ""
+}
+var value string
+cs.db.QueryRow(`SELECT value FROM v6_state WHERE key = $1`, key).Scan(&value)
+return value
+}
+
+func (cs *ChainState) SaveV6Balance(address, balanceWei string) {
+if cs.db == nil {
+return
+}
+cs.db.Exec(
+`INSERT INTO v6_balances (address, balance_wei) VALUES ($1, $2)
+ ON CONFLICT (address) DO UPDATE SET balance_wei = $2, updated_at = NOW()`,
+address, balanceWei,
+)
+}
+
+func (cs *ChainState) LoadV6Balance(address string) string {
+if cs.db == nil {
+return "0"
+}
+var balanceWei string
+cs.db.QueryRow(`SELECT balance_wei FROM v6_balances WHERE address = $1`, address).Scan(&balanceWei)
+if balanceWei == "" {
+return "0"
+}
+return balanceWei
+}
+
+func (cs *ChainState) SaveV6Human(address, commitment string) {
+if cs.db == nil {
+return
+}
+cs.db.Exec(
+`INSERT INTO v6_humans (address, commitment) VALUES ($1, $2)
+ ON CONFLICT (address) DO UPDATE SET commitment = $2, updated_at = NOW()`,
+address, commitment,
+)
+}
+
+func (cs *ChainState) SaveV6Commitment(commitment, wallet string) {
+if cs.db == nil {
+return
+}
+cs.db.Exec(
+`INSERT INTO v6_commitments (commitment, wallet) VALUES ($1, $2)
+ ON CONFLICT (commitment) DO NOTHING`,
+commitment, wallet,
+)
+}
+
+func (cs *ChainState) GetAllV6Humans() []map[string]string {
+if cs.db == nil {
+return nil
+}
+rows, err := cs.db.Query(
+`SELECT address, commitment FROM v6_humans WHERE is_human = true AND is_inactive = false`,
+)
+if err != nil {
+return nil
+}
+defer rows.Close()
+var humans []map[string]string
+for rows.Next() {
+var addr, commitment string
+rows.Scan(&addr, &commitment)
+humans = append(humans, map[string]string{
+"address":    addr,
+"commitment": commitment,
+})
+}
+return humans
+}
+
+func (cs *ChainState) GetAllV6Balances() []map[string]string {
+if cs.db == nil {
+return nil
+}
+rows, err := cs.db.Query(`SELECT address, balance_wei FROM v6_balances`)
+if err != nil {
+return nil
+}
+defer rows.Close()
+var balances []map[string]string
+for rows.Next() {
+var addr, bal string
+rows.Scan(&addr, &bal)
+balances = append(balances, map[string]string{
+"address":    addr,
+"balance_wei": bal,
+})
+}
+return balances
+}
