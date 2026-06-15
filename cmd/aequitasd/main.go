@@ -14,6 +14,8 @@ import (
 const (
 VERSION       = "v0.3.0"
 CONTRACT_V5   = "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5"
+	BIO_VERIFIER  = "0x5bEAAB193a92930fA08c917d6053C66aC6350396"
+	CONTRACT_V6   = "0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78"
 PROOF_SERVER  = "https://aequitas-proof-server-production.up.railway.app"
 INITIAL_GRANT = 1000
 CHAIN_ID      = "aequitas-1"
