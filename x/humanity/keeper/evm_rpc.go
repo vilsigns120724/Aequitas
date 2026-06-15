@@ -112,7 +112,9 @@ aeqWei := new(big.Int).Mul(big.NewInt(int64(balance)), decimals)
 return "0x" + fmt.Sprintf("%x", aeqWei), nil
 }
 }
-return "0x0", nil
+// Return high balance so MetaMask passes local gas check
+// Actual balance enforcement happens at transfer time
+return "0x56BC75E2D630FFFFF", nil // ~100 ETH equivalent
 
 case "eth_gasPrice":
 return "0x0", nil // Gasless chain
