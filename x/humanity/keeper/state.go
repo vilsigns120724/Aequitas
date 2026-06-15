@@ -178,7 +178,17 @@ cs.accounts[address] = &AccountState{Address: address}
 
 cs.accounts[address].IsHuman = true
 cs.accounts[address].Balance += 1000
-cs.saveAccountToDB(cs.accounts[address])
+// Direct DB write to avoid any pointer issues
+if cs.useDB {
+_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human) VALUES ($1, $2, $3)
+ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3`,
+address, cs.accounts[address].Balance, true)
+if err != nil {
+fmt.Printf("[DB] RegisterHuman error: %v\n", err)
+} else {
+fmt.Printf("[DB] RegisterHuman saved: %s | balance=%.2f\n", address, cs.accounts[address].Balance)
+}
+}
 cs.save()
 
 fmt.Printf("[STATE] ✓ Human registered: %s | Balance: %.2f AEQ\n",
