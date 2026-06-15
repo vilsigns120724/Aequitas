@@ -1162,7 +1162,7 @@ async function register(){
     const pd=await pr.json();
     if(!pr.ok){log('✗ '+(pd.error||'Proof failed'),'err');document.getElementById('btn-register').disabled=false;return}
     log('✓ ZK Proof generated! Step 2/2: Registering on chain...','ok');
-    const r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bio:proofParams.bio,salt:proofParams.salt,wallet:walletAddr})});
+    const r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wallet:walletAddr,pA:pd.pA,pB:pd.pB,pC:pd.pC,pubSignals:pd.pubSignals})});
     const d=await r.json();
     if(!d.success){log('✗ '+d.message,'err');document.getElementById('btn-register').disabled=false;return}
     log('🎉 '+d.message+' | TX: '+d.tx_hash,'ok');
