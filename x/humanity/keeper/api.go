@@ -57,8 +57,10 @@ mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 	mux.HandleFunc("/api/balance", a.handleBalance)
 	mux.HandleFunc("/registered", a.handleRegistered)
 	// EVM JSON-RPC
+	fmt.Println("── Starting EVM RPC ─────────────────────")
 	evmRPC := NewEVMRPCServer(a.blockchain, a.state)
 	mux.HandleFunc("/rpc", evmRPC.handleRPC)
+	if evmRPC.evm != nil { fmt.Println("✓ EVM Engine ready") } else { fmt.Println("✗ EVM Engine failed") }
 addr := fmt.Sprintf(":%d", port)
 fmt.Printf("✓ API Server listening on port %d\n", port)
 go http.ListenAndServe(addr, mux)
