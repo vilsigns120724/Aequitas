@@ -300,3 +300,18 @@ default:
 return 0
 }
 }
+
+func (cs *ChainState) SetBalance(address string, amount float64) {
+cs.mu.Lock()
+defer cs.mu.Unlock()
+address = strings.ToLower(address)
+if acc, ok := cs.accounts[address]; ok {
+acc.Balance = amount
+cs.saveAccountToDB(acc)
+} else {
+acc = &AccountState{Address: address, Balance: amount}
+cs.accounts[address] = acc
+cs.saveAccountToDB(acc)
+}
+}
+

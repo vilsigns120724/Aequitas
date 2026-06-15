@@ -28,16 +28,22 @@ Error   interface{} `json:"error,omitempty"`
 }
 
 type EVMRPCServer struct {
-dag   *BlockDAG
-state *ChainState
+dag    *BlockDAG
+state  *ChainState
 nonces map[string]uint64
+evm    *EVMEngine
 }
 
 func NewEVMRPCServer(dag *BlockDAG, state *ChainState) *EVMRPCServer {
+engine, err := NewEVMEngine(state)
+if err != nil {
+fmt.Printf("[EVM] Warning: could not init EVM engine: %v\n", err)
+}
 return &EVMRPCServer{
 dag:    dag,
 state:  state,
 nonces: make(map[string]uint64),
+evm:    engine,
 }
 }
 
@@ -193,11 +199,25 @@ fmt.Printf("[RPC] ✓ Transfer %.2f AEQ: %s → %s\n", valueFloat, senderAddr, t
 }
 
 // Handle contract deployment or contract call (data present)
-if len(tx.Data()) > 0 {
-// Store contract deployment / call — accept and record
-// For now: accept all contract interactions
-// Contract state is tracked off-chain via events
-fmt.Printf("[RPC] ✓ Contract tx accepted: %s\n", txHash)
+if len(tx.Data()) > 0 && e.evm != nil {
+if tx.To() == nil {
+// Contract deployment
+contractAddr, _, err := e.evm.DeployContract(sender, tx.Data(), tx.Value())
+if err != nil {
+fmt.Printf("[RPC] ✗ Deploy failed: %v\n", err)
+} else {
+fmt.Printf("[RPC] ✓ Contract deployed: %s\n", contractAddr.Hex())
+txHash = "0x" + contractAddr.Hex()[2:]
+}
+} else {
+// Contract call
+result, err := e.evm.CallContract(sender, *tx.To(), tx.Data(), tx.Value())
+if err != nil {
+fmt.Printf("[RPC] ✗ Contract call failed: %v\n", err)
+} else {
+fmt.Printf("[RPC] ✓ Contract call result: %x\n", result)
+}
+}
 }
 
 // Update nonce
