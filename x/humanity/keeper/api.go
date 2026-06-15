@@ -87,8 +87,8 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "uptime":       uptime,
 "block_time":   6,
 "contract_v5":  "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5",
-		"contract_v6":  "0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78",
-		"bio_verifier": "0x5bEAAB193a92930fA08c917d6053C66aC6350396",
+		"contract_v6":  "0xf7e5d871E88929322381c9B1Eb278a96346784E6",
+		"bio_verifier": "0x6877D77441F8506e25D959B8973D9912D6b108b7",
 "index":        a.state.CalcAequitasIndex(),
 "gini":         a.state.CalcGini(),
 "growth":       growth,
@@ -609,7 +609,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
     <div class="idx-card" style="margin-bottom:14px">
       <div class="idx-title">Why V6? The Evolution of Fair Money</div>
       <div class="story-text">
-        <p>AequitasV6 is the first version of the protocol to run entirely on the Aequitas Chain — a sovereign blockchain built from scratch in Go, with a real EVM execution engine powered by go-ethereum. Previous versions ran on Ethereum Sepolia testnet. V6 is deployed at <span style="color:var(--blue)">0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78</span> on Chain ID 9001.</p>
+        <p>AequitasV6 is the first version of the protocol to run entirely on the Aequitas Chain — a sovereign blockchain built from scratch in Go, with a real EVM execution engine powered by go-ethereum. Previous versions ran on Ethereum Sepolia testnet. V6 is deployed at <span style="color:var(--blue)">0xf7e5d871E88929322381c9B1Eb278a96346784E6</span> on Chain ID 9001.</p>
         <p>V6 introduces five new mechanisms that make Aequitas the most sophisticated fair monetary system ever designed: Proof of Alive, the Guardian System, Demurrage, an always-active Wealth Cap, and UBI from protocol economics — not taxation.</p>
       </div>
     </div>
@@ -734,8 +734,8 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
         <div class="highlight-box">
           Chain: Aequitas Chain (Chain ID: 9001)<br>
           RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>
-          BioVerifier (Groth16):  0x5bEAAB193a92930fA08c917d6053C66aC6350396<br>
-          AequitasV6 (Main):      0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78<br><br>
+          BioVerifier (Groth16):  0x6877D77441F8506e25D959B8973D9912D6b108b7<br>
+          AequitasV6 (Main):      0xf7e5d871E88929322381c9B1Eb278a96346784E6<br><br>
           V5 (Sepolia legacy):    0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5
         </div>
       </div>
