@@ -65,6 +65,7 @@ return
 }
 
 bodyBytes, _ := io.ReadAll(r.Body)
+fmt.Printf("[RPC] Incoming request: %d bytes\n", len(bodyBytes))
 trimmed := strings.TrimSpace(string(bodyBytes))
 
 if len(trimmed) > 0 && trimmed[0] == '[' {
