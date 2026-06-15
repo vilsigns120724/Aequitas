@@ -260,6 +260,9 @@ header{background:linear-gradient(180deg,#080F1E 0%,#050A14 100%);border-bottom:
 .metric-box{background:#080F1E;border-radius:8px;padding:12px;text-align:center}
 .metric-val{font-size:1.3rem;font-weight:bold;color:var(--gold)}
 .metric-label{font-size:0.58rem;color:var(--muted);margin-top:3px}
+.lang-btn{background:#080F1E;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:5px 12px;cursor:pointer;font-family:monospace;font-size:0.68rem;letter-spacing:1px;transition:all 0.2s}
+.lang-btn:hover{color:var(--text);border-color:var(--blue)}
+.lang-btn.active{background:var(--blue);color:#050A14;border-color:var(--blue)}
 .net-wrap{padding:24px 32px 32px}
 .net-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:16px}
 .net-title{font-size:0.65rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:16px}
@@ -492,32 +495,44 @@ header{background:linear-gradient(180deg,#080F1E 0%,#050A14 100%);border-bottom:
 
 <!-- INDEX TAB -->
 <div id="tab-index" class="tab-content">
+  <div style="padding:24px 32px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div class="hero-label" style="margin-bottom:0">Economic Analysis</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap" id="lang-btns">
+      <button onclick="setLang(` + "`" + `en` + "`" + `)" class="lang-btn active" id="lb-en">EN</button>
+      <button onclick="setLang(` + "`" + `de` + "`" + `)" class="lang-btn" id="lb-de">DE</button>
+      <button onclick="setLang(` + "`" + `es` + "`" + `)" class="lang-btn" id="lb-es">ES</button>
+      <button onclick="setLang(` + "`" + `ru` + "`" + `)" class="lang-btn" id="lb-ru">RU</button>
+      <button onclick="setLang(` + "`" + `zh` + "`" + `)" class="lang-btn" id="lb-zh">ZH</button>
+      <button onclick="setLang(` + "`" + `id` + "`" + `)" class="lang-btn" id="lb-id">ID</button>
+    </div>
+  </div>
   <div class="index-wrap">
+
     <div class="index-card" style="grid-column:1/-1">
       <div class="index-title">Aequitas Index — Economic Equality Score</div>
-      <div class="index-desc">The Aequitas Index measures economic equality on the chain on a scale from 0 (perfect equality) to 100 (maximum inequality). It combines the Gini coefficient with network growth metrics. The protocol automatically activates redistribution mechanisms when inequality exceeds certain thresholds — through wealth caps, inflation adjustments, and pool transfers.</div>
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:32px;align-items:center">
+      <div class="index-desc" id="txt-index-desc">The Aequitas Index measures economic equality on a scale from 0 (perfect equality) to 100 (maximum inequality). It combines the Gini coefficient with network growth metrics. The protocol automatically activates redistribution mechanisms when inequality exceeds thresholds.</div>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:32px;align-items:center;margin-top:16px">
         <div>
           <div class="index-big" id="idx-score">—</div>
-          <div class="index-label">Current Index</div>
+          <div class="index-label" id="txt-current-index">Current Index</div>
         </div>
         <div>
           <div class="bar-bg"><div class="bar-fill" id="idx-bar" style="width:0%"></div></div>
-          <div class="bar-labels"><span>0 — Perfect Equality</span><span>50 — Moderate</span><span>100 — Max Inequality</span></div>
+          <div class="bar-labels"><span id="txt-bar-0">0 — Perfect Equality</span><span>50</span><span id="txt-bar-100">100 — Max Inequality</span></div>
           <div style="margin-top:12px;font-size:0.7rem;color:var(--muted);background:#080F1E;padding:10px;border-radius:6px" id="idx-phase-desc">Loading...</div>
         </div>
       </div>
       <div class="metrics-row">
-        <div class="metric-box"><div class="metric-val" id="idx-gini">—</div><div class="metric-label">Gini Coefficient</div></div>
-        <div class="metric-box"><div class="metric-val" id="idx-supply2">—</div><div class="metric-label">Total Supply</div></div>
-        <div class="metric-box"><div class="metric-val" id="idx-phase">—</div><div class="metric-label">Protocol Phase</div></div>
-        <div class="metric-box"><div class="metric-val" id="idx-humans2">—</div><div class="metric-label">Verified Humans</div></div>
+        <div class="metric-box"><div class="metric-val" id="idx-gini">—</div><div class="metric-label" id="txt-gini-label">Gini Coefficient</div></div>
+        <div class="metric-box"><div class="metric-val" id="idx-supply2">—</div><div class="metric-label" id="txt-supply-label">Total Supply</div></div>
+        <div class="metric-box"><div class="metric-val" id="idx-phase">—</div><div class="metric-label" id="txt-phase-label">Protocol Phase</div></div>
+        <div class="metric-box"><div class="metric-val" id="idx-humans2">—</div><div class="metric-label" id="txt-humans-label">Verified Humans</div></div>
       </div>
     </div>
 
     <div class="index-card">
-      <div class="index-title">Redistribution Pools</div>
-      <div class="index-desc">When inequality thresholds are exceeded, AEQ flows into these pools automatically.</div>
+      <div class="index-title" id="txt-pools-title">Redistribution Pools</div>
+      <div class="index-desc" id="txt-pools-desc">When inequality thresholds are exceeded, AEQ flows into these pools automatically.</div>
       <div class="metrics-row">
         <div class="metric-box"><div class="metric-val" id="pool-v">—</div><div class="metric-label">Velocity Pool</div></div>
         <div class="metric-box"><div class="metric-val" id="pool-l">—</div><div class="metric-label">Liquidity Pool</div></div>
@@ -527,33 +542,42 @@ header{background:linear-gradient(180deg,#080F1E 0%,#050A14 100%);border-bottom:
     </div>
 
     <div class="index-card">
-      <div class="index-title">Protocol Phases</div>
-      <div class="index-desc">The Aequitas protocol evolves through phases as the network grows.</div>
+      <div class="index-title" id="txt-phases-title">Protocol Phases</div>
+      <div class="index-desc" id="txt-phases-desc">The Aequitas protocol evolves through phases as the network grows.</div>
       <table class="spec-table">
-        <tr><td>Phase 0</td><td style="color:var(--green)">Bootstrap — Building the network</td></tr>
-        <tr><td>Phase 1</td><td style="color:var(--blue)">Growth — Expanding human registry</td></tr>
-        <tr><td>Phase 2</td><td style="color:var(--gold)">Stability — Redistribution active</td></tr>
-        <tr><td>Phase 3</td><td style="color:var(--purple)">Maturity — Full decentralization</td></tr>
+        <tr><td>Phase 0</td><td style="color:var(--green)" id="txt-phase0">Bootstrap — Building the network</td></tr>
+        <tr><td>Phase 1</td><td style="color:var(--blue)" id="txt-phase1">Growth — Expanding human registry</td></tr>
+        <tr><td>Phase 2</td><td style="color:var(--gold)" id="txt-phase2">Stability — Redistribution active</td></tr>
+        <tr><td>Phase 3</td><td style="color:var(--purple)" id="txt-phase3">Maturity — Full decentralization</td></tr>
       </table>
     </div>
-  </div>
-</div>
-
 
     <div class="index-card" style="grid-column:1/-1">
-      <div class="index-title">The Gini Coefficient — Measuring Inequality</div>
-      <div class="index-desc">The Gini coefficient is the most widely used measure of economic inequality. It ranges from 0 (perfect equality) to 1 (maximum inequality). Aequitas uses it as a core metric to evaluate the health of the monetary system and trigger redistribution mechanisms automatically.</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px">
-        <div class="metric-box" style="border:1px solid #1A4A2A"><div class="metric-val" style="color:var(--green)">0.00</div><div class="metric-label">Perfect Equality</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px">Every person has identical wealth</div></div>
-        <div class="metric-box" style="border:1px solid #1A2D45"><div class="metric-val" style="color:var(--blue)">0.27</div><div class="metric-label">Low Inequality</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px">Scandinavia average</div></div>
-        <div class="metric-box" style="border:1px solid #3A2800"><div class="metric-val" style="color:var(--gold)">0.41</div><div class="metric-label">Moderate</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px">USA average</div></div>
-        <div class="metric-box" style="border:1px solid #4A1A1A"><div class="metric-val" style="color:var(--red)">0.63</div><div class="metric-label">High Inequality</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px">South Africa</div></div>
+      <div class="index-title" id="txt-inflation-title">Inflation & Redistribution Mechanism</div>
+      <div class="index-desc" id="txt-inflation-main" style="font-size:0.73rem;line-height:2">
+        <p style="margin-bottom:14px"><span style="color:var(--gold)">Aequitas uses a dynamic inflation model</span> that is fundamentally different from traditional cryptocurrencies. Instead of a fixed supply cap (like Bitcoin) or uncontrolled inflation (like fiat currencies), Aequitas ties its supply directly to humanity.</p>
+        <p style="margin-bottom:14px"><strong style="color:var(--blue)">Base Inflation:</strong> Every new verified human registration creates exactly 1,000 AEQ. This is the only form of "inflation" in Phase 0 and Phase 1. The supply grows only when humanity grows — never arbitrarily.</p>
+        <p style="margin-bottom:14px"><strong style="color:var(--gold)">Wealth Cap:</strong> When a single wallet exceeds a dynamically calculated wealth cap (based on total supply and number of humans), excess AEQ is automatically redistributed to the four pools: Velocity (transaction incentives), Liquidity (market stability), Unity (new registrations), and Treasury (protocol development).</p>
+        <p style="margin-bottom:14px"><strong style="color:var(--purple)">Dynamic Redistribution:</strong> In Phase 2 and beyond, the protocol runs automatic cycles (via the Keeper Bot) that analyze on-chain wealth distribution using the Gini coefficient. If the Gini exceeds 0.35, redistribution mechanisms activate. The higher the inequality, the more aggressive the redistribution.</p>
+        <p style="margin-bottom:14px"><strong style="color:var(--green)">Velocity Incentives:</strong> The Velocity Pool rewards active economic participation. Wallets that transact regularly receive small AEQ bonuses, encouraging money to flow through the economy rather than being hoarded. This directly combats the concentration of wealth.</p>
+        <p><strong style="color:var(--teal)">Mathematical Governance:</strong> All these mechanisms are encoded in the smart contract. No human can override them. No central bank, no government, no founder. The rules are public, auditable, and immutable. Mathematics, not politics, governs the Aequitas money supply.</p>
       </div>
     </div>
 
     <div class="index-card" style="grid-column:1/-1">
-      <div class="index-title">The Story of Aequitas</div>
-      <div class="index-desc" style="font-size:0.73rem;line-height:2">
+      <div class="index-title" id="txt-gini-title">The Gini Coefficient — Measuring Inequality</div>
+      <div class="index-desc" id="txt-gini-desc">The Gini coefficient is the most widely used measure of economic inequality. It ranges from 0 (perfect equality — everyone has the same) to 1 (one person owns everything). Aequitas continuously monitors this metric and uses it to trigger automatic redistribution.</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px">
+        <div class="metric-box" style="border:1px solid #1A4A2A"><div class="metric-val" style="color:var(--green)">0.00</div><div class="metric-label" id="txt-g0">Perfect Equality</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px" id="txt-g0-sub">Everyone has identical wealth</div></div>
+        <div class="metric-box" style="border:1px solid #1A2D45"><div class="metric-val" style="color:var(--blue)">0.27</div><div class="metric-label" id="txt-g1">Low Inequality</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px" id="txt-g1-sub">Scandinavia average</div></div>
+        <div class="metric-box" style="border:1px solid #3A2800"><div class="metric-val" style="color:var(--gold)">0.41</div><div class="metric-label" id="txt-g2">Moderate</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px" id="txt-g2-sub">USA average</div></div>
+        <div class="metric-box" style="border:1px solid #4A1A1A"><div class="metric-val" style="color:var(--red)">0.63</div><div class="metric-label" id="txt-g3">High Inequality</div><div style="font-size:0.6rem;color:var(--muted);margin-top:4px" id="txt-g3-sub">South Africa</div></div>
+      </div>
+    </div>
+
+    <div class="index-card" style="grid-column:1/-1">
+      <div class="index-title" id="txt-story-title">The Story of Aequitas</div>
+      <div id="txt-story" class="index-desc" style="font-size:0.73rem;line-height:2">
         <p style="margin-bottom:14px">The global financial system was not designed for equality. Today, the richest 1% own more wealth than the bottom 50% of humanity combined. Traditional cryptocurrencies like Bitcoin replicated this problem — early adopters accumulated vast wealth while latecomers were priced out.</p>
         <p style="margin-bottom:14px"><span style="color:var(--gold)">Aequitas</span> — Latin for "fairness" and "equality" — was founded on a single principle: <em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p>
         <p style="margin-bottom:14px">Every verified human receives exactly 1,000 AEQ. No more, no less. The total supply always equals verified humans x 1,000. When a new human registers, 1,000 new AEQ are created. The money supply grows with humanity itself.</p>
@@ -562,6 +586,8 @@ header{background:linear-gradient(180deg,#080F1E 0%,#050A14 100%);border-bottom:
       </div>
     </div>
 
+  </div>
+</div>
 <!-- NETWORK TAB -->
 <div id="tab-network" class="tab-content">
   <div class="net-wrap">
@@ -828,6 +854,192 @@ async function register(){
     log('🎉 '+d.message+' | TX: '+d.tx_hash,'ok');
     setTimeout(()=>{window.location.href='/registered?success=true&wallet='+walletAddr},1500);
   }catch(e){log('✗ '+e.message,'err');document.getElementById('btn-register').disabled=false}
+}
+
+
+const LANGS = {
+en: {
+  'txt-index-desc': 'The Aequitas Index measures economic equality on a scale from 0 (perfect equality) to 100 (maximum inequality). It combines the Gini coefficient with network growth metrics. The protocol automatically activates redistribution mechanisms when inequality exceeds thresholds.',
+  'txt-current-index': 'Current Index',
+  'txt-bar-0': '0 — Perfect Equality',
+  'txt-bar-100': '100 — Max Inequality',
+  'txt-gini-label': 'Gini Coefficient',
+  'txt-supply-label': 'Total Supply',
+  'txt-phase-label': 'Protocol Phase',
+  'txt-humans-label': 'Verified Humans',
+  'txt-pools-title': 'Redistribution Pools',
+  'txt-pools-desc': 'When inequality thresholds are exceeded, AEQ flows into these pools automatically.',
+  'txt-phases-title': 'Protocol Phases',
+  'txt-phases-desc': 'The Aequitas protocol evolves through phases as the network grows.',
+  'txt-phase0': 'Bootstrap — Building the network',
+  'txt-phase1': 'Growth — Expanding human registry',
+  'txt-phase2': 'Stability — Redistribution active',
+  'txt-phase3': 'Maturity — Full decentralization',
+  'txt-inflation-title': 'Inflation & Redistribution Mechanism',
+  'txt-gini-title': 'The Gini Coefficient — Measuring Inequality',
+  'txt-gini-desc': 'The Gini coefficient is the most widely used measure of economic inequality. It ranges from 0 (perfect equality) to 1 (one person owns everything). Aequitas continuously monitors this metric and uses it to trigger automatic redistribution.',
+  'txt-g0': 'Perfect Equality', 'txt-g0-sub': 'Everyone has identical wealth',
+  'txt-g1': 'Low Inequality', 'txt-g1-sub': 'Scandinavia average',
+  'txt-g2': 'Moderate', 'txt-g2-sub': 'USA average',
+  'txt-g3': 'High Inequality', 'txt-g3-sub': 'South Africa',
+  'txt-story-title': 'The Story of Aequitas',
+  'txt-story': '<p style="margin-bottom:14px">The global financial system was not designed for equality. Today, the richest 1% own more wealth than the bottom 50% of humanity combined. Traditional cryptocurrencies like Bitcoin replicated this problem — early adopters accumulated vast wealth while latecomers were priced out.</p><p style="margin-bottom:14px"><span style="color:var(--gold)">Aequitas</span> — Latin for "fairness" and "equality" — was founded on a single principle: <em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p><p style="margin-bottom:14px">Every verified human receives exactly 1,000 AEQ. The total supply always equals verified humans x 1,000. The money supply grows with humanity itself.</p><p style="margin-bottom:14px">The verification system uses <span style="color:var(--blue)">Groth16 Zero-Knowledge Proofs</span> — your fingerprint never leaves your device. One person, one wallet, forever.</p><p>The <span style="color:var(--purple)">Aequitas Index</span> continuously monitors economic equality. Mathematics, not politics, governs the money supply.</p>'
+},
+de: {
+  'txt-index-desc': 'Der Aequitas-Index misst wirtschaftliche Gleichheit auf einer Skala von 0 (vollkommene Gleichheit) bis 100 (maximale Ungleichheit). Er kombiniert den Gini-Koeffizienten mit Netzwerkwachstumsmetriken. Das Protokoll aktiviert automatisch Umverteilungsmechanismen wenn Schwellenwerte überschritten werden.',
+  'txt-current-index': 'Aktueller Index',
+  'txt-bar-0': '0 — Vollkommene Gleichheit',
+  'txt-bar-100': '100 — Maximale Ungleichheit',
+  'txt-gini-label': 'Gini-Koeffizient',
+  'txt-supply-label': 'Gesamtmenge',
+  'txt-phase-label': 'Protokollphase',
+  'txt-humans-label': 'Verifizierte Menschen',
+  'txt-pools-title': 'Umverteilungspools',
+  'txt-pools-desc': 'Wenn Ungleichheitsschwellenwerte überschritten werden, fließt AEQ automatisch in diese Pools.',
+  'txt-phases-title': 'Protokollphasen',
+  'txt-phases-desc': 'Das Aequitas-Protokoll entwickelt sich durch Phasen wenn das Netzwerk wächst.',
+  'txt-phase0': 'Bootstrap — Netzwerk aufbauen',
+  'txt-phase1': 'Wachstum — Menschenregister erweitern',
+  'txt-phase2': 'Stabilität — Umverteilung aktiv',
+  'txt-phase3': 'Reife — Vollständige Dezentralisierung',
+  'txt-inflation-title': 'Inflation & Umverteilungsmechanismus',
+  'txt-gini-title': 'Der Gini-Koeffizient — Ungleichheit messen',
+  'txt-gini-desc': 'Der Gini-Koeffizient ist das am häufigsten verwendete Maß für wirtschaftliche Ungleichheit. Er reicht von 0 (vollkommene Gleichheit) bis 1 (eine Person besitzt alles). Aequitas überwacht diese Kennzahl kontinuierlich und verwendet sie um automatische Umverteilung auszulösen.',
+  'txt-g0': 'Vollkommene Gleichheit', 'txt-g0-sub': 'Alle haben gleiches Vermögen',
+  'txt-g1': 'Geringe Ungleichheit', 'txt-g1-sub': 'Skandinavien-Durchschnitt',
+  'txt-g2': 'Moderat', 'txt-g2-sub': 'USA-Durchschnitt',
+  'txt-g3': 'Hohe Ungleichheit', 'txt-g3-sub': 'Südafrika',
+  'txt-story-title': 'Die Geschichte von Aequitas',
+  'txt-story': '<p style="margin-bottom:14px">Das globale Finanzsystem wurde nicht für Gleichheit entworfen. Heute besitzt das reichste 1% mehr Vermögen als die ärmsten 50% der Menschheit zusammen. Traditionelle Kryptowährungen wie Bitcoin haben dieses Problem repliziert.</p><p style="margin-bottom:14px"><span style="color:var(--gold)">Aequitas</span> — Lateinisch für "Fairness" und "Gleichheit" — wurde auf einem einzigen Prinzip gegründet: <em style="color:var(--gold)">"Geld existiert weil Menschen existieren. Nichts mehr, nichts weniger."</em></p><p style="margin-bottom:14px">Jeder verifizierte Mensch erhält genau 1.000 AEQ. Die Gesamtmenge entspricht immer verifizierten Menschen x 1.000. Das Geldangebot wächst mit der Menschheit selbst.</p><p style="margin-bottom:14px">Das Verifizierungssystem verwendet <span style="color:var(--blue)">Groth16 Zero-Knowledge-Beweise</span> — Ihr Fingerabdruck verlässt niemals Ihr Gerät. Eine Person, eine Wallet, für immer.</p><p>Der <span style="color:var(--purple)">Aequitas-Index</span> überwacht kontinuierlich die wirtschaftliche Gleichheit. Mathematik, nicht Politik, regiert das Geldangebot.</p>'
+},
+es: {
+  'txt-index-desc': 'El Índice Aequitas mide la igualdad económica en una escala del 0 (igualdad perfecta) al 100 (desigualdad máxima). Combina el coeficiente Gini con métricas de crecimiento de la red. El protocolo activa automáticamente mecanismos de redistribución cuando se superan los umbrales.',
+  'txt-current-index': 'Índice Actual',
+  'txt-bar-0': '0 — Igualdad Perfecta',
+  'txt-bar-100': '100 — Máx. Desigualdad',
+  'txt-gini-label': 'Coeficiente Gini',
+  'txt-supply-label': 'Suministro Total',
+  'txt-phase-label': 'Fase del Protocolo',
+  'txt-humans-label': 'Humanos Verificados',
+  'txt-pools-title': 'Pools de Redistribución',
+  'txt-pools-desc': 'Cuando se superan los umbrales de desigualdad, AEQ fluye automáticamente hacia estos pools.',
+  'txt-phases-title': 'Fases del Protocolo',
+  'txt-phases-desc': 'El protocolo Aequitas evoluciona a través de fases a medida que crece la red.',
+  'txt-phase0': 'Bootstrap — Construyendo la red',
+  'txt-phase1': 'Crecimiento — Expandiendo el registro',
+  'txt-phase2': 'Estabilidad — Redistribución activa',
+  'txt-phase3': 'Madurez — Descentralización completa',
+  'txt-inflation-title': 'Mecanismo de Inflación y Redistribución',
+  'txt-gini-title': 'El Coeficiente Gini — Midiendo la Desigualdad',
+  'txt-gini-desc': 'El coeficiente Gini es la medida más utilizada de desigualdad económica. Va de 0 (igualdad perfecta) a 1 (una persona lo posee todo). Aequitas monitorea continuamente esta métrica para activar redistribución automática.',
+  'txt-g0': 'Igualdad Perfecta', 'txt-g0-sub': 'Todos tienen riqueza idéntica',
+  'txt-g1': 'Baja Desigualdad', 'txt-g1-sub': 'Promedio Escandinavia',
+  'txt-g2': 'Moderado', 'txt-g2-sub': 'Promedio EE.UU.',
+  'txt-g3': 'Alta Desigualdad', 'txt-g3-sub': 'Sudáfrica',
+  'txt-story-title': 'La Historia de Aequitas',
+  'txt-story': '<p style="margin-bottom:14px">El sistema financiero global no fue diseñado para la igualdad. Hoy, el 1% más rico posee más riqueza que el 50% más pobre de la humanidad combinado.</p><p style="margin-bottom:14px"><span style="color:var(--gold)">Aequitas</span> — Latín para "justicia" e "igualdad" — se fundó en un principio: <em style="color:var(--gold)">"El dinero existe porque las personas existen. Nada más, nada menos."</em></p><p style="margin-bottom:14px">Cada humano verificado recibe exactamente 1.000 AEQ. El suministro total siempre equivale a humanos verificados x 1.000.</p><p>El <span style="color:var(--purple)">Índice Aequitas</span> monitorea continuamente la igualdad económica. Las matemáticas, no la política, gobiernan el suministro monetario.</p>'
+},
+ru: {
+  'txt-index-desc': 'Индекс Aequitas измеряет экономическое равенство по шкале от 0 (полное равенство) до 100 (максимальное неравенство). Он сочетает коэффициент Джини с показателями роста сети. Протокол автоматически активирует механизмы перераспределения при превышении пороговых значений.',
+  'txt-current-index': 'Текущий Индекс',
+  'txt-bar-0': '0 — Полное Равенство',
+  'txt-bar-100': '100 — Макс. Неравенство',
+  'txt-gini-label': 'Коэффициент Джини',
+  'txt-supply-label': 'Общее Предложение',
+  'txt-phase-label': 'Фаза Протокола',
+  'txt-humans-label': 'Верифиц. Людей',
+  'txt-pools-title': 'Пулы Перераспределения',
+  'txt-pools-desc': 'Когда пороги неравенства превышены, AEQ автоматически поступает в эти пулы.',
+  'txt-phases-title': 'Фазы Протокола',
+  'txt-phases-desc': 'Протокол Aequitas развивается через фазы по мере роста сети.',
+  'txt-phase0': 'Загрузка — Построение сети',
+  'txt-phase1': 'Рост — Расширение реестра',
+  'txt-phase2': 'Стабильность — Перераспределение активно',
+  'txt-phase3': 'Зрелость — Полная децентрализация',
+  'txt-inflation-title': 'Механизм Инфляции и Перераспределения',
+  'txt-gini-title': 'Коэффициент Джини — Измерение Неравенства',
+  'txt-gini-desc': 'Коэффициент Джини — наиболее широко используемая мера экономического неравенства. Он варьируется от 0 (полное равенство) до 1 (один человек владеет всем). Aequitas непрерывно отслеживает этот показатель для автоматического перераспределения.',
+  'txt-g0': 'Полное Равенство', 'txt-g0-sub': 'У всех одинаковое богатство',
+  'txt-g1': 'Низкое Неравенство', 'txt-g1-sub': 'Средн. Скандинавия',
+  'txt-g2': 'Умеренное', 'txt-g2-sub': 'Средн. США',
+  'txt-g3': 'Высокое Неравенство', 'txt-g3-sub': 'Южная Африка',
+  'txt-story-title': 'История Aequitas',
+  'txt-story': '<p style="margin-bottom:14px">Глобальная финансовая система не была создана для равенства. Сегодня богатейший 1% владеет большим состоянием, чем беднейшие 50% человечества вместе взятые.</p><p style="margin-bottom:14px"><span style="color:var(--gold)">Aequitas</span> — латинское слово "справедливость" и "равенство" — основан на принципе: <em style="color:var(--gold)">"Деньги существуют потому что существуют люди. Ничего больше, ничего меньше."</em></p><p style="margin-bottom:14px">Каждый верифицированный человек получает ровно 1 000 AEQ. Общее предложение всегда равно верифицированным людям x 1 000.</p><p>Математика, а не политика, управляет денежным предложением Aequitas.</p>'
+},
+zh: {
+  'txt-index-desc': 'Aequitas指数在0（完全平等）到100（最大不平等）的范围内衡量经济平等。它将基尼系数与网络增长指标相结合。当不平等超过阈值时，协议自动激活再分配机制。',
+  'txt-current-index': '当前指数',
+  'txt-bar-0': '0 — 完全平等',
+  'txt-bar-100': '100 — 最大不平等',
+  'txt-gini-label': '基尼系数',
+  'txt-supply-label': '总供应量',
+  'txt-phase-label': '协议阶段',
+  'txt-humans-label': '已验证人类',
+  'txt-pools-title': '再分配池',
+  'txt-pools-desc': '当不平等阈值被超过时，AEQ会自动流入这些池。',
+  'txt-phases-title': '协议阶段',
+  'txt-phases-desc': '随着网络的增长，Aequitas协议通过各个阶段演进。',
+  'txt-phase0': '引导期 — 建立网络',
+  'txt-phase1': '增长期 — 扩展人类注册',
+  'txt-phase2': '稳定期 — 再分配激活',
+  'txt-phase3': '成熟期 — 完全去中心化',
+  'txt-inflation-title': '通胀与再分配机制',
+  'txt-gini-title': '基尼系数 — 衡量不平等',
+  'txt-gini-desc': '基尼系数是最广泛使用的经济不平等衡量标准。从0（完全平等）到1（一人拥有一切）。Aequitas持续监控此指标以触发自动再分配。',
+  'txt-g0': '完全平等', 'txt-g0-sub': '每个人财富相同',
+  'txt-g1': '低不平等', 'txt-g1-sub': '斯堪的纳维亚平均',
+  'txt-g2': '中等', 'txt-g2-sub': '美国平均',
+  'txt-g3': '高不平等', 'txt-g3-sub': '南非',
+  'txt-story-title': 'Aequitas的故事',
+  'txt-story': '<p style="margin-bottom:14px">全球金融体系并非为平等而设计。今天，最富有的1%拥有的财富超过最贫穷的50%人类的总和。</p><p style="margin-bottom:14px"><span style="color:var(--gold)">Aequitas</span>——拉丁语"公平"和"平等"——建立在一个原则上：<em style="color:var(--gold)">"货币存在是因为人类存在。仅此而已。"</em></p><p style="margin-bottom:14px">每个经过验证的人类获得恰好1,000 AEQ。总供应量始终等于已验证人类 x 1,000。</p><p>数学而非政治治理着Aequitas的货币供应。</p>'
+},
+id: {
+  'txt-index-desc': 'Indeks Aequitas mengukur kesetaraan ekonomi pada skala 0 (kesetaraan sempurna) hingga 100 (ketidaksetaraan maksimum). Ini menggabungkan koefisien Gini dengan metrik pertumbuhan jaringan. Protokol secara otomatis mengaktifkan mekanisme redistribusi ketika ambang batas terlampaui.',
+  'txt-current-index': 'Indeks Saat Ini',
+  'txt-bar-0': '0 — Kesetaraan Sempurna',
+  'txt-bar-100': '100 — Ketidaksetaraan Maks.',
+  'txt-gini-label': 'Koefisien Gini',
+  'txt-supply-label': 'Total Pasokan',
+  'txt-phase-label': 'Fase Protokol',
+  'txt-humans-label': 'Manusia Terverifikasi',
+  'txt-pools-title': 'Pool Redistribusi',
+  'txt-pools-desc': 'Ketika ambang ketidaksetaraan terlampaui, AEQ mengalir ke pool ini secara otomatis.',
+  'txt-phases-title': 'Fase Protokol',
+  'txt-phases-desc': 'Protokol Aequitas berkembang melalui fase seiring pertumbuhan jaringan.',
+  'txt-phase0': 'Bootstrap — Membangun jaringan',
+  'txt-phase1': 'Pertumbuhan — Memperluas registri',
+  'txt-phase2': 'Stabilitas — Redistribusi aktif',
+  'txt-phase3': 'Kedewasaan — Desentralisasi penuh',
+  'txt-inflation-title': 'Mekanisme Inflasi & Redistribusi',
+  'txt-gini-title': 'Koefisien Gini — Mengukur Ketidaksetaraan',
+  'txt-gini-desc': 'Koefisien Gini adalah ukuran ketidaksetaraan ekonomi yang paling banyak digunakan. Berkisar dari 0 (kesetaraan sempurna) hingga 1 (satu orang memiliki segalanya). Aequitas terus memantau metrik ini untuk memicu redistribusi otomatis.',
+  'txt-g0': 'Kesetaraan Sempurna', 'txt-g0-sub': 'Semua memiliki kekayaan sama',
+  'txt-g1': 'Ketidaksetaraan Rendah', 'txt-g1-sub': 'Rata-rata Skandinavia',
+  'txt-g2': 'Moderat', 'txt-g2-sub': 'Rata-rata AS',
+  'txt-g3': 'Ketidaksetaraan Tinggi', 'txt-g3-sub': 'Afrika Selatan',
+  'txt-story-title': 'Kisah Aequitas',
+  'txt-story': '<p style="margin-bottom:14px">Sistem keuangan global tidak dirancang untuk kesetaraan. Hari ini, 1% terkaya memiliki lebih banyak kekayaan dari 50% terbawah umat manusia.</p><p style="margin-bottom:14px"><span style="color:var(--gold)">Aequitas</span> — bahasa Latin untuk "keadilan" dan "kesetaraan" — didirikan pada prinsip: <em style="color:var(--gold)">"Uang ada karena manusia ada. Tidak lebih, tidak kurang."</em></p><p style="margin-bottom:14px">Setiap manusia yang terverifikasi menerima tepat 1.000 AEQ. Total pasokan selalu sama dengan manusia terverifikasi x 1.000.</p><p>Matematika, bukan politik, mengatur pasokan uang Aequitas.</p>'
+}
+};
+
+let currentLang = 'en';
+
+function setLang(lang) {
+  currentLang = lang;
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('lb-' + lang).classList.add('active');
+  const t = LANGS[lang];
+  if (!t) return;
+  Object.keys(t).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      if (id === 'txt-story' || id === 'txt-inflation-main') {
+        el.innerHTML = t[id];
+      } else {
+        el.textContent = t[id];
+      }
+    }
+  });
 }
 
 checkProofParams();
