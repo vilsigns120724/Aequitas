@@ -188,7 +188,7 @@ balanceAEQ, _ := new(big.Float).Quo(
 new(big.Float).SetInt(balanceWei),
 decimals,
 ).Float64()
-if balanceAEQ != acc.Balance {
+if balanceAEQ > 0 && balanceAEQ != acc.Balance {
 e.chainState.SetBalance(acc.Address, balanceAEQ)
 }
 }
