@@ -156,6 +156,23 @@ fmt.Fprint(w, `<!DOCTYPE html>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#050A14;--card:#0D1421;--card2:#111E2E;--border:#1A2D45;--green:#00E676;--blue:#4FC3F7;--gold:#FFB300;--purple:#CE93D8;--red:#EF5350;--text:#E8F4FD;--muted:#6B8CAE;--teal:#4DD0E1}
 body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;min-height:100vh;overflow-x:hidden}
+@media(max-width:480px){
+.stats-grid{grid-template-columns:repeat(2,1fr)!important}
+.main-grid{grid-template-columns:1fr!important;padding:0 12px 12px!important}
+.humans-section{grid-template-columns:1fr!important;padding:12px!important}
+.index-section{grid-template-columns:1fr!important;padding:12px!important}
+.net-section{grid-template-columns:1fr!important;padding:12px!important}
+.reg-section{padding:12px!important}
+.reg-steps{grid-template-columns:repeat(2,1fr)!important}
+.logo-text{font-size:0.9rem!important;letter-spacing:2px!important}
+.tabs{padding:0 8px!important}
+.tab{padding:10px 10px!important;font-size:0.6rem!important}
+.stat-val{font-size:1.4rem!important}
+.hero{padding:12px 12px 0!important}
+.info-banner{grid-template-columns:1fr!important}
+header{padding:0 12px!important}
+.right-col{display:none}
+}
 header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;height:60px;gap:12px}
 .logo-wrap{display:flex;align-items:center;gap:12px;flex-shrink:0}
 .logo-icon{width:32px;height:32px;background:var(--gold);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px}
@@ -329,16 +346,16 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
 </header>
 
 <div class="tabs">
-  <div class="tab active" onclick="showTab('explorer',this)" data-i18n-tab="tab-explorer">🔍 Explorer</div>
+  <div class="tab active" onclick="showTab('register',this)" data-i18n-tab="tab-register">🔐 Register</div>
+  <div class="tab" onclick="showTab('explorer',this)" data-i18n-tab="tab-explorer">🔍 Explorer</div>
   <div class="tab" onclick="showTab('humans',this)" data-i18n-tab="tab-humans">👥 Humans</div>
   <div class="tab" onclick="showTab('index',this)" data-i18n-tab="tab-index">📊 Index</div>
   <div class="tab" onclick="showTab('network',this)" data-i18n-tab="tab-network">🌐 Network</div>
-  <div class="tab" onclick="showTab('register',this)" data-i18n-tab="tab-register">🔐 Register</div>
   <div class="tab" onclick="showTab('protocol',this)">📜 Protocol V6</div>
 </div>
 
 <!-- EXPLORER -->
-<div id="tab-explorer" class="tab-content active">
+<div id="tab-explorer" class="tab-content">
   <div class="hero">
     <div class="section-label" data-i18n="live-stats">Live Chain Statistics</div>
     <div class="stats-grid">
@@ -381,7 +398,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
       <div class="info-card">
         <div class="ic-title" data-i18n="network-info">Network Info</div>
         <div class="ic-row"><span class="ic-key" data-i18n="chain-name">Chain Name</span><span class="ic-val gold">Aequitas Chain</span></div>
-        <div class="ic-row"><span class="ic-key">Chain ID</span><span class="ic-val blue">9001</span></div>
+        <div class="ic-row"><span class="ic-key">Chain ID: 73571</span></div>
         <div class="ic-row"><span class="ic-key" data-i18n="symbol">Symbol</span><span class="ic-val gold">AEQ</span></div>
         <div class="ic-row"><span class="ic-key" data-i18n="block-time">Block Time</span><span class="ic-val">6 seconds</span></div>
         <div class="ic-row"><span class="ic-key" data-i18n="consensus">Consensus</span><span class="ic-val purple">BlockDAG + PoH</span></div>
@@ -393,7 +410,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
         <div class="mm-title" data-i18n="add-metamask">🦊 ADD TO METAMASK</div>
         <div class="mm-row"><span class="mm-key" data-i18n="network-name">Network Name</span><span class="mm-val">Aequitas Chain</span></div>
         <div class="mm-row"><span class="mm-key">RPC URL</span><span class="mm-val" style="font-size:0.52rem">...9fba.up.railway.app/rpc</span></div>
-        <div class="mm-row"><span class="mm-key">Chain ID</span><span class="mm-val">9001</span></div>
+        <div class="mm-row"><span class="mm-key">Chain ID: 73571</span></div>
         <div class="mm-row"><span class="mm-key" data-i18n="symbol">Symbol</span><span class="mm-val">AEQ</span></div>
         <div class="mm-row"><span class="mm-key" data-i18n="decimals">Decimals</span><span class="mm-val">18</span></div>
         <button class="mm-btn" onclick="addToMetaMask()" data-i18n="add-network">+ ADD AEQUITAS NETWORK</button>
@@ -569,7 +586,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
     <div class="net-card">
       <div class="net-title" data-i18n="tech-specs">Technical Specifications</div>
       <table class="spec-table">
-        <tr><td data-i18n="chain-id">Chain ID</td><td style="color:var(--blue)">9001 (0x2329)</td></tr>
+        <tr><td data-i18n="chain-id">Chain ID: 73571 (0x2329)</td></tr>
         <tr><td>EVM</td><td style="color:var(--green)" data-i18n="evm-yes">Yes — JSON-RPC at /rpc · MetaMask compatible</td></tr>
         <tr><td data-i18n="block-time">Block Time</td><td>~6 seconds average</td></tr>
         <tr><td data-i18n="consensus">Consensus</td><td style="color:var(--purple)">BlockDAG + Proof of Humanity</td></tr>
@@ -587,7 +604,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
       <table class="spec-table">
         <tr><td data-i18n="network-name">Network Name</td><td style="color:var(--gold)">Aequitas Chain</td></tr>
         <tr><td>RPC URL</td><td style="color:var(--blue);font-size:0.58rem">https://aequitas-production-9fba.up.railway.app/rpc</td></tr>
-        <tr><td>Chain ID</td><td style="color:var(--blue)">9001</td></tr>
+        <tr><td>Chain ID: 73571</td></tr>
         <tr><td data-i18n="symbol">Currency Symbol</td><td style="color:var(--gold)">AEQ</td></tr>
         <tr><td data-i18n="decimals">Decimals</td><td>18</td></tr>
       </table>
@@ -609,7 +626,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
     <div class="idx-card" style="margin-bottom:14px">
       <div class="idx-title">Why V6? The Evolution of Fair Money</div>
       <div class="story-text">
-        <p>AequitasV6 is the first version of the protocol to run entirely on the Aequitas Chain — a sovereign blockchain built from scratch in Go, with a real EVM execution engine powered by go-ethereum. Previous versions ran on Ethereum Sepolia testnet. V6 is deployed at <span style="color:var(--blue)">0x371C577B1e2c49A07123B32F556bCcdf79317A0C</span> on Chain ID 9001.</p>
+        <p>AequitasV6 is the first version of the protocol to run entirely on the Aequitas Chain — a sovereign blockchain built from scratch in Go, with a real EVM execution engine powered by go-ethereum. Previous versions ran on Ethereum Sepolia testnet. V6 is deployed at <span style="color:var(--blue)">0x371C577B1e2c49A07123B32F556bCcdf79317A0C</span> on Chain ID: 73571.</p>
         <p>V6 introduces five new mechanisms that make Aequitas the most sophisticated fair monetary system ever designed: Proof of Alive, the Guardian System, Demurrage, an always-active Wealth Cap, and UBI from protocol economics — not taxation.</p>
       </div>
     </div>
@@ -732,7 +749,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
       <div class="idx-title">7. CONTRACT ADDRESSES</div>
       <div class="story-text">
         <div class="highlight-box">
-          Chain: Aequitas Chain (Chain ID: 9001)<br>
+          Chain: Aequitas Chain (Chain ID: 73571)<br>
           RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>
           BioVerifier (Groth16):  0xF326aaF74Ae4C10F627A19981aB29bcf43b65379<br>
           AequitasV6 (Main):      0x371C577B1e2c49A07123B32F556bCcdf79317A0C<br><br>
@@ -745,7 +762,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
 </div>
 
 <!-- REGISTER -->
-<div id="tab-register" class="tab-content">
+<div id="tab-register" class="tab-content active">
   <div class="reg-section">
     <div class="reg-hero">
       <div class="reg-hero-title" data-i18n="reg-title">🔐 Register as a Verified Human</div>
@@ -781,7 +798,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
     <div class="priv-bar" data-i18n="priv-bar">🔒 Hardware Secure Element · Groth16 ZKP · Biometric data never leaves device · No personal data collected · No gas fees · Permanent Sybil protection · Immutable on-chain record</div>
     <div class="reg-card">
       <div class="wallet-box" id="wallet-box"><div class="wallet-lbl" data-i18n="connected-wallet">CONNECTED WALLET</div><div class="wallet-addr" id="wallet-addr">—</div></div>
-      <div class="proof-box" id="proof-box"><div class="proof-lbl" data-i18n="proof-detected">⚡ PROOF PARAMETERS DETECTED FROM APP</div><div class="proof-val" id="proof-val">—</div></div>
+      <div class="proof-box" id="proof-box"><div class="proof-lbl">⚡ ZK PROOF RECEIVED FROM APP</div><div class="proof-val" id="proof-val">Connect wallet to register</div></div>
       <button class="reg-btn btn-connect" id="btn-connect" onclick="connectWallet()" data-i18n="connect-btn">🦊 CONNECT METAMASK</button>
       <button class="reg-btn btn-register" id="btn-register" onclick="register()" disabled data-i18n="register-btn">🔐 REGISTER ON-CHAIN</button>
       <div class="reg-log" id="reg-status"><span class="info" data-i18n="reg-hint">// Open Aequitas Android App to generate your proof, then return here to complete registration...</span></div>
@@ -789,7 +806,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
     <div class="info-card">
       <div class="ic-title" data-i18n="reg-details">Registration Details</div>
       <div class="ic-row"><span class="ic-key" data-i18n="network">Network</span><span class="ic-val purple">Aequitas Chain (BlockDAG)</span></div>
-      <div class="ic-row"><span class="ic-key">Chain ID</span><span class="ic-val gold">9001</span></div>
+      <div class="ic-row"><span class="ic-key">Chain ID: 73571</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="grant">Grant Amount</span><span class="ic-val gold">1,000 AEQ</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="reg-fee">Gas Fee</span><span class="ic-val green" data-i18n="free">FREE (gasless)</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="reg-limit">Registrations</span><span class="ic-val" data-i18n="reg-limit-val">Once per human · permanent · immutable</span></div>

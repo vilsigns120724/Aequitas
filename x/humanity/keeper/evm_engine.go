@@ -59,7 +59,7 @@ func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *
 	_ = addr; _ = ret; _ = err
 shanghai := uint64(0)
 chainConfig := &params.ChainConfig{
-	ChainID: big.NewInt(9001),
+	ChainID: big.NewInt(73571),
 	HomesteadBlock: big.NewInt(0),
 	EIP150Block: big.NewInt(0),
 	EIP155Block: big.NewInt(0),
@@ -126,7 +126,7 @@ func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *bi
 	}()
 shanghai2 := uint64(0)
 chainConfig2 := &params.ChainConfig{
-	ChainID: big.NewInt(9001),
+	ChainID: big.NewInt(73571),
 	HomesteadBlock: big.NewInt(0),
 	EIP150Block: big.NewInt(0),
 	EIP155Block: big.NewInt(0),

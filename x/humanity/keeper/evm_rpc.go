@@ -110,10 +110,10 @@ height = latest.Height
 
 switch method {
 case "eth_chainId":
-return "0x2329", nil // 9001
+return "0x11F83", nil // 9001
 
 case "net_version":
-return "9001", nil
+return "73571", nil
 
 case "eth_blockNumber":
 return "0x" + fmt.Sprintf("%x", height), nil
@@ -131,9 +131,7 @@ aeqWei := new(big.Int).Mul(big.NewInt(int64(balance)), decimals)
 return "0x" + fmt.Sprintf("%x", aeqWei), nil
 }
 }
-// Return high balance so MetaMask passes local gas check
-// Actual balance enforcement happens at transfer time
-return "0x56BC75E2D630FFFFF", nil // ~100 ETH equivalent
+return "0x0", nil
 
 case "eth_gasPrice":
 return "0x0", nil // Gasless chain
@@ -171,11 +169,11 @@ return nil, fmt.Errorf("invalid transaction: %v", err)
 }
 
 // Get sender
-signer := types.LatestSignerForChainID(big.NewInt(9001))
+signer := types.LatestSignerForChainID(big.NewInt(73571))
 sender, err := types.Sender(signer, tx)
 if err != nil {
 // Try legacy signer
-signer = types.NewEIP155Signer(big.NewInt(9001))
+signer = types.NewEIP155Signer(big.NewInt(73571))
 sender, err = types.Sender(signer, tx)
 if err != nil {
 return nil, fmt.Errorf("cannot recover sender: %v", err)
