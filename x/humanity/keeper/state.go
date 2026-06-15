@@ -136,9 +136,14 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) {
 if !cs.useDB {
 return
 }
-cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human) VALUES ($1, $2, $3)
+_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human) VALUES ($1, $2, $3)
 ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3`,
 acc.Address, acc.Balance, acc.IsHuman)
+if err != nil {
+fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
+} else {
+fmt.Printf("[DB] Saved account %s | balance=%.2f | is_human=%v\n", acc.Address, acc.Balance, acc.IsHuman)
+}
 }
 
 func (cs *ChainState) GetBalance(address string) float64 {
