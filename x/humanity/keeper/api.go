@@ -14,7 +14,7 @@ blockchain    *BlockDAG
 p2pNode       *P2PNode
 keeper        *Keeper
 startTime     time.Time
-sepoliaStatus map[string]interface{}
+proofServerStatus map[string]interface{}
 	state         *ChainState
 }
 
@@ -24,14 +24,14 @@ blockchain:    bc,
 p2pNode:       p2p,
 keeper:        k,
 startTime:     time.Now(),
-sepoliaStatus: map[string]interface{}{},
+proofServerStatus: map[string]interface{}{},
 		state:         state,
 }
-go s.syncSepoliaStatus()
+go s.syncProofServerStatus()
 return s
 }
 
-func (a *APIServer) syncSepoliaStatus() {
+func (a *APIServer) syncProofServerStatus() {
 for {
 resp, err := http.Get("https://aequitas-proof-server-production.up.railway.app/health")
 if err == nil {
@@ -39,7 +39,7 @@ body, _ := io.ReadAll(resp.Body)
 resp.Body.Close()
 var data map[string]interface{}
 if json.Unmarshal(body, &data) == nil {
-a.sepoliaStatus = data
+a.proofServerStatus = data
 }
 }
 time.Sleep(30 * time.Second)
@@ -87,6 +87,8 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "uptime":       uptime,
 "block_time":   6,
 "contract_v5":  "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5",
+		"contract_v6":  "0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78",
+		"bio_verifier": "0x5bEAAB193a92930fA08c917d6053C66aC6350396",
 "index":        a.state.CalcAequitasIndex(),
 "gini":         a.state.CalcGini(),
 "growth":       growth,
@@ -332,6 +334,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
   <div class="tab" onclick="showTab('index',this)" data-i18n-tab="tab-index">📊 Index</div>
   <div class="tab" onclick="showTab('network',this)" data-i18n-tab="tab-network">🌐 Network</div>
   <div class="tab" onclick="showTab('register',this)" data-i18n-tab="tab-register">🔐 Register</div>
+  <div class="tab" onclick="showTab('protocol',this)">📜 Protocol V6</div>
 </div>
 
 <!-- EXPLORER -->
@@ -594,6 +597,150 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 24px;p
       <div class="net-title" data-i18n="architecture-title">System Architecture Overview</div>
       <div style="font-size:0.67rem;color:var(--muted);line-height:1.9" data-i18n="architecture-desc">The Aequitas system consists of four main components working together. The Android App handles biometric scanning and proof generation entirely on-device — no sensitive data ever leaves the phone. The Proof Server (Node.js on Railway) receives the biometric hash, generates the Groth16 ZK proof, stores the hash in PostgreSQL to prevent double registration, and returns the proof. The Blockchain Nodes (Go on Railway + Render) maintain the BlockDAG, process registration transactions, manage account balances, and expose the EVM-compatible RPC endpoint. PostgreSQL (Railway managed database) stores persistent state — account balances, biometric hashes, and registered wallets — ensuring data survives node restarts and is shared across all nodes. The entire stack is open source and auditable.</div>
     </div>
+  </div>
+</div>
+
+
+<!-- PROTOCOL V6 -->
+<div id="tab-protocol" class="tab-content">
+  <div style="padding:20px 24px 24px;max-width:860px;margin:0 auto">
+    <div class="section-label">Aequitas V6 Protocol — Complete Technical Documentation</div>
+
+    <div class="idx-card" style="margin-bottom:14px">
+      <div class="idx-title">Why V6? The Evolution of Fair Money</div>
+      <div class="story-text">
+        <p>AequitasV6 is the first version of the protocol to run entirely on the Aequitas Chain — a sovereign blockchain built from scratch in Go, with a real EVM execution engine powered by go-ethereum. Previous versions ran on Ethereum Sepolia testnet. V6 is deployed at <span style="color:var(--blue)">0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78</span> on Chain ID 9001.</p>
+        <p>V6 introduces five new mechanisms that make Aequitas the most sophisticated fair monetary system ever designed: Proof of Alive, the Guardian System, Demurrage, an always-active Wealth Cap, and UBI from protocol economics — not taxation.</p>
+      </div>
+    </div>
+
+    <div class="idx-card" style="margin-bottom:14px">
+      <div class="idx-title">1. PROOF OF ALIVE — Keeping the Money Supply Real</div>
+      <div class="story-text">
+        <p>Proof of Alive solves one of the most fundamental problems in cryptocurrency: what happens to money when people die or disappear? In Bitcoin, an estimated 3-4 million BTC are permanently lost because people died or lost their keys. This money is gone forever — it can never circulate, never benefit anyone.</p>
+        <p>In Aequitas, money represents people. If a person disappears from the network, their AEQ should eventually return to the community — not disappear forever.</p>
+        <div class="highlight-box">
+          THE PROCESS (designed to be generous, not punitive):<br>
+          Year 0-2: Normal usage expected<br>
+          Year 2: Warning 1 sent on-chain — Guardian can respond<br>
+          Year 2 + 60 days: Warning 2 sent — Guardian can respond<br>
+          Year 2 + 120 days: Warning 3 sent — Guardian can respond<br>
+          Year 2 + 180 days: AEQ moved to PERSONAL ESCROW (NOT UBI Pool yet)<br>
+          Year 4: If still no activity → AEQ enters UBI Pool → distributed equally
+        </div>
+        <p>Why Escrow first, not immediate UBI? Someone could be in a 3-year prison sentence. Their AEQ goes to Escrow in year 2, but they return in year 3. They get their Escrow back PLUS the current fairShare. They are not punished for being imprisoned.</p>
+        <p>REACTIVATION: Submit fresh biometric Proof of Alive → receive Escrow back (if still held) + current fairShare. The same biometric commitment stays blocked permanently — no double-dipping possible.</p>
+        <p>Why fairShare instead of original 1,000 AEQ on return? Because fair means equal — not historical. If 1 million people have registered and fairShare is 1,200 AEQ, the returning person gets 1,200 AEQ. This is more equitable than the original 1,000 AEQ from years ago.</p>
+      </div>
+    </div>
+
+    <div class="idx-card" style="margin-bottom:14px">
+      <div class="idx-title">2. GUARDIAN SYSTEM — Protection for the Vulnerable</div>
+      <div class="story-text">
+        <p>The Guardian System answers: What happens to someone's AEQ if they cannot access their device for months or years? Consider these real scenarios: a person imprisoned for 3 years, a person hospitalized in a coma, an elderly person who lost their phone, a person in a war zone without internet.</p>
+        <p>In Bitcoin, these people's funds would be frozen forever. In Aequitas, a trusted Guardian can confirm they are still alive on their behalf.</p>
+        <div class="highlight-box">
+          GUARDIAN RULES:<br>
+          • Every verified human can appoint 1 Guardian (another verified human)<br>
+          • Guardian can ONLY call confirmAlive() — zero transaction rights<br>
+          • Guardian CANNOT move funds, transfer AEQ, or change anything<br>
+          • Maximum 3 wards per Guardian<br>
+          • 7-day timelock on Guardian assignment (prevents forced assignment under duress)<br>
+          • After 3 consecutive Guardian confirmations without self-activity → community review flag raised<br>
+          • No circular relationships (A guards B → B cannot guard A)<br>
+          • Guardian cannot have their own Guardian — prevents layered control chains
+        </div>
+        <p>Example: Maria is imprisoned for 2 years. Before going to prison, she appointed her sister Ana as Guardian. Every year, Ana confirms on-chain that Maria is still alive. Maria's AEQ remains safe. When Maria is released, she confirms herself and the Guardian role ends automatically.</p>
+        <p>The 7-day timelock is critical in high-crime areas: if someone is forced at gunpoint to appoint a criminal as Guardian, they have 7 days to cancel the pending assignment. This window cannot be shortened by anyone.</p>
+      </div>
+    </div>
+
+    <div class="idx-card" style="margin-bottom:14px">
+      <div class="idx-title">3. DEMURRAGE — The Anti-Hoarding Mechanism</div>
+      <div class="story-text">
+        <p>Demurrage is one of the oldest ideas in monetary theory, first proposed by economist Silvio Gesell in 1916. Aequitas implements it in its purest digital form: a 1% annual fee on any balance ABOVE your fairShare.</p>
+        <div class="highlight-box">
+          EXAMPLE WITH NUMBERS:<br>
+          Total supply: 10,000 AEQ (10 humans × 1,000 AEQ each)<br>
+          fairShare: 1,000 AEQ per person<br>
+          Your balance: 3,000 AEQ<br>
+          Excess above fairShare: 2,000 AEQ<br>
+          Monthly demurrage: 2,000 × 1% ÷ 12 = 1.67 AEQ per month<br>
+          That 1.67 AEQ → UBI Pool → distributed equally to all 10 humans<br>
+          Your cost: 1.67 AEQ/month. Each other human gains: +0.17 AEQ/month
+        </div>
+        <p>What demurrage is NOT: it is not a wealth tax (only applies to excess above fairShare), not punitive (1% annual is extremely gentle), does not reduce total supply (money goes to UBI Pool, not deleted), and is not inflation (new money is only created when new humans register).</p>
+        <p>Historical proof: The town of Wörgl, Austria (1932) introduced demurrage currency during the Great Depression. Within one year, unemployment dropped 25% while the rest of Austria suffered. Money circulated 12x faster because people preferred to spend rather than hoard. The Central Bank shut it down — not because it failed, but because it worked too well.</p>
+      </div>
+    </div>
+
+    <div class="idx-card" style="margin-bottom:14px">
+      <div class="idx-title">4. WEALTH CAP — Mathematical Redistribution</div>
+      <div class="story-text">
+        <p>The Wealth Cap is a hard ceiling on how much AEQ any single human can hold. When a wallet exceeds the cap, the excess is INSTANTLY redistributed equally to ALL active humans — automatically, on every transfer.</p>
+        <div class="highlight-box">
+          PHASE-BASED CAP:<br>
+          Phase 0 (1-100 humans):   cap = 50x fairShare<br>
+          Phase 1 (101-1,000):      cap = 20x fairShare<br>
+          Phase 2 (1,001-10,000):   cap = 10x fairShare<br>
+          Phase 3 (10,001-100,000): cap =  5x fairShare<br>
+          Phase 4 (100,000+):       cap =  3x fairShare
+        </div>
+        <p>CRITICAL V6 DESIGN DECISION: The cap is ALWAYS active from human #1. Earlier versions had no cap in Phase 0 — this was wrong. The first 100 people could accumulate unlimited AEQ, creating a permanent oligarchy. V6 fixes this: cap starts at 50x fairShare from the very beginning and tightens as the network grows.</p>
+        <p>Example (Phase 4, 1M humans, fairShare = 1,000 AEQ): cap = 3,000 AEQ. The wealthiest possible human holds 3x what the newest human receives. For comparison: the top 1% of Bitcoin holders own over 90% of all Bitcoin. In Aequitas, mathematical law makes that impossible.</p>
+        <p>Why does the cap decrease as the network grows? In a small network, variance is acceptable for market discovery. In a large network with millions of humans, a 3x cap is already extremely egalitarian and sufficient for economic activity.</p>
+      </div>
+    </div>
+
+    <div class="idx-card" style="margin-bottom:14px">
+      <div class="idx-title">5. UNIVERSAL BASIC INCOME — From Protocol, Not Politics</div>
+      <div class="story-text">
+        <p>Aequitas implements UBI not as a political choice but as a mathematical consequence of the protocol's fairness mechanisms. It requires no taxation, no government, no political decision.</p>
+        <div class="highlight-box">
+          SOURCES OF THE UBI POOL:<br>
+          1. Transaction fees: 0.1% of every transfer → 20% to UBI Pool<br>
+          2. Wealth cap overflow → redistributed instantly and equally to all humans<br>
+          3. Demurrage: 1% annual on excess balances → UBI Pool<br>
+          4. Inactive wallet escrow: after 4 years of inactivity → UBI Pool<br><br>
+          DISTRIBUTION: Every month, UBI Pool ÷ total active humans = equal payment to everyone
+        </div>
+        <p>Example: 1,000 active humans. UBI Pool has 500 AEQ from fees and demurrage. Each human receives 0.5 AEQ. This happens automatically every month, forever, with no human intervention.</p>
+        <p>Why this is different from political UBI: Political UBI requires taxation, redistribution through government, and political decisions. Aequitas UBI comes from the protocol's own economic activity, is distributed equally to every verified human with no bureaucracy, happens automatically on-chain, and cannot be stopped or changed by any authority.</p>
+        <p>The big picture: As the network grows and more transactions happen, the UBI Pool grows. More humans → more economic activity → larger UBI → more incentive to join → more humans. This is a positive feedback loop where economic fairness drives adoption.</p>
+      </div>
+    </div>
+
+    <div class="idx-card" style="margin-bottom:14px">
+      <div class="idx-title">6. NO ALGORITHMIC INFLATION — Money Only From Humans</div>
+      <div class="story-text">
+        <p>V6 removes all algorithmic inflation from previous versions. The ONLY event that creates new AEQ is: a new verified human registers. One human = 1,000 AEQ. That is the complete and entire monetary policy.</p>
+        <p>Why this matters: Previous versions had algorithmic inflation (0-1.5% annual) based on velocity, activity, and Gini scores. These parameters could theoretically be manipulated. V6 makes manipulation impossible: no external parameters, no oracle, no governance vote can change the money supply. Only human beings registering their biometric identity creates new money.</p>
+        <div class="highlight-box">
+          TOTAL SUPPLY FORMULA (always true, always verifiable):<br>
+          Total AEQ = Verified Active Humans × 1,000<br><br>
+          When humans register: supply increases<br>
+          When humans become inactive (after 4 years): supply remains (escrow)<br>
+          When escrow releases to UBI: supply remains (just redistributed)<br>
+          Demurrage: supply remains (just redistributed)<br>
+          Wealth cap overflow: supply remains (just redistributed)<br>
+          NO OTHER MONEY CREATION IS POSSIBLE
+        </div>
+      </div>
+    </div>
+
+    <div class="idx-card" style="margin-bottom:14px">
+      <div class="idx-title">7. CONTRACT ADDRESSES</div>
+      <div class="story-text">
+        <div class="highlight-box">
+          Chain: Aequitas Chain (Chain ID: 9001)<br>
+          RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>
+          BioVerifier (Groth16):  0x5bEAAB193a92930fA08c917d6053C66aC6350396<br>
+          AequitasV6 (Main):      0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78<br><br>
+          V5 (Sepolia legacy):    0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
