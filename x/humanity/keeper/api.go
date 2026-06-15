@@ -1128,11 +1128,19 @@ function checkProofParams(){
   const proof=p.get('proof');
   const proofId=p.get('proofId');
   if(proofId){
-    fetch("https://aequitas-proof-server-production.up.railway.app/get/"+proofId).then(r=>r.json()).then(pd=>{proofParams=pd;document.getElementById("proof-box").style.display="block";document.getElementById("btn-register").disabled=!walletAddr;document.querySelectorAll(".tab")[4].click();}).catch(e=>console.error(e));
+    fetch("https://aequitas-proof-server-production.up.railway.app/get/"+proofId).then(r=>r.json()).then(pd=>{
+      proofParams=pd;
+      document.getElementById("proof-box").style.display="block";
+      document.querySelectorAll(".tab")[5].click();
+      setTimeout(()=>connectWallet(),500);
+    }).catch(e=>console.error(e));
   } else if(proof){
     try{
       proofParams=JSON.parse(decodeURIComponent(proof));
       document.getElementById('proof-box').style.display='block';
+      document.querySelectorAll('.tab')[5].click();
+      setTimeout(()=>connectWallet(),500);
+    }catch(e){}
   }
 }
 
