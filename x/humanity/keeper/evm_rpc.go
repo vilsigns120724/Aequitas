@@ -140,10 +140,10 @@ return "0x" + fmt.Sprintf("%x", aeqWei), nil
 return "0x0", nil
 
 case "eth_gasPrice":
-return "0x3B9ACA00", nil // 1 Gwei
+return "0x0", nil // Zero gas - gasless chain
 
 case "eth_estimateGas":
-return "0x5208", nil // 21000
+return "0x0", nil // Zero gas - gasless chain
 
 case "eth_getTransactionCount":
 return "0x0", nil
