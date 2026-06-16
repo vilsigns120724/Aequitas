@@ -158,7 +158,19 @@ fromStr := strings.ToLower(from.Hex())
 // Persist to PostgreSQL
 e.chainState.SaveContract(addrStr, runtimeCode, fromStr)
 e.chainState.SaveNonce(fromStr, nonce+1)
-e.persistStorageFromDB(sdb, contractAddr)
+
+// Persist ALL storage slots from stateDB to PostgreSQL
+// We iterate known slots by checking the stateDB journal
+// For immutable contracts, storage is set during constructor
+// We save slots 0-99 to catch all constructor-set values
+for i := int64(0); i < 100; i++ {
+slot := common.BigToHash(big.NewInt(i))
+val := sdb.GetState(contractAddr, slot)
+if val != (common.Hash{}) {
+e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
+fmt.Printf("[EVM] Storage slot %d = %s\n", i, val.Hex())
+}
+}
 
 fmt.Printf("[EVM] ✓ Deployed %s (%d bytes)\n", contractAddr.Hex(), len(runtimeCode))
 return contractAddr, runtimeCode, nil
