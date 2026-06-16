@@ -219,6 +219,7 @@ sdb.Commit(0, false)
 e.persistStorageFromDB(sdb, to)
 e.syncBalancesFromDB(sdb)
 
+fmt.Printf("[EVM] Call result: %d bytes: %x\n", len(ret), ret)
 return ret, nil
 }
 
