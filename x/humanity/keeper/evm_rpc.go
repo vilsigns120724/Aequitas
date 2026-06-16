@@ -310,8 +310,12 @@ return nil, &RPCError{Code: -32602, Message: "Invalid hex"}
 }
 
 tx := new(types.Transaction)
-if err := rlp.DecodeBytes(rawBytes, tx); err != nil {
-return nil, &RPCError{Code: -32602, Message: "Invalid transaction: " + err.Error()}
+// UnmarshalBinary handles all tx types: legacy (RLP), EIP-2930 (type 1), EIP-1559 (type 2)
+if err := tx.UnmarshalBinary(rawBytes); err != nil {
+// Fallback to RLP for legacy transactions
+if err2 := rlp.DecodeBytes(rawBytes, tx); err2 != nil {
+    return nil, &RPCError{Code: -32602, Message: "Invalid transaction: " + err.Error()}
+}
 }
 
 // Recover sender
