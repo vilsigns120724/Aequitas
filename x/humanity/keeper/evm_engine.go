@@ -127,6 +127,15 @@ return contractAddr, ret, nil
 }
 
 func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int) (ret []byte, err error) {
+// Always use a fresh stateDB snapshot for reads to avoid stale trie issues
+freshDB, err2 := NewPersistentStateDB(e.chainState)
+if err2 == nil && freshDB != nil {
+// Use fresh DB for this call only
+origDB := e.stateDB
+e.stateDB = freshDB
+defer func() { e.stateDB = origDB }()
+}
+
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("EVM panic recovered: %v", r)
