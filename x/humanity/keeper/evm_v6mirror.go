@@ -10,6 +10,7 @@ import (
 )
 
 const V6_CONTRACT_ADDR = "0xA76cA3bf34F2Ae5dFA0608696627e42b81180488"
+const V7_CONTRACT_ADDR = "0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78"
 
 // After each registerHuman TX on V6, mirror the state to PostgreSQL
 func (e *EVMEngine) MirrorV6Registration(wallet, commitment string) {

@@ -165,5 +165,7 @@ rows.Close()
 }
 }
 
+// Commit loaded state into trie so it persists across calls
+stateDB.Commit(0, false)
 return stateDB, nil
 }
