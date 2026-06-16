@@ -862,7 +862,14 @@ en:{
   'tech-title':'Technical Specifications','mm-config':'MetaMask Configuration',
   'proto-label':'Aequitas V6 Protocol — Technical Documentation',
   'ca-title':'V6 Contract Addresses','poa-title':'1. PROOF OF ALIVE','guard-title':'2. GUARDIAN SYSTEM',
-  'dem-title':'3. DEMURRAGE — Anti-Hoarding','cap-title':'4. WEALTH CAP','ubi-title':'5. UNIVERSAL BASIC INCOME','inf-title':'6. NO ALGORITHMIC INFLATION'
+  'dem-title':'3. DEMURRAGE — Anti-Hoarding','cap-title':'4. WEALTH CAP','ubi-title':'5. UNIVERSAL BASIC INCOME','inf-title':'6. NO ALGORITHMIC INFLATION',
+  'story-text':'<p>The year is 2009. Satoshi Nakamoto releases Bitcoin. For the first time, value can transfer between any two people without a bank. A genuine revolution. But something goes wrong almost immediately.</p><p>Early miners accumulate millions of coins at almost zero cost. By 2021, the top 1% of Bitcoin addresses control over 90% of all Bitcoin. Bitcoin's estimated Gini exceeds 0.85 — higher than any country on Earth. The cryptocurrency that was supposed to democratize finance created the most extreme wealth concentration in human history.</p><p><span style="color:var(--gold)">Aequitas</span> — Latin for "fairness" and "equality" — was created to answer: <em style="color:var(--gold)">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em></p><p>The answer: <strong style="color:var(--text)">Money exists because people exist. Therefore, every person should have an equal share of money simply by virtue of being human.</strong></p><p><em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em> This is not a slogan — it is the mathematical foundation of the entire system.</p>',
+  'poa-text':'<p>What happens to money when people die or disappear? In Bitcoin, millions of BTC are permanently lost. In Aequitas, money represents people — if someone disappears, their AEQ eventually returns to the community.</p><p>Why Escrow first? Someone imprisoned for 3 years gets their Escrow back when they return, PLUS the current fairShare. Not punished for being imprisoned.</p>',
+  'guard-text':'<p>What if someone cannot access their device for months? In Bitcoin, their funds are frozen forever. In Aequitas, a trusted Guardian can confirm they are still alive — without any transaction rights.</p>',
+  'dem-text':'<p>1% annual fee on any balance ABOVE your fairShare. The money goes to the UBI Pool, not deleted. Historical precedent: Wörgl, Austria (1932) — demurrage currency reduced unemployment 25% in one year. The Central Bank shut it down because it worked too well.</p>',
+  'cap-text':'<p>Hard ceiling on how much AEQ any single human can hold. Excess is instantly redistributed equally to ALL active humans. Always active from human #1. Bitcoin's top 1% controls 90%+ of supply. In Aequitas, mathematical law makes that impossible.</p>',
+  'ubi-text':'<p>UBI from protocol economics — not taxation. Requires no government, no political decision. As the network grows and more transactions happen, the UBI Pool grows. More humans → more economic activity → larger UBI → more incentive to join.</p>',
+  'inf-text':'<p>Previous versions had algorithmic inflation that could be manipulated. V6 makes manipulation impossible: only human biometric registration creates new money. No mining rewards, no staking rewards, no protocol emissions.</p>'
 },
 de:{
   'tab-register':'🔐 Registrieren','tab-explorer':'🔍 Explorer','tab-humans':'👥 Menschen','tab-index':'📊 Index','tab-network':'🌐 Netzwerk','tab-protocol':'📜 Protokoll V6',
@@ -906,7 +913,14 @@ de:{
   'tech-title':'Technische Spezifikationen','mm-config':'MetaMask-Konfiguration',
   'proto-label':'Aequitas V6 Protokoll — Technische Dokumentation',
   'ca-title':'V6 Contract-Adressen','poa-title':'1. LEBENSNACHWEIS','guard-title':'2. GUARDIAN-SYSTEM',
-  'dem-title':'3. DEMURRAGE — Anti-Hortung','cap-title':'4. VERMÖGENSOBERGRENZE','ubi-title':'5. UNIVERSELLES GRUNDEINKOMMEN','inf-title':'6. KEINE ALGORITHMISCHE INFLATION'
+  'dem-title':'3. DEMURRAGE — Anti-Hortung','cap-title':'4. VERMÖGENSOBERGRENZE','ubi-title':'5. UNIVERSELLES GRUNDEINKOMMEN','inf-title':'6. KEINE ALGORITHMISCHE INFLATION',
+  'story-text':'<p>Das Jahr ist 2009. Satoshi Nakamoto veröffentlicht Bitcoin. Zum ersten Mal können Werte zwischen zwei Menschen ohne Banken übertragen werden. Eine echte Revolution. Aber fast sofort geht etwas schief.</p><p>Frühe Miner häufen Millionen von Coins an die sie fast nichts kosten. Bis 2021 kontrolliert das oberste 1% der Bitcoin-Adressen über 90% aller Bitcoins. Der geschätzte Gini-Koeffizient von Bitcoin übersteigt 0,85 — höher als jedes Land auf der Erde.</p><p><span style="color:var(--gold)">Aequitas</span> — Lateinisch für "Fairness" und "Gleichheit" — wurde geschaffen um zu antworten: <em style="color:var(--gold)">"Wie würde eine Kryptowährung aussehen die von Grund auf fair für jeden Menschen konzipiert wurde?"</em></p><p>Die Antwort: <strong style="color:var(--text)">Geld existiert weil Menschen existieren. Daher sollte jeder Mensch einfach aufgrund seiner Menschlichkeit einen gleichen Anteil am Geld haben.</strong></p><p><em style="color:var(--gold)">"Geld existiert weil Menschen existieren. Nichts mehr, nichts weniger."</em></p>',
+  'poa-text':'<p>Was passiert mit Geld wenn Menschen sterben oder verschwinden? Bei Bitcoin sind Millionen BTC dauerhaft verloren. Bei Aequitas repräsentiert Geld Menschen — wenn jemand verschwindet kehrt sein AEQ schließlich zur Gemeinschaft zurück.</p><p>Warum zuerst Treuhand? Jemand der 3 Jahre inhaftiert war bekommt sein Treuhandguthaben zurück wenn er zurückkehrt — plus den aktuellen fairShare. Nicht für Inhaftierung bestraft.</p>',
+  'guard-text':'<p>Was wenn jemand monatelang nicht auf sein Gerät zugreifen kann? Bei Bitcoin wären seine Gelder für immer eingefroren. Bei Aequitas kann ein vertrauenswürdiger Guardian bestätigen dass sie noch am Leben sind — ohne Transaktionsrechte.</p>',
+  'dem-text':'<p>1% jährliche Gebühr auf jedes Guthaben ÜBER deinem fairShare. Das Geld geht in den UBI-Pool nicht verloren. Historisches Beispiel: Wörgl Österreich (1932) — Demurrage-Währung reduzierte die Arbeitslosigkeit in einem Jahr um 25%. Die Zentralbank stellte sie ein weil sie zu gut funktionierte.</p>',
+  'cap-text':'<p>Harte Obergrenze für AEQ das ein einzelner Mensch halten kann. Überschuss wird sofort gleichmäßig an ALLE aktiven Menschen verteilt. Immer aktiv ab Mensch #1. Bitcoins Top 1% kontrolliert über 90% des Angebots. Bei Aequitas macht das das mathematische Gesetz unmöglich.</p>',
+  'ubi-text':'<p>UBI aus Protokollökonomie — keine Besteuerung. Erfordert keine Regierung keine politische Entscheidung. Je mehr das Netzwerk wächst und mehr Transaktionen stattfinden desto größer wird der UBI-Pool.</p>',
+  'inf-text':'<p>Frühere Versionen hatten algorithmische Inflation die manipuliert werden konnte. V6 macht Manipulation unmöglich: nur biometrische Menschenregistrierung schafft neues Geld. Keine Mining-Belohnungen keine Staking-Belohnungen.</p>'
 },
 es:{
   'tab-register':'🔐 Registrar','tab-explorer':'🔍 Explorador','tab-humans':'👥 Humanos','tab-index':'📊 Índice','tab-network':'🌐 Red','tab-protocol':'📜 Protocolo V6',
@@ -949,7 +963,14 @@ es:{
   'tech-title':'Especificaciones Técnicas','mm-config':'Configuración MetaMask',
   'proto-label':'Protocolo Aequitas V6 — Documentación Técnica',
   'ca-title':'Direcciones de Contratos','poa-title':'1. PRUEBA DE VIDA','guard-title':'2. SISTEMA GUARDIAN',
-  'dem-title':'3. DEMURRAGE','cap-title':'4. LÍMITE DE RIQUEZA','ubi-title':'5. INGRESO BÁSICO UNIVERSAL','inf-title':'6. SIN INFLACIÓN ALGORÍTMICA'
+  'dem-title':'3. DEMURRAGE','cap-title':'4. LÍMITE DE RIQUEZA','ubi-title':'5. INGRESO BÁSICO UNIVERSAL','inf-title':'6. SIN INFLACIÓN ALGORÍTMICA',
+  'story-text':'<p>El año es 2009. Satoshi Nakamoto lanza Bitcoin. Por primera vez el valor puede transferirse sin bancos. Una revolución genuina. Pero casi de inmediato algo sale mal.</p><p>Los primeros mineros acumulan millones de monedas casi gratis. Para 2021 el 1% superior controla más del 90% de todo el Bitcoin. El Gini estimado de Bitcoin supera 0,85 — más alto que cualquier país en la Tierra.</p><p><span style="color:var(--gold)">Aequitas</span> fue creado para responder: <em style="color:var(--gold)">"¿Cómo sería una criptomoneda diseñada para ser justa con todo ser humano?"</em></p><p>La respuesta: <strong style="color:var(--text)">El dinero existe porque las personas existen. Por lo tanto cada persona debería tener una parte igual del dinero.</strong></p><p><em style="color:var(--gold)">"El dinero existe porque las personas existen. Nada más, nada menos."</em></p>',
+  'poa-text':'<p>¿Qué pasa con el dinero cuando las personas mueren o desaparecen? En Bitcoin millones de BTC están permanentemente perdidos. En Aequitas si alguien desaparece su AEQ eventualmente regresa a la comunidad.</p>',
+  'guard-text':'<p>¿Qué si alguien no puede acceder a su dispositivo por meses? En Aequitas un Guardian de confianza puede confirmar que aún están vivos — sin derechos de transacción.</p>',
+  'dem-text':'<p>1% de tarifa anual sobre cualquier saldo POR ENCIMA de tu fairShare. El dinero va al Pool UBI no se elimina. Precedente histórico: Wörgl Austria (1932) — la moneda demurrage redujo el desempleo 25% en un año.</p>',
+  'cap-text':'<p>Límite máximo sobre cuánto AEQ puede tener un solo humano. El exceso se redistribuye instantáneamente a TODOS los humanos activos. Siempre activo desde el humano #1.</p>',
+  'ubi-text':'<p>UBI de la economía del protocolo — no de impuestos. No requiere gobierno ni decisión política. A medida que la red crece el Pool UBI crece.</p>',
+  'inf-text':'<p>V6 hace imposible la manipulación: solo el registro biométrico humano crea nuevo dinero. Sin recompensas de minería sin recompensas de staking.</p>'
 },
 ru:{
   'tab-register':'🔐 Регистрация','tab-explorer':'🔍 Проводник','tab-humans':'👥 Люди','tab-index':'📊 Индекс','tab-network':'🌐 Сеть','tab-protocol':'📜 Протокол V6',
@@ -992,7 +1013,14 @@ ru:{
   'tech-title':'Технические Характеристики','mm-config':'Настройка MetaMask',
   'proto-label':'Протокол Aequitas V6 — Техническая Документация',
   'ca-title':'Адреса Контрактов V6','poa-title':'1. ДОКАЗАТЕЛЬСТВО ЖИЗНИ','guard-title':'2. СИСТЕМА GUARDIAN',
-  'dem-title':'3. ДЕМУРРЕДЖ','cap-title':'4. ОГРАНИЧЕНИЕ БОГАТСТВА','ubi-title':'5. БАЗОВЫЙ ДОХОД','inf-title':'6. БЕЗ АЛГОРИТМИЧЕСКОЙ ИНФЛЯЦИИ'
+  'dem-title':'3. ДЕМУРРЕДЖ','cap-title':'4. ОГРАНИЧЕНИЕ БОГАТСТВА','ubi-title':'5. БАЗОВЫЙ ДОХОД','inf-title':'6. БЕЗ АЛГОРИТМИЧЕСКОЙ ИНФЛЯЦИИ',
+  'story-text':'<p>2009 год. Сатоши Накамото выпускает Биткоин. Впервые ценность можно передавать без банков. Революция. Но почти сразу что-то идёт не так.</p><p>Ранние майнеры накапливают миллионы монет почти бесплатно. К 2021 году верхний 1% адресов контролирует более 90% всех Биткоинов. Оценочный Джини Биткоина превышает 0,85 — выше чем у любой страны на Земле.</p><p><span style="color:var(--gold)">Aequitas</span> был создан чтобы ответить: <em style="color:var(--gold)">"Как выглядела бы криптовалюта разработанная для справедливости к каждому человеку?"</em></p><p>Ответ: <strong style="color:var(--text)">Деньги существуют потому что существуют люди. Поэтому каждый человек должен иметь равную долю денег просто будучи человеком.</strong></p><p><em style="color:var(--gold)">"Деньги существуют потому что существуют люди. Ничего больше ничего меньше."</em></p>',
+  'poa-text':'<p>Что происходит с деньгами когда люди умирают или исчезают? В Биткоине миллионы BTC потеряны навсегда. В Aequitas если кто-то исчезает его AEQ в конечном итоге возвращается сообществу.</p>',
+  'guard-text':'<p>Что если кто-то не может получить доступ к своему устройству месяцами? В Aequitas доверенный Guardian может подтвердить что они живы — без прав транзакций.</p>',
+  'dem-text':'<p>1% годовых на любой баланс ВЫШЕ вашего fairShare. Деньги идут в Пул UBI не удаляются. Исторический прецедент: Вёргль Австрия (1932) — снизил безработицу на 25% за год.</p>',
+  'cap-text':'<p>Жёсткий потолок на количество AEQ которое может держать один человек. Избыток мгновенно распределяется поровну между ВСЕМИ активными людьми. Всегда активен с первого человека.</p>',
+  'ubi-text':'<p>Базовый доход из экономики протокола — не налогов. Не требует правительства политического решения. По мере роста сети растёт Пул UBI.</p>',
+  'inf-text':'<p>V6 делает манипуляцию невозможной: только биометрическая регистрация людей создаёт новые деньги. Никаких наград за майнинг никаких наград за стейкинг.</p>'
 },
 zh:{
   'tab-register':'🔐 注册','tab-explorer':'🔍 浏览器','tab-humans':'👥 人类','tab-index':'📊 指数','tab-network':'🌐 网络','tab-protocol':'📜 协议 V6',
@@ -1035,7 +1063,14 @@ zh:{
   'tech-title':'技术规格','mm-config':'MetaMask配置',
   'proto-label':'Aequitas V6协议 — 技术文档',
   'ca-title':'V6合约地址','poa-title':'1. 生命证明','guard-title':'2. 监护人系统',
-  'dem-title':'3. 滞留费','cap-title':'4. 财富上限','ubi-title':'5. 全民基本收入','inf-title':'6. 无算法通胀'
+  'dem-title':'3. 滞留费','cap-title':'4. 财富上限','ubi-title':'5. 全民基本收入','inf-title':'6. 无算法通胀',
+  'story-text':'<p>2009年。中本聪发布比特币。有史以来第一次无需银行即可传递价值。真正的革命。但几乎立即就出现了问题。</p><p>早期矿工以几乎为零的成本积累了数百万枚比特币。到2021年前1%控制了超过90%的所有比特币。比特币的估计基尼系数超过0.85——高于地球上任何国家。</p><p><span style="color:var(--gold)">Aequitas</span>被创建来回答：<em style="color:var(--gold)">"如果一种加密货币从第一原则出发设计对每个人都公平它会是什么样子？"</em></p><p>答案：<strong style="color:var(--text)">货币存在是因为人类存在。因此每个人仅凭其是人类这一事实就应该拥有等额的货币。</strong></p><p><em style="color:var(--gold)">"货币存在是因为人类存在。仅此而已不多也不少。"</em></p>',
+  'poa-text':'<p>当人们死亡或消失时金钱会发生什么？在比特币中数百万BTC永久丢失。在Aequitas中如果有人消失他们的AEQ最终会返回社区。</p>',
+  'guard-text':'<p>如果有人几个月无法访问其设备怎么办？在Aequitas中受信任的监护人可以确认他们仍然活着——没有任何交易权限。</p>',
+  'dem-text':'<p>超出fairShare部分的余额每年1%费用进入UBI池不会删除。历史先例：奥地利沃尔格尔（1932年）——一年内将失业率降低了25%。</p>',
+  'cap-text':'<p>单个人可以持有的AEQ硬上限。超出部分立即平均分配给所有活跃人类。从第一个人类起始终有效。</p>',
+  'ubi-text':'<p>来自协议经济的全民基本收入——不是税收。不需要政府不需要政治决策。随着网络增长UBI池增长。</p>',
+  'inf-text':'<p>V6使操纵变得不可能：只有人类生物特征注册才能创造新货币。没有挖矿奖励没有质押奖励。</p>'
 },
 id:{
   'tab-register':'🔐 Daftar','tab-explorer':'🔍 Penjelajah','tab-humans':'👥 Manusia','tab-index':'📊 Indeks','tab-network':'🌐 Jaringan','tab-protocol':'📜 Protokol V6',
@@ -1078,7 +1113,14 @@ id:{
   'tech-title':'Spesifikasi Teknis','mm-config':'Konfigurasi MetaMask',
   'proto-label':'Protokol Aequitas V6 — Dokumentasi Teknis',
   'ca-title':'Alamat Kontrak V6','poa-title':'1. BUKTI HIDUP','guard-title':'2. SISTEM GUARDIAN',
-  'dem-title':'3. DEMURRAGE','cap-title':'4. BATAS KEKAYAAN','ubi-title':'5. PENDAPATAN DASAR UNIVERSAL','inf-title':'6. TANPA INFLASI ALGORITMIK'
+  'dem-title':'3. DEMURRAGE','cap-title':'4. BATAS KEKAYAAN','ubi-title':'5. PENDAPATAN DASAR UNIVERSAL','inf-title':'6. TANPA INFLASI ALGORITMIK',
+  'story-text':'<p>Tahun 2009. Satoshi Nakamoto merilis Bitcoin. Untuk pertama kalinya nilai dapat ditransfer tanpa bank. Sebuah revolusi sejati. Tetapi sesuatu segera berjalan salah.</p><p>Penambang awal mengumpulkan jutaan koin dengan biaya hampir nol. Pada 2021 1% teratas mengendalikan lebih dari 90% semua Bitcoin. Gini estimasi Bitcoin melebihi 0,85 — lebih tinggi dari negara mana pun.</p><p><span style="color:var(--gold)">Aequitas</span> diciptakan untuk menjawab: <em style="color:var(--gold)">"Seperti apa cryptocurrency jika dirancang untuk adil bagi setiap manusia?"</em></p><p>Jawabannya: <strong style="color:var(--text)">Uang ada karena manusia ada. Oleh karena itu setiap orang harus memiliki bagian yang sama dari uang.</strong></p><p><em style="color:var(--gold)">"Uang ada karena manusia ada. Tidak lebih tidak kurang."</em></p>',
+  'poa-text':'<p>Apa yang terjadi dengan uang ketika orang meninggal atau menghilang? Di Bitcoin jutaan BTC hilang secara permanen. Di Aequitas jika seseorang menghilang AEQ mereka akhirnya kembali ke komunitas.</p>',
+  'guard-text':'<p>Bagaimana jika seseorang tidak dapat mengakses perangkatnya selama berbulan-bulan? Di Aequitas Guardian tepercaya dapat mengkonfirmasi bahwa mereka masih hidup — tanpa hak transaksi.</p>',
+  'dem-text':'<p>Biaya tahunan 1% atas saldo DI ATAS fairShare Anda. Uang masuk ke Pool UBI tidak dihapus. Preseden sejarah: Worgl Austria (1932) — mengurangi pengangguran 25% dalam satu tahun.</p>',
+  'cap-text':'<p>Batas keras berapa banyak AEQ yang dapat dipegang satu manusia. Kelebihan langsung didistribusikan secara merata ke SEMUA manusia aktif. Selalu aktif dari manusia #1.</p>',
+  'ubi-text':'<p>UBI dari ekonomi protokol — bukan pajak. Tidak memerlukan pemerintah keputusan politik. Seiring jaringan berkembang Pool UBI berkembang.</p>',
+  'inf-text':'<p>V6 membuat manipulasi tidak mungkin: hanya pendaftaran biometrik manusia yang menciptakan uang baru. Tanpa hadiah penambangan tanpa hadiah staking.</p>'
 }
 };
 
@@ -1168,6 +1210,12 @@ function setLang(lang) {
   const protoTitles = document.querySelectorAll('.proto-section .idx-title');
   const protoKeys = ['ca-title','poa-title','guard-title','dem-title','cap-title','ubi-title','inf-title'];
   protoTitles.forEach((el,i) => { if(protoKeys[i] && t[protoKeys[i]]) el.textContent=t[protoKeys[i]]; });
+  const protoStories = document.querySelectorAll('.proto-section .story-text');
+  const protoStoryKeys = ['poa-text','guard-text','dem-text','cap-text','ubi-text','inf-text'];
+  protoStories.forEach((el,i) => { if(protoStoryKeys[i] && t[protoStoryKeys[i]]) el.innerHTML=t[protoStoryKeys[i]]; });
+
+  // Index story text
+  if(t['story-text']) { const e=document.querySelector('#tab-index .story-text'); if(e) e.innerHTML=t['story-text']; }
 
   // Index tab - descriptions
   const idxDescs = document.querySelectorAll('.idx-desc');
