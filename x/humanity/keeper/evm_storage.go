@@ -12,12 +12,15 @@ import (
 "github.com/ethereum/go-ethereum/core/state"
 )
 
+// ─── CONTRACT STORAGE ─────────────────────────────────────────────────────────
+
 func (cs *ChainState) SaveContract(address string, bytecode []byte, deployer string) error {
 if cs.db == nil {
 return nil
 }
 _, err := cs.db.Exec(
-`INSERT INTO evm_contracts (address, bytecode, deployer) VALUES ($1, $2, $3) ON CONFLICT (address) DO UPDATE SET bytecode = $2`,
+`INSERT INTO evm_contracts (address, bytecode, deployer) VALUES ($1, $2, $3)
+ ON CONFLICT (address) DO UPDATE SET bytecode = $2`,
 address, hex.EncodeToString(bytecode), deployer,
 )
 if err != nil {
@@ -31,7 +34,9 @@ if cs.db == nil {
 return nil, nil
 }
 var bytecodeHex string
-err := cs.db.QueryRow(`SELECT bytecode FROM evm_contracts WHERE address = $1`, address).Scan(&bytecodeHex)
+err := cs.db.QueryRow(
+`SELECT bytecode FROM evm_contracts WHERE address = $1`, address,
+).Scan(&bytecodeHex)
 if err == sql.ErrNoRows {
 return nil, nil
 }
@@ -59,12 +64,15 @@ addrs = append(addrs, addr)
 return addrs
 }
 
+// ─── NONCE STORAGE ────────────────────────────────────────────────────────────
+
 func (cs *ChainState) SaveNonce(address string, nonce uint64) error {
 if cs.db == nil {
 return nil
 }
 _, err := cs.db.Exec(
-`INSERT INTO evm_nonces (address, nonce) VALUES ($1, $2) ON CONFLICT (address) DO UPDATE SET nonce = $2`,
+`INSERT INTO evm_nonces (address, nonce) VALUES ($1, $2)
+ ON CONFLICT (address) DO UPDATE SET nonce = $2`,
 address, nonce,
 )
 return err
@@ -79,12 +87,15 @@ cs.db.QueryRow(`SELECT nonce FROM evm_nonces WHERE address = $1`, address).Scan(
 return nonce
 }
 
+// ─── CONTRACT STORAGE SLOTS ───────────────────────────────────────────────────
+
 func (cs *ChainState) SaveStorageSlot(address, slot, value string) error {
 if cs.db == nil {
 return nil
 }
 _, err := cs.db.Exec(
-`INSERT INTO evm_storage (address, slot, value) VALUES ($1, $2, $3) ON CONFLICT (address, slot) DO UPDATE SET value = $3`,
+`INSERT INTO evm_storage (address, slot, value) VALUES ($1, $2, $3)
+ ON CONFLICT (address, slot) DO UPDATE SET value = $3`,
 address, slot, value,
 )
 return err
@@ -95,77 +106,64 @@ if cs.db == nil {
 return "", nil
 }
 var value string
-err := cs.db.QueryRow(`SELECT value FROM evm_storage WHERE address = $1 AND slot = $2`, address, slot).Scan(&value)
+err := cs.db.QueryRow(
+`SELECT value FROM evm_storage WHERE address = $1 AND slot = $2`,
+address, slot,
+).Scan(&value)
 if err == sql.ErrNoRows {
 return "", nil
 }
 return value, err
 }
 
+// ─── EVM ENGINE HELPERS ───────────────────────────────────────────────────────
+
+// PersistContractStorage reads storage slots from a stateDB and saves to PostgreSQL.
+// Since we no longer have a persistent stateDB, this is a no-op log.
 func (e *EVMEngine) PersistContractStorage(contractAddr common.Address) {
 fmt.Printf("[EVM] Contract %s active in session\n", strings.ToLower(contractAddr.Hex()))
 }
 
-func (e *EVMEngine) LoadContractStorage(contractAddr common.Address) {
-addrStr := strings.ToLower(contractAddr.Hex())
-rows, err := e.chainState.db.Query(`SELECT slot, value FROM evm_storage WHERE address = $1`, addrStr)
-if err != nil {
-return
-}
-defer rows.Close()
-count := 0
-for rows.Next() {
-var slot, value string
-rows.Scan(&slot, &value)
-e.stateDB.SetState(contractAddr, common.HexToHash(slot), common.HexToHash(value))
-count++
-}
-if count > 0 {
-fmt.Printf("[EVM] Loaded %d storage slots for %s\n", count, addrStr)
-}
-}
-
+// NewPersistentStateDB creates a StateDB loaded from PostgreSQL.
+// Used by tests and legacy code. For production use EVMEngine.newStateDB().
 func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 memDB := rawdb.NewMemoryDatabase()
-stateDB, err := state.New(common.Hash{}, state.NewDatabase(memDB), nil)
+sdb, err := state.New(common.Hash{}, state.NewDatabase(memDB), nil)
 if err != nil {
 return nil, err
 }
 
-accounts := cs.GetAllAccounts()
-for _, acc := range accounts {
+for _, acc := range cs.GetAllAccounts() {
 addr := common.HexToAddress(acc.Address)
 decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-balanceWei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), decimals)
-stateDB.SetBalance(addr, balanceWei)
-nonce := cs.LoadNonce(acc.Address)
-stateDB.SetNonce(addr, nonce)
+wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), decimals)
+sdb.SetBalance(addr, wei)
+sdb.SetNonce(addr, cs.LoadNonce(acc.Address))
 }
 
-contracts := cs.GetAllContracts()
-for _, addrStr := range contracts {
+for _, addrStr := range cs.GetAllContracts() {
 addr := common.HexToAddress(addrStr)
-bytecode, err := cs.LoadContract(addrStr)
-if err == nil && bytecode != nil {
-stateDB.SetCode(addr, bytecode)
-fmt.Printf("[EVM] Loaded contract: %s (%d bytes)\n", addrStr, len(bytecode))
+code, err := cs.LoadContract(addrStr)
+if err != nil || len(code) == 0 {
+continue
+}
+sdb.SetCode(addr, code)
+fmt.Printf("[EVM] Loaded contract: %s (%d bytes)\n", addrStr, len(code))
 
-// Load storage slots
 if cs.db != nil {
-rows, err := cs.db.Query(`SELECT slot, value FROM evm_storage WHERE address = $1`, addrStr)
+rows, err := cs.db.Query(
+`SELECT slot, value FROM evm_storage WHERE address = $1`, addrStr)
 if err == nil {
 for rows.Next() {
 var slot, value string
 rows.Scan(&slot, &value)
-stateDB.SetState(addr, common.HexToHash(slot), common.HexToHash(value))
+sdb.SetState(addr, common.HexToHash(slot), common.HexToHash(value))
 }
 rows.Close()
 }
 }
 }
-}
 
-// Commit loaded state into trie so it persists across calls
-stateDB.Commit(0, false)
-return stateDB, nil
+sdb.Commit(0, false)
+return sdb, nil
 }

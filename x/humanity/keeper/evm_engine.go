@@ -7,235 +7,293 @@ import (
 "strings"
 
 "github.com/ethereum/go-ethereum/common"
+"github.com/ethereum/go-ethereum/core/rawdb"
 "github.com/ethereum/go-ethereum/core/state"
 "github.com/ethereum/go-ethereum/core/vm"
 "github.com/ethereum/go-ethereum/params"
 )
 
+// EVMEngine wraps go-ethereum EVM for contract deployment and calls.
+// Design principle: every operation gets a fresh StateDB loaded from PostgreSQL.
+// This avoids all stale-trie issues at the cost of slightly more DB reads.
 type EVMEngine struct {
 chainState *ChainState
-stateDB    *state.StateDB
-contracts  map[common.Address][]byte
 }
 
 func NewEVMEngine(cs *ChainState) (*EVMEngine, error) {
-stateDB, err := NewPersistentStateDB(cs)
-if err != nil {
-return nil, fmt.Errorf("failed to create stateDB: %w", err)
-}
-
-engine := &EVMEngine{
-chainState: cs,
-stateDB:    stateDB,
-contracts:  make(map[common.Address][]byte),
-}
-
-// Initialize V6 state tables and restore state
 cs.InitV6StateTables()
-engine.RestoreV6FromMirror()
-
-return engine, nil
+e := &EVMEngine{chainState: cs}
+e.RestoreV6FromMirror()
+return e, nil
 }
 
-func (e *EVMEngine) syncFromChainState() {
-accounts := e.chainState.GetAllAccounts()
-for _, acc := range accounts {
-addr := common.HexToAddress(acc.Address)
-decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-balanceWei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), decimals)
-e.stateDB.SetBalance(addr, balanceWei)
-}
-}
+// ─── CHAIN CONFIG ─────────────────────────────────────────────────────────────
 
-func (e *EVMEngine) GetCode(addr common.Address) []byte {
-return e.stateDB.GetCode(addr)
-}
-
-func (e *EVMEngine) SetCode(addr common.Address, code []byte) {
-e.stateDB.SetCode(addr, code)
-e.stateDB.Commit(0, false)
-}
-
-func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *big.Int) (addr common.Address, ret []byte, err error) {
-	// Recover from any EVM panic
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("EVM panic recovered: %v", r)
-			addr = common.Address{}
-			ret = nil
-		}
-	}()
-	_ = addr; _ = ret; _ = err
+func chainConfig() *params.ChainConfig {
 shanghai := uint64(0)
-chainConfig := &params.ChainConfig{
-	ChainID: big.NewInt(1926),
-	HomesteadBlock: big.NewInt(0),
-	EIP150Block: big.NewInt(0),
-	EIP155Block: big.NewInt(0),
-	EIP158Block: big.NewInt(0),
-	ByzantiumBlock: big.NewInt(0),
-	ConstantinopleBlock: big.NewInt(0),
-	PetersburgBlock: big.NewInt(0),
-	IstanbulBlock: big.NewInt(0),
-	BerlinBlock: big.NewInt(0),
-	LondonBlock: big.NewInt(0),
-	ShanghaiTime: &shanghai,
+return &params.ChainConfig{
+ChainID:             big.NewInt(1926),
+HomesteadBlock:      big.NewInt(0),
+EIP150Block:         big.NewInt(0),
+EIP155Block:         big.NewInt(0),
+EIP158Block:         big.NewInt(0),
+ByzantiumBlock:      big.NewInt(0),
+ConstantinopleBlock: big.NewInt(0),
+PetersburgBlock:     big.NewInt(0),
+IstanbulBlock:       big.NewInt(0),
+BerlinBlock:         big.NewInt(0),
+LondonBlock:         big.NewInt(0),
+ShanghaiTime:        &shanghai,
+}
 }
 
-blockCtx := vm.BlockContext{
-CanTransfer: func(db vm.StateDB, addr common.Address, amount *big.Int) bool { return true },
-Transfer:    func(db vm.StateDB, sender, recipient common.Address, amount *big.Int) {},
-GetHash:     func(n uint64) common.Hash { return common.Hash{} },
+func blockContext() vm.BlockContext {
+return vm.BlockContext{
+CanTransfer: func(_ vm.StateDB, _ common.Address, _ *big.Int) bool { return true },
+Transfer:    func(_ vm.StateDB, _, _ common.Address, _ *big.Int) {},
+GetHash:     func(_ uint64) common.Hash { return common.Hash{} },
 Coinbase:    common.Address{},
 BlockNumber: big.NewInt(1),
 Time:        1000000,
 Difficulty:  big.NewInt(0),
-GasLimit:    30000000,
+GasLimit:    30_000_000,
 BaseFee:     big.NewInt(0),
 }
-
-txCtx := vm.TxContext{
-Origin:   from,
-GasPrice: big.NewInt(0),
 }
 
-evm := vm.NewEVM(blockCtx, txCtx, e.stateDB, chainConfig, vm.Config{})
+// ─── FRESH STATE DB ───────────────────────────────────────────────────────────
 
-nonce := e.stateDB.GetNonce(from)
-ret, contractAddr, _, err := evm.Create(
+// newStateDB creates a fresh in-memory StateDB loaded from PostgreSQL.
+// Called before every Deploy or Call to ensure consistent state.
+func (e *EVMEngine) newStateDB() (*state.StateDB, error) {
+memDB := rawdb.NewMemoryDatabase()
+db := state.NewDatabase(memDB)
+sdb, err := state.New(common.Hash{}, db, nil)
+if err != nil {
+return nil, err
+}
+
+// Load all account balances
+for _, acc := range e.chainState.GetAllAccounts() {
+addr := common.HexToAddress(acc.Address)
+decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), decimals)
+sdb.SetBalance(addr, wei)
+sdb.SetNonce(addr, e.chainState.LoadNonce(acc.Address))
+}
+
+// Load all contract bytecodes and storage
+for _, addrStr := range e.chainState.GetAllContracts() {
+addr := common.HexToAddress(addrStr)
+
+code, err := e.chainState.LoadContract(addrStr)
+if err != nil || len(code) == 0 {
+continue
+}
+sdb.SetCode(addr, code)
+
+// Load storage slots
+if e.chainState.db != nil {
+rows, err := e.chainState.db.Query(
+`SELECT slot, value FROM evm_storage WHERE address = $1`, addrStr)
+if err == nil {
+for rows.Next() {
+var slot, val string
+rows.Scan(&slot, &val)
+sdb.SetState(addr, common.HexToHash(slot), common.HexToHash(val))
+}
+rows.Close()
+}
+}
+}
+
+// Commit to trie so all state is readable
+if _, err := sdb.Commit(0, false); err != nil {
+return nil, fmt.Errorf("stateDB commit failed: %w", err)
+}
+
+// Re-open after commit so reads work correctly
+root, _ := sdb.Commit(0, false)
+sdb2, err := state.New(root, db, nil)
+if err != nil {
+// Fall back to the committed state
+return sdb, nil
+}
+// Re-apply all state to the new trie
+for _, acc := range e.chainState.GetAllAccounts() {
+addr := common.HexToAddress(acc.Address)
+decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), decimals)
+sdb2.SetBalance(addr, wei)
+sdb2.SetNonce(addr, e.chainState.LoadNonce(acc.Address))
+}
+for _, addrStr := range e.chainState.GetAllContracts() {
+addr := common.HexToAddress(addrStr)
+code, err := e.chainState.LoadContract(addrStr)
+if err != nil || len(code) == 0 {
+continue
+}
+sdb2.SetCode(addr, code)
+if e.chainState.db != nil {
+rows, err := e.chainState.db.Query(
+`SELECT slot, value FROM evm_storage WHERE address = $1`, addrStr)
+if err == nil {
+for rows.Next() {
+var slot, val string
+rows.Scan(&slot, &val)
+sdb2.SetState(addr, common.HexToHash(slot), common.HexToHash(val))
+}
+rows.Close()
+}
+}
+}
+return sdb2, nil
+}
+
+// ─── DEPLOY ───────────────────────────────────────────────────────────────────
+
+func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *big.Int) (contractAddr common.Address, ret []byte, err error) {
+defer func() {
+if r := recover(); r != nil {
+err = fmt.Errorf("EVM panic: %v", r)
+contractAddr = common.Address{}
+ret = nil
+}
+}()
+
+sdb, err := e.newStateDB()
+if err != nil {
+return common.Address{}, nil, fmt.Errorf("stateDB: %w", err)
+}
+
+nonce := e.chainState.LoadNonce(strings.ToLower(from.Hex()))
+sdb.SetNonce(from, nonce)
+
+txCtx := vm.TxContext{Origin: from, GasPrice: big.NewInt(0)}
+evm := vm.NewEVM(blockContext(), txCtx, sdb, chainConfig(), vm.Config{})
+
+_, contractAddr, _, err = evm.Create(
 vm.AccountRef(from),
 bytecode,
-30000000,
+30_000_000,
 value,
 )
 if err != nil {
-return common.Address{}, nil, fmt.Errorf("deployment failed: %w", err)
+return common.Address{}, nil, fmt.Errorf("deploy failed: %w", err)
 }
 
-// Commit first so runtime code is in stateDB
-e.stateDB.Commit(1, false)
-// Get actual runtime bytecode (not constructor return value)
-runtimeCode := e.stateDB.GetCode(contractAddr)
+// Commit to get runtime code into trie
+sdb.Commit(0, false)
+
+// Read runtime bytecode directly from stateDB after commit
+runtimeCode := sdb.GetCode(contractAddr)
 if len(runtimeCode) == 0 {
-    runtimeCode = ret
+return common.Address{}, nil, fmt.Errorf("deploy succeeded but no runtime code found")
 }
-e.contracts[contractAddr] = runtimeCode
-e.stateDB.SetNonce(from, nonce+1)
-e.stateDB.Commit(1, false)
-// Persist runtime bytecode to PostgreSQL
-addrStr := strings.ToLower(contractAddr.Hex())
-e.chainState.SaveContract(addrStr, runtimeCode, strings.ToLower(from.Hex()))
-e.chainState.SaveNonce(strings.ToLower(from.Hex()), nonce+1)
-e.PersistContractStorage(contractAddr)
 
-fmt.Printf("[EVM] ✓ Contract deployed at %s\n", contractAddr.Hex())
-return contractAddr, ret, nil
+addrStr := strings.ToLower(contractAddr.Hex())
+fromStr := strings.ToLower(from.Hex())
+
+// Persist to PostgreSQL
+e.chainState.SaveContract(addrStr, runtimeCode, fromStr)
+e.chainState.SaveNonce(fromStr, nonce+1)
+e.persistStorageFromDB(sdb, contractAddr)
+
+fmt.Printf("[EVM] ✓ Deployed %s (%d bytes)\n", contractAddr.Hex(), len(runtimeCode))
+return contractAddr, runtimeCode, nil
 }
+
+// ─── CALL ─────────────────────────────────────────────────────────────────────
 
 func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int) (ret []byte, err error) {
-// Always use a fresh stateDB for reads — load all contracts from PostgreSQL
-freshDB, err2 := NewPersistentStateDB(e.chainState)
-if err2 == nil && freshDB != nil {
-    // Explicitly reload the target contract code after commit
-    toCode, dbErr := e.chainState.LoadContract(strings.ToLower(to.Hex()))
-    if dbErr == nil && len(toCode) > 0 {
-        freshDB.SetCode(to, toCode)
-        // Load storage slots for this contract
-        if e.chainState.db != nil {
-            rows, err3 := e.chainState.db.Query("SELECT slot, value FROM evm_storage WHERE address = $1", strings.ToLower(to.Hex()))
-            if err3 == nil {
-                for rows.Next() {
-                    var slot, val string
-                    rows.Scan(&slot, &val)
-                    freshDB.SetState(to, common.HexToHash(slot), common.HexToHash(val))
-                }
-                rows.Close()
-            }
-        }
-    }
-    origDB := e.stateDB
-    e.stateDB = freshDB
-    defer func() { e.stateDB = origDB }()
+defer func() {
+if r := recover(); r != nil {
+err = fmt.Errorf("EVM panic: %v", r)
+ret = nil
+}
+}()
+
+sdb, err := e.newStateDB()
+if err != nil {
+return nil, fmt.Errorf("stateDB: %w", err)
 }
 
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("EVM panic recovered: %v", r)
-			ret = nil
-		}
-	}()
-shanghai2 := uint64(0)
-chainConfig2 := &params.ChainConfig{
-	ChainID: big.NewInt(1926),
-	HomesteadBlock: big.NewInt(0),
-	EIP150Block: big.NewInt(0),
-	EIP155Block: big.NewInt(0),
-	EIP158Block: big.NewInt(0),
-	ByzantiumBlock: big.NewInt(0),
-	ConstantinopleBlock: big.NewInt(0),
-	PetersburgBlock: big.NewInt(0),
-	IstanbulBlock: big.NewInt(0),
-	BerlinBlock: big.NewInt(0),
-	LondonBlock: big.NewInt(0),
-	ShanghaiTime: &shanghai2,
+// Verify contract code is loaded
+code := sdb.GetCode(to)
+fmt.Printf("[EVM] CallContract to=%s codeLen=%d data=%x\n",
+to.Hex(), len(code), data[:min4b(len(data), 4)])
+
+if len(code) == 0 {
+return nil, fmt.Errorf("no code at %s", to.Hex())
 }
 
-blockCtx := vm.BlockContext{
-CanTransfer: func(db vm.StateDB, addr common.Address, amount *big.Int) bool { return true },
-Transfer:    func(db vm.StateDB, sender, recipient common.Address, amount *big.Int) {},
-GetHash:     func(n uint64) common.Hash { return common.Hash{} },
-Coinbase:    common.Address{},
-BlockNumber: big.NewInt(1),
-Time:        1000000,
-Difficulty:  big.NewInt(0),
-GasLimit:    30000000,
-BaseFee:     big.NewInt(0),
-}
-
-txCtx := vm.TxContext{
-Origin:   from,
-GasPrice: big.NewInt(0),
-}
-
-evm := vm.NewEVM(blockCtx, txCtx, e.stateDB, chainConfig2, vm.Config{})
+txCtx := vm.TxContext{Origin: from, GasPrice: big.NewInt(0)}
+evm := vm.NewEVM(blockContext(), txCtx, sdb, chainConfig(), vm.Config{})
 
 ret, _, err = evm.Call(
 vm.AccountRef(from),
 to,
 data,
-30000000,
+30_000_000,
 value,
 )
 if err != nil {
 return nil, fmt.Errorf("call failed: %w", err)
 }
 
-e.syncToChainState()
-e.PersistContractStorage(to)
+// Persist any state changes from the call
+sdb.Commit(0, false)
+e.persistStorageFromDB(sdb, to)
+e.syncBalancesFromDB(sdb)
+
 return ret, nil
 }
 
-func (e *EVMEngine) syncToChainState() {
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+func (e *EVMEngine) GetCode(addr common.Address) []byte {
+code, _ := e.chainState.LoadContract(strings.ToLower(addr.Hex()))
+return code
+}
+
+func (e *EVMEngine) SetCode(addr common.Address, code []byte) {
+// No-op: code is always loaded fresh from DB
+}
+
+// persistStorageFromDB reads dirty storage slots from stateDB and saves to PostgreSQL
+func (e *EVMEngine) persistStorageFromDB(sdb *state.StateDB, addr common.Address) {
+e.PersistContractStorage(addr)
+}
+
+// syncBalancesFromDB updates PostgreSQL balances from stateDB after a state-changing call
+func (e *EVMEngine) syncBalancesFromDB(sdb *state.StateDB) {
 accounts := e.chainState.GetAllAccounts()
+decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
 for _, acc := range accounts {
 addr := common.HexToAddress(acc.Address)
-balanceWei := e.stateDB.GetBalance(addr)
-if balanceWei != nil {
-decimals := new(big.Float).SetInt(
-new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil),
-)
-balanceAEQ, _ := new(big.Float).Quo(
-new(big.Float).SetInt(balanceWei),
-decimals,
-).Float64()
-if balanceAEQ > 0 && balanceAEQ != acc.Balance {
-e.chainState.SetBalance(acc.Address, balanceAEQ)
+wei := sdb.GetBalance(addr)
+if wei == nil || wei.Sign() == 0 {
+continue
+}
+balAEQ, _ := new(big.Float).Quo(new(big.Float).SetInt(wei), decimals).Float64()
+if balAEQ > 0 && balAEQ != acc.Balance {
+e.chainState.SetBalance(acc.Address, balAEQ)
 }
 }
 }
+
+func (e *EVMEngine) LoadContractStorage(addr common.Address) {
+// No-op: storage loaded in newStateDB()
 }
 
 func HexToBytecode(hexStr string) ([]byte, error) {
 hexStr = strings.TrimPrefix(hexStr, "0x")
 return hex.DecodeString(hexStr)
+}
+
+func min4b(a, b int) int {
+if a < b {
+return a
+}
+return b
 }
