@@ -202,7 +202,7 @@ return nil, fmt.Errorf("cannot recover sender: %v", err)
 }
 
 senderAddr := strings.ToLower(sender.Hex())
-txHash := "0x" + tx.Hash().Hex()[2:]
+txHash := tx.Hash().Hex()
 
 fmt.Printf("[RPC] eth_sendRawTransaction from=%s to=%v value=%v data=%d bytes\n",
 senderAddr, tx.To(), tx.Value(), len(tx.Data()))
@@ -230,9 +230,7 @@ if err != nil {
 fmt.Printf("[RPC] ✗ Deploy failed: %v\n", err)
 } else {
 fmt.Printf("[RPC] ✓ Contract deployed: %s\n", contractAddr.Hex())
-// Return real tx hash, not contract address
 // Store contract address in mapping for eth_getTransactionReceipt
-txHash = "0x" + tx.Hash().Hex()[2:]
 e.deployedContracts[txHash] = contractAddr.Hex()
 }
 } else {
