@@ -112,13 +112,19 @@ if err != nil {
 return common.Address{}, nil, fmt.Errorf("deployment failed: %w", err)
 }
 
-e.contracts[contractAddr] = ret
+// Commit first so runtime code is in stateDB
+e.stateDB.Commit(1, false)
+// Get actual runtime bytecode (not constructor return value)
+runtimeCode := e.stateDB.GetCode(contractAddr)
+if len(runtimeCode) == 0 {
+    runtimeCode = ret
+}
+e.contracts[contractAddr] = runtimeCode
 e.stateDB.SetNonce(from, nonce+1)
 e.stateDB.Commit(1, false)
-
-// Persist contract to PostgreSQL
+// Persist runtime bytecode to PostgreSQL
 addrStr := strings.ToLower(contractAddr.Hex())
-e.chainState.SaveContract(addrStr, ret, strings.ToLower(from.Hex()))
+e.chainState.SaveContract(addrStr, runtimeCode, strings.ToLower(from.Hex()))
 e.chainState.SaveNonce(strings.ToLower(from.Hex()), nonce+1)
 e.PersistContractStorage(contractAddr)
 

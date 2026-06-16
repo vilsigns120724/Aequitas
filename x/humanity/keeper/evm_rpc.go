@@ -158,8 +158,15 @@ if len(params) > 0 {
 var addr string
 json.Unmarshal(params[0], &addr)
 addr = strings.ToLower(addr)
-nonce := e.nonces[addr]
-return "0x" + fmt.Sprintf("%x", nonce), nil
+// Use DB nonce as source of truth
+dbNonce := uint64(0)
+if e.state != nil {
+    dbNonce = e.state.LoadNonce(addr)
+}
+if dbNonce > e.nonces[addr] {
+    e.nonces[addr] = dbNonce
+}
+return "0x" + fmt.Sprintf("%x", e.nonces[addr]), nil
 }
 return "0x0", nil
 
