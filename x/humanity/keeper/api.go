@@ -1135,6 +1135,39 @@ function setLang(lang) {
   const rlog = document.getElementById('reg-status');
   if(rlog && rlog.innerHTML.includes('Open Aequitas') && t['reg-log-hint'])
     rlog.innerHTML='<span class="info">'+t['reg-log-hint']+'</span>';
+
+  // Humans tab - info banners (items 5-8)
+  ['h-what','h-zkp','h-sybil','h-global'].forEach((k,i) => { if(ibTitles[i+4] && t[k]) ibTitles[i+4].textContent=t[k]; });
+  ['h-what-t','h-zkp-t','h-sybil-t','h-global-t'].forEach((k,i) => { if(ibTexts[i+4] && t[k]) ibTexts[i+4].innerHTML=t[k]; });
+
+  // Index tab
+  const idxTitles = document.querySelectorAll('.idx-title');
+  const idxKeys = ['idx-title','pools-title','phases-title','story-title'];
+  idxTitles.forEach((el,i) => { if(idxKeys[i] && t[idxKeys[i]]) el.textContent=t[idxKeys[i]]; });
+  const metricLbls = document.querySelectorAll('.metric-lbl');
+  const metricKeys = ['gini','s-supply','phase','s-humans','vel-pool','liq-pool','ubi-pool','treasury'];
+  metricLbls.forEach((el,i) => { if(metricKeys[i] && t[metricKeys[i]]) el.textContent=t[metricKeys[i]]; });
+  if(t['curr-idx']) { document.querySelectorAll('.idx-lbl').forEach(el=>el.textContent=t['curr-idx']); }
+  if(t['bar-0']) { const bls=document.querySelectorAll('.bar-labels span'); if(bls[0]) bls[0].textContent=t['bar-0']; if(bls[2]) bls[2].textContent=t['bar-100']; }
+
+  // Network tab
+  const netTitles = document.querySelectorAll('.net-title');
+  const netKeys = ['nodes-title','bootstrap-title','tech-title','mm-config'];
+  netTitles.forEach((el,i) => { if(netKeys[i] && t[netKeys[i]]) el.textContent=t[netKeys[i]]; });
+  document.querySelectorAll('.node-status span:last-child').forEach((el,i) => {
+    if(i===0 && t['node1']) el.textContent=t['node1'];
+    if(i===1 && t['node2']) el.textContent=t['node2'];
+  });
+  document.querySelectorAll('.node-desc').forEach((el,i) => {
+    if(i===0 && t['node1-desc']) el.textContent=t['node1-desc'];
+    if(i===1 && t['node2-desc']) el.textContent=t['node2-desc'];
+  });
+
+  // Protocol tab
+  if(t['proto-label']) { const e=document.querySelector('.proto-section .section-label'); if(e) e.textContent=t['proto-label']; }
+  const protoTitles = document.querySelectorAll('.proto-section .idx-title');
+  const protoKeys = ['ca-title','poa-title','guard-title','dem-title','cap-title','ubi-title','inf-title'];
+  protoTitles.forEach((el,i) => { if(protoKeys[i] && t[protoKeys[i]]) el.textContent=t[protoKeys[i]]; });
 }
 
 function fmt(n) {
