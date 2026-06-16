@@ -245,33 +245,30 @@ e.nonces[senderAddr]++
 return txHash, nil
 
 case "eth_call":
-if len(params) >= 1 && e.evm != nil {
+if len(params) >= 1 {
 var callObj map[string]string
 if err := json.Unmarshal(params[0], &callObj); err == nil {
-from := common.HexToAddress(callObj["from"])
-to := common.HexToAddress(callObj["to"])
-data, _ := hex.DecodeString(strings.TrimPrefix(callObj["data"], "0x"))
-// Debug: check if code exists before calling
-code := e.evm.GetCode(to)
-fmt.Printf("[RPC] eth_call to=%s data=%x codeLen=%d\n", to.Hex(), data[:min(4,len(data))], len(code))
-result, err := e.evm.CallContract(from, to, data, big.NewInt(0))
-if err != nil {
-fmt.Printf("[RPC] eth_call error: %v\n", err)
-// Fallback: reload contract from DB and retry
-if e.state != nil {
-    bytecode, dberr := e.state.LoadContract(strings.ToLower(to.Hex()))
-    if dberr == nil && len(bytecode) > 0 {
-        fmt.Printf("[RPC] Reloading contract from DB: %d bytes\n", len(bytecode))
-        e.evm.SetCode(to, bytecode)
-        result, err = e.evm.CallContract(from, to, data, big.NewInt(0))
-        if err == nil {
-            return "0x" + hex.EncodeToString(result), nil
+    from := common.HexToAddress(callObj["from"])
+    to := common.HexToAddress(callObj["to"])
+    data, _ := hex.DecodeString(strings.TrimPrefix(callObj["data"], "0x"))
+    toStr := strings.ToLower(to.Hex())
+    // Always reload contract from DB before calling
+    if e.state != nil {
+        bytecode, dberr := e.state.LoadContract(toStr)
+        if dberr == nil && len(bytecode) > 0 {
+            e.evm.SetCode(to, bytecode)
+            // Also reload storage
+            e.evm.LoadContractStorage(to)
         }
     }
-}
-return "0x", nil
-}
-return "0x" + hex.EncodeToString(result), nil
+    if e.evm != nil {
+        result, err := e.evm.CallContract(from, to, data, big.NewInt(0))
+        if err != nil {
+            fmt.Printf("[RPC] eth_call error: %v\n", err)
+            return "0x", nil
+        }
+        return "0x" + hex.EncodeToString(result), nil
+    }
 }
 }
 return "0x", nil
