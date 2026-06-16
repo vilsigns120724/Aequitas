@@ -11,7 +11,7 @@ import (
 )
 
 const V6_CONTRACT_ADDR = "0xA76cA3bf34F2Ae5dFA0608696627e42b81180488"
-const V7_CONTRACT_ADDR = "0xc7553c86D2EfE4771d35880210FA4f93AC0Ea491"
+const V7_CONTRACT_ADDR = "0xD487544fE06DeD5025DF7bD45bdFba5e9ffadd3f"
 
 // MirrorV6Registration mirrors a V6 registration to PostgreSQL
 func (e *EVMEngine) MirrorV6Registration(wallet, commitment string) {
