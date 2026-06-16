@@ -2,38 +2,25 @@ package keeper
 
 import (
 "encoding/hex"
-	"io"
 "encoding/json"
 "fmt"
+"io"
 "math/big"
 "net/http"
 "strings"
 
+"github.com/ethereum/go-ethereum/common"
 "github.com/ethereum/go-ethereum/core/types"
 "github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/common"
 )
 
-type JSONRPCRequest struct {
-JSONRPC string            `json:"jsonrpc"`
-Method  string            `json:"method"`
-Params  []json.RawMessage `json:"params"`
-ID      interface{}       `json:"id"`
-}
-
-type JSONRPCResponse struct {
-JSONRPC string      `json:"jsonrpc"`
-ID      interface{} `json:"id"`
-Result  interface{} `json:"result,omitempty"`
-Error   interface{} `json:"error,omitempty"`
-}
-
+// EVMRPCServer handles Ethereum JSON-RPC requests
 type EVMRPCServer struct {
-deployedContracts map[string]string
 dag               *BlockDAG
 state             *ChainState
-nonces            map[string]uint64
 evm               *EVMEngine
+nonces            map[string]uint64
+deployedContracts map[string]string // txHash -> contractAddress (lowercase)
 }
 
 func NewEVMRPCServer(dag *BlockDAG, state *ChainState) *EVMRPCServer {
@@ -43,276 +30,456 @@ fmt.Printf("[EVM] Warning: could not init EVM engine: %v\n", err)
 }
 return &EVMRPCServer{
 dag:               dag,
-		state:             state,
-		nonces:            make(map[string]uint64),
-		deployedContracts: make(map[string]string),
-		evm:               engine,
+state:             state,
+evm:               engine,
+nonces:            make(map[string]uint64),
+deployedContracts: make(map[string]string),
 }
 }
 
-func (e *EVMRPCServer) Start(port int) {
-mux := http.NewServeMux()
-mux.HandleFunc("/", e.handleRPC)
-fmt.Printf("✓ EVM JSON-RPC listening on port %d\n", port)
-go http.ListenAndServe(fmt.Sprintf(":%d", port), mux)
-}
+// ─── HTTP HANDLER ─────────────────────────────────────────────────────────────
 
-func min(a, b int) int {
-if a < b { return a }
-return b
-}
-
-func (e *EVMRPCServer) getContractAddress(txHash string) interface{} {
-if addr, ok := e.deployedContracts[txHash]; ok {
-return "0x" + addr
-}
-return nil
-}
-
-func (e *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
+func (s *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
 if r.Method == "OPTIONS" {
 w.WriteHeader(200)
 return
 }
 
-bodyBytes, _ := io.ReadAll(r.Body)
-fmt.Printf("[RPC] Incoming request: %d bytes\n", len(bodyBytes))
-trimmed := strings.TrimSpace(string(bodyBytes))
-
-if len(trimmed) > 0 && trimmed[0] == '[' {
-var reqs []JSONRPCRequest
-if err := json.Unmarshal(bodyBytes, &reqs); err != nil {
-json.NewEncoder(w).Encode(JSONRPCResponse{JSONRPC: "2.0", Error: map[string]interface{}{"code": -32700, "message": "parse error"}})
-return
-}
-var responses []JSONRPCResponse
-for _, req := range reqs {
-result, err := e.handleMethod(req.Method, req.Params)
+body, err := io.ReadAll(r.Body)
 if err != nil {
-responses = append(responses, JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Error: map[string]interface{}{"code": -32603, "message": err.Error()}})
-} else {
-responses = append(responses, JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: result})
-}
-}
-json.NewEncoder(w).Encode(responses)
+writeError(w, -32700, "Parse error", nil)
 return
 }
 
-var req JSONRPCRequest
-if err := json.Unmarshal(bodyBytes, &req); err != nil {
-json.NewEncoder(w).Encode(JSONRPCResponse{JSONRPC: "2.0", Error: map[string]interface{}{"code": -32700, "message": "parse error"}})
+// Handle batch requests
+if len(body) > 0 && body[0] == '[' {
+var batch []json.RawMessage
+if err := json.Unmarshal(body, &batch); err != nil {
+writeError(w, -32700, "Parse error", nil)
 return
 }
-result, err := e.handleMethod(req.Method, req.Params)
-if err != nil {
-json.NewEncoder(w).Encode(JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Error: map[string]interface{}{"code": -32603, "message": err.Error()}})
+var results []interface{}
+for _, raw := range batch {
+result := s.handleSingle(raw)
+results = append(results, result)
+}
+json.NewEncoder(w).Encode(results)
 return
 }
-json.NewEncoder(w).Encode(JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: result})
+
+result := s.handleSingle(body)
+json.NewEncoder(w).Encode(result)
 }
 
-func (e *EVMRPCServer) handleMethod(method string, params []json.RawMessage) (interface{}, error) {
-latest := e.dag.LatestBlock()
-height := int64(0)
-if latest != nil {
-height = latest.Height
+func (s *EVMRPCServer) handleSingle(body []byte) map[string]interface{} {
+var req struct {
+JSONRPC string            `json:"jsonrpc"`
+ID      interface{}       `json:"id"`
+Method  string            `json:"method"`
+Params  []json.RawMessage `json:"params"`
 }
 
+if err := json.Unmarshal(body, &req); err != nil {
+return errorResponse(nil, -32700, "Parse error")
+}
+
+result, rpcErr := s.dispatch(req.Method, req.Params)
+if rpcErr != nil {
+return map[string]interface{}{
+"jsonrpc": "2.0",
+"id":      req.ID,
+"error": map[string]interface{}{
+"code":    rpcErr.Code,
+"message": rpcErr.Message,
+},
+}
+}
+
+return map[string]interface{}{
+"jsonrpc": "2.0",
+"id":      req.ID,
+"result":  result,
+}
+}
+
+// ─── DISPATCH ─────────────────────────────────────────────────────────────────
+
+func (s *EVMRPCServer) dispatch(method string, params []json.RawMessage) (interface{}, *RPCError) {
 switch method {
+
 case "eth_chainId":
-return "0x786", nil // 73571
+return "0x786", nil // 1926
 
 case "net_version":
 return "1926", nil
 
 case "eth_blockNumber":
-return "0x" + fmt.Sprintf("%x", height), nil
-
-case "eth_getBalance":
-if len(params) > 0 {
-var addr string
-json.Unmarshal(params[0], &addr)
-addr = strings.ToLower(addr)
-balance := e.state.GetBalance(addr)
-fmt.Printf("[RPC] eth_getBalance %s = %.2f\n", addr, balance)
-if balance > 0 {
-decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-aeqWei := new(big.Int).Mul(big.NewInt(int64(balance)), decimals)
-return "0x" + fmt.Sprintf("%x", aeqWei), nil
-}
-}
+block := s.dag.LatestBlock()
+if block == nil {
 return "0x0", nil
+}
+return fmt.Sprintf("0x%x", block.Height), nil
 
 case "eth_gasPrice":
-return "0x0", nil // Gasless chain
-
-case "eth_estimateGas":
-return "0x100000", nil // Return generous gas limit, price is 0
-
-case "eth_getTransactionCount":
-if len(params) > 0 {
-var addr string
-json.Unmarshal(params[0], &addr)
-addr = strings.ToLower(addr)
-// Use DB nonce as source of truth
-dbNonce := uint64(0)
-if e.state != nil {
-    dbNonce = e.state.LoadNonce(addr)
-}
-if dbNonce > e.nonces[addr] {
-    e.nonces[addr] = dbNonce
-}
-return "0x" + fmt.Sprintf("%x", e.nonces[addr]), nil
-}
 return "0x0", nil
 
-case "eth_sendRawTransaction":
-if len(params) == 0 {
-return nil, fmt.Errorf("missing params")
-}
-var rawHex string
-json.Unmarshal(params[0], &rawHex)
+case "eth_maxPriorityFeePerGas":
+return "0x0", nil
 
-// Decode raw transaction
-rawHex = strings.TrimPrefix(rawHex, "0x")
-rawBytes, err := hex.DecodeString(rawHex)
-if err != nil {
-return nil, fmt.Errorf("invalid hex: %v", err)
-}
+case "eth_feeHistory":
+return map[string]interface{}{
+"oldestBlock":   "0x0",
+"baseFeePerGas": []string{"0x0"},
+"gasUsedRatio":  []float64{0},
+"reward":        [][]string{{"0x0"}},
+}, nil
 
-tx := new(types.Transaction)
-if err := rlp.DecodeBytes(rawBytes, tx); err != nil {
-return nil, fmt.Errorf("invalid transaction: %v", err)
-}
+case "eth_estimateGas":
+return "0x5B8D80", nil // 6M gas
 
-// Get sender
-signer := types.LatestSignerForChainID(big.NewInt(1926))
-sender, err := types.Sender(signer, tx)
-if err != nil {
-// Try legacy signer
-signer = types.NewEIP155Signer(big.NewInt(1926))
-sender, err = types.Sender(signer, tx)
-if err != nil {
-return nil, fmt.Errorf("cannot recover sender: %v", err)
-}
-}
+case "eth_getTransactionCount":
+return s.getTransactionCount(params)
 
-senderAddr := strings.ToLower(sender.Hex())
-txHash := tx.Hash().Hex()
-
-fmt.Printf("[RPC] eth_sendRawTransaction from=%s to=%v value=%v data=%d bytes\n",
-senderAddr, tx.To(), tx.Value(), len(tx.Data()))
-
-// Handle AEQ transfer (no data = simple transfer)
-if tx.To() != nil && len(tx.Data()) == 0 && tx.Value().Cmp(big.NewInt(0)) > 0 {
-toAddr := strings.ToLower(tx.To().Hex())
-decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
-valueFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(tx.Value()), decimals).Float64()
-
-if err := e.state.Transfer(senderAddr, toAddr, valueFloat); err != nil {
-return nil, fmt.Errorf("transfer failed: %v", err)
-}
-fmt.Printf("[RPC] ✓ Transfer %.2f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
-}
-
-// Handle contract deployment or contract call (data present)
-if len(tx.Data()) > 0 && e.evm != nil {
-fmt.Printf("[EVM] evm engine is nil: %v\n", e.evm == nil)
-if tx.To() == nil {
-// Contract deployment
-fmt.Printf("[EVM] Deploying contract, bytecode=%d bytes\n", len(tx.Data()))
-contractAddr, _, err := e.evm.DeployContract(sender, tx.Data(), tx.Value())
-if err != nil {
-fmt.Printf("[RPC] ✗ Deploy failed: %v\n", err)
-} else {
-fmt.Printf("[RPC] ✓ Contract deployed: %s\n", contractAddr.Hex())
-// Store contract address in mapping for eth_getTransactionReceipt
-e.deployedContracts[txHash] = contractAddr.Hex()
-}
-} else {
-// Contract call
-result, err := e.evm.CallContract(sender, *tx.To(), tx.Data(), tx.Value())
-if err != nil {
-fmt.Printf("[RPC] ✗ Contract call failed: %v\n", err)
-} else {
-fmt.Printf("[RPC] ✓ Contract call result: %x\n", result)
-}
-}
-}
-
-// Update nonce
-e.nonces[senderAddr]++
-
-return txHash, nil
-
-case "eth_call":
-if len(params) >= 1 {
-var callObj map[string]string
-if err := json.Unmarshal(params[0], &callObj); err == nil {
-    from := common.HexToAddress(callObj["from"])
-    to := common.HexToAddress(callObj["to"])
-    data, _ := hex.DecodeString(strings.TrimPrefix(callObj["data"], "0x"))
-    toStr := strings.ToLower(to.Hex())
-    // Always reload contract from DB before calling
-    if e.state != nil {
-        bytecode, dberr := e.state.LoadContract(toStr)
-        if dberr == nil && len(bytecode) > 0 {
-            e.evm.SetCode(to, bytecode)
-            // Also reload storage
-            e.evm.LoadContractStorage(to)
-        }
-    }
-    if e.evm != nil {
-        result, err := e.evm.CallContract(from, to, data, big.NewInt(0))
-        if err != nil {
-            fmt.Printf("[RPC] eth_call error: %v\n", err)
-            return "0x", nil
-        }
-        return "0x" + hex.EncodeToString(result), nil
-    }
-}
-}
-return "0x", nil
+case "eth_getBalance":
+return s.getBalance(params)
 
 case "eth_getCode":
-if len(params) >= 1 {
-    var addrStr string
-    json.Unmarshal(params[0], &addrStr)
-    addrStr = strings.ToLower(addrStr)
-    if e.evm != nil {
-        addr := common.HexToAddress(addrStr)
-        code := e.evm.GetCode(addr)
-        if len(code) > 0 {
-            return "0x" + hex.EncodeToString(code), nil
-        }
-    }
-    // Fallback: load from DB
-    if e.state != nil {
-        bytecode, err := e.state.LoadContract(addrStr)
-        if err == nil && len(bytecode) > 0 {
-            return "0x" + hex.EncodeToString(bytecode), nil
-        }
-    }
-}
-return "0x", nil
+return s.getCode(params)
+
+case "eth_call":
+return s.ethCall(params)
+
+case "eth_sendRawTransaction":
+return s.sendRawTransaction(params)
+
+case "eth_getTransactionReceipt":
+return s.getTransactionReceipt(params)
+
+case "eth_getTransactionByHash":
+return s.getTransactionByHash(params)
+
+case "eth_getBlockByNumber":
+return s.getBlockByNumber(params)
+
+case "eth_getBlockByHash":
+return s.getBlockByHash(params)
 
 case "eth_getLogs":
 return []interface{}{}, nil
 
-case "eth_getBlockByNumber":
-block := e.dag.LatestBlock()
+case "eth_accounts":
+return []string{}, nil
+
+case "web3_clientVersion":
+return "AequitasChain/v0.3.0/go", nil
+
+case "eth_syncing":
+return false, nil
+
+case "eth_mining":
+return false, nil
+
+case "eth_coinbase":
+return "0x0000000000000000000000000000000000000000", nil
+
+case "net_listening":
+return true, nil
+
+case "net_peerCount":
+return "0x1", nil
+
+default:
+fmt.Printf("[RPC] Unknown method: %s\n", method)
+return nil, &RPCError{Code: -32601, Message: "Method not found"}
+}
+}
+
+// ─── HANDLERS ─────────────────────────────────────────────────────────────────
+
+func (s *EVMRPCServer) getTransactionCount(params []json.RawMessage) (interface{}, *RPCError) {
+if len(params) == 0 {
+return "0x0", nil
+}
+var addr string
+json.Unmarshal(params[0], &addr)
+addr = strings.ToLower(addr)
+
+// DB is source of truth
+dbNonce := s.state.LoadNonce(addr)
+memNonce := s.nonces[addr]
+if dbNonce > memNonce {
+s.nonces[addr] = dbNonce
+}
+return fmt.Sprintf("0x%x", s.nonces[addr]), nil
+}
+
+func (s *EVMRPCServer) getBalance(params []json.RawMessage) (interface{}, *RPCError) {
+if len(params) == 0 {
+return "0x0", nil
+}
+var addr string
+json.Unmarshal(params[0], &addr)
+addr = strings.ToLower(addr)
+
+balance := s.state.GetBalance(addr)
+// Convert AEQ float to wei (× 10^18)
+wei := new(big.Float).Mul(
+big.NewFloat(balance),
+new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)),
+)
+weiInt, _ := wei.Int(nil)
+fmt.Printf("[RPC] eth_getBalance %s = %.2f\n", addr, balance)
+return "0x" + weiInt.Text(16), nil
+}
+
+func (s *EVMRPCServer) getCode(params []json.RawMessage) (interface{}, *RPCError) {
+if len(params) == 0 {
+return "0x", nil
+}
+var addr string
+json.Unmarshal(params[0], &addr)
+addrLow := strings.ToLower(addr)
+
+// Try EVM StateDB first
+if s.evm != nil {
+code := s.evm.GetCode(common.HexToAddress(addr))
+if len(code) > 0 {
+return "0x" + hex.EncodeToString(code), nil
+}
+}
+
+// Fallback: load from PostgreSQL
+bytecode, err := s.state.LoadContract(addrLow)
+if err == nil && len(bytecode) > 0 {
+return "0x" + hex.EncodeToString(bytecode), nil
+}
+
+return "0x", nil
+}
+
+func (s *EVMRPCServer) ethCall(params []json.RawMessage) (interface{}, *RPCError) {
+if len(params) == 0 || s.evm == nil {
+return "0x", nil
+}
+
+var callObj map[string]string
+if err := json.Unmarshal(params[0], &callObj); err != nil {
+return "0x", nil
+}
+
+from := common.HexToAddress(callObj["from"])
+to := common.HexToAddress(callObj["to"])
+toStr := strings.ToLower(to.Hex())
+data, _ := hex.DecodeString(strings.TrimPrefix(callObj["data"], "0x"))
+
+fmt.Printf("[RPC] eth_call to=%s data=%x\n", toStr, data[:min4(len(data), 4)])
+
+// Always reload contract from DB before call to ensure fresh state
+bytecode, err := s.state.LoadContract(toStr)
+if err == nil && len(bytecode) > 0 {
+s.evm.SetCode(to, bytecode)
+s.evm.LoadContractStorage(to)
+}
+
+result, callErr := s.evm.CallContract(from, to, data, big.NewInt(0))
+if callErr != nil {
+fmt.Printf("[RPC] eth_call error: %v\n", callErr)
+return "0x", nil
+}
+
+return "0x" + hex.EncodeToString(result), nil
+}
+
+func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}, *RPCError) {
+if len(params) == 0 {
+return nil, &RPCError{Code: -32602, Message: "Missing params"}
+}
+
+var rawHex string
+json.Unmarshal(params[0], &rawHex)
+rawHex = strings.TrimPrefix(rawHex, "0x")
+
+rawBytes, err := hex.DecodeString(rawHex)
+if err != nil {
+return nil, &RPCError{Code: -32602, Message: "Invalid hex"}
+}
+
+tx := new(types.Transaction)
+if err := rlp.DecodeBytes(rawBytes, tx); err != nil {
+return nil, &RPCError{Code: -32602, Message: "Invalid transaction: " + err.Error()}
+}
+
+// Recover sender
+signer := types.LatestSignerForChainID(big.NewInt(1926))
+sender, err := types.Sender(signer, tx)
+if err != nil {
+signer = types.NewEIP155Signer(big.NewInt(1926))
+sender, err = types.Sender(signer, tx)
+if err != nil {
+return nil, &RPCError{Code: -32603, Message: "Cannot recover sender: " + err.Error()}
+}
+}
+
+senderAddr := strings.ToLower(sender.Hex())
+txHash := tx.Hash().Hex() // already has 0x prefix
+
+fmt.Printf("[RPC] eth_sendRawTransaction hash=%s from=%s to=%v data=%d bytes\n",
+txHash, senderAddr, tx.To(), len(tx.Data()))
+
+// ── SIMPLE AEQ TRANSFER ──────────────────────────────────────────────────
+if tx.To() != nil && len(tx.Data()) == 0 && tx.Value().Sign() > 0 {
+toAddr := strings.ToLower(tx.To().Hex())
+decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+valueFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(tx.Value()), decimals).Float64()
+
+if err := s.state.Transfer(senderAddr, toAddr, valueFloat); err != nil {
+return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
+}
+fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
+
+// Update nonce
+s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
+s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
+return txHash, nil
+}
+
+// ── CONTRACT DEPLOYMENT ──────────────────────────────────────────────────
+if tx.To() == nil && len(tx.Data()) > 0 && s.evm != nil {
+fmt.Printf("[EVM] Deploying contract from %s, bytecode=%d bytes\n", senderAddr, len(tx.Data()))
+
+contractAddr, _, deployErr := s.evm.DeployContract(sender, tx.Data(), tx.Value())
+if deployErr != nil {
+fmt.Printf("[RPC] ✗ Deploy failed: %v\n", deployErr)
+return nil, &RPCError{Code: -32603, Message: "Deploy failed: " + deployErr.Error()}
+}
+
+contractAddrStr := strings.ToLower(contractAddr.Hex())
+s.deployedContracts[txHash] = contractAddrStr
+fmt.Printf("[RPC] ✓ Contract deployed: %s tx=%s\n", contractAddrStr, txHash)
+
+// Update nonce
+s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
+s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
+return txHash, nil
+}
+
+// ── CONTRACT CALL ────────────────────────────────────────────────────────
+if tx.To() != nil && len(tx.Data()) > 0 && s.evm != nil {
+toAddr := *tx.To()
+toStr := strings.ToLower(toAddr.Hex())
+
+// Reload contract from DB
+bytecode, dbErr := s.state.LoadContract(toStr)
+if dbErr == nil && len(bytecode) > 0 {
+s.evm.SetCode(toAddr, bytecode)
+s.evm.LoadContractStorage(toAddr)
+}
+
+result, callErr := s.evm.CallContract(sender, toAddr, tx.Data(), tx.Value())
+if callErr != nil {
+fmt.Printf("[RPC] ✗ Contract call failed: %v\n", callErr)
+} else {
+fmt.Printf("[RPC] ✓ Contract call result: %x\n", result)
+s.evm.PersistContractStorage(toAddr)
+}
+
+// Update nonce regardless
+s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
+s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
+return txHash, nil
+}
+
+// Update nonce for any other tx
+s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
+s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
+return txHash, nil
+}
+
+func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interface{}, *RPCError) {
+if len(params) == 0 {
+return nil, nil
+}
+var txHash string
+json.Unmarshal(params[0], &txHash)
+txHash = strings.ToLower(txHash)
+
+var contractAddr interface{} = nil
+if addr, ok := s.deployedContracts[txHash]; ok {
+contractAddr = addr
+}
+
+block := s.dag.LatestBlock()
+height := uint64(0)
+if block != nil {
+height = uint64(block.Height)
+}
+
+return map[string]interface{}{
+"transactionHash":   txHash,
+"transactionIndex":  "0x0",
+"blockHash":         "0x" + strings.Repeat("0", 63) + "1",
+"blockNumber":       fmt.Sprintf("0x%x", height),
+"from":              "0x0000000000000000000000000000000000000000",
+"to":                nil,
+"cumulativeGasUsed": "0x5B8D80",
+"gasUsed":           "0x5B8D80",
+"contractAddress":   contractAddr,
+"logs":              []interface{}{},
+"logsBloom":         "0x" + strings.Repeat("0", 512),
+"status":            "0x1",
+"type":              "0x2",
+}, nil
+}
+
+func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface{}, *RPCError) {
+if len(params) == 0 {
+return nil, nil
+}
+var txHash string
+json.Unmarshal(params[0], &txHash)
+
+return map[string]interface{}{
+"hash":             txHash,
+"nonce":            "0x0",
+"blockHash":        "0x" + strings.Repeat("0", 63) + "1",
+"blockNumber":      "0x1",
+"transactionIndex": "0x0",
+"from":             "0x0000000000000000000000000000000000000000",
+"to":               nil,
+"value":            "0x0",
+"gas":              "0x5B8D80",
+"gasPrice":         "0x0",
+"input":            "0x",
+}, nil
+}
+
+func (s *EVMRPCServer) getBlockByNumber(params []json.RawMessage) (interface{}, *RPCError) {
+block := s.dag.LatestBlock()
 if block == nil {
 return nil, nil
 }
+return s.blockToMap(block), nil
+}
+
+func (s *EVMRPCServer) getBlockByHash(params []json.RawMessage) (interface{}, *RPCError) {
+block := s.dag.LatestBlock()
+if block == nil {
+return nil, nil
+}
+return s.blockToMap(block), nil
+}
+
+func (s *EVMRPCServer) blockToMap(block *Block) map[string]interface{} {
 return map[string]interface{}{
-"number":           "0x" + fmt.Sprintf("%x", block.Height),
+"number":           fmt.Sprintf("0x%x", block.Height),
 "hash":             "0x" + block.Hash,
-"parentHash":       "0x0000000000000000000000000000000000000000000000000000000000000000",
-"timestamp":        "0x" + fmt.Sprintf("%x", block.Timestamp),
+"parentHash":       "0x" + strings.Repeat("0", 64),
+"timestamp":        fmt.Sprintf("0x%x", block.Timestamp),
 "transactions":     []interface{}{},
 "gasLimit":         "0x1000000",
 "gasUsed":          "0x0",
@@ -329,56 +496,45 @@ return map[string]interface{}{
 "uncles":           []interface{}{},
 "nonce":            "0x0000000000000000",
 "baseFeePerGas":    "0x0",
-}, nil
-
-case "eth_getTransactionReceipt":
-if len(params) > 0 {
-var txHash string
-json.Unmarshal(params[0], &txHash)
-// Return success receipt
-return map[string]interface{}{
-"transactionHash":   txHash,
-"contractAddress":   e.getContractAddress(txHash),
-"transactionIndex":  "0x0",
-"blockHash":         "0x" + strings.Repeat("0", 64),
-"blockNumber":       "0x" + fmt.Sprintf("%x", height),
-"from":              "0x0000000000000000000000000000000000000000",
-"to":                nil,
-"cumulativeGasUsed": "0x0",
-"gasUsed":           "0x0",
-"logs":              []interface{}{},
-"logsBloom":         "0x" + strings.Repeat("0", 512),
-"status":            "0x1", // Success
-"type":              "0x2",
-}, nil
 }
-return nil, nil
-
-case "eth_feeHistory":
-return map[string]interface{}{
-"oldestBlock":   "0x0",
-"baseFeePerGas": []string{"0x0", "0x0"},
-"gasUsedRatio":  []float64{0.0},
-"reward":        [][]string{{"0x0"}},
-}, nil
-
-case "web3_clientVersion":
-return "Aequitas/v0.3.0/BlockDAG", nil
-
-case "eth_syncing":
-return false, nil
-
-case "eth_accounts":
-return []interface{}{}, nil
-
-case "net_listening":
-return true, nil
-
-case "net_peerCount":
-return "0x1", nil
-
-default:
-fmt.Printf("[RPC] unsupported method: %s\n", method)
-return nil, fmt.Errorf("method %s not supported", method)
 }
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+type RPCError struct {
+Code    int
+Message string
+}
+
+func (e *RPCError) Error() string {
+return e.Message
+}
+
+func writeError(w http.ResponseWriter, code int, message string, id interface{}) {
+json.NewEncoder(w).Encode(map[string]interface{}{
+"jsonrpc": "2.0",
+"id":      id,
+"error": map[string]interface{}{
+"code":    code,
+"message": message,
+},
+})
+}
+
+func errorResponse(id interface{}, code int, message string) map[string]interface{} {
+return map[string]interface{}{
+"jsonrpc": "2.0",
+"id":      id,
+"error": map[string]interface{}{
+"code":    code,
+"message": message,
+},
+}
+}
+
+func min4(a, b int) int {
+if a < b {
+return a
+}
+return b
 }

@@ -133,13 +133,29 @@ return contractAddr, ret, nil
 }
 
 func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int) (ret []byte, err error) {
-// Always use a fresh stateDB snapshot for reads to avoid stale trie issues
+// Always use a fresh stateDB for reads — load all contracts from PostgreSQL
 freshDB, err2 := NewPersistentStateDB(e.chainState)
 if err2 == nil && freshDB != nil {
-// Use fresh DB for this call only
-origDB := e.stateDB
-e.stateDB = freshDB
-defer func() { e.stateDB = origDB }()
+    // Explicitly reload the target contract code after commit
+    toCode, dbErr := e.chainState.LoadContract(strings.ToLower(to.Hex()))
+    if dbErr == nil && len(toCode) > 0 {
+        freshDB.SetCode(to, toCode)
+        // Load storage slots for this contract
+        if e.chainState.db != nil {
+            rows, err3 := e.chainState.db.Query("SELECT slot, value FROM evm_storage WHERE address = $1", strings.ToLower(to.Hex()))
+            if err3 == nil {
+                for rows.Next() {
+                    var slot, val string
+                    rows.Scan(&slot, &val)
+                    freshDB.SetState(to, common.HexToHash(slot), common.HexToHash(val))
+                }
+                rows.Close()
+            }
+        }
+    }
+    origDB := e.stateDB
+    e.stateDB = freshDB
+    defer func() { e.stateDB = origDB }()
 }
 
 	defer func() {
