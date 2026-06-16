@@ -29,6 +29,7 @@ Error   interface{} `json:"error,omitempty"`
 }
 
 type EVMRPCServer struct {
+deployedContracts map[string]string // txHash -> contractAddress
 dag    *BlockDAG
 state  *ChainState
 nonces map[string]uint64
@@ -44,6 +45,7 @@ return &EVMRPCServer{
 dag:    dag,
 state:  state,
 nonces: make(map[string]uint64),
+		deployedContracts: make(map[string]string),
 evm:    engine,
 }
 }
@@ -53,6 +55,13 @@ mux := http.NewServeMux()
 mux.HandleFunc("/", e.handleRPC)
 fmt.Printf("✓ EVM JSON-RPC listening on port %d\n", port)
 go http.ListenAndServe(fmt.Sprintf(":%d", port), mux)
+}
+
+func (e *EVMRPCServer) getContractAddress(txHash string) interface{} {
+if addr, ok := e.deployedContracts[txHash]; ok {
+return "0x" + addr
+}
+return nil
 }
 
 func (e *EVMRPCServer) handleRPC(w http.ResponseWriter, r *http.Request) {
@@ -209,7 +218,10 @@ if err != nil {
 fmt.Printf("[RPC] ✗ Deploy failed: %v\n", err)
 } else {
 fmt.Printf("[RPC] ✓ Contract deployed: %s\n", contractAddr.Hex())
-txHash = "0x" + contractAddr.Hex()[2:]
+// Return real tx hash, not contract address
+// Store contract address in mapping for eth_getTransactionReceipt
+txHash = "0x" + tx.Hash().Hex()[2:]
+e.deployedContracts[txHash] = contractAddr.Hex()
 }
 } else {
 // Contract call
@@ -286,6 +298,7 @@ json.Unmarshal(params[0], &txHash)
 // Return success receipt
 return map[string]interface{}{
 "transactionHash":   txHash,
+"contractAddress":   e.getContractAddress(txHash),
 "transactionIndex":  "0x0",
 "blockHash":         "0x" + strings.Repeat("0", 64),
 "blockNumber":       "0x" + fmt.Sprintf("%x", height),
@@ -293,7 +306,6 @@ return map[string]interface{}{
 "to":                nil,
 "cumulativeGasUsed": "0x0",
 "gasUsed":           "0x0",
-"contractAddress":   "0x" + strings.Repeat("1", 40),
 "logs":              []interface{}{},
 "logsBloom":         "0x" + strings.Repeat("0", 512),
 "status":            "0x1", // Success
