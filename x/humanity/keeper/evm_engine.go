@@ -47,6 +47,10 @@ e.stateDB.SetBalance(addr, balanceWei)
 }
 }
 
+func (e *EVMEngine) GetCode(addr common.Address) []byte {
+return e.stateDB.GetCode(addr)
+}
+
 func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *big.Int) (addr common.Address, ret []byte, err error) {
 	// Recover from any EVM panic
 	defer func() {

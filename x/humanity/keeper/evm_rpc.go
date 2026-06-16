@@ -29,11 +29,11 @@ Error   interface{} `json:"error,omitempty"`
 }
 
 type EVMRPCServer struct {
-deployedContracts map[string]string // txHash -> contractAddress
-dag    *BlockDAG
-state  *ChainState
-nonces map[string]uint64
-evm    *EVMEngine
+deployedContracts map[string]string
+dag               *BlockDAG
+state             *ChainState
+nonces            map[string]uint64
+evm               *EVMEngine
 }
 
 func NewEVMRPCServer(dag *BlockDAG, state *ChainState) *EVMRPCServer {
@@ -42,11 +42,11 @@ if err != nil {
 fmt.Printf("[EVM] Warning: could not init EVM engine: %v\n", err)
 }
 return &EVMRPCServer{
-dag:    dag,
-state:  state,
-nonces: make(map[string]uint64),
+dag:               dag,
+		state:             state,
+		nonces:            make(map[string]uint64),
 		deployedContracts: make(map[string]string),
-evm:    engine,
+		evm:               engine,
 }
 }
 
@@ -257,8 +257,26 @@ return "0x" + hex.EncodeToString(result), nil
 return "0x", nil
 
 case "eth_getCode":
-// Return non-empty code for known contract addresses
-return "0x600160015b", nil
+if len(params) >= 1 {
+    var addrStr string
+    json.Unmarshal(params[0], &addrStr)
+    addrStr = strings.ToLower(addrStr)
+    if e.evm != nil {
+        addr := common.HexToAddress(addrStr)
+        code := e.evm.GetCode(addr)
+        if len(code) > 0 {
+            return "0x" + hex.EncodeToString(code), nil
+        }
+    }
+    // Fallback: load from DB
+    if e.state != nil {
+        bytecode, err := e.state.LoadContract(addrStr)
+        if err == nil && len(bytecode) > 0 {
+            return "0x" + hex.EncodeToString(bytecode), nil
+        }
+    }
+}
+return "0x", nil
 
 case "eth_getLogs":
 return []interface{}{}, nil
