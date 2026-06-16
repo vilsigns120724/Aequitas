@@ -1168,6 +1168,31 @@ function setLang(lang) {
   const protoTitles = document.querySelectorAll('.proto-section .idx-title');
   const protoKeys = ['ca-title','poa-title','guard-title','dem-title','cap-title','ubi-title','inf-title'];
   protoTitles.forEach((el,i) => { if(protoKeys[i] && t[protoKeys[i]]) el.textContent=t[protoKeys[i]]; });
+
+  // Index tab - descriptions
+  const idxDescs = document.querySelectorAll('.idx-desc');
+  ['idx-desc','pools-desc','phases-desc'].forEach((k,i) => { if(idxDescs[i] && t[k]) idxDescs[i].textContent=t[k]; });
+
+  // Index tab - story text
+  if(t['story-text']) { const e=document.querySelector('#tab-index .story-text'); if(e) e.innerHTML=t['story-text']; }
+
+  // Index tab - phase table
+  const phaseTds = document.querySelectorAll('#tab-index .spec-table td:last-child');
+  ['p0','p1','p2','p3'].forEach((k,i) => { if(phaseTds[i] && t[k]) phaseTds[i].innerHTML=t[k]; });
+
+  // Network tab - descriptions
+  const netDescs = document.querySelectorAll('.net-card > div[style*="font-size"]');
+  if(netDescs[0] && t['nodes-desc']) netDescs[0].textContent=t['nodes-desc'];
+  if(netDescs[1] && t['bootstrap-desc']) netDescs[1].textContent=t['bootstrap-desc'];
+
+  // Humans tab - section desc + stats
+  if(t['h-desc']) { const e=document.querySelector('#tab-humans .sec-desc'); if(e) e.textContent=t['h-desc']; }
+  if(t['no-humans']) { const e=document.querySelector('#tab-humans .empty'); if(e) e.innerHTML=t['no-humans'].replace(/\n/g,'<br>'); }
+  if(t['reg-stats']) { const e=document.querySelector('#tab-humans .ic-title'); if(e) e.textContent=t['reg-stats']; }
+  if(t['total-humans']) { const e=document.querySelector('#tab-humans .ic-key'); if(e) e.textContent=t['total-humans']; }
+
+  // Explorer tab - section desc
+  if(t['blocks-desc']) { const e=document.querySelector('#tab-explorer .sec-desc'); if(e) e.textContent=t['blocks-desc']; }
 }
 
 function fmt(n) {
