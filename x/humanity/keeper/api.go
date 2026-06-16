@@ -843,6 +843,8 @@ en:{
   'ib-fair':'Radically Fair','ib-fair-t':'Every verified human receives exactly 1,000 AEQ. No pre-mine, no founder allocation. Total supply always equals verified humans × 1,000.',
   'ib-dag':'BlockDAG Architecture','ib-dag-t':'Multiple blocks can be produced simultaneously and merged. Higher throughput, lower latency, better fault tolerance.',
   'ib-gas':'Truly Gasless','ib-gas-t':'Registration costs absolutely nothing. No ETH, BNB, or MATIC required. No credit card, no bank account.'
+},,
+  'h-what':'What is a Verified Human?','h-what-t':'A Verified Human is a wallet address cryptographically proven to belong to a unique living human. Biometric data is never transmitted or stored.','h-zkp':'Zero-Knowledge Proof System','h-zkp-t':'Aequitas uses the Groth16 proving system over BN128 elliptic curve. Proof size: ~200 bytes. Verification: ~10ms.','h-sybil':'Sybil Attack Prevention','h-sybil-t':'Each biometric hash is stored permanently. Attempting to register twice is immediately rejected. One human, one wallet, forever.','h-global':'Global Inclusion','h-global-t':'No bank account, no credit card, no cryptocurrency required. Just an Android smartphone with a fingerprint sensor.'
 },
 de:{
   'tab-register':'🔐 Registrieren','tab-explorer':'🔍 Explorer','tab-humans':'👥 Menschen','tab-index':'📊 Index','tab-network':'🌐 Netzwerk','tab-protocol':'📜 Protokoll V6',
@@ -867,6 +869,8 @@ de:{
   'ib-fair':'Radikal faire Verteilung','ib-fair-t':'Jeder verifizierte Mensch erhält genau 1.000 AEQ. Keine Vorzuteilung, keine Gründeranteile. Gesamtmenge immer = Menschen × 1.000.',
   'ib-dag':'BlockDAG-Architektur','ib-dag-t':'Mehrere Blöcke können gleichzeitig produziert und zusammengeführt werden. Höherer Durchsatz, niedrigere Latenz.',
   'ib-gas':'Wirklich gebührenfrei','ib-gas-t':'Registrierung kostet absolut nichts. Kein ETH, BNB oder MATIC. Kein Bankkonto erforderlich.'
+},,
+  'h-what':'Was ist ein verifizierter Mensch?','h-what-t':'Ein verifizierter Mensch ist eine Wallet-Adresse die kryptographisch bewiesen wurde einem einzigartigen lebenden Menschen zu gehören. Biometrische Daten werden niemals übertragen oder gespeichert.','h-zkp':'Zero-Knowledge-Proof-System','h-zkp-t':'Aequitas verwendet Groth16 über BN128. Beweisdauer: ~200 Bytes. Verifizierungszeit: ~10ms.','h-sybil':'Schutz vor Sybil-Angriffen','h-sybil-t':'Jeder biometrische Hash wird dauerhaft gespeichert. Doppelregistrierung wird sofort abgelehnt. Eine Person, eine Wallet, für immer.','h-global':'Globale Inklusion','h-global-t':'Kein Bankkonto, keine Kreditkarte, keine Kryptowährung erforderlich. Nur ein Android-Smartphone mit Fingerabdrucksensor.'
 },
 es:{
   'tab-register':'🔐 Registrar','tab-explorer':'🔍 Explorador','tab-humans':'👥 Humanos','tab-index':'📊 Índice','tab-network':'🌐 Red','tab-protocol':'📜 Protocolo V6',
@@ -891,6 +895,8 @@ es:{
   'ib-fair':'Distribución Radicalmente Justa','ib-fair-t':'Cada humano verificado recibe exactamente 1,000 AEQ. Sin pre-minado, sin asignación a fundadores.',
   'ib-dag':'Arquitectura BlockDAG','ib-dag-t':'Múltiples bloques pueden producirse simultáneamente y fusionarse. Mayor rendimiento, menor latencia.',
   'ib-gas':'Verdaderamente Sin Gas','ib-gas-t':'El registro no cuesta nada. No se necesita ETH, BNB ni MATIC. Sin cuenta bancaria.'
+},,
+  'h-what':'¿Qué es un Humano Verificado?','h-what-t':'Un Humano Verificado es una dirección wallet demostrada criptográficamente que pertenece a un humano único vivo. Los datos biométricos nunca se transmiten ni almacenan.','h-zkp':'Sistema ZKP','h-zkp-t':'Aequitas usa Groth16 sobre BN128. Tamaño de prueba: ~200 bytes. Verificación: ~10ms.','h-sybil':'Prevención de Ataques Sybil','h-sybil-t':'Cada hash biométrico se almacena permanentemente. Intentar registrarse dos veces se rechaza inmediatamente.','h-global':'Inclusión Global','h-global-t':'Sin cuenta bancaria, tarjeta de crédito ni criptomoneda. Solo un smartphone Android con sensor de huella.'
 },
 ru:{
   'tab-register':'🔐 Регистрация','tab-explorer':'🔍 Проводник','tab-humans':'👥 Люди','tab-index':'📊 Индекс','tab-network':'🌐 Сеть','tab-protocol':'📜 Протокол V6',
@@ -915,6 +921,8 @@ ru:{
   'ib-fair':'Радикально Справедливое Распределение','ib-fair-t':'Каждый верифицированный человек получает ровно 1 000 AEQ. Общее предложение всегда = люди × 1 000.',
   'ib-dag':'Архитектура BlockDAG','ib-dag-t':'Несколько блоков могут производиться одновременно и объединяться. Более высокая пропускная способность.',
   'ib-gas':'По-Настоящему Бесплатно','ib-gas-t':'Регистрация не стоит ничего. Не нужен ETH, BNB или MATIC. Не нужен банковский счёт.'
+},,
+  'h-what':'Что такое Верифицированный Человек?','h-what-t':'Верифицированный Человек — это адрес кошелька доказанно принадлежащий уникальному живому человеку. Биометрические данные никогда не передаются и не хранятся.','h-zkp':'Система ZKP','h-zkp-t':'Aequitas использует Groth16 над BN128. Размер доказательства: ~200 байт. Верификация: ~10мс.','h-sybil':'Защита от Атак Сивиллы','h-sybil-t':'Каждый биометрический хэш хранится постоянно. Двойная регистрация немедленно отклоняется.','h-global':'Глобальное Включение','h-global-t':'Не нужен банковский счёт, кредитная карта или криптовалюта. Только Android-смартфон с сенсором отпечатка.'
 },
 zh:{
   'tab-register':'🔐 注册','tab-explorer':'🔍 浏览器','tab-humans':'👥 人类','tab-index':'📊 指数','tab-network':'🌐 网络','tab-protocol':'📜 协议 V6',
@@ -939,6 +947,8 @@ zh:{
   'ib-fair':'根本公平的分配','ib-fair-t':'每个经过验证的人类获得恰好1,000 AEQ。总供应量始终等于已验证人类 × 1,000。',
   'ib-dag':'BlockDAG架构','ib-dag-t':'多个区块可以同时产生并合并。更高吞吐量，更低延迟。',
   'ib-gas':'真正无Gas费','ib-gas-t':'注册绝对免费。不需要ETH、BNB或MATIC。不需要银行账户。'
+},,
+  'h-what':'已验证人类是什么？','h-what-t':'已验证人类是一个加密证明属于独特活人的钱包地址。生物特征数据从不传输或存储。','h-zkp':'零知识证明系统','h-zkp-t':'Aequitas使用BN128上的Groth16。证明大小：~200字节。验证：~10ms。','h-sybil':'女巫攻击防护','h-sybil-t':'每个生物特征哈希永久存储。尝试用同一指纹注册两次立即被拒绝。','h-global':'全球包容','h-global-t':'不需要银行账户、信用卡或加密货币。只需Android智能手机。'
 },
 id:{
   'tab-register':'🔐 Daftar','tab-explorer':'🔍 Penjelajah','tab-humans':'👥 Manusia','tab-index':'📊 Indeks','tab-network':'🌐 Jaringan','tab-protocol':'📜 Protokol V6',
@@ -964,7 +974,9 @@ id:{
   'ib-dag':'Arsitektur BlockDAG','ib-dag-t':'Beberapa blok dapat diproduksi secara bersamaan dan digabungkan. Throughput lebih tinggi, latensi lebih rendah.',
   'ib-gas':'Benar-Benar Tanpa Gas','ib-gas-t':'Pendaftaran tidak memerlukan biaya sama sekali. Tidak perlu ETH, BNB, atau MATIC. Tidak perlu rekening bank.'
 }
-};
+};,
+  'h-what':'Apa itu Manusia Terverifikasi?','h-what-t':'Manusia Terverifikasi adalah alamat wallet yang terbukti secara kriptografis milik manusia unik yang hidup. Data biometrik tidak pernah ditransmisikan atau disimpan.','h-zkp':'Sistem ZKP','h-zkp-t':'Aequitas menggunakan Groth16 atas BN128. Ukuran bukti: ~200 byte. Verifikasi: ~10ms.','h-sybil':'Pencegahan Serangan Sybil','h-sybil-t':'Setiap hash biometrik disimpan secara permanen. Mencoba mendaftar dua kali langsung ditolak.','h-global':'Inklusi Global','h-global-t':'Tidak perlu rekening bank, kartu kredit, atau cryptocurrency. Hanya smartphone Android.'
+}
 
 function setLang(lang) {
   currentLang = lang;
@@ -996,10 +1008,10 @@ function setLang(lang) {
   // Info banner titles/texts
   const ibTitles = document.querySelectorAll('.info-item-title');
   const ibTexts  = document.querySelectorAll('.info-item-text');
-  const ibTK = ['ib-poh','ib-fair','ib-dag','ib-gas'];
-  const ibXT = ['ib-poh-t','ib-fair-t','ib-dag-t','ib-gas-t'];
+  const ibTK = ['ib-poh','ib-fair','ib-dag','ib-gas','h-what','h-zkp','h-sybil','h-global'];
+  const ibXT = ['ib-poh-t','ib-fair-t','ib-dag-t','ib-gas-t','h-what-t','h-zkp-t','h-sybil-t','h-global-t'];
   ibTitles.forEach((el,i) => { if(ibTK[i] && t[ibTK[i]]) el.textContent = t[ibTK[i]]; });
-  ibTexts.forEach((el,i)  => { if(ibXT[i] && t[ibXT[i]]) el.textContent = t[ibXT[i]]; });
+  ibTexts.forEach((el,i)  => { if(ibXT[i] && t[ibXT[i]]) el.innerHTML = t[ibXT[i]]; });
   // Register section
   if(t['reg-title']) { const e=document.querySelector('.reg-hero-title'); if(e) e.textContent=t['reg-title']; }
   if(t['reg-sub'])   { const e=document.querySelector('.reg-hero-sub');   if(e) e.textContent=t['reg-sub']; }
