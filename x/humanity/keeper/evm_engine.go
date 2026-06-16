@@ -107,47 +107,8 @@ rows.Close()
 }
 }
 
-// Commit to trie so all state is readable
-if _, err := sdb.Commit(0, false); err != nil {
-return nil, fmt.Errorf("stateDB commit failed: %w", err)
-}
-
-// Re-open after commit so reads work correctly
-root, _ := sdb.Commit(0, false)
-sdb2, err := state.New(root, db, nil)
-if err != nil {
-// Fall back to the committed state
+// Don't commit — keep state in dirty/pending form so EVM can read it directly
 return sdb, nil
-}
-// Re-apply all state to the new trie
-for _, acc := range e.chainState.GetAllAccounts() {
-addr := common.HexToAddress(acc.Address)
-decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), decimals)
-sdb2.SetBalance(addr, wei)
-sdb2.SetNonce(addr, e.chainState.LoadNonce(acc.Address))
-}
-for _, addrStr := range e.chainState.GetAllContracts() {
-addr := common.HexToAddress(addrStr)
-code, err := e.chainState.LoadContract(addrStr)
-if err != nil || len(code) == 0 {
-continue
-}
-sdb2.SetCode(addr, code)
-if e.chainState.db != nil {
-rows, err := e.chainState.db.Query(
-`SELECT slot, value FROM evm_storage WHERE address = $1`, addrStr)
-if err == nil {
-for rows.Next() {
-var slot, val string
-rows.Scan(&slot, &val)
-sdb2.SetState(addr, common.HexToHash(slot), common.HexToHash(val))
-}
-rows.Close()
-}
-}
-}
-return sdb2, nil
 }
 
 // ─── DEPLOY ───────────────────────────────────────────────────────────────────
