@@ -57,6 +57,11 @@ fmt.Printf("✓ EVM JSON-RPC listening on port %d\n", port)
 go http.ListenAndServe(fmt.Sprintf(":%d", port), mux)
 }
 
+func min(a, b int) int {
+if a < b { return a }
+return b
+}
+
 func (e *EVMRPCServer) getContractAddress(txHash string) interface{} {
 if addr, ok := e.deployedContracts[txHash]; ok {
 return "0x" + addr
@@ -246,9 +251,24 @@ if err := json.Unmarshal(params[0], &callObj); err == nil {
 from := common.HexToAddress(callObj["from"])
 to := common.HexToAddress(callObj["to"])
 data, _ := hex.DecodeString(strings.TrimPrefix(callObj["data"], "0x"))
+// Debug: check if code exists before calling
+code := e.evm.GetCode(to)
+fmt.Printf("[RPC] eth_call to=%s data=%x codeLen=%d\n", to.Hex(), data[:min(4,len(data))], len(code))
 result, err := e.evm.CallContract(from, to, data, big.NewInt(0))
 if err != nil {
 fmt.Printf("[RPC] eth_call error: %v\n", err)
+// Fallback: reload contract from DB and retry
+if e.state != nil {
+    bytecode, dberr := e.state.LoadContract(strings.ToLower(to.Hex()))
+    if dberr == nil && len(bytecode) > 0 {
+        fmt.Printf("[RPC] Reloading contract from DB: %d bytes\n", len(bytecode))
+        e.evm.SetCode(to, bytecode)
+        result, err = e.evm.CallContract(from, to, data, big.NewInt(0))
+        if err == nil {
+            return "0x" + hex.EncodeToString(result), nil
+        }
+    }
+}
 return "0x", nil
 }
 return "0x" + hex.EncodeToString(result), nil
