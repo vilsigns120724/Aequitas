@@ -927,6 +927,19 @@ async function addToMetaMask() {
         blockExplorerUrls: ['https://aequitas-production-9fba.up.railway.app']
       }]
     });
+    // Add AEQ as watchable token
+    await window.ethereum.request({
+      method: 'wallet_watchAsset',
+      params: {
+        type: 'ERC20',
+        options: {
+          address: '0xD487544fE06DeD5025DF7bD45bdFba5e9ffadd3f',
+          symbol: 'AEQ',
+          decimals: 18,
+          name: 'Aequitas'
+        }
+      }
+    });
   } catch (e) { console.error('MetaMask error:', e); }
 }
 
