@@ -818,9 +818,206 @@ function showTab(name, el) {
   el.classList.add('active');
 }
 
+
+const T = {
+en:{
+  'tab-register':'🔐 Register','tab-explorer':'🔍 Explorer','tab-humans':'👥 Humans','tab-index':'📊 Index','tab-network':'🌐 Network','tab-protocol':'📜 Protocol V6',
+  'reg-title':'🔐 Register as a Verified Human',
+  'reg-sub':'Join the Aequitas network and receive 1,000 AEQ. One-time, permanent, gasless. No personal data stored.',
+  'app-title':'REGISTRATION VIA ANDROID APP',
+  'app-text':'Proof of Humanity requires biometric verification on your personal device. Your fingerprint is processed by the Hardware Secure Element — raw data never leaves your phone. Download the app, scan your fingerprint, connect your wallet, and your <strong style="color:var(--gold)">1,000 AEQ will be granted automatically</strong>.',
+  's1t':'Biometric Scan','s1d':'Open app · scan fingerprint · HSE processes · data never leaves device',
+  's2t':'ZKP Generation','s2d':'Groth16 proof generated · uniqueness verified · hash never revealed',
+  's3t':'Connect Wallet','s3d':'App opens MetaMask · connect wallet · address receives 1,000 AEQ',
+  's4t':'1,000 AEQ','s4d':'Registered on V6 · confirmed in next block · app notifies automatically',
+  'priv-bar':'🔒 Hardware Secure Element · Groth16 ZKP · Data never leaves device · No gas fees · Permanent Sybil protection',
+  'conn-wallet':'CONNECTED WALLET','btn-conn':'🦊 CONNECT METAMASK','btn-reg':'🔐 REGISTER ON-CHAIN',
+  'btn-add-mm':'+ ADD AEQUITAS NETWORK','reg-log-hint':'// Open Aequitas Android App to generate your proof, then return here...',
+  'phil':'"Money exists because people exist.<br>Nothing more, nothing less."','phil-sub':'— THE AEQUITAS PRINCIPLE —',
+  's-height':'Block Height','s-height-sub':'New block every 6s · BlockDAG · Two nodes parallel',
+  's-humans':'Verified Humans','s-humans-sub':'Biometric ZKP · One person, one wallet, forever',
+  's-supply':'Total Supply','s-supply-sub':'Always = Humans × 1,000 AEQ',
+  's-index':'Aequitas Index','s-index-sub':'0 = perfect equality · 100 = max inequality',
+  's-uptime':'Uptime','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
+  'ib-poh':'Proof of Humanity','ib-poh-t':'Every AEQ holder must prove they are a unique living human. No bots, no corporations, no AI. Only real humans. Biometric data never leaves your device.',
+  'ib-fair':'Radically Fair','ib-fair-t':'Every verified human receives exactly 1,000 AEQ. No pre-mine, no founder allocation. Total supply always equals verified humans × 1,000.',
+  'ib-dag':'BlockDAG Architecture','ib-dag-t':'Multiple blocks can be produced simultaneously and merged. Higher throughput, lower latency, better fault tolerance.',
+  'ib-gas':'Truly Gasless','ib-gas-t':'Registration costs absolutely nothing. No ETH, BNB, or MATIC required. No credit card, no bank account.'
+},
+de:{
+  'tab-register':'🔐 Registrieren','tab-explorer':'🔍 Explorer','tab-humans':'👥 Menschen','tab-index':'📊 Index','tab-network':'🌐 Netzwerk','tab-protocol':'📜 Protokoll V6',
+  'reg-title':'🔐 Als verifizierter Mensch registrieren',
+  'reg-sub':'Tritt dem Aequitas-Netzwerk bei und erhalte 1.000 AEQ. Einmalig, permanent, gebührenfrei. Keine persönlichen Daten.',
+  'app-title':'REGISTRIERUNG NUR ÜBER ANDROID-APP',
+  'app-text':'Der Menschlichkeitsnachweis erfordert biometrische Verifizierung auf deinem Gerät. Dein Fingerabdruck wird durch das Hardware Secure Element verarbeitet — rohe Daten verlassen niemals dein Telefon. Lade die App herunter, scanne deinen Fingerabdruck, verbinde deine Wallet, und deine <strong style="color:var(--gold)">1.000 AEQ werden automatisch gewährt</strong>.',
+  's1t':'Biometrischer Scan','s1d':'App öffnen · Fingerabdruck scannen · HSE verarbeitet · Daten verlassen nie das Gerät',
+  's2t':'ZKP-Erzeugung','s2d':'Groth16-Beweis generiert · Einzigartigkeit verifiziert · Hash nie enthüllt',
+  's3t':'Wallet verbinden','s3d':'App öffnet MetaMask · Wallet verbinden · Adresse erhält 1.000 AEQ',
+  's4t':'1.000 AEQ','s4d':'Auf V6 registriert · im nächsten Block bestätigt · App benachrichtigt automatisch',
+  'priv-bar':'🔒 Hardware Secure Element · Groth16 ZKP · Daten verlassen nie das Gerät · Keine Gasgebühren · Permanenter Sybil-Schutz',
+  'conn-wallet':'VERBUNDENE WALLET','btn-conn':'🦊 METAMASK VERBINDEN','btn-reg':'🔐 ON-CHAIN REGISTRIEREN',
+  'btn-add-mm':'+ AEQUITAS-NETZWERK HINZUFÜGEN','reg-log-hint':'// Öffne die Aequitas Android-App um deinen Beweis zu generieren, dann kehre hierher zurück...',
+  'phil':'"Geld existiert weil Menschen existieren.<br>Nichts mehr, nichts weniger."','phil-sub':'— DAS AEQUITAS-PRINZIP —',
+  's-height':'Blockhöhe','s-height-sub':'Neuer Block alle 6 Sek · BlockDAG · Zwei Nodes parallel',
+  's-humans':'Verifizierte Menschen','s-humans-sub':'Biometrischer ZKP · Eine Person, eine Wallet, für immer',
+  's-supply':'Gesamtmenge','s-supply-sub':'Immer = Menschen × 1.000 AEQ',
+  's-index':'Aequitas-Index','s-index-sub':'0 = vollkommene Gleichheit · 100 = maximale Ungleichheit',
+  's-uptime':'Betriebszeit','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
+  'ib-poh':'Menschlichkeitsnachweis','ib-poh-t':'Jeder AEQ-Inhaber muss beweisen dass er ein einzigartiger lebender Mensch ist. Keine Bots, keine Unternehmen, keine KI. Nur echte Menschen.',
+  'ib-fair':'Radikal faire Verteilung','ib-fair-t':'Jeder verifizierte Mensch erhält genau 1.000 AEQ. Keine Vorzuteilung, keine Gründeranteile. Gesamtmenge immer = Menschen × 1.000.',
+  'ib-dag':'BlockDAG-Architektur','ib-dag-t':'Mehrere Blöcke können gleichzeitig produziert und zusammengeführt werden. Höherer Durchsatz, niedrigere Latenz.',
+  'ib-gas':'Wirklich gebührenfrei','ib-gas-t':'Registrierung kostet absolut nichts. Kein ETH, BNB oder MATIC. Kein Bankkonto erforderlich.'
+},
+es:{
+  'tab-register':'🔐 Registrar','tab-explorer':'🔍 Explorador','tab-humans':'👥 Humanos','tab-index':'📊 Índice','tab-network':'🌐 Red','tab-protocol':'📜 Protocolo V6',
+  'reg-title':'🔐 Regístrate como Humano Verificado',
+  'reg-sub':'Únete a la red Aequitas y recibe 1,000 AEQ. Único, permanente, sin gas. Sin datos personales.',
+  'app-title':'REGISTRO SOLO VÍA APP ANDROID',
+  'app-text':'La Prueba de Humanidad requiere verificación biométrica en tu dispositivo. Tu huella se procesa por el Elemento Seguro de Hardware — los datos brutos nunca salen de tu teléfono. Descarga la app, escanea tu huella, conecta tu wallet, y tus <strong style="color:var(--gold)">1,000 AEQ serán otorgados automáticamente</strong>.',
+  's1t':'Escaneo Biométrico','s1d':'Abrir app · escanear huella · HSE procesa · datos nunca salen del dispositivo',
+  's2t':'Generación ZKP','s2d':'Prueba Groth16 generada · unicidad verificada · hash nunca revelado',
+  's3t':'Conectar Wallet','s3d':'App abre MetaMask · conectar wallet · dirección recibe 1,000 AEQ',
+  's4t':'1,000 AEQ','s4d':'Registrado en V6 · confirmado en próximo bloque · app notifica automáticamente',
+  'priv-bar':'🔒 Elemento Seguro de Hardware · ZKP Groth16 · Datos nunca salen del dispositivo · Sin tarifas de gas',
+  'conn-wallet':'WALLET CONECTADA','btn-conn':'🦊 CONECTAR METAMASK','btn-reg':'🔐 REGISTRAR ON-CHAIN',
+  'btn-add-mm':'+ AGREGAR RED AEQUITAS','reg-log-hint':'// Abre la App Android Aequitas para generar tu prueba, luego regresa aquí...',
+  'phil':'"El dinero existe porque las personas existen.<br>Nada más, nada menos."','phil-sub':'— EL PRINCIPIO AEQUITAS —',
+  's-height':'Altura de Bloque','s-height-sub':'Nuevo bloque cada 6s · BlockDAG · Dos nodos paralelos',
+  's-humans':'Humanos Verificados','s-humans-sub':'ZKP biométrico · Una persona, una wallet, siempre',
+  's-supply':'Suministro Total','s-supply-sub':'Siempre = Humanos × 1,000 AEQ',
+  's-index':'Índice Aequitas','s-index-sub':'0 = igualdad perfecta · 100 = desigualdad máxima',
+  's-uptime':'Tiempo Activo','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
+  'ib-poh':'Prueba de Humanidad','ib-poh-t':'Cada titular de AEQ debe probar que es un humano único vivo. Sin bots, sin corporaciones, sin IA. Solo humanos reales.',
+  'ib-fair':'Distribución Radicalmente Justa','ib-fair-t':'Cada humano verificado recibe exactamente 1,000 AEQ. Sin pre-minado, sin asignación a fundadores.',
+  'ib-dag':'Arquitectura BlockDAG','ib-dag-t':'Múltiples bloques pueden producirse simultáneamente y fusionarse. Mayor rendimiento, menor latencia.',
+  'ib-gas':'Verdaderamente Sin Gas','ib-gas-t':'El registro no cuesta nada. No se necesita ETH, BNB ni MATIC. Sin cuenta bancaria.'
+},
+ru:{
+  'tab-register':'🔐 Регистрация','tab-explorer':'🔍 Проводник','tab-humans':'👥 Люди','tab-index':'📊 Индекс','tab-network':'🌐 Сеть','tab-protocol':'📜 Протокол V6',
+  'reg-title':'🔐 Зарегистрируйтесь как Верифицированный Человек',
+  'reg-sub':'Присоединитесь к сети Aequitas и получите 1 000 AEQ. Одноразово, постоянно, бесплатно. Никаких личных данных.',
+  'app-title':'РЕГИСТРАЦИЯ ТОЛЬКО ЧЕРЕЗ ANDROID-ПРИЛОЖЕНИЕ',
+  'app-text':'Доказательство человечности требует биометрической верификации на вашем устройстве. Ваш отпечаток обрабатывается Hardware Secure Element — сырые данные никогда не покидают ваш телефон. Скачайте приложение, отсканируйте отпечаток, подключите кошелёк, и ваши <strong style="color:var(--gold)">1 000 AEQ будут начислены автоматически</strong>.',
+  's1t':'Биометрический Скан','s1d':'Открыть приложение · сканировать отпечаток · HSE обрабатывает · данные не покидают устройство',
+  's2t':'Генерация ZKP','s2d':'Сгенерировано доказательство Groth16 · уникальность верифицирована · хэш не раскрывается',
+  's3t':'Подключить Кошелёк','s3d':'Приложение открывает MetaMask · подключить кошелёк · адрес получает 1 000 AEQ',
+  's4t':'1 000 AEQ','s4d':'Зарегистрировано на V6 · подтверждено в следующем блоке · приложение уведомляет автоматически',
+  'priv-bar':'🔒 Hardware Secure Element · ZKP Groth16 · Данные не покидают устройство · Без комиссий',
+  'conn-wallet':'ПОДКЛЮЧЁННЫЙ КОШЕЛЁК','btn-conn':'🦊 ПОДКЛЮЧИТЬ METAMASK','btn-reg':'🔐 ЗАРЕГИСТРИРОВАТЬСЯ ON-CHAIN',
+  'btn-add-mm':'+ ДОБАВИТЬ СЕТЬ AEQUITAS','reg-log-hint':'// Откройте приложение Aequitas для генерации доказательства, затем вернитесь...',
+  'phil':'"Деньги существуют потому что существуют люди.<br>Ничего больше, ничего меньше."','phil-sub':'— ПРИНЦИП AEQUITAS —',
+  's-height':'Высота Блока','s-height-sub':'Новый блок каждые 6 сек · BlockDAG · Два узла параллельно',
+  's-humans':'Верифицированных Людей','s-humans-sub':'Биометрический ZKP · Один человек, один кошелёк, навсегда',
+  's-supply':'Общее Предложение','s-supply-sub':'Всегда = Люди × 1 000 AEQ',
+  's-index':'Индекс Aequitas','s-index-sub':'0 = полное равенство · 100 = максимальное неравенство',
+  's-uptime':'Время Работы','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
+  'ib-poh':'Доказательство Человечности','ib-poh-t':'Каждый владелец AEQ должен доказать что он уникальный живой человек. Никаких ботов, корпораций, ИИ. Только настоящие люди.',
+  'ib-fair':'Радикально Справедливое Распределение','ib-fair-t':'Каждый верифицированный человек получает ровно 1 000 AEQ. Общее предложение всегда = люди × 1 000.',
+  'ib-dag':'Архитектура BlockDAG','ib-dag-t':'Несколько блоков могут производиться одновременно и объединяться. Более высокая пропускная способность.',
+  'ib-gas':'По-Настоящему Бесплатно','ib-gas-t':'Регистрация не стоит ничего. Не нужен ETH, BNB или MATIC. Не нужен банковский счёт.'
+},
+zh:{
+  'tab-register':'🔐 注册','tab-explorer':'🔍 浏览器','tab-humans':'👥 人类','tab-index':'📊 指数','tab-network':'🌐 网络','tab-protocol':'📜 协议 V6',
+  'reg-title':'🔐 注册为已验证人类',
+  'reg-sub':'加入Aequitas网络并接收1,000 AEQ。一次性、永久、无Gas费。不存储个人数据。',
+  'app-title':'仅通过ANDROID应用注册',
+  'app-text':'人类证明需要在您的个人设备上进行生物特征验证。您的指纹由硬件安全元件处理——原始数据永远不会离开您的手机。下载应用，扫描指纹，连接钱包，您的<strong style="color:var(--gold)">1,000 AEQ将自动发放</strong>。',
+  's1t':'生物特征扫描','s1d':'打开应用 · 扫描指纹 · HSE处理 · 数据永不离开设备',
+  's2t':'ZKP生成','s2d':'生成Groth16证明 · 验证唯一性 · 哈希从不泄露',
+  's3t':'连接钱包','s3d':'应用打开MetaMask · 连接钱包 · 地址接收1,000 AEQ',
+  's4t':'1,000 AEQ','s4d':'在V6上注册 · 下一个区块内确认 · 应用自动通知',
+  'priv-bar':'🔒 硬件安全元件 · Groth16 ZKP · 数据永不离开设备 · 无Gas费',
+  'conn-wallet':'已连接钱包','btn-conn':'🦊 连接METAMASK','btn-reg':'🔐 链上注册',
+  'btn-add-mm':'+ 添加AEQUITAS网络','reg-log-hint':'// 打开Aequitas Android应用生成您的证明，然后返回此处...',
+  'phil':'"货币存在是因为人类存在。<br>仅此而已，不多也不少。"','phil-sub':'— AEQUITAS原则 —',
+  's-height':'区块高度','s-height-sub':'每6秒新区块 · BlockDAG · 两个节点并行',
+  's-humans':'已验证人类','s-humans-sub':'生物特征ZKP · 一人一钱包，永久',
+  's-supply':'总供应量','s-supply-sub':'始终 = 人类 × 1,000 AEQ',
+  's-index':'Aequitas指数','s-index-sub':'0 = 完全平等 · 100 = 最大不平等',
+  's-uptime':'运行时间','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
+  'ib-poh':'人类证明','ib-poh-t':'每个AEQ持有者必须证明自己是唯一的活人。没有机器人、公司或AI。只有真实的人类。',
+  'ib-fair':'根本公平的分配','ib-fair-t':'每个经过验证的人类获得恰好1,000 AEQ。总供应量始终等于已验证人类 × 1,000。',
+  'ib-dag':'BlockDAG架构','ib-dag-t':'多个区块可以同时产生并合并。更高吞吐量，更低延迟。',
+  'ib-gas':'真正无Gas费','ib-gas-t':'注册绝对免费。不需要ETH、BNB或MATIC。不需要银行账户。'
+},
+id:{
+  'tab-register':'🔐 Daftar','tab-explorer':'🔍 Penjelajah','tab-humans':'👥 Manusia','tab-index':'📊 Indeks','tab-network':'🌐 Jaringan','tab-protocol':'📜 Protokol V6',
+  'reg-title':'🔐 Daftar sebagai Manusia Terverifikasi',
+  'reg-sub':'Bergabunglah dengan jaringan Aequitas dan terima 1.000 AEQ. Sekali, permanen, tanpa gas. Tidak ada data pribadi.',
+  'app-title':'PENDAFTARAN HANYA MELALUI APLIKASI ANDROID',
+  'app-text':'Bukti Kemanusiaan memerlukan verifikasi biometrik di perangkat Anda. Sidik jari Anda diproses oleh Hardware Secure Element — data mentah tidak pernah meninggalkan ponsel Anda. Unduh aplikasinya, pindai sidik jari, hubungkan wallet, dan <strong style="color:var(--gold)">1.000 AEQ Anda akan diberikan otomatis</strong>.',
+  's1t':'Pemindaian Biometrik','s1d':'Buka aplikasi · pindai sidik jari · HSE memproses · data tidak pernah meninggalkan perangkat',
+  's2t':'Pembuatan ZKP','s2d':'Bukti Groth16 dihasilkan · keunikan diverifikasi · hash tidak pernah terungkap',
+  's3t':'Hubungkan Wallet','s3d':'Aplikasi membuka MetaMask · hubungkan wallet · alamat menerima 1.000 AEQ',
+  's4t':'1.000 AEQ','s4d':'Terdaftar di V6 · dikonfirmasi di blok berikutnya · aplikasi memberi tahu otomatis',
+  'priv-bar':'🔒 Hardware Secure Element · ZKP Groth16 · Data tidak pernah meninggalkan perangkat · Tanpa biaya gas',
+  'conn-wallet':'DOMPET TERHUBUNG','btn-conn':'🦊 HUBUNGKAN METAMASK','btn-reg':'🔐 DAFTAR ON-CHAIN',
+  'btn-add-mm':'+ TAMBAHKAN JARINGAN AEQUITAS','reg-log-hint':'// Buka Aplikasi Android Aequitas untuk menghasilkan bukti Anda, lalu kembali ke sini...',
+  'phil':'"Uang ada karena manusia ada.<br>Tidak lebih, tidak kurang."','phil-sub':'— PRINSIP AEQUITAS —',
+  's-height':'Tinggi Blok','s-height-sub':'Blok baru setiap 6 detik · BlockDAG · Dua node paralel',
+  's-humans':'Manusia Terverifikasi','s-humans-sub':'ZKP biometrik · Satu orang, satu wallet, selamanya',
+  's-supply':'Total Pasokan','s-supply-sub':'Selalu = Manusia × 1.000 AEQ',
+  's-index':'Indeks Aequitas','s-index-sub':'0 = kesetaraan sempurna · 100 = ketidaksetaraan maksimum',
+  's-uptime':'Waktu Aktif','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
+  'ib-poh':'Bukti Kemanusiaan','ib-poh-t':'Setiap pemegang AEQ harus membuktikan bahwa mereka adalah manusia unik yang hidup. Tidak ada bot, korporasi, atau AI. Hanya manusia nyata.',
+  'ib-fair':'Distribusi yang Benar-Benar Adil','ib-fair-t':'Setiap manusia terverifikasi menerima tepat 1.000 AEQ. Total pasokan selalu sama dengan manusia × 1.000.',
+  'ib-dag':'Arsitektur BlockDAG','ib-dag-t':'Beberapa blok dapat diproduksi secara bersamaan dan digabungkan. Throughput lebih tinggi, latensi lebih rendah.',
+  'ib-gas':'Benar-Benar Tanpa Gas','ib-gas-t':'Pendaftaran tidak memerlukan biaya sama sekali. Tidak perlu ETH, BNB, atau MATIC. Tidak perlu rekening bank.'
+}
+};
+
 function setLang(lang) {
   currentLang = lang;
   document.getElementById('lang-select').value = lang;
+  const t = T[lang];
+  if (!t) return;
+  // Tabs
+  const tabs = document.querySelectorAll('.tab');
+  const tabKeys = ['tab-register','tab-explorer','tab-humans','tab-index','tab-network','tab-protocol'];
+  tabs.forEach((el,i) => { if(tabKeys[i] && t[tabKeys[i]]) el.innerHTML = t[tabKeys[i]]; });
+  // Buttons
+  const bc = document.getElementById('btn-connect');
+  if(bc && !bc.style.background.includes('00E676')) bc.textContent = t['btn-conn'] || bc.textContent;
+  const br = document.getElementById('btn-register');
+  if(br && !br.textContent.includes('ALREADY') && !br.textContent.includes('READY')) br.textContent = t['btn-reg'] || br.textContent;
+  // MetaMask buttons
+  document.querySelectorAll('.mm-btn').forEach(el => { el.textContent = t['btn-add-mm'] || el.textContent; });
+  // Phil card
+  document.querySelectorAll('.phil-quote').forEach(el => { el.innerHTML = t['phil'] || el.innerHTML; });
+  document.querySelectorAll('.phil-sub').forEach(el => { el.textContent = t['phil-sub'] || el.textContent; });
+  // Stat labels
+  const sl = {'s-height':['stat-lbl',0]};
+  const statLbls = document.querySelectorAll('.stat-lbl');
+  const statSubs = document.querySelectorAll('.stat-sub');
+  const statKeys = ['s-height','s-humans','s-supply','s-index','s-uptime'];
+  const subKeys  = ['s-height-sub','s-humans-sub','s-supply-sub','s-index-sub','s-uptime-sub'];
+  statLbls.forEach((el,i) => { if(statKeys[i] && t[statKeys[i]]) el.textContent = t[statKeys[i]]; });
+  statSubs.forEach((el,i) => { if(subKeys[i] && t[subKeys[i]]) el.textContent = t[subKeys[i]]; });
+  // Info banner titles/texts
+  const ibTitles = document.querySelectorAll('.info-item-title');
+  const ibTexts  = document.querySelectorAll('.info-item-text');
+  const ibTK = ['ib-poh','ib-fair','ib-dag','ib-gas'];
+  const ibXT = ['ib-poh-t','ib-fair-t','ib-dag-t','ib-gas-t'];
+  ibTitles.forEach((el,i) => { if(ibTK[i] && t[ibTK[i]]) el.textContent = t[ibTK[i]]; });
+  ibTexts.forEach((el,i)  => { if(ibXT[i] && t[ibXT[i]]) el.textContent = t[ibXT[i]]; });
+  // Register section
+  if(t['reg-title']) { const e=document.querySelector('.reg-hero-title'); if(e) e.textContent=t['reg-title']; }
+  if(t['reg-sub'])   { const e=document.querySelector('.reg-hero-sub');   if(e) e.textContent=t['reg-sub']; }
+  if(t['app-title']) { const e=document.querySelector('.app-only-title'); if(e) e.textContent=t['app-title']; }
+  if(t['app-text'])  { const e=document.querySelector('.app-only-text');  if(e) e.innerHTML=t['app-text']; }
+  if(t['priv-bar'])  { const e=document.querySelector('.priv-bar');       if(e) e.textContent=t['priv-bar']; }
+  if(t['conn-wallet']){ const e=document.querySelector('.wallet-lbl');    if(e) e.textContent=t['conn-wallet']; }
+  // Steps
+  const sTitles = document.querySelectorAll('.step-title');
+  const sDescs  = document.querySelectorAll('.step-desc');
+  [['s1t','s2t','s3t','s4t'],['s1d','s2d','s3d','s4d']].forEach((keys,ki) => {
+    const els = ki===0 ? sTitles : sDescs;
+    keys.forEach((k,i) => { if(els[i] && t[k]) els[i].textContent=t[k]; });
+  });
+  // Log hint
+  const rlog = document.getElementById('reg-status');
+  if(rlog && rlog.innerHTML.includes('Open Aequitas') && t['reg-log-hint'])
+    rlog.innerHTML='<span class="info">'+t['reg-log-hint']+'</span>';
 }
 
 function fmt(n) {
