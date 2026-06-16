@@ -1185,14 +1185,33 @@ function setLang(lang) {
   if(netDescs[0] && t['nodes-desc']) netDescs[0].textContent=t['nodes-desc'];
   if(netDescs[1] && t['bootstrap-desc']) netDescs[1].textContent=t['bootstrap-desc'];
 
-  // Humans tab - section desc + stats
+  // Humans tab
   if(t['h-desc']) { const e=document.querySelector('#tab-humans .sec-desc'); if(e) e.textContent=t['h-desc']; }
   if(t['no-humans']) { const e=document.querySelector('#tab-humans .empty'); if(e) e.innerHTML=t['no-humans'].replace(/\n/g,'<br>'); }
-  if(t['reg-stats']) { const e=document.querySelector('#tab-humans .ic-title'); if(e) e.textContent=t['reg-stats']; }
-  if(t['total-humans']) { const e=document.querySelector('#tab-humans .ic-key'); if(e) e.textContent=t['total-humans']; }
+  const humanIcTitles = document.querySelectorAll('#tab-humans .ic-title');
+  if(humanIcTitles[0] && t['reg-stats']) humanIcTitles[0].textContent=t['reg-stats'];
+  if(t['total-humans']) { const els=document.querySelectorAll('#tab-humans .ic-key'); if(els[0]) els[0].textContent=t['total-humans']; }
+  if(t['humans-sec-title']) { const e=document.querySelector('#tab-humans .sec-title span:last-child'); if(e) e.textContent=t['humans-sec-title']; }
 
-  // Explorer tab - section desc
+  // Explorer tab
   if(t['blocks-desc']) { const e=document.querySelector('#tab-explorer .sec-desc'); if(e) e.textContent=t['blocks-desc']; }
+  if(t['live-stats']) { const e=document.querySelector('#tab-explorer .section-label'); if(e) e.textContent=t['live-stats']; }
+
+  // Index tab - story text
+  if(t['story-text']) { const e=document.querySelector('#tab-index .story-text'); if(e) e.innerHTML=t['story-text']; }
+
+  // Protocol tab - all highlight boxes and story texts
+  const hlBoxes = document.querySelectorAll('.proto-section .highlight-box');
+  const hlKeys = ['ca-text','poa-box','guard-box','dem-box','cap-box','ubi-box','inf-box'];
+  hlBoxes.forEach((el,i) => { if(hlKeys[i] && t[hlKeys[i]]) el.innerHTML=t[hlKeys[i]]; });
+  const protoStories = document.querySelectorAll('.proto-section .story-text');
+  const protoStoryKeys = ['poa-text','guard-text','dem-text','cap-text','ubi-text'];
+  protoStories.forEach((el,i) => { if(protoStoryKeys[i] && t[protoStoryKeys[i]]) el.innerHTML=t[protoStoryKeys[i]]; });
+
+  // Network tab - spec table
+  const specRows = document.querySelectorAll('#tab-network .spec-table td:first-child');
+  const specKeys = ['k-chainid','k-evm','k-btime','k-cons','k-p2p','k-zkp','k-curve','k-storage','k-lang','k-src'];
+  specRows.forEach((el,i) => { if(specKeys[i] && t[specKeys[i]]) el.textContent=t[specKeys[i]]; });
 }
 
 function fmt(n) {
