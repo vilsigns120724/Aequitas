@@ -1,18 +1,34 @@
 package keeper
 
 import (
-"encoding/hex"
 "encoding/json"
 "fmt"
 "io"
 "math/big"
 "net/http"
+"os"
 "strings"
 
+"github.com/ethereum/go-ethereum/accounts/abi"
 "github.com/ethereum/go-ethereum/common"
 "github.com/ethereum/go-ethereum/core/types"
 "github.com/ethereum/go-ethereum/crypto"
 )
+
+// V7 ABI fragment for registerWithSig — used only to encode calldata correctly,
+// including the dynamic `bytes signature` parameter (offset/length tail encoding).
+const registerWithSigABI = `[{
+"name": "registerWithSig",
+"type": "function",
+"inputs": [
+{"name": "pA", "type": "uint256[2]"},
+{"name": "pB", "type": "uint256[2][2]"},
+{"name": "pC", "type": "uint256[2]"},
+{"name": "pubSignals", "type": "uint256[2]"},
+{"name": "claimedHuman", "type": "address"},
+{"name": "signature", "type": "bytes"}
+]
+}]`
 
 type RegisterRequest struct {
 Wallet     string     `json:"wallet"`
@@ -20,6 +36,7 @@ PubSignals []string   `json:"pubSignals"`
 PA         []string   `json:"pA"`
 PB         [][]string `json:"pB"`
 PC         []string   `json:"pC"`
+Signature  string     `json:"signature"` // hex-encoded, 65 bytes, from personal_sign
 }
 
 type RegisterResponse struct {
@@ -56,124 +73,161 @@ if wallet == "" {
 json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "wallet required"})
 return
 }
-
-// Check if already registered
-if a.state.IsHuman(wallet) {
-json.NewEncoder(w).Encode(RegisterResponse{
-Success: false,
-Message: "already registered on Aequitas Chain",
-Balance: a.state.GetBalance(wallet),
-})
-return
-}
-
-fmt.Printf("[REGISTER] Registering wallet: %s\n", wallet)
-
-// If ZKP proof is provided, call V6 contract
-evmRPC := NewEVMRPCServer(a.blockchain, a.state)
-if evmRPC.evm != nil && len(req.PubSignals) >= 2 {
-txHash, err := a.registerOnV6(evmRPC.evm, wallet, req)
-if err != nil {
-fmt.Printf("[REGISTER] V6 error: %v - falling back to BlockDAG\n", err)
-} else {
-// Mirror to V6 state
-commitment := req.PubSignals[1]
-evmRPC.evm.MirrorV6Registration(wallet, commitment)
-
-// Also register in BlockDAG for consistency
-a.state.RegisterHuman(wallet)
-a.blockchain.AddTransaction(Transaction{
-Type:   "register_human_v6",
-Wallet: wallet,
-Amount: 1000,
-TxHash: txHash,
-})
-
-fmt.Printf("[REGISTER] ✓ Human registered on V6: %s\n", wallet)
-json.NewEncoder(w).Encode(RegisterResponse{
-Success: true,
-Message: "Registered as human on Aequitas V6! 1,000 AEQ granted.",
-Balance: 1000,
-TxHash:  txHash,
-})
-return
-}
-}
-
-// Fallback: register only in BlockDAG (gasless, no ZKP required)
-a.state.RegisterHuman(wallet)
-txHash := fmt.Sprintf("0x%064x", len(wallet))
-a.blockchain.AddTransaction(Transaction{
-Type:   "register_human",
-Wallet: wallet,
-Amount: 1000,
-TxHash: txHash,
-})
-
-fmt.Printf("[REGISTER] ✓ Human registered (BlockDAG): %s | 1000 AEQ\n", wallet)
-json.NewEncoder(w).Encode(RegisterResponse{
-Success: true,
-Message: "Registered as human! 1,000 AEQ granted.",
-Balance: 1000,
-TxHash:  txHash,
-})
-}
-
-// registerOnV6 calls registerHuman() on the V6 EVM contract
-func (a *APIServer) registerOnV6(evm *EVMEngine, wallet string, req RegisterRequest) (string, error) {
 if len(req.PA) < 2 || len(req.PB) < 2 || len(req.PC) < 2 || len(req.PubSignals) < 2 {
-return "", fmt.Errorf("incomplete ZKP proof")
+json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "incomplete ZK proof"})
+return
+}
+if req.Signature == "" {
+json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "signature required"})
+return
 }
 
-// Build calldata for registerHuman(uint[2],uint[2][2],uint[2],uint[2])
-// Function selector: keccak256("registerHuman(uint256[2],uint256[2][2],uint256[2],uint256[2])")[:4]
-selector := crypto.Keccak256([]byte("registerHuman(uint256[2],uint256[2][2],uint256[2],uint256[2])"))[0:4]
+fmt.Printf("[REGISTER] Relaying registerWithSig for: %s\n", wallet)
 
-// Encode parameters
-calldata := selector
-calldata = append(calldata, encodeUint256Array2(req.PA)...)
-calldata = append(calldata, encodeUint256Array2x2(req.PB)...)
-calldata = append(calldata, encodeUint256Array2(req.PC)...)
-calldata = append(calldata, encodeUint256Array2(req.PubSignals)...)
+evmRPC := NewEVMRPCServer(a.blockchain, a.state)
+if evmRPC.evm == nil {
+json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "EVM engine unavailable"})
+return
+}
 
-from := common.HexToAddress(wallet)
-to := common.HexToAddress(V6_CONTRACT_ADDR)
-
-result, err := evm.CallContract(from, to, calldata, big.NewInt(0))
+txHash, err := a.registerOnV7(evmRPC, wallet, req)
 if err != nil {
-return "", fmt.Errorf("V6 call failed: %v", err)
+fmt.Printf("[REGISTER] V7 registerWithSig failed: %v\n", err)
+json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: err.Error()})
+return
 }
 
-// Generate TX hash
-txData := append(calldata, from.Bytes()...)
-txHash := "0x" + hex.EncodeToString(crypto.Keccak256(txData))
+fmt.Printf("[REGISTER] ✓ Relayed registerWithSig for %s, tx=%s\n", wallet, txHash)
+json.NewEncoder(w).Encode(RegisterResponse{
+Success: true,
+Message: "Registered as human on Aequitas V7! 1,000 AEQ granted.",
+Balance: 1000,
+TxHash:  txHash,
+})
+}
 
-_ = result
-_ = types.Transaction{}
+// registerOnV7 builds, signs (with the relayer key), and submits a registerWithSig
+// transaction on the V7 contract. claimedHuman in the contract call is the user's
+// own wallet — verified via the signature, not via msg.sender (which is the relayer).
+func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req RegisterRequest) (string, error) {
+relayerPK := os.Getenv("RELAYER_PRIVATE_KEY")
+if relayerPK == "" {
+return "", fmt.Errorf("server misconfigured: RELAYER_PRIVATE_KEY not set")
+}
+relayerPK = strings.TrimPrefix(relayerPK, "0x")
 
+relayerKey, err := crypto.HexToECDSA(relayerPK)
+if err != nil {
+return "", fmt.Errorf("invalid relayer key: %w", err)
+}
+relayerAddr := crypto.PubkeyToAddress(relayerKey.PublicKey)
+
+parsedABI, err := abi.JSON(strings.NewReader(registerWithSigABI))
+if err != nil {
+return "", fmt.Errorf("abi parse failed: %w", err)
+}
+
+pA, err := parseUint2(req.PA)
+if err != nil {
+return "", fmt.Errorf("invalid pA: %w", err)
+}
+pB, err := parseUint2x2(req.PB)
+if err != nil {
+return "", fmt.Errorf("invalid pB: %w", err)
+}
+pC, err := parseUint2(req.PC)
+if err != nil {
+return "", fmt.Errorf("invalid pC: %w", err)
+}
+pubSignals, err := parseUint2(req.PubSignals)
+if err != nil {
+return "", fmt.Errorf("invalid pubSignals: %w", err)
+}
+
+sigHex := strings.TrimPrefix(req.Signature, "0x")
+sigBytes := common.Hex2Bytes(sigHex)
+if len(sigBytes) != 65 {
+return "", fmt.Errorf("signature must be 65 bytes, got %d", len(sigBytes))
+}
+
+claimedHuman := common.HexToAddress(wallet)
+
+calldata, err := parsedABI.Pack("registerWithSig", pA, pB, pC, pubSignals, claimedHuman, sigBytes)
+if err != nil {
+return "", fmt.Errorf("encoding failed: %w", err)
+}
+
+to := common.HexToAddress(V7_CONTRACT_ADDR)
+relayerAddrStr := strings.ToLower(relayerAddr.Hex())
+nonce := a.state.LoadNonce(relayerAddrStr)
+
+tx := types.NewTx(&types.LegacyTx{
+Nonce:    nonce,
+To:       &to,
+Value:    big.NewInt(0),
+Gas:      6_000_000,
+GasPrice: big.NewInt(0),
+Data:     calldata,
+})
+
+signer := types.NewEIP155Signer(big.NewInt(1926))
+signedTx, err := types.SignTx(tx, signer, relayerKey)
+if err != nil {
+return "", fmt.Errorf("relayer signing failed: %w", err)
+}
+
+rawBytes, err := signedTx.MarshalBinary()
+if err != nil {
+return "", fmt.Errorf("tx encoding failed: %w", err)
+}
+
+rawHex := "0x" + common.Bytes2Hex(rawBytes)
+result, rpcErr := evmRPC.sendRawTransaction([]json.RawMessage{
+mustMarshal(rawHex),
+})
+if rpcErr != nil {
+return "", fmt.Errorf("submission failed: %s", rpcErr.Message)
+}
+
+txHash, ok := result.(string)
+if !ok {
+return "", fmt.Errorf("unexpected response from relay")
+}
 return txHash, nil
 }
 
-func encodeUint256Array2(values []string) []byte {
-result := make([]byte, 64)
-for i := 0; i < 2 && i < len(values); i++ {
+func parseUint2(values []string) ([2]*big.Int, error) {
+var out [2]*big.Int
+for i := 0; i < 2; i++ {
 n := new(big.Int)
-n.SetString(values[i], 10)
-b := common.BigToHash(n).Bytes()
-copy(result[i*32:], b)
+_, ok := n.SetString(values[i], 10)
+if !ok {
+return out, fmt.Errorf("invalid number at index %d: %s", i, values[i])
 }
-return result
+out[i] = n
+}
+return out, nil
 }
 
-func encodeUint256Array2x2(values [][]string) []byte {
-result := make([]byte, 128)
-for i := 0; i < 2 && i < len(values); i++ {
-for j := 0; j < 2 && j < len(values[i]); j++ {
+func parseUint2x2(values [][]string) ([2][2]*big.Int, error) {
+var out [2][2]*big.Int
+for i := 0; i < 2; i++ {
+if len(values[i]) < 2 {
+return out, fmt.Errorf("row %d has fewer than 2 elements", i)
+}
+for j := 0; j < 2; j++ {
 n := new(big.Int)
-n.SetString(values[i][j], 10)
-b := common.BigToHash(n).Bytes()
-copy(result[(i*2+j)*32:], b)
+_, ok := n.SetString(values[i][j], 10)
+if !ok {
+return out, fmt.Errorf("invalid number at [%d][%d]: %s", i, j, values[i][j])
+}
+out[i][j] = n
 }
 }
-return result
+return out, nil
+}
+
+func mustMarshal(v interface{}) json.RawMessage {
+b, _ := json.Marshal(v)
+return b
 }

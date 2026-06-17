@@ -91,7 +91,7 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "block_time":   6,
 "contract_v5":  "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5",
 "contract_v6":  "0xA76cA3bf34F2Ae5dFA0608696627e42b81180488",
-		"contract_v7":  "0xD487544fE06DeD5025DF7bD45bdFba5e9ffadd3f",
+		"contract_v7":  "0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae",
 "bio_verifier": "0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2",
 "chain_evm_id": 1926,
 "index":        a.state.CalcAequitasIndex(),

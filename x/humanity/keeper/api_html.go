@@ -158,6 +158,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
   .badge-dag{display:none}
 }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.0/ethers.umd.min.js"></script>
 </head>
 <body>
 <header>
@@ -444,6 +445,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
 <script>
 const PS = 'https://aequitas-proof-server-production.up.railway.app';
 const CID = '0x786';
+const V7_CONTRACT = '0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae';
 let waddr = '', proofData = null, curLang = 'en';
 
 const T = {
@@ -1062,12 +1064,35 @@ function addLog(msg, type) {
 async function doRegister() {
   if (!waddr || !proofData) return;
   try {
-    addLog('Registering on Aequitas V6...', 'info');
+    addLog('Preparing signature...', 'info');
     document.getElementById('btn-reg').disabled = true;
+
+    // commitment is pubSignals[0] — must match exactly what the contract reads
+    const commitment = proofData.pubSignals[0];
+
+    // Build the EXACT same hash the contract computes:
+    // keccak256(abi.encodePacked(block.chainid, address(this), "register", commitment))
+    const messageHash = ethers.solidityPackedKeccak256(
+      ['uint256', 'address', 'string', 'uint256'],
+      [1926, V7_CONTRACT, 'register', commitment]
+    );
+
+    addLog('Please sign in MetaMask...', 'info');
+    // personal_sign automatically adds the "\x19Ethereum Signed Message:\n32" prefix
+    const signature = await window.ethereum.request({
+      method: 'personal_sign',
+      params: [messageHash, waddr]
+    });
+
+    addLog('Registering on Aequitas V7...', 'info');
     const r = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: waddr, pA: proofData.pA, pB: proofData.pB, pC: proofData.pC, pubSignals: proofData.pubSignals })
+      body: JSON.stringify({
+        wallet: waddr,
+        pA: proofData.pA, pB: proofData.pB, pC: proofData.pC, pubSignals: proofData.pubSignals,
+        signature: signature
+      })
     });
     const d = await r.json();
     if (!d.success) { addLog('Error: ' + d.message, 'err'); document.getElementById('btn-reg').disabled = false; return; }
