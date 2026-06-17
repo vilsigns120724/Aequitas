@@ -410,7 +410,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
   <div class="section-label" data-i18n="proto-label">Aequitas V6 Protocol — Technical Documentation</div>
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="ca-title">Contract Addresses</div>
-    <div class="hlbox" data-i18n="ca-text">Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier (Groth16): 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main):     0xD487544fE06DeD5025DF7bD45bdFba5e9ffadd3f<br>V5 (Sepolia legacy):   0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5</div>
+    <div class="hlbox" data-i18n="ca-text">Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier (Groth16): 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main):     0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae<br>V5 (Sepolia legacy):   0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="poa-title">1. PROOF OF ALIVE</div>
@@ -509,7 +509,7 @@ en:{
   'tech-title':'Technical Specifications','mm-config':'MetaMask Configuration',
   'k-lang':'Language','k-src':'Source','evm-yes':'Yes — JSON-RPC /rpc · MetaMask',
   'proto-label':'Aequitas V6 Protocol — Technical Documentation',
-  'ca-title':'Contract Addresses','ca-text':'Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV6:  0xD487544fE06DeD5025DF7bD45bdFba5e9ffadd3f<br>V5 Sepolia:  0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5',
+  'ca-title':'Contract Addresses','ca-text':'Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae<br>V5 Sepolia:  0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5',
   'poa-title':'1. PROOF OF ALIVE','poa-text':'<p>What happens to money when people die or disappear? In Bitcoin, millions of BTC are permanently lost. In Aequitas, if someone disappears, their AEQ eventually returns to the community.</p>',
   'poa-box':'Year 0-2: Normal usage<br>Year 2: Warning 1 — Guardian can respond<br>Year 2+60d: Warning 2<br>Year 2+120d: Warning 3<br>Year 2+180d: AEQ goes to PERSONAL ESCROW<br>Year 4: If still inactive — UBI Pool',
   'guard-title':'2. GUARDIAN SYSTEM','guard-text':'<p>What if someone cannot access their device for months? A trusted Guardian can confirm they are still alive — without any transaction rights.</p>',
@@ -581,7 +581,7 @@ de:{
   'tech-title':'Technische Spezifikationen','mm-config':'MetaMask-Konfiguration',
   'k-lang':'Sprache','k-src':'Quellcode','evm-yes':'Ja — JSON-RPC /rpc · MetaMask',
   'proto-label':'Aequitas V6 Protokoll — Technische Dokumentation',
-  'ca-title':'Contract-Adressen','ca-text':'Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV6:  0xD487544fE06DeD5025DF7bD45bdFba5e9ffadd3f<br>V5 Sepolia:  0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5',
+  'ca-title':'Contract-Adressen','ca-text':'Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae<br>V5 Sepolia:  0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5',
   'poa-title':'1. LEBENSNACHWEIS','poa-text':'<p>Was passiert mit Geld wenn Menschen sterben oder verschwinden? Bei Bitcoin sind Millionen BTC dauerhaft verloren. Bei Aequitas kehrt das AEQ einer verschwundenen Person schließlich zur Gemeinschaft zurück.</p>',
   'poa-box':'Jahr 0-2: Normale Nutzung<br>Jahr 2: Warnung 1 — Guardian kann antworten<br>Jahr 2+60T: Warnung 2<br>Jahr 2+120T: Warnung 3<br>Jahr 2+180T: AEQ ins persönliche Treuhand-Konto<br>Jahr 4: Bei weiter Inaktivität — UBI-Pool',
   'guard-title':'2. GUARDIAN-SYSTEM','guard-text':'<p>Was wenn jemand monatelang nicht auf sein Gerät zugreifen kann? Ein vertrauenswürdiger Guardian kann bestätigen dass sie noch am Leben sind — ohne Transaktionsrechte.</p>',
@@ -654,7 +654,7 @@ es:{
   'tech-title':'Especificaciones Técnicas','mm-config':'Configuración MetaMask',
   'k-lang':'Lenguaje','k-src':'Código Fuente','evm-yes':'Sí — JSON-RPC /rpc · MetaMask',
   'proto-label':'Protocolo Aequitas V6 — Documentación Técnica',
-  'ca-title':'Direcciones de Contratos','ca-text':'Cadena: Aequitas Chain (Chain ID: 1926)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV6:  0xD487544fE06DeD5025DF7bD45bdFba5e9ffadd3f',
+  'ca-title':'Direcciones de Contratos','ca-text':'Cadena: Aequitas Chain (Chain ID: 1926)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
   'poa-title':'1. PRUEBA DE VIDA','poa-text':'<p>En Aequitas, si alguien desaparece, su AEQ eventualmente regresa a la comunidad.</p>',
   'poa-box':'Año 0-2: Uso normal<br>Año 2: Advertencia 1<br>Año 2+180d: AEQ a depósito personal<br>Año 4: Si inactivo — Pool UBI',
   'guard-title':'2. SISTEMA GUARDIAN','guard-text':'<p>Un Guardian de confianza puede confirmar que alguien está vivo — sin derechos de transacción.</p>',
@@ -724,7 +724,7 @@ ru:{
   'tech-title':'Технические Характеристики','mm-config':'Настройка MetaMask',
   'k-lang':'Язык','k-src':'Исходный Код','evm-yes':'Да — JSON-RPC /rpc · MetaMask',
   'proto-label':'Протокол Aequitas V6 — Техническая Документация',
-  'ca-title':'Адреса Контрактов','ca-text':'Цепочка: Aequitas Chain (Chain ID: 1926)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV6:  0xD487544fE06DeD5025DF7bD45bdFba5e9ffadd3f',
+  'ca-title':'Адреса Контрактов','ca-text':'Цепочка: Aequitas Chain (Chain ID: 1926)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
   'poa-title':'1. ДОКАЗАТЕЛЬСТВО ЖИЗНИ','poa-text':'<p>В Aequitas если кто-то исчезает, его AEQ в конечном итоге возвращается сообществу.</p>',
   'poa-box':'Год 0-2: Нормальное использование<br>Год 2: Предупреждение 1<br>Год 2+180д: AEQ на персональный эскроу<br>Год 4: При инактивности — Пул UBI',
   'guard-title':'2. СИСТЕМА GUARDIAN','guard-text':'<p>Доверенный Guardian может подтвердить что человек жив — без прав на транзакции.</p>',
@@ -793,7 +793,7 @@ zh:{
   'tech-title':'技术规格','mm-config':'MetaMask配置',
   'k-lang':'语言','k-src':'源代码','evm-yes':'是 — JSON-RPC /rpc · MetaMask',
   'proto-label':'Aequitas V6协议 — 技术文档',
-  'ca-title':'合约地址','ca-text':'链：Aequitas Chain（Chain ID: 1926）<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV6:  0xD487544fE06DeD5025DF7bD45bdFba5e9ffadd3f',
+  'ca-title':'合约地址','ca-text':'链：Aequitas Chain（Chain ID: 1926）<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
   'poa-title':'1. 生命证明','poa-text':'<p>在Aequitas中，如果有人消失，他们的AEQ最终会返回社区。</p>',
   'poa-box':'第0-2年：正常使用<br>第2年：警告1<br>第2年+180天：AEQ进入个人托管<br>第4年：如果仍不活跃 — UBI池',
   'guard-title':'2. 监护人系统','guard-text':'<p>受信任的监护人可以确认某人仍然活着 — 没有任何交易权限。</p>',
@@ -862,7 +862,7 @@ id:{
   'tech-title':'Spesifikasi Teknis','mm-config':'Konfigurasi MetaMask',
   'k-lang':'Bahasa','k-src':'Kode Sumber','evm-yes':'Ya — JSON-RPC /rpc · MetaMask',
   'proto-label':'Protokol Aequitas V6 — Dokumentasi Teknis',
-  'ca-title':'Alamat Kontrak','ca-text':'Rantai: Aequitas Chain (Chain ID: 1926)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV6:  0xD487544fE06DeD5025DF7bD45bdFba5e9ffadd3f',
+  'ca-title':'Alamat Kontrak','ca-text':'Rantai: Aequitas Chain (Chain ID: 1926)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
   'poa-title':'1. BUKTI HIDUP','poa-text':'<p>Di Aequitas, jika seseorang menghilang, AEQ mereka akhirnya kembali ke komunitas.</p>',
   'poa-box':'Tahun 0-2: Penggunaan normal<br>Tahun 2: Peringatan 1<br>Tahun 2+180h: AEQ ke escrow pribadi<br>Tahun 4: Jika masih tidak aktif — Pool UBI',
   'guard-title':'2. SISTEM GUARDIAN','guard-text':'<p>Guardian tepercaya dapat mengkonfirmasi seseorang masih hidup — tanpa hak transaksi.</p>',
@@ -935,7 +935,7 @@ async function addToMetaMask() {
       params: {
         type: 'ERC20',
         options: {
-          address: '0xD487544fE06DeD5025DF7bD45bdFba5e9ffadd3f',
+          address: '0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
           symbol: 'AEQ',
           decimals: 18,
           name: 'Aequitas'

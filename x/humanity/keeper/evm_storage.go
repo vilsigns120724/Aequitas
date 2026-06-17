@@ -167,3 +167,35 @@ rows.Close()
 sdb.Commit(0, false)
 return sdb, nil
 }
+
+
+// SaveBioRegistration links a ZK proof commitment to the wallet that
+// successfully registered with it. Called once, right after a
+// registerWithSig transaction is confirmed successful — never speculatively.
+func (cs *ChainState) SaveBioRegistration(commitment, walletAddress, txHash string) error {
+if cs.db == nil {
+return nil
+}
+_, err := cs.db.Exec(
+`INSERT INTO bio_registrations (commitment, wallet_address, tx_hash) VALUES ($1, $2, $3)
+ ON CONFLICT (commitment) DO UPDATE SET wallet_address = $2, tx_hash = $3`,
+commitment, walletAddress, txHash,
+)
+return err
+}
+
+// GetWalletByCommitment looks up which wallet (if any) successfully
+// registered with a given proof commitment. Returns "" if none found —
+// this lets the app ask "did MY specific proof get registered?" instead of
+// reading the last entry in a global, unfiltered humans list.
+func (cs *ChainState) GetWalletByCommitment(commitment string) string {
+if cs.db == nil {
+return ""
+}
+var wallet string
+err := cs.db.QueryRow(`SELECT wallet_address FROM bio_registrations WHERE commitment = $1`, commitment).Scan(&wallet)
+if err != nil {
+return ""
+}
+return wallet
+}

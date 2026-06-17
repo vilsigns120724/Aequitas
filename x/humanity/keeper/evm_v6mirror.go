@@ -10,8 +10,16 @@ import (
 "github.com/ethereum/go-ethereum/crypto"
 )
 
+// Single source of truth for all currently-active contract addresses on the
+// Aequitas Chain. Every other file (main.go, api.go, api_html.go's frontend,
+// register.go) should reference these constants instead of hardcoding the
+// address again — hardcoding is what caused three different "V6"/"V7"
+// addresses and two different bio-verifier addresses to drift apart in the
+// codebase and the user-facing explorer at the same time.
 const V6_CONTRACT_ADDR = "0xA76cA3bf34F2Ae5dFA0608696627e42b81180488"
 const V7_CONTRACT_ADDR = "0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae"
+const BIO_VERIFIER_ADDR = "0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2"
+const V5_SEPOLIA_LEGACY_ADDR = "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5" // Sepolia testnet — historical only, no longer in active use
 
 // MirrorV6Registration mirrors a V6 registration to PostgreSQL
 func (e *EVMEngine) MirrorV6Registration(wallet, commitment string) {

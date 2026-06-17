@@ -90,6 +90,15 @@ address TEXT PRIMARY KEY,
 balance FLOAT NOT NULL DEFAULT 0,
 is_human BOOLEAN NOT NULL DEFAULT false
 )`)
+// Links a ZK proof commitment to the wallet that successfully registered
+// with it, so the app can ask "did MY proof get registered, and to which
+// wallet?" instead of guessing from a global, unfiltered list.
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS bio_registrations (
+commitment TEXT PRIMARY KEY,
+wallet_address TEXT NOT NULL,
+tx_hash TEXT,
+registered_at TIMESTAMP DEFAULT NOW()
+)`)
 }
 
 func (cs *ChainState) loadFromDB() {

@@ -13,9 +13,12 @@ import (
 
 const (
 VERSION       = "v0.3.0"
-CONTRACT_V5   = "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5"
-	BIO_VERIFIER  = "0xF326aaF74Ae4C10F627A19981aB29bcf43b65379"
-	CONTRACT_V6   = "0x371C577B1e2c49A07123B32F556bCcdf79317A0C"
+// NOTE: the actually-active contract addresses (V6, V7, bio verifier) live
+// in x/humanity/keeper/evm_v6mirror.go (V6_CONTRACT_ADDR, V7_CONTRACT_ADDR,
+// BIO_VERIFIER_ADDR) — that is the single source of truth. Do not redeclare
+// addresses here; a previous version of this file had a stale CONTRACT_V6
+// and BIO_VERIFIER value that didn't match what was actually deployed and
+// was never even referenced anywhere in this file.
 PROOF_SERVER  = "https://aequitas-proof-server-production.up.railway.app"
 INITIAL_GRANT = 1000
 CHAIN_ID      = "aequitas-1"
@@ -84,7 +87,13 @@ p2pNode.SetDAG(bc)
 	time.Sleep(10 * time.Second)
 	bc.ReconstructState(chainState)
 
-	// humanKeeper.StartSync() - disabled, humans register natively
+// Humans register natively via the V7 contract (see register.go) and are
+// reconstructed from blockchain transactions above via ReconstructState.
+// An old Sepolia-polling sync (humanKeeper.StartSync(), in the now-removed
+// sync.go) used to inject placeholder "sepolia_human_N" entries into the
+// keeper on every tick — exactly the fake registrations that were
+// deliberately removed earlier in this project. That code path is gone
+// now, not just disabled, so it can't be accidentally re-enabled.
 
 multiaddr := p2pNode.GetMultiaddr()
 fmt.Println("── Share this address to join network ───")

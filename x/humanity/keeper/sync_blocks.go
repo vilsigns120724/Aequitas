@@ -5,11 +5,42 @@ import (
 "fmt"
 "io"
 "net/http"
+"os"
+"strings"
 "time"
 )
 
-var KnownNodes = []string{
+// KnownNodes lists peer node URLs to sync blocks with over HTTP.
+// Defaults to the original hardcoded list, but can be overridden/extended
+// via the PEER_NODES environment variable (comma-separated URLs), so a new
+// node can join the network by setting an env var on Railway/Render
+// instead of requiring a code change and redeploy of every existing node.
+var KnownNodes = loadKnownNodes()
+
+func loadKnownNodes() []string {
+defaults := []string{
 "https://aequitas-node-2.onrender.com",
+}
+extra := os.Getenv("PEER_NODES")
+if extra == "" {
+return defaults
+}
+seen := make(map[string]bool)
+nodes := make([]string, 0, len(defaults)+4)
+for _, n := range defaults {
+if !seen[n] {
+seen[n] = true
+nodes = append(nodes, n)
+}
+}
+for _, n := range strings.Split(extra, ",") {
+n = strings.TrimSpace(n)
+if n != "" && !seen[n] {
+seen[n] = true
+nodes = append(nodes, n)
+}
+}
+return nodes
 }
 
 func (dag *BlockDAG) StartHTTPBlockSync(selfURL string) {

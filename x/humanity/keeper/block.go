@@ -147,6 +147,21 @@ if _, exists := dag.blocks[block.Hash]; exists {
 return
 }
 
+// Minimal integrity check: recompute the hash from the block's own fields
+// and reject if it doesn't match what the peer claims. This does NOT make
+// this a real consensus mechanism — there's still no signature proving
+// which node actually produced the block, and a malicious or buggy peer
+// could still broadcast a self-consistent but bogus block. It does stop
+// the simplest case: a corrupted-in-transit or hand-crafted block whose
+// claimed hash doesn't match its contents, which previously would have
+// been accepted into the DAG without any check at all.
+expectedHash := dag.calculateHash(block)
+if expectedHash != block.Hash {
+fmt.Printf("[DAG] ✗ Rejected peer block #%d: hash mismatch (claimed %s..., computed %s...)\n",
+block.Height, block.Hash[:min(16, len(block.Hash))], expectedHash[:16])
+return
+}
+
 dag.blocks[block.Hash] = block
 
 // Remove parents from tips
@@ -163,6 +178,11 @@ dag.height = block.Height
 
 fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, len(dag.tips))
 }
+
+// Note: uses Go's built-in min() (available since Go 1.21; this module
+// targets 1.24.1) rather than a custom helper — other files in this
+// package already define min4()/min4b() specifically to avoid shadowing
+// the built-in, so we follow that same convention here by not shadowing it.
 
 func (dag *BlockDAG) LatestBlock() *Block {
 dag.mu.RLock()

@@ -207,6 +207,17 @@ txHash, ok := result.(string)
 if !ok {
 return "", fmt.Errorf("unexpected response from relay")
 }
+
+// Record which wallet this proof's commitment actually registered to,
+// so the app can later ask "did MY proof get registered, and where?"
+// instead of reading the last entry in a global, unfiltered list.
+if len(req.PubSignals) > 0 {
+commitment := req.PubSignals[0]
+if saveErr := a.state.SaveBioRegistration(commitment, wallet, txHash); saveErr != nil {
+fmt.Printf("[REGISTER] Warning: could not save bio registration link: %v\n", saveErr)
+}
+}
+
 return txHash, nil
 }
 

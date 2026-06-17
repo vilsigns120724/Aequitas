@@ -58,6 +58,7 @@ mux.HandleFunc("/api/humans", a.handleHumans)
 mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 mux.HandleFunc("/api/register", a.handleRegister)
 mux.HandleFunc("/api/balance", a.handleBalance)
+mux.HandleFunc("/api/check-registration", a.handleCheckRegistration)
 mux.HandleFunc("/registered", a.handleRegistered)
 fmt.Println("── Starting EVM RPC ─────────────────────")
 evmRPC := NewEVMRPCServer(a.blockchain, a.state)
@@ -77,7 +78,12 @@ w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 latest := a.blockchain.LatestBlock()
 uptime := int64(time.Since(a.startTime).Seconds())
-humans := a.keeper.TotalHumans()
+// Use a.state (PostgreSQL-backed ChainState) as the single source of
+// truth for human count, not a.keeper — the in-memory Keeper map is never
+// persisted and resets to 0 on every restart, which previously made this
+// "growth" figure silently diverge from total_humans below (which already
+// correctly used a.state).
+humans := a.state.TotalHumans()
 growth := humans * 10
 if growth > 100 {
 growth = 100
@@ -92,10 +98,10 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "node_id":      a.p2pNode.GetNodeID(),
 "uptime":       uptime,
 "block_time":   6,
-"contract_v5":  "0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5",
-"contract_v6":  "0xA76cA3bf34F2Ae5dFA0608696627e42b81180488",
-		"contract_v7":  "0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae",
-"bio_verifier": "0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2",
+"contract_v5":  V5_SEPOLIA_LEGACY_ADDR,
+"contract_v6":  V6_CONTRACT_ADDR,
+"contract_v7":  V7_CONTRACT_ADDR,
+"bio_verifier": BIO_VERIFIER_ADDR,
 "chain_evm_id": 1926,
 "index":        a.state.CalcAequitasIndex(),
 "gini":         a.state.CalcGini(),
@@ -173,6 +179,35 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 // queryV7Status reads isHuman(address) and balanceOf(address) directly from
 // the V7 contract via eth_call, so the website always reflects real on-chain
 // state instead of any off-chain mirror.
+// handleCheckRegistration lets the app ask "did MY specific proof commitment
+// get registered, and to which wallet?" — instead of reading the last entry
+// in a global, unfiltered /api/humans list (which showed every user the
+// most recently registered wallet, regardless of who they actually were).
+func (a *APIServer) handleCheckRegistration(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+
+commitment := r.URL.Query().Get("commitment")
+if commitment == "" {
+json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
+return
+}
+
+wallet := a.state.GetWalletByCommitment(commitment)
+if wallet == "" {
+json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
+return
+}
+
+balance, isHuman := a.queryV7Status(wallet)
+json.NewEncoder(w).Encode(map[string]interface{}{
+"registered": true,
+"wallet":     wallet,
+"balance":    balance,
+"is_human":   isHuman,
+})
+}
+
 func (a *APIServer) queryV7Status(wallet string) (float64, bool) {
 evmRPC := NewEVMRPCServer(a.blockchain, a.state)
 if evmRPC.evm == nil {
