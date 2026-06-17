@@ -219,13 +219,54 @@ return nil, fmt.Errorf("%s", reason)
 return nil, fmt.Errorf("call failed: %w", execErr)
 }
 
-// Persist any state changes from the call
-sdb.Commit(0, false)
-e.persistStorageFromDB(sdb, to)
+// Persist any state changes from the call.
+// IMPORTANT: per go-ethereum docs, sdb is no longer reliable for reads
+// after Commit() — we must open a fresh StateDB on the returned root
+// to safely dump and persist the resulting storage.
+root, commitErr := sdb.Commit(0, false)
+if commitErr != nil {
+fmt.Printf("[EVM] revert Commit failed: %v\n", commitErr)
+} else {
+e.dumpAndPersistStorage(root, to)
+}
 e.syncBalancesFromDB(sdb)
 
 fmt.Printf("[EVM] Call result: %d bytes: %x\n", len(ret), ret)
 return ret, nil
+}
+
+// dumpAndPersistStorage opens a fresh, read-only StateDB on the given root
+// and writes every populated storage slot for addr into PostgreSQL.
+// This is the generic, contract-agnostic replacement for guessing slot
+// numbers manually — it works correctly for any mapping or simple storage
+// variable, regardless of how its slot is computed.
+func (e *EVMEngine) dumpAndPersistStorage(root common.Hash, addr common.Address) {
+memDB := rawdb.NewMemoryDatabase()
+readDB, err := state.New(root, state.NewDatabase(memDB), nil)
+if err != nil {
+fmt.Printf("[EVM] revert Could not open committed state for persistence: %v\n", err)
+return
+}
+
+dump := readDB.RawDump(&state.DumpConfig{
+SkipCode:          true,
+OnlyWithAddresses: true,
+})
+
+account, ok := dump.Accounts[addr]
+if !ok {
+return
+}
+
+addrStr := strings.ToLower(addr.Hex())
+count := 0
+for slot, value := range account.Storage {
+e.chainState.SaveStorageSlot(addrStr, slot.Hex(), value)
+count++
+}
+if count > 0 {
+fmt.Printf("[EVM] Persisted %d storage slots for %s\n", count, addrStr)
+}
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
