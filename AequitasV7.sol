@@ -94,6 +94,71 @@ contract AequitasV7 {
         emit Registered(msg.sender, commitment, INITIAL_GRANT);
     }
 
+    /**
+     * @notice Register as a verified human via meta-transaction (gasless for the user)
+     * @dev A relayer submits this transaction and pays gas, but the new human is
+     *      claimedHuman, NOT msg.sender. claimedHuman must have personally signed
+     *      this exact commitment, for this exact contract, on this exact chain,
+     *      verified on-chain via ecrecover. usedCommitments prevents replay across
+     *      either registration path.
+     */
+    function registerWithSig(
+        uint[2] calldata pA,
+        uint[2][2] calldata pB,
+        uint[2] calldata pC,
+        uint[2] calldata pubSignals,
+        address claimedHuman,
+        bytes calldata signature
+    ) external {
+        require(!isHuman[claimedHuman], "Already registered");
+
+        uint256 commitment = pubSignals[0];
+        require(!usedCommitments[commitment], "Commitment used");
+
+        bytes32 messageHash = keccak256(abi.encodePacked(
+            block.chainid,
+            address(this),
+            "register",
+            commitment
+        ));
+        bytes32 ethSignedHash = keccak256(abi.encodePacked(
+            "\x19Ethereum Signed Message:\n32",
+            messageHash
+        ));
+        require(
+            _recoverSigner(ethSignedHash, signature) == claimedHuman,
+            "Invalid signature"
+        );
+
+        require(bioVerifier.verifyProof(pA, pB, pC, pubSignals), "Invalid proof");
+
+        usedCommitments[commitment] = true;
+        commitmentOf[claimedHuman] = commitment;
+        isHuman[claimedHuman] = true;
+        totalHumans++;
+        balanceOf[claimedHuman] += INITIAL_GRANT;
+        totalSupply += INITIAL_GRANT;
+        ubiClaimed[claimedHuman] = ubiPerHumanAccumulated;
+        lastActivity[claimedHuman] = block.timestamp;
+        lastDemurrage[claimedHuman] = block.timestamp;
+
+        emit Registered(claimedHuman, commitment, INITIAL_GRANT);
+    }
+
+    function _recoverSigner(bytes32 ethSignedHash, bytes calldata signature) internal pure returns (address) {
+        require(signature.length == 65, "Invalid signature length");
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+        assembly {
+            r := calldataload(signature.offset)
+            s := calldataload(add(signature.offset, 32))
+            v := byte(0, calldataload(add(signature.offset, 64)))
+        }
+        if (v < 27) v += 27;
+        return ecrecover(ethSignedHash, v, r, s);
+    }
+
     function transfer(address to, uint256 amount) external returns (bool) {
         require(isHuman[msg.sender], "Not human");
         require(balanceOf[msg.sender] >= amount, "Insufficient balance");
