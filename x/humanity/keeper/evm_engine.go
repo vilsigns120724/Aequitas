@@ -203,15 +203,20 @@ return nil, fmt.Errorf("no code at %s", to.Hex())
 txCtx := vm.TxContext{Origin: from, GasPrice: big.NewInt(0)}
 evm := vm.NewEVM(blockContext(), txCtx, sdb, chainConfig(), vm.Config{})
 
-ret, _, err = evm.Call(
+var execErr error
+ret, _, execErr = evm.Call(
 vm.AccountRef(from),
 to,
 data,
 30_000_000,
 value,
 )
-if err != nil {
-return nil, fmt.Errorf("call failed: %w", err)
+if execErr != nil {
+reason := decodeRevertReason(ret)
+if reason != "" {
+return nil, fmt.Errorf("%s", reason)
+}
+return nil, fmt.Errorf("call failed: %w", execErr)
 }
 
 // Persist any state changes from the call
@@ -258,6 +263,32 @@ e.chainState.SetBalance(acc.Address, balAEQ)
 
 func (e *EVMEngine) LoadContractStorage(addr common.Address) {
 // No-op: storage loaded in newStateDB()
+}
+
+// decodeRevertReason extracts the human-readable message from EVM revert bytes.
+// Solidity require(cond, "message") encodes as: Error(string) selector (0x08c379a0)
+// followed by standard ABI-encoded string (offset, length, padded bytes).
+// Returns "" if the bytes don't match this standard format (e.g. a panic or
+// a require() without a message).
+func decodeRevertReason(ret []byte) string {
+if len(ret) < 4 {
+return ""
+}
+// Error(string) selector
+if ret[0] != 0x08 || ret[1] != 0xc3 || ret[2] != 0x79 || ret[3] != 0xa0 {
+return ""
+}
+payload := ret[4:]
+if len(payload) < 64 {
+return ""
+}
+// payload[0:32] = offset (always 0x20 for a single string param)
+// payload[32:64] = string length
+strLen := new(big.Int).SetBytes(payload[32:64]).Uint64()
+if uint64(len(payload)) < 64+strLen {
+return ""
+}
+return string(payload[64 : 64+strLen])
 }
 
 func HexToBytecode(hexStr string) ([]byte, error) {
