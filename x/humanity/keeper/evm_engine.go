@@ -65,12 +65,12 @@ BaseFee:     big.NewInt(0),
 
 // newStateDB creates a fresh in-memory StateDB loaded from PostgreSQL.
 // Called before every Deploy or Call to ensure consistent state.
-func (e *EVMEngine) newStateDB() (*state.StateDB, error) {
+func (e *EVMEngine) newStateDB() (*state.StateDB, state.Database, error) {
 memDB := rawdb.NewMemoryDatabase()
 db := state.NewDatabase(memDB)
 sdb, err := state.New(common.Hash{}, db, nil)
 if err != nil {
-return nil, err
+return nil, nil, err
 }
 
 // Load all account balances
@@ -108,7 +108,7 @@ rows.Close()
 }
 
 // Don't commit — keep state in dirty/pending form so EVM can read it directly
-return sdb, nil
+return sdb, db, nil
 }
 
 // ─── DEPLOY ───────────────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ ret = nil
 }
 }()
 
-sdb, err := e.newStateDB()
+sdb, _, err := e.newStateDB()
 if err != nil {
 return common.Address{}, nil, fmt.Errorf("stateDB: %w", err)
 }
@@ -186,7 +186,7 @@ ret = nil
 }
 }()
 
-sdb, err := e.newStateDB()
+sdb, db, err := e.newStateDB()
 if err != nil {
 return nil, fmt.Errorf("stateDB: %w", err)
 }
@@ -227,7 +227,8 @@ root, commitErr := sdb.Commit(0, false)
 if commitErr != nil {
 fmt.Printf("[EVM] revert Commit failed: %v\n", commitErr)
 } else {
-e.dumpAndPersistStorage(root, to)
+touchedAddrs, touchedCommitments := extractTouchedEntities(from, data)
+e.dumpAndPersistStorage(root, db, to, touchedAddrs, touchedCommitments)
 }
 e.syncBalancesFromDB(sdb)
 
@@ -240,28 +241,78 @@ return ret, nil
 // This is the generic, contract-agnostic replacement for guessing slot
 // numbers manually — it works correctly for any mapping or simple storage
 // variable, regardless of how its slot is computed.
-func (e *EVMEngine) dumpAndPersistStorage(root common.Hash, addr common.Address) {
-memDB := rawdb.NewMemoryDatabase()
-readDB, err := state.New(root, state.NewDatabase(memDB), nil)
+// knownV7Slots lists every storage slot AequitasV7.sol declares, in
+// declaration order. Simple slots are plain integers; mapping slots are
+// listed by their base slot index and require mappingSlot()/
+// mappingSlotBytes32() with a key to compute the actual storage location.
+// This is explicit, contract-specific knowledge — not generic — because
+// go-ethereum's StateDB offers no reliable generic "what changed" API in
+// this version (verified: RawDump does not find accounts after Commit,
+// even on the same backing database).
+var v7SimpleSlots = []int64{0, 1, 2, 3} // totalSupply, totalHumans, ubiPool, ubiPerHumanAccumulated
+var v7AddressMappingSlots = []int64{4, 5, 6, 8, 9, 10, 11} // balanceOf, escrowOf, isHuman, commitmentOf, lastActivity, lastDemurrage, ubiClaimed
+
+// extractTouchedEntities returns which addresses and commitments a given
+// call may have modified, based on an explicit, verified table of byte
+// offsets per function selector. This is NOT a heuristic — each offset was
+// confirmed against real ABI-encoded calldata before being hardcoded here.
+// Add a new case here whenever a new state-changing function is wired up.
+func extractTouchedEntities(from common.Address, data []byte) ([]common.Address, []*big.Int) {
+if len(data) < 4 {
+return []common.Address{from}, nil
+}
+
+selector := fmt.Sprintf("%x", data[:4])
+switch selector {
+case "33f4167a": // registerWithSig(uint256[2],uint256[2][2],uint256[2],uint256[2],address,bytes)
+addrs := []common.Address{from}
+var commitments []*big.Int
+if len(data) >= 324+32 {
+claimedHuman := common.BytesToAddress(data[324 : 324+32])
+addrs = append(addrs, claimedHuman)
+}
+if len(data) >= 260+32 {
+commitment := new(big.Int).SetBytes(data[260 : 260+32])
+commitments = append(commitments, commitment)
+}
+return addrs, commitments
+default:
+// Unknown selector: at minimum, the caller's own address may have
+// been touched (e.g. a simple register() or transfer() from msg.sender).
+return []common.Address{from}, nil
+}
+}
+
+func (e *EVMEngine) dumpAndPersistStorage(root common.Hash, db state.Database, addr common.Address, touchedAddrs []common.Address, touchedCommitments []*big.Int) {
+freshDB, err := state.New(root, db, nil)
 if err != nil {
 fmt.Printf("[EVM] revert Could not open committed state for persistence: %v\n", err)
 return
 }
 
-dump := readDB.RawDump(&state.DumpConfig{
-SkipCode:          true,
-OnlyWithAddresses: true,
-})
-
-account, ok := dump.Accounts[addr]
-if !ok {
-return
-}
-
 addrStr := strings.ToLower(addr.Hex())
 count := 0
-for slot, value := range account.Storage {
-e.chainState.SaveStorageSlot(addrStr, slot.Hex(), value)
+
+for _, slotIdx := range v7SimpleSlots {
+slot := common.BigToHash(big.NewInt(slotIdx))
+val := freshDB.GetState(addr, slot)
+e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
+count++
+}
+
+for _, touched := range touchedAddrs {
+for _, base := range v7AddressMappingSlots {
+slot := mappingSlot(touched.Bytes(), base)
+val := freshDB.GetState(addr, slot)
+e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
+count++
+}
+}
+
+for _, commitment := range touchedCommitments {
+slot := mappingSlotBytes32(common.BigToHash(commitment), 7) // usedCommitments
+val := freshDB.GetState(addr, slot)
+e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
 count++
 }
 if count > 0 {
