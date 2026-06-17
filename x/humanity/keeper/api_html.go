@@ -1077,7 +1077,7 @@ async function doRegister() {
       [1926, V7_CONTRACT, 'register', commitment]
     );
 
-    addLog('Please sign in MetaMask...', 'info');
+    addLog('Please sign the message in MetaMask to prove this wallet is yours (no gas, no cost)...', 'info');
     // personal_sign automatically adds the "\x19Ethereum Signed Message:\n32" prefix
     const signature = await window.ethereum.request({
       method: 'personal_sign',
