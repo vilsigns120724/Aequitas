@@ -158,6 +158,16 @@ return "", fmt.Errorf("encoding failed: %w", err)
 }
 
 to := common.HexToAddress(V7_CONTRACT_ADDR)
+
+// Dry-run first: simulate the call before spending a real transaction/nonce.
+// If the contract would revert (invalid signature, invalid proof, already
+// registered, etc.), CallContract returns an error and we abort here with
+// the real reason — instead of reporting false success to the caller.
+_, dryRunErr := evmRPC.evm.CallContract(relayerAddr, to, calldata, big.NewInt(0))
+if dryRunErr != nil {
+return "", fmt.Errorf("registration would fail on-chain: %w", dryRunErr)
+}
+
 relayerAddrStr := strings.ToLower(relayerAddr.Hex())
 nonce := a.state.LoadNonce(relayerAddrStr)
 
@@ -182,11 +192,15 @@ return "", fmt.Errorf("tx encoding failed: %w", err)
 }
 
 rawHex := "0x" + common.Bytes2Hex(rawBytes)
+// Layer 2: actually submit. sendRawTransaction itself now returns a real
+// RPCError if the on-chain execution reverts (see evm_rpc.go), so a
+// non-nil rpcErr here already means the registration genuinely failed —
+// not just that submission failed.
 result, rpcErr := evmRPC.sendRawTransaction([]json.RawMessage{
 mustMarshal(rawHex),
 })
 if rpcErr != nil {
-return "", fmt.Errorf("submission failed: %s", rpcErr.Message)
+return "", fmt.Errorf("registration failed on-chain: %s", rpcErr.Message)
 }
 
 txHash, ok := result.(string)

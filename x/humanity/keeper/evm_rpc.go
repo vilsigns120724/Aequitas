@@ -21,6 +21,8 @@ state             *ChainState
 evm               *EVMEngine
 nonces            map[string]uint64
 deployedContracts map[string]string // txHash -> contractAddress (lowercase)
+txStatus          map[string]bool   // txHash -> true if execution succeeded
+txError           map[string]string // txHash -> error message if failed
 }
 
 func NewEVMRPCServer(dag *BlockDAG, state *ChainState) *EVMRPCServer {
@@ -34,6 +36,8 @@ state:             state,
 evm:               engine,
 nonces:            make(map[string]uint64),
 deployedContracts: make(map[string]string),
+txStatus:          make(map[string]bool),
+txError:           make(map[string]string),
 }
 }
 
@@ -385,16 +389,25 @@ s.evm.LoadContractStorage(toAddr)
 }
 
 result, callErr := s.evm.CallContract(sender, toAddr, tx.Data(), tx.Value())
-if callErr != nil {
-fmt.Printf("[RPC] ✗ Contract call failed: %v\n", callErr)
-} else {
-fmt.Printf("[RPC] ✓ Contract call result: %x\n", result)
-s.evm.PersistContractStorage(toAddr)
-}
 
-// Update nonce regardless
+// Update nonce regardless — the nonce is consumed whether the call
+// succeeded or reverted, exactly like real EVM semantics.
 s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
 s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
+
+if callErr != nil {
+fmt.Printf("[RPC] ✗ Contract call failed: %v\n", callErr)
+// Record the failure so getTransactionReceipt can report the real status,
+// and propagate the real error to the immediate caller instead of
+// silently returning a fake-success hash.
+s.txStatus[txHash] = false
+s.txError[txHash] = callErr.Error()
+return nil, &RPCError{Code: -32603, Message: "execution reverted: " + callErr.Error()}
+}
+
+fmt.Printf("[RPC] ✓ Contract call result: %x\n", result)
+s.evm.PersistContractStorage(toAddr)
+s.txStatus[txHash] = true
 return txHash, nil
 }
 
@@ -423,6 +436,11 @@ if block != nil {
 height = uint64(block.Height)
 }
 
+status := "0x1"
+if succeeded, known := s.txStatus[txHash]; known && !succeeded {
+status = "0x0"
+}
+
 return map[string]interface{}{
 "transactionHash":   txHash,
 "transactionIndex":  "0x0",
@@ -435,7 +453,7 @@ return map[string]interface{}{
 "contractAddress":   contractAddr,
 "logs":              []interface{}{},
 "logsBloom":         "0x" + strings.Repeat("0", 512),
-"status":            "0x1",
+"status":            status,
 "type":              "0x2",
 }, nil
 }
