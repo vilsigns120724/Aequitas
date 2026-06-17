@@ -4,9 +4,12 @@ import (
 "encoding/json"
 "fmt"
 "io"
+"math/big"
 "net/http"
 "strings"
 "time"
+
+"github.com/ethereum/go-ethereum/common"
 )
 
 type APIServer struct {
@@ -155,13 +158,54 @@ if wallet == "" {
 json.NewEncoder(w).Encode(map[string]interface{}{"balance": 0, "is_human": false})
 return
 }
-balance := a.state.GetBalance(wallet)
-isHuman := a.state.IsHuman(wallet)
+
+// Query the real V7 contract directly — this is the single source of truth,
+// not the legacy off-chain ChainState bookkeeping.
+balance, isHuman := a.queryV7Status(wallet)
+
 json.NewEncoder(w).Encode(map[string]interface{}{
 "wallet":   wallet,
 "balance":  balance,
 "is_human": isHuman,
 })
+}
+
+// queryV7Status reads isHuman(address) and balanceOf(address) directly from
+// the V7 contract via eth_call, so the website always reflects real on-chain
+// state instead of any off-chain mirror.
+func (a *APIServer) queryV7Status(wallet string) (float64, bool) {
+evmRPC := NewEVMRPCServer(a.blockchain, a.state)
+if evmRPC.evm == nil {
+return 0, false
+}
+
+to := common.HexToAddress(V7_CONTRACT_ADDR)
+from := common.HexToAddress(wallet)
+
+// isHuman(address) — selector 0xf72c436f
+isHumanData := append(common.Hex2Bytes("f72c436f"), common.LeftPadBytes(from.Bytes(), 32)...)
+isHumanRet, err := evmRPC.evm.CallContract(from, to, isHumanData, big.NewInt(0))
+isHuman := false
+if err == nil && len(isHumanRet) >= 32 {
+isHuman = isHumanRet[31] == 1
+}
+
+if !isHuman {
+return 0, false
+}
+
+// balanceOf(address) — selector 0x70a08231
+balanceData := append(common.Hex2Bytes("70a08231"), common.LeftPadBytes(from.Bytes(), 32)...)
+balanceRet, err := evmRPC.evm.CallContract(from, to, balanceData, big.NewInt(0))
+balance := 0.0
+if err == nil && len(balanceRet) >= 32 {
+weiInt := new(big.Int).SetBytes(balanceRet)
+decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+balanceFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(weiInt), decimals).Float64()
+balance = balanceFloat
+}
+
+return balance, isHuman
 }
 
 func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
