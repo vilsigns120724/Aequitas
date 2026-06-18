@@ -527,11 +527,30 @@ tolerance := expectedTUSD * 0.01 // 1% slack for rounding
 if amountTUSD < expectedTUSD-tolerance || amountTUSD > expectedTUSD+tolerance {
 return fmt.Errorf("deposit ratio does not match pool ratio (expected ~%.4f tUSD for %.4f AEQ)", expectedTUSD, amountAEQ)
 }
+if cs.pool.TotalLPShares > 0 {
 // Proportional to the pool's existing size — same fraction of the
 // AEQ reserve as the fraction of total shares being minted, so an
 // LP's claim accurately tracks how much of the pool they actually
 // own (including any fees the pool has accumulated since genesis).
 mintedShares = (amountAEQ / cs.pool.ReserveAEQ) * cs.pool.TotalLPShares
+} else {
+// The pool has real reserves but zero recorded shares — this
+// happens for reserves that were deposited before LP-share
+// tracking existed (no account was ever credited shares for
+// them). Treat this deposit as if it were bootstrapping a pool
+// that already happens to have this much in it: mint shares for
+// the NEW deposit using the geometric-mean formula, AND retroactively
+// mint the depositor shares for the pool's pre-existing, currently
+// unclaimed reserves too — otherwise those original reserves would
+// permanently sit in the pool with no one able to ever withdraw
+// them, since shares would stay stuck at zero forever (any future
+// deposit would hit this same zero-total-shares branch again).
+newShares := math.Sqrt(amountAEQ * amountTUSD)
+preExistingShares := math.Sqrt(cs.pool.ReserveAEQ * cs.pool.ReserveTUSD)
+mintedShares = newShares + preExistingShares
+fmt.Printf("[POOL] ⚠ Pool had %.4f AEQ / %.4f tUSD in reserves with zero recorded LP shares (pre-dates share tracking) — crediting depositor %.6f shares for those alongside %.6f shares for this new deposit\n",
+cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, preExistingShares, newShares)
+}
 } else {
 // First-ever deposit: shares = geometric mean of the two amounts
 // (standard Uniswap v2 bootstrap formula). Using sqrt(x*y) instead
