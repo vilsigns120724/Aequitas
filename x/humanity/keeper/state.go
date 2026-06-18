@@ -194,13 +194,59 @@ return
 }
 defer rows.Close()
 count := 0
+mergedCount := 0
 for rows.Next() {
 acc := &AccountState{}
 rows.Scan(&acc.Address, &acc.Balance, &acc.IsHuman, &acc.TUsdBalance, &acc.LPShares, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown)
-cs.accounts[acc.Address] = acc
 count++
+
+// One-time migration: every state-mutating function (Transfer,
+// RegisterHuman, swapLocked, etc.) now consistently lowercases
+// addresses before using them as map keys — but rows written
+// BEFORE that fix could be stored under a mixed-case address (e.g.
+// MetaMask's checksum format) while later operations on the SAME
+// real wallet used lowercase, splitting one person's balance across
+// two separate accounts. This silently shrank what the UI showed
+// for that wallet without actually losing any AEQ — the rest was
+// just sitting under a differently-cased key. Merging here, once,
+// at load time, makes loadFromDB self-healing for any old data
+// without needing a separate manual SQL migration step.
+//
+// IMPORTANT: SQL row order is not guaranteed, so the mixed-case row
+// for a given wallet could arrive before OR after its lowercase
+// counterpart. We always check whether cs.accounts[normalized]
+// already exists — regardless of whether THIS row's own address
+// happened to already be lowercase — and merge into it rather than
+// assuming the first-seen row is "the real one".
+normalized := strings.ToLower(acc.Address)
+if existing, ok := cs.accounts[normalized]; ok {
+mergedCount++
+fmt.Printf("[MIGRATION] Merging duplicate-case account %s into %s (balance %.6f + %.6f, tusd %.6f + %.6f, lp %.6f + %.6f)\n",
+acc.Address, normalized, existing.Balance, acc.Balance, existing.TUsdBalance, acc.TUsdBalance, existing.LPShares, acc.LPShares)
+existing.Balance += acc.Balance
+existing.TUsdBalance += acc.TUsdBalance
+existing.LPShares += acc.LPShares
+existing.IsHuman = existing.IsHuman || acc.IsHuman
+if acc.LastActivityAt > existing.LastActivityAt {
+existing.LastActivityAt = acc.LastActivityAt
+existing.Demurrage14DayWarningShown = acc.Demurrage14DayWarningShown
 }
-fmt.Printf("✓ Loaded %d accounts from PostgreSQL\n", count)
+cs.saveAccountToDB(existing)
+if acc.Address != normalized {
+// Remove the old mixed-case row so it doesn't get re-merged
+// (harmlessly, but noisily) on every future restart.
+cs.db.Exec(`DELETE FROM chain_accounts WHERE address = $1`, acc.Address)
+}
+continue
+}
+acc.Address = normalized
+cs.accounts[normalized] = acc
+}
+fmt.Printf("✓ Loaded %d accounts from PostgreSQL", count)
+if mergedCount > 0 {
+fmt.Printf(" (%d mixed-case duplicates merged)", mergedCount)
+}
+fmt.Println()
 
 cs.loadOrInitPool()
 }
@@ -358,6 +404,7 @@ fmt.Printf("[DEMURRAGE] %s: idle balance decayed by %.6f AEQ, redistributed to p
 func (cs *ChainState) GetBalance(address string) float64 {
 cs.mu.RLock()
 defer cs.mu.RUnlock()
+address = strings.ToLower(address)
 if acc, ok := cs.accounts[address]; ok {
 return effectiveBalance(acc)
 }
@@ -456,6 +503,7 @@ type DemurrageStatus struct {
 func (cs *ChainState) GetDemurrageStatus(address string) DemurrageStatus {
 cs.mu.Lock()
 defer cs.mu.Unlock()
+address = strings.ToLower(address)
 
 acc, ok := cs.accounts[address]
 if !ok || acc.LastActivityAt == 0 {
@@ -487,6 +535,7 @@ return status
 func (cs *ChainState) GetTUsdBalance(address string) float64 {
 cs.mu.RLock()
 defer cs.mu.RUnlock()
+address = strings.ToLower(address)
 if acc, ok := cs.accounts[address]; ok {
 return acc.TUsdBalance
 }
@@ -505,6 +554,7 @@ return cs.pool.ReserveAEQ, cs.pool.ReserveTUSD
 func (cs *ChainState) IsHuman(address string) bool {
 cs.mu.RLock()
 defer cs.mu.RUnlock()
+address = strings.ToLower(address)
 if acc, ok := cs.accounts[address]; ok {
 return acc.IsHuman
 }
@@ -514,6 +564,7 @@ return false
 func (cs *ChainState) RegisterHuman(address string) error {
 cs.mu.Lock()
 defer cs.mu.Unlock()
+address = strings.ToLower(address)
 
 if acc, ok := cs.accounts[address]; ok && acc.IsHuman {
 return fmt.Errorf("already registered")
@@ -538,6 +589,8 @@ return nil
 func (cs *ChainState) Transfer(from, to string, amount float64) error {
 cs.mu.Lock()
 defer cs.mu.Unlock()
+from = strings.ToLower(from)
+to = strings.ToLower(to)
 
 fromAcc, ok := cs.accounts[from]
 if !ok {
@@ -619,6 +672,7 @@ return cs.swapLocked(address, amountIn, false)
 // the input side and tUSD is the output side; false is the reverse.
 // Caller must hold cs.mu.
 func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd bool) (float64, error) {
+address = strings.ToLower(address)
 if amountIn <= 0 {
 return 0, fmt.Errorf("amount must be positive")
 }
@@ -753,6 +807,7 @@ fmt.Printf("[FEE] Swap fee %.6f %s distributed across validators/lps/ubi/treasur
 func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64) error {
 cs.mu.Lock()
 defer cs.mu.Unlock()
+address = strings.ToLower(address)
 
 if amountAEQ <= 0 || amountTUSD <= 0 {
 return fmt.Errorf("both amounts must be positive")
@@ -838,6 +893,7 @@ return nil
 func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (float64, float64, error) {
 cs.mu.Lock()
 defer cs.mu.Unlock()
+address = strings.ToLower(address)
 
 if sharesToBurn <= 0 {
 return 0, 0, fmt.Errorf("shares must be positive")
@@ -881,6 +937,7 @@ return outAEQ, outTUSD, nil
 func (cs *ChainState) GetLPShares(address string) (float64, float64) {
 cs.mu.RLock()
 defer cs.mu.RUnlock()
+address = strings.ToLower(address)
 var mine float64
 if acc, ok := cs.accounts[address]; ok {
 mine = acc.LPShares
@@ -949,6 +1006,7 @@ const tusdFaucetAmount = 1000.0
 func (cs *ChainState) ClaimTUsdFaucet(address string) error {
 cs.mu.Lock()
 defer cs.mu.Unlock()
+address = strings.ToLower(address)
 
 acc, ok := cs.accounts[address]
 if !ok || !acc.IsHuman {
