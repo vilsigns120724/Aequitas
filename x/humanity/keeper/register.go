@@ -214,6 +214,22 @@ if !ok {
 return "", fmt.Errorf("unexpected response from relay")
 }
 
+// ── NATIVE BALANCE (Phase 1 of native-coin migration) ────────────────
+// Previously AEQ only existed as an ERC20-style balanceOf() mapping
+// inside the V7 contract's EVM storage — eth_getBalance (the actual
+// native-coin query, what MetaMask would use for the chain's own gas
+// currency) read from a completely separate, never-updated ChainState/
+// chain_accounts table. That's why a wallet could show 1,000 AEQ in
+// MetaMask (via the custom ERC20 token display) while genuinely having
+// 0 native balance on the chain itself. This call makes ChainState the
+// real source of truth for the 1,000 AEQ grant — registration remains
+// fully gasless regardless of this; granting a native balance here has
+// no gas cost of its own, it's a direct database write, not a
+// transaction the user pays for.
+if regErr := a.state.RegisterHuman(wallet); regErr != nil {
+fmt.Printf("[REGISTER] Warning: native balance grant failed (contract registration still succeeded): %v\n", regErr)
+}
+
 // Record which wallet this proof's commitment actually registered to,
 // so the app can later ask "did MY proof get registered, and where?"
 // instead of reading the last entry in a global, unfiltered list.
