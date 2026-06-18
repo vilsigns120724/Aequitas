@@ -268,6 +268,22 @@ return
 
 balance := a.state.GetBalance(wallet)
 isHuman := a.state.IsHuman(wallet)
+
+// If the bioHash exists in bio_registrations but the wallet is NOT yet
+// marked as human on-chain, it means someone else used this biometric
+// hash to generate a proof but hasn't completed registration yet —
+// OR a different wallet tried to reuse this bioHash. Either way, the
+// current user should NOT see "success". Return a distinct status so
+// the app can show an appropriate message.
+if !isHuman {
+json.NewEncoder(w).Encode(map[string]interface{}{
+"registered":       false,
+"biometric_in_use": true,
+"wallet":           wallet,
+})
+return
+}
+
 json.NewEncoder(w).Encode(map[string]interface{}{
 "registered": true,
 "wallet":     wallet,

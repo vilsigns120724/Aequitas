@@ -420,15 +420,61 @@ return 0
 // only partially distributed: any AEQ that flows into it between now
 // and the next run (swap fees, demurrage, wealth-cap overflow) accrues
 // fresh, so there's no need to hold a standing reserve.
-// DistributeValidatorsPool pays out the entire validators pool balance to
-// the node operator wallet. Currently hardcoded to the single node
-// operator (Daniel's deployer wallet) since there's only one node
-// running. When multiple node operators register in the future, this
-// should be split proportionally by uptime/blocks-produced — but that
-// requires a separate node-registration mechanism that doesn't exist yet.
-const nodeOperatorWallet = "0x0be8b961cbf6564bd1931b0803d35c0659e0d016"
+// RegisterNode adds this node's operator wallet to the registered_nodes
+// table so it participates in future validators pool distributions.
+// Called once at startup if NODE_OPERATOR_WALLET env var is set.
+// Safe to call multiple times — ON CONFLICT DO NOTHING.
+func (cs *ChainState) RegisterNode(operatorWallet string) {
+if cs.db == nil || operatorWallet == "" {
+return
+}
+wallet := strings.ToLower(operatorWallet)
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS registered_nodes (
+wallet_address TEXT PRIMARY KEY,
+registered_at TIMESTAMP DEFAULT NOW()
+)`)
+_, err := cs.db.Exec(
+`INSERT INTO registered_nodes (wallet_address) VALUES ($1) ON CONFLICT DO NOTHING`,
+wallet,
+)
+if err != nil {
+fmt.Printf("[NODE] Warning: could not register node wallet %s: %v\n", wallet, err)
+} else {
+fmt.Printf("[NODE] ✓ Node operator wallet registered: %s\n", wallet)
+}
+}
+
+// GetRegisteredNodes returns all node operator wallets currently
+// registered in the DB. Used by DistributeValidatorsPool.
+func (cs *ChainState) GetRegisteredNodes() []string {
+if cs.db == nil {
+return nil
+}
+rows, err := cs.db.Query(`SELECT wallet_address FROM registered_nodes`)
+if err != nil {
+return nil
+}
+defer rows.Close()
+var wallets []string
+for rows.Next() {
+var w string
+rows.Scan(&w)
+wallets = append(wallets, w)
+}
+return wallets
+}
 
 func (cs *ChainState) DistributeValidatorsPool() {
+// Load registered nodes BEFORE acquiring the lock — GetRegisteredNodes
+// only reads from PostgreSQL, not cs.accounts, so it doesn't need the
+// mutex. Calling it inside the lock would be a deadlock risk if the DB
+// driver itself tries to acquire any internal lock that chains back.
+nodes := cs.GetRegisteredNodes()
+if len(nodes) == 0 {
+fmt.Println("[VALIDATORS] No registered node operators — pool left untouched")
+return
+}
+
 cs.mu.Lock()
 defer cs.mu.Unlock()
 
@@ -439,21 +485,25 @@ return
 }
 
 total := poolAcc.Balance
+share := total / float64(len(nodes))
 poolAcc.Balance = 0
 cs.saveAccountToDB(poolAcc)
 
-if _, ok := cs.accounts[nodeOperatorWallet]; !ok {
-cs.accounts[nodeOperatorWallet] = &AccountState{Address: nodeOperatorWallet}
+for _, wallet := range nodes {
+if _, ok := cs.accounts[wallet]; !ok {
+cs.accounts[wallet] = &AccountState{Address: wallet}
 }
-acc := cs.accounts[nodeOperatorWallet]
+acc := cs.accounts[wallet]
 cs.settleDemurrageLocked(acc)
-acc.Balance += total
+acc.Balance += share
 touchActivity(acc)
 cs.enforceWealthCapLocked(acc)
 cs.saveAccountToDB(acc)
+}
 cs.save()
 
-fmt.Printf("[VALIDATORS] ✓ Distributed %.6f AEQ to node operator %s\n", total, nodeOperatorWallet)
+fmt.Printf("[VALIDATORS] ✓ Distributed %.6f AEQ equally across %d node operators (%.6f AEQ each)\n",
+total, len(nodes), share)
 }
 
 // DistributeLPPool pays out the entire LP pool balance to liquidity

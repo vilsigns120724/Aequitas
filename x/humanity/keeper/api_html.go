@@ -462,11 +462,13 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div class="mval" id="pool-v" style="font-size:0.95rem">0.0000</div>
         <div class="mlbl" data-i18n="vel-pool">Validators Pool</div>
         <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">40% of fees · daily → node operators</div>
+        <div style="margin-top:6px;font-size:0.6rem;color:var(--blue);font-weight:600">⏰ Next: <span id="validators-timer">—</span></div>
       </div>
       <div class="mbox">
         <div class="mval" id="pool-l" style="font-size:0.95rem">0.0000</div>
         <div class="mlbl" data-i18n="liq-pool">Liquidity Pool</div>
         <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">30% of fees · daily → LP holders</div>
+        <div style="margin-top:6px;font-size:0.6rem;color:var(--blue);font-weight:600">⏰ Next: <span id="lp-timer">—</span></div>
       </div>
       <div class="mbox" style="border:1px solid rgba(245,166,35,0.2);background:rgba(245,166,35,0.05)">
         <div class="mval" id="pool-u" style="font-size:0.95rem">0.0000</div>
@@ -1101,8 +1103,12 @@ let ubiTimerInterval = null;
 function startUBITimer(secsRemaining) {
   if (ubiTimerInterval) clearInterval(ubiTimerInterval);
   let secs = secsRemaining;
-  const el = document.getElementById('ubi-timer');
-  if (!el) return;
+  const els = [
+    document.getElementById('ubi-timer'),
+    document.getElementById('validators-timer'),
+    document.getElementById('lp-timer'),
+  ].filter(Boolean);
+  if (!els.length) return;
 
   const fmt = s => {
     const h = Math.floor(s / 3600);
@@ -1111,15 +1117,15 @@ function startUBITimer(secsRemaining) {
     return String(h).padStart(2,'0') + 'h ' + String(m).padStart(2,'0') + 'm ' + String(sec).padStart(2,'0') + 's';
   };
 
-  el.textContent = fmt(secs);
+  els.forEach(el => el.textContent = fmt(secs));
   ubiTimerInterval = setInterval(() => {
     secs--;
     if (secs <= 0) {
-      secs = 86400; // reset to 24h after distribution
-      el.style.color = 'var(--green)';
-      setTimeout(() => { el.style.color = ''; }, 3000);
+      secs = 86400;
+      els.forEach(el => { el.style.color = 'var(--green)'; });
+      setTimeout(() => { els.forEach(el => { el.style.color = ''; }); }, 3000);
     }
-    el.textContent = fmt(secs);
+    els.forEach(el => el.textContent = fmt(secs));
   }, 1000);
 }
 

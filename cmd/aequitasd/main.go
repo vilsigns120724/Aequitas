@@ -136,6 +136,15 @@ chainState.DistributeLPPool()
 fmt.Println("[POOLS] Not primary node — skipping daily distributions")
 }
 
+// Register this node's operator wallet so it participates in validator
+// pool distributions. Any node that sets NODE_OPERATOR_WALLET gets
+// included automatically — no code change needed when new nodes join.
+if wallet := os.Getenv("NODE_OPERATOR_WALLET"); wallet != "" {
+chainState.RegisterNode(wallet)
+} else {
+fmt.Println("[NODE] NODE_OPERATOR_WALLET not set — this node won't receive validator rewards")
+}
+
 fmt.Println("╔════════════════════════════════════════╗")
 fmt.Println("║     Aequitas Node Running ✓            ║")
 fmt.Println("║     Producing blocks every 6 seconds   ║")
