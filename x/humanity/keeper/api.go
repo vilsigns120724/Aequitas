@@ -59,6 +59,7 @@ mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 mux.HandleFunc("/api/register", a.handleRegister)
 mux.HandleFunc("/api/balance", a.handleBalance)
 mux.HandleFunc("/api/check-registration", a.handleCheckRegistration)
+mux.HandleFunc("/api/check-registration-by-biohash", a.handleCheckRegistrationByBioHash)
 mux.HandleFunc("/api/swap", a.handleSwap)
 mux.HandleFunc("/api/add-liquidity", a.handleAddLiquidity)
 mux.HandleFunc("/api/remove-liquidity", a.handleRemoveLiquidity)
@@ -215,6 +216,39 @@ return
 }
 
 wallet := a.state.GetWalletByCommitment(commitment)
+if wallet == "" {
+json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
+return
+}
+
+balance := a.state.GetBalance(wallet)
+isHuman := a.state.IsHuman(wallet)
+json.NewEncoder(w).Encode(map[string]interface{}{
+"registered": true,
+"wallet":     wallet,
+"balance":    balance,
+"is_human":   isHuman,
+})
+}
+
+// handleCheckRegistrationByBioHash mirrors handleCheckRegistration, but
+// keyed by the device's biometric identity hash rather than a proof
+// commitment. Needed because, under the new website-side proof flow, the
+// app only ever knows its own bioHash — it never computes a commitment
+// itself anymore (that now happens on the website, after MetaMask
+// supplies the real wallet) — so it can't poll by commitment the way the
+// old flow did.
+func (a *APIServer) handleCheckRegistrationByBioHash(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+
+bioHash := r.URL.Query().Get("bioHash")
+if bioHash == "" {
+json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
+return
+}
+
+wallet := a.state.GetWalletByBioHash(bioHash)
 if wallet == "" {
 json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
 return

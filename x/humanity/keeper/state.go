@@ -166,6 +166,13 @@ wallet_address TEXT NOT NULL,
 tx_hash TEXT,
 registered_at TIMESTAMP DEFAULT NOW()
 )`)
+// bio_hash lets the app poll "did MY device's identity hash get
+// registered yet, and to which wallet?" — needed because, under the new
+// flow where the proof is generated on the website (after MetaMask
+// supplies the real wallet), the app itself never computes a commitment
+// and so can't poll by one. It only ever knows its own bio_hash.
+cs.db.Exec(`ALTER TABLE bio_registrations ADD COLUMN IF NOT EXISTS bio_hash TEXT`)
+cs.db.Exec(`CREATE INDEX IF NOT EXISTS idx_bio_registrations_bio_hash ON bio_registrations(bio_hash)`)
 // Single-row table holding the AEQ<->tUSD pool reserves. A fixed id=1 row
 // is used instead of a key-value table since there's only ever one pool
 // right now — simpler queries, and trivial to extend to multiple pools

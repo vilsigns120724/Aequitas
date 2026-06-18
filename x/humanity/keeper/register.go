@@ -37,6 +37,14 @@ PA         []string   `json:"pA"`
 PB         [][]string `json:"pB"`
 PC         []string   `json:"pC"`
 Signature  string     `json:"signature"` // hex-encoded, 65 bytes, from personal_sign
+// BioHash is the device's biometric identity hash, sent only under the
+// new website-side proof flow (see checkProofParams/connectWalletAndProve
+// in api_html.go) so SaveBioRegistration can record it alongside the
+// commitment — letting the app poll for its own registration by bioHash
+// instead of needing to compute a commitment itself. Empty under the
+// older proofId/proof URL-parameter flows, which is fine: those still
+// work via GetWalletByCommitment instead.
+BioHash string `json:"bioHash"`
 }
 
 type RegisterResponse struct {
@@ -235,7 +243,7 @@ fmt.Printf("[REGISTER] Warning: native balance grant failed (contract registrati
 // instead of reading the last entry in a global, unfiltered list.
 if len(req.PubSignals) > 0 {
 commitment := req.PubSignals[0]
-if saveErr := a.state.SaveBioRegistration(commitment, wallet, txHash); saveErr != nil {
+if saveErr := a.state.SaveBioRegistration(commitment, wallet, txHash, req.BioHash); saveErr != nil {
 fmt.Printf("[REGISTER] Warning: could not save bio registration link: %v\n", saveErr)
 }
 }

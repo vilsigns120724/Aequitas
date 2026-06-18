@@ -1498,7 +1498,18 @@ function checkProofParams() {
   const p = new URLSearchParams(window.location.search);
   const proofId = p.get('proofId');
   const proof = p.get('proof');
-  if (proofId) {
+  const bioHash = p.get('bioHash');
+  if (bioHash) {
+    // NEW flow: the app only sent its biometric identity hash, not a
+    // pre-made proof. We connect the wallet FIRST, then generate the ZK
+    // proof ourselves with the now-known real wallet address — this is
+    // what actually binds the proof to a specific wallet cryptographically
+    // (previously the app called /prove with the zero address before any
+    // wallet was even chosen, so the proof was never really tied to one).
+    pendingBioHash = bioHash;
+    document.querySelectorAll('.tab')[0].click();
+    setTimeout(() => connectWalletAndProve(), 600);
+  } else if (proofId) {
     fetch(PS + '/get/' + proofId).then(r => r.json()).then(pd => {
       proofData = pd;
       document.getElementById('pbox').style.display = 'block';
@@ -1514,6 +1525,82 @@ function checkProofParams() {
       document.querySelectorAll('.tab')[0].click();
       setTimeout(() => connectWallet(), 600);
     } catch (e) {}
+  }
+}
+
+// Holds the biometric identity hash from the app while we wait for the
+// wallet to connect — only used by the new bioHash flow above.
+let pendingBioHash = null;
+
+// New-flow counterpart to connectWallet(): connects MetaMask, and THEN
+// calls /prove with the real wallet address now that we have one,
+// instead of expecting an already-made proof to exist. This is the
+// piece that actually closes the wallet-binding gap, since the proof's
+// commitment now genuinely depends on which wallet asked for it.
+async function connectWalletAndProve() {
+  if (!window.ethereum) {
+    addLog('MetaMask not found. Please install MetaMask.', 'err');
+    return;
+  }
+  if (!pendingBioHash) {
+    addLog('No biometric identity hash to prove — please retry from the app.', 'err');
+    return;
+  }
+  try {
+    await addToMetaMask();
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    waddr = accounts[0];
+    document.getElementById('wbox').style.display = 'block';
+    document.getElementById('wadr').textContent = waddr;
+    const btn = document.getElementById('btn-conn');
+    btn.textContent = waddr.slice(0, 10) + '...' + waddr.slice(-4);
+    btn.style.background = 'var(--green)';
+    btn.style.color = '#050A14';
+
+    const br = await fetch('/api/balance?wallet=' + waddr);
+    const bd = await br.json();
+    if (bd.is_human) {
+      addLog('Already registered! Balance: ' + bd.balance + ' AEQ', 'ok');
+      document.getElementById('btn-reg').disabled = true;
+      document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
+      return;
+    }
+
+    addLog('Wallet connected. Generating ZK proof for this wallet...', 'info');
+    // salt generated here (browser, with crypto.getRandomValues — far
+    // stronger than the app's old Math.random()-based salt) since this
+    // is where the proof is now actually made.
+    const saltBytes = new Uint8Array(32);
+    crypto.getRandomValues(saltBytes);
+    let saltBig = BigInt(0);
+    for (let i = 0; i < saltBytes.length; i++) saltBig = (saltBig << BigInt(8)) | BigInt(saltBytes[i]);
+    const FIELD_SIZE = BigInt("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+    const salt = (saltBig % FIELD_SIZE).toString();
+
+    const proveResp = await fetch(PS + '/prove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bio: pendingBioHash, salt: salt, wallet: waddr })
+    });
+    if (!proveResp.ok) {
+      const err = await proveResp.json();
+      if (err.registered) {
+        addLog('This identity is already registered.', 'ok');
+        document.getElementById('btn-reg').disabled = true;
+        document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
+        return;
+      }
+      addLog('Proof generation failed: ' + (err.error || 'unknown error'), 'err');
+      return;
+    }
+    proofData = await proveResp.json();
+    document.getElementById('pbox').style.display = 'block';
+    document.getElementById('pval').textContent = 'Proof ready for ' + waddr.slice(0, 10) + '...';
+    document.getElementById('btn-reg').disabled = false;
+    document.getElementById('btn-reg').textContent = 'PROOF READY — CLICK TO REGISTER';
+    addLog('Proof generated for your wallet. Click REGISTER to continue.', 'ok');
+  } catch (e) {
+    addLog('Connection failed: ' + e.message, 'err');
   }
 }
 
@@ -1588,7 +1675,8 @@ async function doRegister() {
       body: JSON.stringify({
         wallet: waddr,
         pA: proofData.pA, pB: proofData.pB, pC: proofData.pC, pubSignals: proofData.pubSignals,
-        signature: signature
+        signature: signature,
+        bioHash: pendingBioHash || ''
       })
     });
     const d = await r.json();

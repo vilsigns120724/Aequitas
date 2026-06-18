@@ -172,14 +172,18 @@ return sdb, nil
 // SaveBioRegistration links a ZK proof commitment to the wallet that
 // successfully registered with it. Called once, right after a
 // registerWithSig transaction is confirmed successful — never speculatively.
-func (cs *ChainState) SaveBioRegistration(commitment, walletAddress, txHash string) error {
+// bioHash is also stored alongside the commitment so the app (which only
+// ever knows its own bioHash, not the commitment computed on the website
+// under the new flow) can poll for its registration — see
+// GetWalletByBioHash below.
+func (cs *ChainState) SaveBioRegistration(commitment, walletAddress, txHash, bioHash string) error {
 if cs.db == nil {
 return nil
 }
 _, err := cs.db.Exec(
-`INSERT INTO bio_registrations (commitment, wallet_address, tx_hash) VALUES ($1, $2, $3)
- ON CONFLICT (commitment) DO UPDATE SET wallet_address = $2, tx_hash = $3`,
-commitment, walletAddress, txHash,
+`INSERT INTO bio_registrations (commitment, wallet_address, tx_hash, bio_hash) VALUES ($1, $2, $3, $4)
+ ON CONFLICT (commitment) DO UPDATE SET wallet_address = $2, tx_hash = $3, bio_hash = $4`,
+commitment, walletAddress, txHash, bioHash,
 )
 return err
 }
@@ -194,6 +198,23 @@ return ""
 }
 var wallet string
 err := cs.db.QueryRow(`SELECT wallet_address FROM bio_registrations WHERE commitment = $1`, commitment).Scan(&wallet)
+if err != nil {
+return ""
+}
+return wallet
+}
+
+// GetWalletByBioHash looks up which wallet (if any) most recently
+// completed registration for a given device biometric identity hash.
+// Used by the app's post-bioHash-flow polling (startPollingByBioHash) —
+// the app never computes a commitment itself under that flow, only its
+// own bioHash, so this is the only key it can reliably poll by.
+func (cs *ChainState) GetWalletByBioHash(bioHash string) string {
+if cs.db == nil {
+return ""
+}
+var wallet string
+err := cs.db.QueryRow(`SELECT wallet_address FROM bio_registrations WHERE bio_hash = $1 ORDER BY registered_at DESC LIMIT 1`, bioHash).Scan(&wallet)
 if err != nil {
 return ""
 }
