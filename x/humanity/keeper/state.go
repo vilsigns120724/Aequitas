@@ -420,6 +420,93 @@ return 0
 // only partially distributed: any AEQ that flows into it between now
 // and the next run (swap fees, demurrage, wealth-cap overflow) accrues
 // fresh, so there's no need to hold a standing reserve.
+// DistributeValidatorsPool pays out the entire validators pool balance to
+// the node operator wallet. Currently hardcoded to the single node
+// operator (Daniel's deployer wallet) since there's only one node
+// running. When multiple node operators register in the future, this
+// should be split proportionally by uptime/blocks-produced — but that
+// requires a separate node-registration mechanism that doesn't exist yet.
+const nodeOperatorWallet = "0x0be8b961cbf6564bd1931b0803d35c0659e0d016"
+
+func (cs *ChainState) DistributeValidatorsPool() {
+cs.mu.Lock()
+defer cs.mu.Unlock()
+
+poolAcc, ok := cs.accounts[validatorsPoolAddr]
+if !ok || poolAcc.Balance <= 0 {
+fmt.Println("[VALIDATORS] Pool is empty — nothing to distribute today")
+return
+}
+
+total := poolAcc.Balance
+poolAcc.Balance = 0
+cs.saveAccountToDB(poolAcc)
+
+if _, ok := cs.accounts[nodeOperatorWallet]; !ok {
+cs.accounts[nodeOperatorWallet] = &AccountState{Address: nodeOperatorWallet}
+}
+acc := cs.accounts[nodeOperatorWallet]
+cs.settleDemurrageLocked(acc)
+acc.Balance += total
+touchActivity(acc)
+cs.enforceWealthCapLocked(acc)
+cs.saveAccountToDB(acc)
+cs.save()
+
+fmt.Printf("[VALIDATORS] ✓ Distributed %.6f AEQ to node operator %s\n", total, nodeOperatorWallet)
+}
+
+// DistributeLPPool pays out the entire LP pool balance to liquidity
+// providers, proportional to their LP share count. This mirrors how
+// real AMMs (Uniswap v2, etc.) reward LPs — the more of the pool you
+// provided, the larger your share of the fee income. Accounts with zero
+// LP shares receive nothing.
+func (cs *ChainState) DistributeLPPool() {
+cs.mu.Lock()
+defer cs.mu.Unlock()
+
+poolAcc, ok := cs.accounts[lpPoolAddr]
+if !ok || poolAcc.Balance <= 0 {
+fmt.Println("[LP] Pool is empty — nothing to distribute today")
+return
+}
+
+// Collect all LP holders and their share counts
+type lpHolder struct {
+addr   string
+shares float64
+}
+var holders []lpHolder
+totalShares := 0.0
+for addr, acc := range cs.accounts {
+if acc.LPShares > 0 {
+holders = append(holders, lpHolder{addr, acc.LPShares})
+totalShares += acc.LPShares
+}
+}
+if totalShares <= 0 || len(holders) == 0 {
+fmt.Println("[LP] No LP holders — pool left untouched")
+return
+}
+
+total := poolAcc.Balance
+poolAcc.Balance = 0
+cs.saveAccountToDB(poolAcc)
+
+for _, h := range holders {
+share := (h.shares / totalShares) * total
+acc := cs.accounts[h.addr]
+cs.settleDemurrageLocked(acc)
+acc.Balance += share
+touchActivity(acc)
+cs.enforceWealthCapLocked(acc)
+cs.saveAccountToDB(acc)
+}
+cs.save()
+
+fmt.Printf("[LP] ✓ Distributed %.6f AEQ across %d LP holders (proportional to shares)\n", total, len(holders))
+}
+
 func (cs *ChainState) DistributeUBIPool() {
 cs.mu.Lock()
 defer cs.mu.Unlock()

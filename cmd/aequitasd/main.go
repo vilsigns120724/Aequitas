@@ -121,17 +121,19 @@ time.Unix(block.Timestamp, 0).Format("15:04:05"),
 }
 }()
 
-fmt.Println("── Starting Daily UBI Distribution ──────")
+fmt.Println("── Starting Daily Pool Distributions ───")
 if os.Getenv("IS_PRIMARY_NODE") == "true" {
-fmt.Println("[UBI] This is the primary node — daily distribution enabled")
+fmt.Println("[POOLS] Primary node — daily distributions enabled (UBI + Validators + LP)")
 go func() {
 ticker := time.NewTicker(24 * time.Hour)
 for range ticker.C {
 chainState.DistributeUBIPool()
+chainState.DistributeValidatorsPool()
+chainState.DistributeLPPool()
 }
 }()
 } else {
-fmt.Println("[UBI] Not primary node — skipping daily distribution (set IS_PRIMARY_NODE=true to enable)")
+fmt.Println("[POOLS] Not primary node — skipping daily distributions")
 }
 
 fmt.Println("╔════════════════════════════════════════╗")

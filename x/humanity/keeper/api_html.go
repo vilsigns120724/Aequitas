@@ -6,15 +6,13 @@ const explorerHTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Aequitas — Proof of Humanity Chain</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.bunny.net">
+<link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,900|dm-serif-display:400|jetbrains-mono:400,600&display=swap" rel="stylesheet">
 <style>
-/* System font fallbacks in case Google Fonts is unavailable */
 :root {
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-display: 'DM Serif Display', Georgia, 'Times New Roman', serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Courier New', monospace;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
 }
 </style>
 <style>
@@ -463,12 +461,12 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div class="mbox">
         <div class="mval" id="pool-v" style="font-size:0.95rem">0.0000</div>
         <div class="mlbl" data-i18n="vel-pool">Validators Pool</div>
-        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">40% of fees</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">40% of fees · daily → node operators</div>
       </div>
       <div class="mbox">
         <div class="mval" id="pool-l" style="font-size:0.95rem">0.0000</div>
         <div class="mlbl" data-i18n="liq-pool">Liquidity Pool</div>
-        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">30% of fees</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">30% of fees · daily → LP holders</div>
       </div>
       <div class="mbox" style="border:1px solid rgba(245,166,35,0.2);background:rgba(245,166,35,0.05)">
         <div class="mval" id="pool-u" style="font-size:0.95rem">0.0000</div>
