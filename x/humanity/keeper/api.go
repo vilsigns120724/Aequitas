@@ -165,9 +165,20 @@ json.NewEncoder(w).Encode(map[string]interface{}{"balance": 0, "is_human": false
 return
 }
 
-// Query the real V7 contract directly — this is the single source of truth,
-// not the legacy off-chain ChainState bookkeeping.
-balance, isHuman := a.queryV7Status(wallet)
+// Use ChainState (native balance) as the single source of truth.
+// This used to query the V7 contract's balanceOf()/isHuman() directly,
+// which was the right call back when registrations only wrote to EVM
+// storage and ChainState was never updated. Since registration now also
+// grants the native balance via state.RegisterHuman() (and transfers
+// move the native balance via state.Transfer()), ChainState reflects
+// the real, current state — while the contract's own balanceOf() can
+// lag behind it (it's no longer touched by ordinary native transfers
+// at all, and read-only contract calls are intentionally not persisted
+// per-call). Querying the contract here would show a wallet's balance
+// from whenever it last interacted with the contract directly, not its
+// real current native balance.
+balance := a.state.GetBalance(wallet)
+isHuman := a.state.IsHuman(wallet)
 
 json.NewEncoder(w).Encode(map[string]interface{}{
 "wallet":   wallet,
@@ -176,9 +187,6 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 })
 }
 
-// queryV7Status reads isHuman(address) and balanceOf(address) directly from
-// the V7 contract via eth_call, so the website always reflects real on-chain
-// state instead of any off-chain mirror.
 // handleCheckRegistration lets the app ask "did MY specific proof commitment
 // get registered, and to which wallet?" — instead of reading the last entry
 // in a global, unfiltered /api/humans list (which showed every user the
@@ -199,7 +207,8 @@ json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
 return
 }
 
-balance, isHuman := a.queryV7Status(wallet)
+balance := a.state.GetBalance(wallet)
+isHuman := a.state.IsHuman(wallet)
 json.NewEncoder(w).Encode(map[string]interface{}{
 "registered": true,
 "wallet":     wallet,
@@ -208,6 +217,10 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 })
 }
 
+// queryV7Status reads isHuman(address) and balanceOf(address) directly from
+// the V7 contract via eth_call. Kept available for debugging/comparison
+// against the contract's own bookkeeping, but no longer used by the
+// balance-facing endpoints above — see handleBalance for why.
 func (a *APIServer) queryV7Status(wallet string) (float64, bool) {
 evmRPC := NewEVMRPCServer(a.blockchain, a.state)
 if evmRPC.evm == nil {
