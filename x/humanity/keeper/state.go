@@ -9,10 +9,15 @@ import (
 "math"
 "os"
 "sync"
+"time"
 	"strings"
 
 _ "github.com/lib/pq"
 )
+
+// timeNowFunc is a seam for time.Now(), letting demurrage timing be
+// mocked in tests without needing to thread a clock through every call.
+var timeNowFunc = time.Now
 
 type AccountState struct {
 Address     string  `json:"address"`
@@ -33,6 +38,23 @@ TUsdBalance float64 `json:"tusd_balance"`
 // pool since they joined, without needing per-LP bookkeeping of "their"
 // specific tokens.
 LPShares float64 `json:"lp_shares"`
+// LastActivityAt is the Unix timestamp (seconds) of this account's most
+// recent AEQ-moving action (registration, sending/receiving a transfer,
+// swapping, or adding/removing liquidity). Demurrage (see ApplyDemurrage)
+// is calculated live from how long it's been since this timestamp — the
+// balance shown to the user is always computed fresh from Balance and
+// this timestamp, rather than being eaten away by a periodic background
+// job. Touching the account in any of those ways resets this timestamp,
+// which is the whole point: money that's actively circulating doesn't
+// decay, only money that's sitting idle does.
+LastActivityAt int64 `json:"last_activity_at"`
+// Demurrage14DayWarningShown tracks whether the one-time "your balance
+// starts decaying in 14 days" notice has already been surfaced for the
+// CURRENT grace period. Reset back to false by touchActivity whenever
+// the account's clock restarts (any AEQ-moving action), so the warning
+// can fire again for the next idle period rather than being a permanent
+// one-time-ever flag.
+Demurrage14DayWarningShown bool `json:"demurrage_14_day_warning_shown"`
 }
 
 // PoolState holds the two reserves of the single AEQ<->tUSD liquidity pool.
@@ -133,6 +155,8 @@ is_human BOOLEAN NOT NULL DEFAULT false
 // chains that already have chain_accounts from before this feature.
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS tusd_balance FLOAT NOT NULL DEFAULT 0`)
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS lp_shares FLOAT NOT NULL DEFAULT 0`)
+cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS last_activity_at BIGINT NOT NULL DEFAULT 0`)
+cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS demurrage_14_day_warning_shown BOOLEAN NOT NULL DEFAULT false`)
 // Links a ZK proof commitment to the wallet that successfully registered
 // with it, so the app can ask "did MY proof get registered, and to which
 // wallet?" instead of guessing from a global, unfiltered list.
@@ -156,7 +180,7 @@ cs.db.Exec(`ALTER TABLE liquidity_pool ADD COLUMN IF NOT EXISTS total_lp_shares 
 }
 
 func (cs *ChainState) loadFromDB() {
-rows, err := cs.db.Query("SELECT address, balance, is_human, tusd_balance, lp_shares FROM chain_accounts")
+rows, err := cs.db.Query("SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown FROM chain_accounts")
 if err != nil {
 fmt.Printf("⚠ Could not load from DB: %v\n", err)
 return
@@ -165,7 +189,7 @@ defer rows.Close()
 count := 0
 for rows.Next() {
 acc := &AccountState{}
-rows.Scan(&acc.Address, &acc.Balance, &acc.IsHuman, &acc.TUsdBalance, &acc.LPShares)
+rows.Scan(&acc.Address, &acc.Balance, &acc.IsHuman, &acc.TUsdBalance, &acc.LPShares, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown)
 cs.accounts[acc.Address] = acc
 count++
 }
@@ -225,9 +249,9 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) {
 if !cs.useDB {
 return
 }
-_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares) VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5`,
-acc.Address, acc.Balance, acc.IsHuman, acc.TUsdBalance, acc.LPShares)
+_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown) VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7`,
+acc.Address, acc.Balance, acc.IsHuman, acc.TUsdBalance, acc.LPShares, acc.LastActivityAt, acc.Demurrage14DayWarningShown)
 if err != nil {
 fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
 } else {
@@ -235,13 +259,222 @@ fmt.Printf("[DB] Saved account %s | balance=%.2f | tusd=%.2f | lp=%.6f | is_huma
 }
 }
 
+// Demurrage parameters. AEQ balances that haven't been touched (no
+// transfer, swap, or liquidity action) for demurrageGracePeriodSeconds
+// begin losing value continuously at demurrageMonthlyRate per month,
+// compounding every second rather than in discrete daily/monthly steps —
+// this avoids any visible "jump" at day/month boundaries. Touching the
+// account in any AEQ-moving way resets the clock to zero, which is the
+// entire point: money that's actively circulating never decays, only
+// money sitting idle does. Modeled after real-world demurrage currencies
+// (Wörgl's 1932 experiment used 1%/month; the long-running Chiemgauer
+// uses roughly 2%/quarter ≈ 0.66%/month) — 0.5%/month here is a
+// deliberately moderate starting point, slightly gentler than either.
+// Lost AEQ is distributed across the same four tokenomics pools as the
+// swap fee (40% validators / 30% LPs / 20% UBI / 10% treasury), not
+// burned — it stays circulating in the system rather than vanishing
+// from total supply. Only AEQ decays this way; tUSD (a simulated test
+// currency, not the real UBI-grant currency) is unaffected.
+const demurrageGracePeriodSeconds = 90 * 24 * 60 * 60   // 3 months
+const demurrageMonthlyRate = 0.005                       // 0.5%/month
+
+// wealthCapMultiplier defines the maximum AEQ a single account may hold,
+// expressed as a multiple of the current average AEQ balance across all
+// registered humans — not a fixed number. This makes the cap self-
+// adapting: as the system grows and average wealth naturally rises
+// through normal economic activity, the cap rises proportionally with
+// it, rather than needing to be manually raised through discrete
+// "phases" as the project matures. The cap only kicks in on incoming
+// AEQ (registration grants, transfers, swap/liquidity payouts) — see
+// enforceWealthCapLocked — never on a balance that's already there, so
+// it can't retroactively punish someone for an average that later rose.
+const wealthCapMultiplier = 25.0
+const secondsPerMonth = 30 * 24 * 60 * 60                 // approximation, consistent with the grace period's 30-day months
+
+// touchActivity stamps address's LastActivityAt to now, resetting its
+// demurrage clock. Called by every AEQ-moving action (Transfer, swaps,
+// AddLiquidity/RemoveLiquidity, registration) — NOT by pure balance
+// reads, since merely checking a balance isn't "using" the money. Caller
+// must hold cs.mu (write lock).
+func touchActivity(acc *AccountState) {
+acc.LastActivityAt = nowUnix()
+acc.Demurrage14DayWarningShown = false // new grace period — the 14-day notice can fire again when this one nears its end
+}
+
+// nowUnix exists as a single seam so demurrage timing could be mocked in
+// tests later; right now it's just time.Now().Unix().
+func nowUnix() int64 {
+return timeNowFunc().Unix()
+}
+
+// effectiveBalance computes what address's AEQ balance is RIGHT NOW,
+// continuously decayed for any time past the grace period since
+// LastActivityAt — without writing anything. This is what every balance
+// read (GetBalance, /api/balance, /api/humans, etc.) should show, so the
+// number displayed always reflects live decay even between the
+// lazy-settlement points (see settleDemurrageLocked) where it actually
+// gets written to the stored Balance field. Caller must hold at least a
+// read lock.
+func effectiveBalance(acc *AccountState) float64 {
+if acc.LastActivityAt == 0 {
+return acc.Balance
+}
+idleSeconds := nowUnix() - acc.LastActivityAt
+if idleSeconds <= demurrageGracePeriodSeconds {
+return acc.Balance
+}
+decayingSeconds := float64(idleSeconds - demurrageGracePeriodSeconds)
+monthsDecaying := decayingSeconds / float64(secondsPerMonth)
+factor := math.Pow(1-demurrageMonthlyRate, monthsDecaying)
+return acc.Balance * factor
+}
+
+// settleDemurrageLocked actually writes off the decay computed by
+// effectiveBalance into acc.Balance, and distributes what was lost across
+// the four tokenomics pools — same split as the swap fee. This is called
+// right before any operation that's about to read-then-modify Balance
+// (Transfer, swaps, liquidity actions), so those operations always work
+// from an up-to-date, already-settled balance instead of accidentally
+// granting someone pre-decay value just because they happened to act at
+// that exact moment. Caller must hold cs.mu (write lock).
+func (cs *ChainState) settleDemurrageLocked(acc *AccountState) {
+current := effectiveBalance(acc)
+lost := acc.Balance - current
+if lost <= 0 {
+return
+}
+acc.Balance = current
+cs.distributeSwapFee(lost, true) // true = denominated in AEQ; reuses the same 40/30/20/10 split as swap fees
+fmt.Printf("[DEMURRAGE] %s: idle balance decayed by %.6f AEQ, redistributed to pools\n", acc.Address, lost)
+}
+
 func (cs *ChainState) GetBalance(address string) float64 {
 cs.mu.RLock()
 defer cs.mu.RUnlock()
 if acc, ok := cs.accounts[address]; ok {
-return acc.Balance
+return effectiveBalance(acc)
 }
 return 0
+}
+
+// getAverageBalanceLocked computes the mean AEQ balance across every
+// registered human (using each account's live, demurrage-adjusted
+// balance, not the raw stored value, since that's the real current
+// wealth distribution). Non-human accounts (the four fee-pool addresses,
+// any unregistered address that merely received a transfer) are excluded
+// — the cap is about wealth among the humans the system actually exists
+// for, not diluted by infrastructure accounts. Caller must hold cs.mu.
+func (cs *ChainState) getAverageBalanceLocked() float64 {
+total := 0.0
+count := 0
+for _, acc := range cs.accounts {
+if !acc.IsHuman {
+continue
+}
+total += effectiveBalance(acc)
+count++
+}
+if count == 0 {
+return 0
+}
+return total / float64(count)
+}
+
+// enforceWealthCapLocked checks acc's balance against the current
+// wealth cap (wealthCapMultiplier * average human balance) and, if it's
+// over, skims the excess into the four tokenomics pools — the same
+// 40/30/20/10 split used for swap fees and demurrage. This is called
+// after AEQ arrives in an account (registration, receiving a transfer,
+// a tusd->aeq swap, or removing liquidity), never on amounts already
+// sitting in a balance from before the cap existed or before the
+// average rose — so it can only ever trim genuinely NEW incoming AEQ
+// down to the cap, not retroactively confiscate existing savings.
+// Caller must hold cs.mu.
+// isTokenomicsPoolAddress reports whether addr is one of the four
+// official fee-recipient addresses (validators/LPs/UBI/treasury). These
+// are deliberately exempt from the wealth cap — their entire purpose is
+// to accumulate fees/demurrage/cap-overflow from everyone else, so
+// capping them would be self-defeating. Every other address, registered
+// human or not, is subject to the cap.
+func isTokenomicsPoolAddress(addr string) bool {
+switch addr {
+case validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr:
+return true
+}
+return false
+}
+
+func (cs *ChainState) enforceWealthCapLocked(acc *AccountState) {
+if isTokenomicsPoolAddress(acc.Address) {
+return
+}
+// Deliberately NOT gated on acc.IsHuman: capping only registered
+// humans would let someone bypass the entire mechanism just by
+// parking AEQ in any ordinary, unregistered address (a personal
+// "overflow wallet" they also control) — that address would have
+// accumulated unlimited AEQ with no cap ever applying to it. The cap
+// has to apply to anyone receiving AEQ, registered or not, for it to
+// mean anything.
+avg := cs.getAverageBalanceLocked()
+if avg <= 0 {
+return // no meaningful average yet (e.g. only one human registered so far)
+}
+cap := avg * wealthCapMultiplier
+if acc.Balance <= cap {
+return
+}
+excess := acc.Balance - cap
+acc.Balance = cap
+cs.distributeSwapFee(excess, true)
+fmt.Printf("[WEALTH CAP] %s exceeded %.2fx average (%.2f AEQ) — %.4f AEQ excess redistributed to pools\n",
+acc.Address, wealthCapMultiplier, cap, excess)
+}
+
+// DemurrageStatus describes whether/when an idle account's AEQ will
+// start (or has started) decaying, for surfacing to the user at login.
+type DemurrageStatus struct {
+	Active           bool    `json:"active"`             // true if decay has already started
+	DaysUntilStart   float64 `json:"days_until_start"`    // only meaningful if !Active; can be negative-free, always >= 0
+	ShowFourteenDayNotice bool `json:"show_fourteen_day_notice"` // one-time notice, true only on the call that first crosses into the 14-day window
+	ShowSevenDayNotice    bool `json:"show_seven_day_notice"`    // true on every check within the last 7 days before decay starts
+}
+
+// GetDemurrageStatus reports where address stands relative to the
+// demurrage grace period, and — like settleDemurrageLocked — has a side
+// effect: the first time this is called once the account has entered the
+// 14-day warning window, it flips Demurrage14DayWarningShown so the
+// one-time notice isn't repeated on every subsequent login within that
+// same window. The 7-day notice has no such one-time flag; per Daniel's
+// spec, that one is meant to repeat on every login during its window.
+func (cs *ChainState) GetDemurrageStatus(address string) DemurrageStatus {
+cs.mu.Lock()
+defer cs.mu.Unlock()
+
+acc, ok := cs.accounts[address]
+if !ok || acc.LastActivityAt == 0 {
+return DemurrageStatus{Active: false, DaysUntilStart: float64(demurrageGracePeriodSeconds) / 86400}
+}
+
+idleSeconds := nowUnix() - acc.LastActivityAt
+secondsUntilStart := demurrageGracePeriodSeconds - idleSeconds
+if secondsUntilStart <= 0 {
+return DemurrageStatus{Active: true}
+}
+
+daysUntilStart := float64(secondsUntilStart) / 86400
+status := DemurrageStatus{Active: false, DaysUntilStart: daysUntilStart}
+
+if daysUntilStart <= 7 {
+status.ShowSevenDayNotice = true
+} else if daysUntilStart <= 14 {
+if !acc.Demurrage14DayWarningShown {
+status.ShowFourteenDayNotice = true
+acc.Demurrage14DayWarningShown = true
+cs.saveAccountToDB(acc)
+}
+}
+
+return status
 }
 
 func (cs *ChainState) GetTUsdBalance(address string) float64 {
@@ -285,6 +518,8 @@ cs.accounts[address] = &AccountState{Address: address}
 
 cs.accounts[address].IsHuman = true
 cs.accounts[address].Balance += 1000
+touchActivity(cs.accounts[address]) // starts this 1,000 AEQ's own grace period fresh
+cs.enforceWealthCapLocked(cs.accounts[address])
 cs.saveAccountToDB(cs.accounts[address])
 cs.save()
 
@@ -298,17 +533,25 @@ cs.mu.Lock()
 defer cs.mu.Unlock()
 
 fromAcc, ok := cs.accounts[from]
-if !ok || fromAcc.Balance < amount {
+if !ok {
+return fmt.Errorf("insufficient balance")
+}
+cs.settleDemurrageLocked(fromAcc) // make sure we're checking against the real, decayed balance
+if fromAcc.Balance < amount {
 return fmt.Errorf("insufficient balance")
 }
 
 fromAcc.Balance -= amount
+touchActivity(fromAcc) // sending counts as "using" the money — resets its decay clock
 cs.saveAccountToDB(fromAcc)
 
 if _, ok := cs.accounts[to]; !ok {
 cs.accounts[to] = &AccountState{Address: to}
 }
+cs.settleDemurrageLocked(cs.accounts[to])
 cs.accounts[to].Balance += amount
+touchActivity(cs.accounts[to]) // receiving also resets the clock on the recipient's whole balance
+cs.enforceWealthCapLocked(cs.accounts[to])
 cs.saveAccountToDB(cs.accounts[to])
 cs.save()
 
@@ -380,6 +623,7 @@ acc, ok := cs.accounts[address]
 if !ok {
 return 0, fmt.Errorf("account not found")
 }
+cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
 
 if aeqToTusd {
 if acc.Balance < amountIn {
@@ -416,6 +660,10 @@ cs.pool.ReserveTUSD += amountInAfterFee
 cs.pool.ReserveAEQ -= amountOut
 acc.TUsdBalance -= amountIn
 acc.Balance += amountOut
+}
+touchActivity(acc) // swapping (either direction) counts as using the AEQ side
+if !aeqToTusd {
+cs.enforceWealthCapLocked(acc) // AEQ just arrived via this swap direction — check the cap
 }
 
 cs.saveAccountToDB(acc)
@@ -510,6 +758,7 @@ acc, ok := cs.accounts[address]
 if !ok {
 return fmt.Errorf("account not found")
 }
+cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
 if acc.Balance < amountAEQ {
 return fmt.Errorf("insufficient AEQ balance")
 }
@@ -562,6 +811,7 @@ mintedShares = math.Sqrt(amountAEQ * amountTUSD)
 acc.Balance -= amountAEQ
 acc.TUsdBalance -= amountTUSD
 acc.LPShares += mintedShares
+touchActivity(acc) // depositing into the pool counts as using the AEQ
 cs.pool.ReserveAEQ += amountAEQ
 cs.pool.ReserveTUSD += amountTUSD
 cs.pool.TotalLPShares += mintedShares
@@ -604,6 +854,8 @@ outTUSD := cs.pool.ReserveTUSD * fraction
 acc.LPShares -= sharesToBurn
 acc.Balance += outAEQ
 acc.TUsdBalance += outTUSD
+touchActivity(acc) // receiving AEQ back from the pool counts as using it
+cs.enforceWealthCapLocked(acc)
 cs.pool.ReserveAEQ -= outAEQ
 cs.pool.ReserveTUSD -= outTUSD
 cs.pool.TotalLPShares -= sharesToBurn
@@ -655,12 +907,22 @@ count++
 return count
 }
 
+// GetAllAccounts returns a COPY of each account, with Balance set to its
+// live, demurrage-adjusted value (see effectiveBalance) — not the raw
+// stored value, and not a pointer to the real account. Copies matter
+// here: callers (the explorer's /api/humans, etc.) must never be able to
+// mutate the actual stored balance just by displaying it, and showing
+// the raw stored value would make the UI lag behind real decay until
+// that specific account next did something that triggered
+// settleDemurrageLocked.
 func (cs *ChainState) GetAllAccounts() []*AccountState {
 cs.mu.RLock()
 defer cs.mu.RUnlock()
 result := make([]*AccountState, 0, len(cs.accounts))
 for _, acc := range cs.accounts {
-result = append(result, acc)
+displayCopy := *acc
+displayCopy.Balance = effectiveBalance(acc)
+result = append(result, &displayCopy)
 }
 return result
 }

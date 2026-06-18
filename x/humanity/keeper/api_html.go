@@ -322,6 +322,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
   <div class="pbar" data-i18n="swap-priv-bar">🔒 0.1% swap fee only · AEQ-to-AEQ transfers stay free · tUSD is a test currency with no real-world value</div>
   <div class="rcard">
     <div class="wbox" id="swap-wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="swap-wadr">—</div></div>
+    <div id="demurrage-notice" style="display:none;font-size:13px;padding:10px 12px;border-radius:8px;background:rgba(255,179,0,0.1);border:1px solid rgba(255,179,0,0.3);color:var(--gold);margin:10px 0"></div>
     <div class="ic-row" style="margin:8px 0"><span class="ic-key" data-i18n="swap-your-aeq">Your AEQ</span><span class="ic-val go" id="swap-bal-aeq">—</span></div>
     <div class="ic-row" style="margin-bottom:16px"><span class="ic-key" data-i18n="swap-your-tusd">Your tUSD</span><span class="ic-val go" id="swap-bal-tusd">—</span></div>
 
@@ -1234,7 +1235,32 @@ async function refreshSwapBalances() {
     myTUSDBalance = bd.tusd_balance || 0;
     document.getElementById('swap-bal-aeq').textContent = fmt(bd.balance) + ' AEQ';
     document.getElementById('swap-bal-tusd').textContent = fmt(bd.tusd_balance) + ' tUSD';
+    showDemurrageNotice(bd);
   } catch (e) {}
+}
+
+// Surfaces the demurrage warning at "login" time (i.e. whenever the
+// wallet connects/refreshes its balance) per the two-stage design: a
+// one-time notice once the account enters the 14-day window (the server
+// tracks whether this has already fired and won't repeat it), and a
+// notice on every check once inside the final 7 days before decay
+// actually starts. Once decay is active, a different, ongoing message
+// is shown instead of either warning.
+function showDemurrageNotice(bd) {
+  const box = document.getElementById('demurrage-notice');
+  if (!box) return;
+  if (bd.demurrage_active) {
+    box.style.display = 'block';
+    box.innerHTML = '⏳ Part of your idle AEQ balance is now slowly decaying (0.5%/month) because it hasn\'t been used in over 3 months. Send, swap, or deposit any amount to reset the clock.';
+  } else if (bd.show_7_day_notice) {
+    box.style.display = 'block';
+    box.innerHTML = '⏳ Your AEQ balance will start decaying in ' + bd.demurrage_days_until_start.toFixed(1) + ' days unless you send, swap, or deposit some of it.';
+  } else if (bd.show_14_day_notice) {
+    box.style.display = 'block';
+    box.innerHTML = '💡 Heads up: if this balance stays untouched, it will start slowly decaying in about 2 weeks. Any transfer, swap, or deposit resets the countdown.';
+  } else {
+    box.style.display = 'none';
+  }
 }
 
 // Fills the AddLiquidity input for side ('aeq' or 'tusd') with pct of

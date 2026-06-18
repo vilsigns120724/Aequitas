@@ -186,12 +186,17 @@ return
 balance := a.state.GetBalance(wallet)
 tusdBalance := a.state.GetTUsdBalance(wallet)
 isHuman := a.state.IsHuman(wallet)
+demurrage := a.state.GetDemurrageStatus(wallet)
 
 json.NewEncoder(w).Encode(map[string]interface{}{
-"wallet":       wallet,
-"balance":      balance,
-"tusd_balance": tusdBalance,
-"is_human":     isHuman,
+"wallet":                   wallet,
+"balance":                  balance,
+"tusd_balance":              tusdBalance,
+"is_human":                  isHuman,
+"demurrage_active":          demurrage.Active,
+"demurrage_days_until_start": demurrage.DaysUntilStart,
+"show_14_day_notice":        demurrage.ShowFourteenDayNotice,
+"show_7_day_notice":         demurrage.ShowSevenDayNotice,
 })
 }
 
