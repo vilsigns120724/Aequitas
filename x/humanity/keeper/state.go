@@ -411,6 +411,55 @@ return effectiveBalance(acc)
 return 0
 }
 
+// DistributeUBIPool empties the UBI pool address's entire AEQ balance,
+// splitting it equally across every currently-registered human, then
+// calls cs.save()/persists each affected account. Intended to be called
+// once a day by a background ticker (see main.go) — not on every block,
+// since "the UBI pool" only makes sense as a daily payout, not a
+// per-block trickle. The pool is fully drained each time rather than
+// only partially distributed: any AEQ that flows into it between now
+// and the next run (swap fees, demurrage, wealth-cap overflow) accrues
+// fresh, so there's no need to hold a standing reserve.
+func (cs *ChainState) DistributeUBIPool() {
+cs.mu.Lock()
+defer cs.mu.Unlock()
+
+poolAcc, ok := cs.accounts[ubiPoolAddr]
+if !ok || poolAcc.Balance <= 0 {
+fmt.Println("[UBI] Pool is empty — nothing to distribute today")
+return
+}
+
+var humanAddrs []string
+for addr, acc := range cs.accounts {
+if acc.IsHuman {
+humanAddrs = append(humanAddrs, addr)
+}
+}
+if len(humanAddrs) == 0 {
+fmt.Println("[UBI] No registered humans yet — pool left untouched")
+return
+}
+
+total := poolAcc.Balance
+share := total / float64(len(humanAddrs))
+poolAcc.Balance = 0
+cs.saveAccountToDB(poolAcc)
+
+for _, addr := range humanAddrs {
+acc := cs.accounts[addr]
+cs.settleDemurrageLocked(acc) // settle any pending decay before adding the UBI share
+acc.Balance += share
+touchActivity(acc) // receiving the daily UBI share counts as activity, like any other incoming AEQ
+cs.enforceWealthCapLocked(acc) // a UBI payout can in principle still push someone over the cap
+cs.saveAccountToDB(acc)
+}
+cs.save()
+
+fmt.Printf("[UBI] ✓ Distributed %.6f AEQ across %d registered humans (%.6f AEQ each)\n",
+total, len(humanAddrs), share)
+}
+
 // getAverageBalanceLocked computes the mean AEQ balance across every
 // registered human (using each account's live, demurrage-adjusted
 // balance, not the raw stored value, since that's the real current

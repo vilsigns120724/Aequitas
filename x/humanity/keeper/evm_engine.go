@@ -218,6 +218,22 @@ fmt.Printf("[EVM] CallContract to=%s codeLen=%d data=%x persist=%v\n",
 to.Hex(), len(code), data[:min4b(len(data), 4)], persist)
 
 if len(code) == 0 {
+// MetaMask Mobile (and some other wallets) call well-known system
+// contracts that exist on mainnet but not on a custom chain:
+//   - Multicall3 (0xcA11bde...) — used to batch eth_call requests
+//   - Zero address (0x0000...) — probed for token symbol/decimals
+// Returning a hard error here makes MetaMask Mobile abort the
+// entire transaction flow. Instead we return an empty 32-byte
+// result (the standard ABI-encoded zero/empty value) so the wallet
+// gracefully treats the call as "not supported" and falls back to
+// its single-call path. This is the same behavior as geth when
+// calling a non-existent contract with staticcall.
+toHex := strings.ToLower(to.Hex())
+if toHex == "0xca11bde05977b3631167028862be2a173976ca11" ||
+toHex == "0x0000000000000000000000000000000000000000" {
+fmt.Printf("[EVM] Known system contract %s — returning empty result\n", to.Hex())
+return make([]byte, 32), nil
+}
 return nil, fmt.Errorf("no code at %s", to.Hex())
 }
 
