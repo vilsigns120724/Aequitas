@@ -330,7 +330,8 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
       <button class="rbtn" id="swap-dir-t2a" onclick="setSwapDirection('tusd_to_aeq')" data-i18n="swap-tusd-to-aeq" style="flex:1">tUSD → AEQ</button>
     </div>
     <input type="number" id="swap-amount" placeholder="Amount" style="width:100%;padding:14px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:16px;margin-bottom:8px;box-sizing:border-box">
-    <div class="ic-row" style="margin-bottom:16px"><span class="ic-key" data-i18n="swap-fee-est">Estimated 0.1% fee</span><span class="ic-val" id="swap-fee-est">—</span></div>
+    <div class="ic-row" style="margin-bottom:8px"><span class="ic-key" data-i18n="swap-fee-est">Estimated 0.1% fee</span><span class="ic-val" id="swap-fee-est">—</span></div>
+    <div id="swap-warn" style="display:none;font-size:13px;padding:10px 12px;border-radius:8px;background:rgba(255,179,0,0.1);border:1px solid rgba(255,179,0,0.3);color:var(--gold);margin-bottom:16px"></div>
 
     <button class="rbtn bc" id="swap-btn-conn" onclick="connectSwapWallet()" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
     <button class="rbtn br" id="swap-btn-go" onclick="doSwap()" disabled data-i18n="swap-btn-go">🔄 SWAP</button>
@@ -1099,6 +1100,7 @@ async function loadPoolStatus() {
         ? ('Pool ratio: 1 AEQ ≈ ' + d.price_aeq_in_tusd.toFixed(4) + ' tUSD — match this ratio when depositing')
         : 'Be the first to deposit — your ratio sets the starting price.';
     }
+    updateFeeEstimate();
   } catch (e) {}
 }
 
@@ -1116,11 +1118,67 @@ function setSwapDirection(dir) {
   updateFeeEstimate();
 }
 
+// Mirrors the same constant-product math the server uses (see swapLocked
+// in state.go), so the UI can warn BEFORE asking for a signature instead
+// of after a wasted MetaMask popup. This is just for live feedback —
+// the server still re-validates for real when the swap actually submits,
+// since the pool could change between typing and submitting.
+function estimateSwapOutput(amountIn, aeqToTusd) {
+  if (amountIn <= 0 || currentPoolAEQ <= 0 || currentPoolTUSD <= 0) return null;
+  const fee = amountIn * 0.001;
+  const amountInAfterFee = amountIn - fee;
+  let amountOut, reserveOut;
+  if (aeqToTusd) {
+    amountOut = (currentPoolTUSD * amountInAfterFee) / (currentPoolAEQ + amountInAfterFee);
+    reserveOut = currentPoolTUSD;
+  } else {
+    amountOut = (currentPoolAEQ * amountInAfterFee) / (currentPoolTUSD + amountInAfterFee);
+    reserveOut = currentPoolAEQ;
+  }
+  return { amountOut, fee, tooLarge: amountOut >= reserveOut };
+}
+
 function updateFeeEstimate() {
   const amt = parseFloat(document.getElementById('swap-amount').value || '0');
-  const fee = amt * 0.001;
   const unit = swapDirection === 'aeq_to_tusd' ? 'AEQ' : 'tUSD';
+  const outUnit = swapDirection === 'aeq_to_tusd' ? 'tUSD' : 'AEQ';
+  const fee = amt * 0.001;
   document.getElementById('swap-fee-est').textContent = fee > 0 ? (fee.toFixed(6) + ' ' + unit) : '—';
+
+  const goBtn = document.getElementById('swap-btn-go');
+  const warnEl = document.getElementById('swap-warn');
+  if (currentPoolAEQ <= 0 || currentPoolTUSD <= 0) {
+    warnEl.textContent = '⚠ Pool has no liquidity yet — deposit some below before swapping.';
+    warnEl.style.display = 'block';
+    if (swapWaddr) goBtn.disabled = true;
+    return;
+  }
+  if (amt <= 0) {
+    warnEl.style.display = 'none';
+    if (swapWaddr) goBtn.disabled = false;
+    return;
+  }
+  const est = estimateSwapOutput(amt, swapDirection === 'aeq_to_tusd');
+  if (est && est.tooLarge) {
+    // Binary-search the largest input that stays safely under the
+    // reserve, so the warning can suggest a concrete number instead of
+    // just saying "too much" — 99% of the output reserve as a safety
+    // margin, since the pool could shift slightly before this submits.
+    let lo = 0, hi = amt;
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + hi) / 2;
+      const midEst = estimateSwapOutput(mid, swapDirection === 'aeq_to_tusd');
+      if (midEst && midEst.amountOut < (swapDirection === 'aeq_to_tusd' ? currentPoolTUSD : currentPoolAEQ) * 0.99) lo = mid;
+      else hi = mid;
+    }
+    warnEl.innerHTML = '⚠ Too large for current pool liquidity. Try up to ~' + lo.toFixed(4) + ' ' + unit + '.';
+    warnEl.style.display = 'block';
+    if (swapWaddr) goBtn.disabled = true;
+  } else if (est) {
+    warnEl.innerHTML = 'You will receive ≈ ' + est.amountOut.toFixed(6) + ' ' + outUnit;
+    warnEl.style.display = 'block';
+    if (swapWaddr) goBtn.disabled = false;
+  }
 }
 
 async function connectSwapWallet() {
