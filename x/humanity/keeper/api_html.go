@@ -367,12 +367,17 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
       <div class="ic-title" data-i18n="swap-lp-title">Your LP Position</div>
       <div class="ic-row"><span class="ic-key" data-i18n="swap-lp-share">Pool Share</span><span class="ic-val go" id="lp-share-pct">—</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="swap-lp-withdrawable">Withdrawable</span><span class="ic-val" id="lp-withdrawable">—</span></div>
-      <div class="pct-row" style="display:flex;gap:6px;margin:8px 0">
+      <div style="display:flex;align-items:center;gap:8px;margin:10px 0 6px">
+        <input type="number" id="remove-pct-input" min="0" max="100" step="0.1" placeholder="%" oninput="setRemovePctManual(this.value)" style="width:80px;padding:10px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:14px;box-sizing:border-box">
+        <span style="color:var(--muted);font-size:13px" data-i18n="swap-lp-pct-label">% of your position</span>
+      </div>
+      <div class="pct-row" style="display:flex;gap:6px;margin-bottom:8px">
         <button class="rbtn pctbtn" onclick="setRemovePct(0.25,this)" style="flex:1;padding:8px;font-size:12px">25%</button>
         <button class="rbtn pctbtn" onclick="setRemovePct(0.5,this)" style="flex:1;padding:8px;font-size:12px">50%</button>
         <button class="rbtn pctbtn" onclick="setRemovePct(0.75,this)" style="flex:1;padding:8px;font-size:12px">75%</button>
         <button class="rbtn pctbtn" onclick="setRemovePct(1,this)" style="flex:1;padding:8px;font-size:12px">MAX</button>
       </div>
+      <div class="ic-row" style="margin-bottom:8px"><span class="ic-key" data-i18n="swap-lp-youget">You will receive</span><span class="ic-val go" id="lp-remove-preview">—</span></div>
       <button class="rbtn br" id="swap-btn-removeliq" onclick="doRemoveLiquidity()" data-i18n="swap-btn-removeliq">🔥 REMOVE LIQUIDITY</button>
     </div>
   </div>
@@ -1371,22 +1376,48 @@ async function doAddLiquidity() {
 
 // ── LP POSITION / REMOVE LIQUIDITY ──────────────────────────────────────
 let myLPShares = 0;
+let myFullWithdrawableAEQ = 0;
+let myFullWithdrawableTUSD = 0;
 
 async function loadLPPosition() {
   if (!swapWaddr) return;
   try {
     const d = await (await fetch('/api/lp-position?wallet=' + swapWaddr)).json();
     myLPShares = d.shares || 0;
+    myFullWithdrawableAEQ = d.withdrawable_aeq || 0;
+    myFullWithdrawableTUSD = d.withdrawable_tusd || 0;
     const box = document.getElementById('lp-position-box');
     if (myLPShares > 0) {
       box.style.display = 'block';
       document.getElementById('lp-share-pct').textContent = d.pool_share_pct.toFixed(4) + '%';
       document.getElementById('lp-withdrawable').textContent =
         d.withdrawable_aeq.toFixed(4) + ' AEQ + ' + d.withdrawable_tusd.toFixed(4) + ' tUSD';
+      updateRemovePreview();
     } else {
       box.style.display = 'none';
     }
   } catch (e) {}
+}
+
+// Recomputes "you will receive" from the currently selected removePct —
+// called whenever removePct changes, whether from a percentage button or
+// the manual input field, so both paths stay in sync with the same preview.
+function updateRemovePreview() {
+  const aeq = myFullWithdrawableAEQ * removePct;
+  const tusd = myFullWithdrawableTUSD * removePct;
+  document.getElementById('lp-remove-preview').textContent =
+    aeq.toFixed(6) + ' AEQ + ' + tusd.toFixed(6) + ' tUSD';
+}
+
+// Manual percentage input — lets someone type e.g. "37.5" instead of only
+// having the 25/50/75/100 quick buttons. Clears the active button
+// highlighting since a manual value generally won't match one exactly.
+function setRemovePctManual(value) {
+  const pct = parseFloat(value || '0');
+  if (pct < 0 || pct > 100 || isNaN(pct)) return;
+  removePct = pct / 100;
+  document.querySelectorAll('#lp-position-box .pctbtn').forEach(b => { b.style.background = ''; b.style.color = ''; });
+  updateRemovePreview();
 }
 
 // Stores the chosen withdrawal fraction (set by the 25/50/75/MAX buttons)
@@ -1398,6 +1429,8 @@ function setRemovePct(pct, btn) {
   removePct = pct;
   document.querySelectorAll('#lp-position-box .pctbtn').forEach(b => { b.style.background = ''; b.style.color = ''; });
   if (btn) { btn.style.background = 'var(--gold)'; btn.style.color = '#050A14'; }
+  document.getElementById('remove-pct-input').value = (pct * 100).toString();
+  updateRemovePreview();
 }
 
 async function doRemoveLiquidity() {
