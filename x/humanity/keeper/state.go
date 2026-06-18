@@ -14,14 +14,36 @@ _ "github.com/lib/pq"
 )
 
 type AccountState struct {
-Address string  `json:"address"`
-Balance float64 `json:"balance"`
-IsHuman bool    `json:"is_human"`
+Address     string  `json:"address"`
+Balance     float64 `json:"balance"`
+IsHuman     bool    `json:"is_human"`
+// TUsdBalance is the account's holding of tUSD — a simulated, chain-native
+// test-dollar token used to exercise the swap/liquidity-pool mechanism
+// without touching any real external currency or bridge. See PoolState
+// below for the actual AEQ<->tUSD liquidity pool this balance interacts
+// with.
+TUsdBalance float64 `json:"tusd_balance"`
+}
+
+// PoolState holds the two reserves of the single AEQ<->tUSD liquidity pool.
+// Pricing follows the constant-product formula (reserveAEQ * reserveTUSD =
+// k), the same model Uniswap v2 popularized: the more of one side someone
+// swaps in, the worse the price gets for the next unit, which is what
+// makes the pool self-balancing without needing an oracle or admin to set
+// a price. A 0.1% fee is taken from every swap's input amount before the
+// constant-product math runs, and is distributed across the four pools
+// from the original tokenomics design (validators/LPs/UBI/treasury) —
+// see DistributeSwapFee. Ordinary AEQ-to-AEQ transfers (state.Transfer)
+// are NOT touched by this fee; it only applies to swaps through this pool.
+type PoolState struct {
+ReserveAEQ  float64 `json:"reserve_aeq"`
+ReserveTUSD float64 `json:"reserve_tusd"`
 }
 
 type ChainState struct {
 mu       sync.RWMutex
 accounts map[string]*AccountState
+pool     *PoolState
 db       *sql.DB
 useDB    bool
 }
@@ -90,6 +112,10 @@ address TEXT PRIMARY KEY,
 balance FLOAT NOT NULL DEFAULT 0,
 is_human BOOLEAN NOT NULL DEFAULT false
 )`)
+// tusd_balance added separately (ALTER instead of being in the original
+// CREATE TABLE) so this upgrade doesn't require recreating the table on
+// chains that already have chain_accounts from before this feature.
+cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS tusd_balance FLOAT NOT NULL DEFAULT 0`)
 // Links a ZK proof commitment to the wallet that successfully registered
 // with it, so the app can ask "did MY proof get registered, and to which
 // wallet?" instead of guessing from a global, unfiltered list.
@@ -99,10 +125,19 @@ wallet_address TEXT NOT NULL,
 tx_hash TEXT,
 registered_at TIMESTAMP DEFAULT NOW()
 )`)
+// Single-row table holding the AEQ<->tUSD pool reserves. A fixed id=1 row
+// is used instead of a key-value table since there's only ever one pool
+// right now — simpler queries, and trivial to extend to multiple pools
+// later (id column is already there) if more pairs are ever added.
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS liquidity_pool (
+id INTEGER PRIMARY KEY DEFAULT 1,
+reserve_aeq FLOAT NOT NULL DEFAULT 0,
+reserve_tusd FLOAT NOT NULL DEFAULT 0
+)`)
 }
 
 func (cs *ChainState) loadFromDB() {
-rows, err := cs.db.Query("SELECT address, balance, is_human FROM chain_accounts")
+rows, err := cs.db.Query("SELECT address, balance, is_human, tusd_balance FROM chain_accounts")
 if err != nil {
 fmt.Printf("⚠ Could not load from DB: %v\n", err)
 return
@@ -111,11 +146,37 @@ defer rows.Close()
 count := 0
 for rows.Next() {
 acc := &AccountState{}
-rows.Scan(&acc.Address, &acc.Balance, &acc.IsHuman)
+rows.Scan(&acc.Address, &acc.Balance, &acc.IsHuman, &acc.TUsdBalance)
 cs.accounts[acc.Address] = acc
 count++
 }
 fmt.Printf("✓ Loaded %d accounts from PostgreSQL\n", count)
+
+cs.loadOrInitPool()
+}
+
+// loadOrInitPool reads the single liquidity_pool row, creating it (at
+// 0/0) if it doesn't exist yet. The pool intentionally does NOT get
+// auto-filled with any starting reserves: every AEQ in this system only
+// ever exists because a real human registered for it ("money exists
+// because people exist"), so a pool can't be seeded out of thin air
+// without breaking that principle. Real liquidity has to come from
+// someone actually depositing AEQ they earned via AddLiquidity below.
+func (cs *ChainState) loadOrInitPool() {
+var reserveAEQ, reserveTUSD float64
+err := cs.db.QueryRow("SELECT reserve_aeq, reserve_tusd FROM liquidity_pool WHERE id = 1").Scan(&reserveAEQ, &reserveTUSD)
+if err != nil {
+_, insertErr := cs.db.Exec(`INSERT INTO liquidity_pool (id, reserve_aeq, reserve_tusd) VALUES (1, 0, 0)
+ON CONFLICT (id) DO NOTHING`)
+if insertErr != nil {
+fmt.Printf("⚠ Could not create liquidity pool row: %v\n", insertErr)
+}
+cs.pool = &PoolState{ReserveAEQ: 0, ReserveTUSD: 0}
+fmt.Printf("✓ Liquidity pool created (empty — awaiting first deposit via AddLiquidity)\n")
+return
+}
+cs.pool = &PoolState{ReserveAEQ: reserveAEQ, ReserveTUSD: reserveTUSD}
+fmt.Printf("✓ Liquidity pool loaded: %.2f AEQ / %.2f tUSD\n", reserveAEQ, reserveTUSD)
 }
 
 func (cs *ChainState) loadFromFile(dataFile string) {
@@ -145,13 +206,13 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) {
 if !cs.useDB {
 return
 }
-_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human) VALUES ($1, $2, $3)
-ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3`,
-acc.Address, acc.Balance, acc.IsHuman)
+_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance) VALUES ($1, $2, $3, $4)
+ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4`,
+acc.Address, acc.Balance, acc.IsHuman, acc.TUsdBalance)
 if err != nil {
 fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
 } else {
-fmt.Printf("[DB] Saved account %s | balance=%.2f | is_human=%v\n", acc.Address, acc.Balance, acc.IsHuman)
+fmt.Printf("[DB] Saved account %s | balance=%.2f | tusd=%.2f | is_human=%v\n", acc.Address, acc.Balance, acc.TUsdBalance, acc.IsHuman)
 }
 }
 
@@ -162,6 +223,24 @@ if acc, ok := cs.accounts[address]; ok {
 return acc.Balance
 }
 return 0
+}
+
+func (cs *ChainState) GetTUsdBalance(address string) float64 {
+cs.mu.RLock()
+defer cs.mu.RUnlock()
+if acc, ok := cs.accounts[address]; ok {
+return acc.TUsdBalance
+}
+return 0
+}
+
+func (cs *ChainState) GetPoolReserves() (float64, float64) {
+cs.mu.RLock()
+defer cs.mu.RUnlock()
+if cs.pool == nil {
+return 0, 0
+}
+return cs.pool.ReserveAEQ, cs.pool.ReserveTUSD
 }
 
 func (cs *ChainState) IsHuman(address string) bool {
@@ -187,17 +266,7 @@ cs.accounts[address] = &AccountState{Address: address}
 
 cs.accounts[address].IsHuman = true
 cs.accounts[address].Balance += 1000
-// Direct DB write to avoid any pointer issues
-if cs.useDB {
-_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human) VALUES ($1, $2, $3)
-ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3`,
-address, cs.accounts[address].Balance, true)
-if err != nil {
-fmt.Printf("[DB] RegisterHuman error: %v\n", err)
-} else {
-fmt.Printf("[DB] RegisterHuman saved: %s | balance=%.2f\n", address, cs.accounts[address].Balance)
-}
-}
+cs.saveAccountToDB(cs.accounts[address])
 cs.save()
 
 fmt.Printf("[STATE] ✓ Human registered: %s | Balance: %.2f AEQ\n",
@@ -225,6 +294,231 @@ cs.saveAccountToDB(cs.accounts[to])
 cs.save()
 
 fmt.Printf("[STATE] ✓ Transfer %.2f AEQ: %s → %s\n", amount, from, to)
+return nil
+}
+
+// swapFeeBps is the fee taken from every swap's input amount, in basis
+// points (10 = 0.1%). This ONLY applies to swaps through the AEQ<->tUSD
+// pool — ordinary AEQ-to-AEQ transfers via Transfer() above remain
+// completely free, per the project's design decision that moving AEQ
+// between people should never cost anything; only exchanging it for a
+// different currency does.
+// Fee recipient addresses for the four tokenomics pools, per the original
+// design (40% validators / 30% LPs / 20% UBI / 10% treasury). These are
+// real wallet addresses Daniel controls — provided explicitly so swap
+// fees are credited somewhere actually accessible, rather than to
+// addresses with no corresponding private key.
+const (
+	validatorsPoolAddr = "0x78c1c143e395b181f13bcb6868ff53aa86c3d2ba"
+	lpPoolAddr         = "0xc181c3a4d09444b99089ae0f56c1e7f4c20d01eb"
+	ubiPoolAddr        = "0x4a9b8f99f0d8cff0e510fef502100571203b054a"
+	treasuryPoolAddr   = "0x2273894fb781978d54e767f9fba2dcb33d93eb15"
+)
+
+// swapFeeBps is the fee taken from every swap's input amount, in basis
+// points (10 = 0.1%). This ONLY applies to swaps through the AEQ<->tUSD
+// pool — ordinary AEQ-to-AEQ transfers via Transfer() above remain
+// completely free, per the project's design decision that moving AEQ
+// between people should never cost anything; only exchanging it for a
+// different currency does.
+const swapFeeBps = 10
+
+// SwapAEQForTUSD swaps `amountIn` AEQ from `address` into tUSD, using the
+// constant-product formula (reserveAEQ * reserveTUSD = k) for pricing. A
+// 0.1% fee is deducted from amountIn before the swap math runs, and is
+// distributed across the four tokenomics pools (see DistributeSwapFee)
+// rather than added to the liquidity pool's reserves — so the pool's own
+// k grows only from genesis seeding, not from accumulated fees, keeping
+// the fee-distribution logic in one place instead of split between the
+// pool and the four-way split.
+func (cs *ChainState) SwapAEQForTUSD(address string, amountIn float64) (float64, error) {
+cs.mu.Lock()
+defer cs.mu.Unlock()
+return cs.swapLocked(address, amountIn, true)
+}
+
+// SwapTUSDForAEQ swaps `amountIn` tUSD from `address` into AEQ. Same
+// constant-product pricing and fee handling as SwapAEQForTUSD, just with
+// the two reserves' roles reversed.
+func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn float64) (float64, error) {
+cs.mu.Lock()
+defer cs.mu.Unlock()
+return cs.swapLocked(address, amountIn, false)
+}
+
+// swapLocked implements both swap directions. aeqToTusd=true means AEQ is
+// the input side and tUSD is the output side; false is the reverse.
+// Caller must hold cs.mu.
+func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd bool) (float64, error) {
+if amountIn <= 0 {
+return 0, fmt.Errorf("amount must be positive")
+}
+if cs.pool == nil {
+return 0, fmt.Errorf("liquidity pool not initialized")
+}
+
+acc, ok := cs.accounts[address]
+if !ok {
+return 0, fmt.Errorf("account not found")
+}
+
+if aeqToTusd {
+if acc.Balance < amountIn {
+return 0, fmt.Errorf("insufficient AEQ balance")
+}
+} else {
+if acc.TUsdBalance < amountIn {
+return 0, fmt.Errorf("insufficient tUSD balance")
+}
+}
+
+// Fee is taken off the top of the input amount; only the remainder
+// participates in the constant-product swap.
+fee := amountIn * float64(swapFeeBps) / 10000.0
+amountInAfterFee := amountIn - fee
+
+var amountOut float64
+if aeqToTusd {
+// x*y=k: reserveAEQ * reserveTUSD = (reserveAEQ + amountInAfterFee) * (reserveTUSD - amountOut)
+amountOut = (cs.pool.ReserveTUSD * amountInAfterFee) / (cs.pool.ReserveAEQ + amountInAfterFee)
+if amountOut >= cs.pool.ReserveTUSD {
+return 0, fmt.Errorf("swap too large for pool liquidity")
+}
+cs.pool.ReserveAEQ += amountInAfterFee
+cs.pool.ReserveTUSD -= amountOut
+acc.Balance -= amountIn
+acc.TUsdBalance += amountOut
+} else {
+amountOut = (cs.pool.ReserveAEQ * amountInAfterFee) / (cs.pool.ReserveTUSD + amountInAfterFee)
+if amountOut >= cs.pool.ReserveAEQ {
+return 0, fmt.Errorf("swap too large for pool liquidity")
+}
+cs.pool.ReserveTUSD += amountInAfterFee
+cs.pool.ReserveAEQ -= amountOut
+acc.TUsdBalance -= amountIn
+acc.Balance += amountOut
+}
+
+cs.saveAccountToDB(acc)
+cs.savePoolToDB()
+cs.distributeSwapFee(fee, aeqToTusd)
+cs.save()
+
+fmt.Printf("[SWAP] %s: %.4f %s → %.4f %s (fee %.4f)\n",
+address, amountIn, sideLabel(aeqToTusd, true), amountOut, sideLabel(aeqToTusd, false), fee)
+
+return amountOut, nil
+}
+
+func sideLabel(aeqToTusd, isInput bool) string {
+if aeqToTusd == isInput {
+return "AEQ"
+}
+return "tUSD"
+}
+
+func (cs *ChainState) savePoolToDB() {
+if !cs.useDB || cs.pool == nil {
+return
+}
+_, err := cs.db.Exec(`UPDATE liquidity_pool SET reserve_aeq = $1, reserve_tusd = $2 WHERE id = 1`,
+cs.pool.ReserveAEQ, cs.pool.ReserveTUSD)
+if err != nil {
+fmt.Printf("[DB] Error saving pool: %v\n", err)
+}
+}
+
+// distributeSwapFee splits the fee collected from a swap across the four
+// tokenomics pools from the original design: 40% validators, 30%
+// liquidity providers, 20% UBI, 10% treasury — crediting each of the four
+// real addresses above. feeInAEQ is true when the fee was collected in
+// AEQ (an AEQ->tUSD swap); false means it was collected in tUSD (a
+// tUSD->AEQ swap) — the split percentages are the same either way, only
+// the currency the fee is credited in differs. Caller must hold cs.mu.
+func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) {
+if fee <= 0 {
+return
+}
+shares := map[string]float64{
+validatorsPoolAddr: fee * 0.40,
+lpPoolAddr:         fee * 0.30,
+ubiPoolAddr:        fee * 0.20,
+treasuryPoolAddr:   fee * 0.10,
+}
+for addr, amount := range shares {
+if _, ok := cs.accounts[addr]; !ok {
+cs.accounts[addr] = &AccountState{Address: addr}
+}
+if feeInAEQ {
+cs.accounts[addr].Balance += amount
+} else {
+cs.accounts[addr].TUsdBalance += amount
+}
+cs.saveAccountToDB(cs.accounts[addr])
+}
+currency := "tUSD"
+if feeInAEQ {
+currency = "AEQ"
+}
+fmt.Printf("[FEE] Swap fee %.6f %s distributed across validators/lps/ubi/treasury\n", fee, currency)
+}
+
+// AddLiquidity lets a real account deposit AEQ and tUSD into the pool in
+// proportion to the pool's current ratio (or, if the pool is currently
+// empty, at whatever ratio the depositor chooses — that first deposit
+// sets the initial price). This is the ONLY way reserves enter the pool;
+// there is no admin/genesis fill, since every AEQ here has to trace back
+// to a real human's registration grant, consistent with "money exists
+// because people exist."
+//
+// NOTE: this does not yet mint or track LP shares/tokens — it only moves
+// balances into the pool. A depositor currently has no on-chain claim to
+// withdraw their share back out. Tracking proportional LP ownership (so
+// deposits are genuinely reversible) is a deliberate follow-up, not
+// included in this first pass.
+func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64) error {
+cs.mu.Lock()
+defer cs.mu.Unlock()
+
+if amountAEQ <= 0 || amountTUSD <= 0 {
+return fmt.Errorf("both amounts must be positive")
+}
+if cs.pool == nil {
+return fmt.Errorf("liquidity pool not initialized")
+}
+
+acc, ok := cs.accounts[address]
+if !ok {
+return fmt.Errorf("account not found")
+}
+if acc.Balance < amountAEQ {
+return fmt.Errorf("insufficient AEQ balance")
+}
+if acc.TUsdBalance < amountTUSD {
+return fmt.Errorf("insufficient tUSD balance")
+}
+
+// If the pool already has liquidity, require the deposit to roughly
+// match the existing ratio — an unbalanced deposit would otherwise
+// instantly shift the price, which is the same rule real AMMs enforce.
+if cs.pool.ReserveAEQ > 0 && cs.pool.ReserveTUSD > 0 {
+expectedTUSD := amountAEQ * (cs.pool.ReserveTUSD / cs.pool.ReserveAEQ)
+tolerance := expectedTUSD * 0.01 // 1% slack for rounding
+if amountTUSD < expectedTUSD-tolerance || amountTUSD > expectedTUSD+tolerance {
+return fmt.Errorf("deposit ratio does not match pool ratio (expected ~%.4f tUSD for %.4f AEQ)", expectedTUSD, amountAEQ)
+}
+}
+
+acc.Balance -= amountAEQ
+acc.TUsdBalance -= amountTUSD
+cs.pool.ReserveAEQ += amountAEQ
+cs.pool.ReserveTUSD += amountTUSD
+
+cs.saveAccountToDB(acc)
+cs.savePoolToDB()
+cs.save()
+
+fmt.Printf("[POOL] ✓ %s added liquidity: %.4f AEQ + %.4f tUSD\n", address, amountAEQ, amountTUSD)
 return nil
 }
 
@@ -258,6 +552,43 @@ for _, acc := range cs.accounts {
 result = append(result, acc)
 }
 return result
+}
+
+// tusdFaucetAmount is how much test-tUSD ClaimTUsdFaucet grants per
+// account, once. tUSD is a simulated currency with no real-world value —
+// unlike AEQ (which only ever exists because a real human registered for
+// it), there's no "money exists because people exist" principle being
+// violated by handing test-tUSD out directly. This exists purely so a
+// registered human has something to pair with their real AEQ the first
+// time they call AddLiquidity, since otherwise nobody could ever provide
+// the tUSD side of the very first deposit.
+const tusdFaucetAmount = 1000.0
+
+// ClaimTUsdFaucet grants tusdFaucetAmount of test-tUSD to address, once.
+// Returns an error if the account isn't registered, or already claimed.
+func (cs *ChainState) ClaimTUsdFaucet(address string) error {
+cs.mu.Lock()
+defer cs.mu.Unlock()
+
+acc, ok := cs.accounts[address]
+if !ok || !acc.IsHuman {
+return fmt.Errorf("only registered humans can claim the test-tUSD faucet")
+}
+if acc.TUsdBalance > 0 {
+return fmt.Errorf("faucet already claimed")
+}
+// NOTE: this check only blocks re-claiming while a balance > 0 remains.
+// Spending it all via a swap or AddLiquidity would make TUsdBalance hit
+// 0 again, after which this same account could claim once more. Fine
+// for a first-pass test faucet; a real one-time flag (e.g. a separate
+// "claimed" column) would be needed before this matters in practice.
+
+acc.TUsdBalance = tusdFaucetAmount
+cs.saveAccountToDB(acc)
+cs.save()
+
+fmt.Printf("[FAUCET] ✓ %s claimed %.2f test-tUSD\n", address, tusdFaucetAmount)
+return nil
 }
 
 func (cs *ChainState) StateRoot() string {

@@ -59,6 +59,10 @@ mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 mux.HandleFunc("/api/register", a.handleRegister)
 mux.HandleFunc("/api/balance", a.handleBalance)
 mux.HandleFunc("/api/check-registration", a.handleCheckRegistration)
+mux.HandleFunc("/api/swap", a.handleSwap)
+mux.HandleFunc("/api/add-liquidity", a.handleAddLiquidity)
+mux.HandleFunc("/api/faucet", a.handleFaucet)
+mux.HandleFunc("/api/pool", a.handlePoolStatus)
 mux.HandleFunc("/registered", a.handleRegistered)
 fmt.Println("── Starting EVM RPC ─────────────────────")
 evmRPC := NewEVMRPCServer(a.blockchain, a.state)
@@ -161,7 +165,7 @@ w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 wallet := strings.ToLower(r.URL.Query().Get("wallet"))
 if wallet == "" {
-json.NewEncoder(w).Encode(map[string]interface{}{"balance": 0, "is_human": false})
+json.NewEncoder(w).Encode(map[string]interface{}{"balance": 0, "tusd_balance": 0, "is_human": false})
 return
 }
 
@@ -178,12 +182,14 @@ return
 // from whenever it last interacted with the contract directly, not its
 // real current native balance.
 balance := a.state.GetBalance(wallet)
+tusdBalance := a.state.GetTUsdBalance(wallet)
 isHuman := a.state.IsHuman(wallet)
 
 json.NewEncoder(w).Encode(map[string]interface{}{
-"wallet":   wallet,
-"balance":  balance,
-"is_human": isHuman,
+"wallet":       wallet,
+"balance":      balance,
+"tusd_balance": tusdBalance,
+"is_human":     isHuman,
 })
 }
 

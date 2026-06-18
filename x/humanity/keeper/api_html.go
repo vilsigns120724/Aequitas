@@ -183,6 +183,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
   <div class="tab active" onclick="showTab('register',this)" data-i18n="tab-register">🔐 Register</div>
   <div class="tab" onclick="showTab('explorer',this)" data-i18n="tab-explorer">🔍 Explorer</div>
   <div class="tab" onclick="showTab('humans',this)" data-i18n="tab-humans">👥 Humans</div>
+  <div class="tab" onclick="showTab('swap',this)" data-i18n="tab-swap">🔄 Swap</div>
   <div class="tab" onclick="showTab('index',this)" data-i18n="tab-index">📊 Index</div>
   <div class="tab" onclick="showTab('network',this)" data-i18n="tab-network">🌐 Network</div>
   <div class="tab" onclick="showTab('protocol',this)" data-i18n="tab-protocol">📜 Protocol V7</div>
@@ -307,6 +308,63 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
       <div class="ic-row"><span class="ic-key">ZKP System</span><span class="ic-val">Groth16 / BN128</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Biometric Storage</span><span class="ic-val g" data-i18n="never-stored">Never stored</span></div>
     </div>
+  </div>
+</div>
+</div>
+
+<!-- SWAP -->
+<div id="tab-swap" class="tab-content">
+<div class="rs">
+  <div class="rhero">
+    <div class="rhero-title" data-i18n="swap-title">🔄 Swap AEQ ↔ tUSD</div>
+    <div class="rhero-sub" data-i18n="swap-sub">Exchange AEQ for tUSD (a simulated test-dollar) through the native liquidity pool. A 0.1% fee applies only to swaps — ordinary AEQ transfers between people remain completely free.</div>
+  </div>
+  <div class="pbar" data-i18n="swap-priv-bar">🔒 0.1% swap fee only · AEQ-to-AEQ transfers stay free · tUSD is a test currency with no real-world value</div>
+  <div class="rcard">
+    <div class="wbox" id="swap-wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="swap-wadr">—</div></div>
+    <div class="ic-row" style="margin:8px 0"><span class="ic-key" data-i18n="swap-your-aeq">Your AEQ</span><span class="ic-val go" id="swap-bal-aeq">—</span></div>
+    <div class="ic-row" style="margin-bottom:16px"><span class="ic-key" data-i18n="swap-your-tusd">Your tUSD</span><span class="ic-val go" id="swap-bal-tusd">—</span></div>
+
+    <div class="swap-dir" id="swap-dir-box" style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="rbtn" id="swap-dir-a2t" onclick="setSwapDirection('aeq_to_tusd')" data-i18n="swap-aeq-to-tusd" style="flex:1">AEQ → tUSD</button>
+      <button class="rbtn" id="swap-dir-t2a" onclick="setSwapDirection('tusd_to_aeq')" data-i18n="swap-tusd-to-aeq" style="flex:1">tUSD → AEQ</button>
+    </div>
+    <input type="number" id="swap-amount" placeholder="Amount" style="width:100%;padding:14px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:16px;margin-bottom:8px;box-sizing:border-box">
+    <div class="ic-row" style="margin-bottom:16px"><span class="ic-key" data-i18n="swap-fee-est">Estimated 0.1% fee</span><span class="ic-val" id="swap-fee-est">—</span></div>
+
+    <button class="rbtn bc" id="swap-btn-conn" onclick="connectSwapWallet()" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
+    <button class="rbtn br" id="swap-btn-go" onclick="doSwap()" disabled data-i18n="swap-btn-go">🔄 SWAP</button>
+    <div class="rlog" id="swap-log"><span class="info" data-i18n="swap-log-hint">// Connect your wallet to swap...</span></div>
+
+    <div class="ic" style="margin-top:20px">
+      <div class="ic-title" data-i18n="swap-no-liquidity">No tUSD yet?</div>
+      <div class="ic-row"><span class="ic-key" data-i18n="swap-faucet-desc">Registered humans can claim test-tUSD once</span></div>
+      <button class="rbtn" id="swap-btn-faucet" onclick="claimFaucet()" disabled data-i18n="swap-btn-faucet" style="margin-top:8px">💧 CLAIM TEST-tUSD</button>
+    </div>
+
+    <div class="ic" style="margin-top:20px">
+      <div class="ic-title" data-i18n="swap-addliq-title">Provide Liquidity</div>
+      <div class="ic-row"><span class="ic-key" id="swap-addliq-desc" data-i18n="swap-addliq-desc">Be the first to deposit — your ratio sets the starting price.</span></div>
+      <input type="number" id="addliq-aeq" placeholder="AEQ amount" oninput="updateLiquidityRatio('aeq')" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:15px;margin:8px 0;box-sizing:border-box">
+      <input type="number" id="addliq-tusd" placeholder="tUSD amount" oninput="updateLiquidityRatio('tusd')" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:15px;margin-bottom:8px;box-sizing:border-box">
+      <button class="rbtn" id="swap-btn-addliq" onclick="doAddLiquidity()" disabled data-i18n="swap-btn-addliq" style="margin-top:4px">💧 ADD LIQUIDITY</button>
+    </div>
+  </div>
+
+  <div class="ic">
+    <div class="ic-title" data-i18n="swap-pool-title">Pool Status</div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-aeq">Pool AEQ Reserve</span><span class="ic-val" id="pool-reserve-aeq">—</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-tusd">Pool tUSD Reserve</span><span class="ic-val" id="pool-reserve-tusd">—</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-price">Current Price</span><span class="ic-val go" id="pool-price">—</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-fee-bps">Swap Fee</span><span class="ic-val g">0.1%</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-fee-split">Fee Distribution</span><span class="ic-val" data-i18n="swap-fee-split-v">40% Validators / 30% LPs / 20% UBI / 10% Treasury</span></div>
+  </div>
+  <div class="ic">
+    <div class="ic-title" data-i18n="swap-pools-addr-title">Tokenomics Pool Addresses</div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-validators">Validators (40%)</span><span class="ic-val p" style="font-size:11px">0x78c1...d2bA</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-lps">Liquidity Providers (30%)</span><span class="ic-val p" style="font-size:11px">0xc181...01EB</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-ubi">UBI Pool (20%)</span><span class="ic-val p" style="font-size:11px">0x4A9b...054A</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-treasury">Treasury (10%)</span><span class="ic-val p" style="font-size:11px">0x2273...3eb15</span></div>
   </div>
 </div>
 </div>
@@ -880,6 +938,7 @@ function showTab(name, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   el.classList.add('active');
+  if (name === 'swap') loadPoolStatus();
 }
 
 function setLang(lang) {
@@ -997,6 +1056,217 @@ async function loadHumans() {
     }).join('');
   } catch (e) {}
 }
+
+// ── SWAP TAB ─────────────────────────────────────────────────────────────
+let swapWaddr = null;
+let swapDirection = 'aeq_to_tusd';
+let currentPoolAEQ = 0;
+let currentPoolTUSD = 0;
+
+function swapLog(msg, type) {
+  const el = document.getElementById('swap-log');
+  el.innerHTML += '<div><span class="' + (type || 'info') + '">' + msg + '</span></div>';
+  el.scrollTop = el.scrollHeight;
+}
+
+async function loadPoolStatus() {
+  try {
+    const d = await (await fetch('/api/pool')).json();
+    currentPoolAEQ = d.reserve_aeq;
+    currentPoolTUSD = d.reserve_tusd;
+    document.getElementById('pool-reserve-aeq').textContent = fmt(d.reserve_aeq) + ' AEQ';
+    document.getElementById('pool-reserve-tusd').textContent = fmt(d.reserve_tusd) + ' tUSD';
+    document.getElementById('pool-price').textContent = d.reserve_aeq > 0
+      ? ('1 AEQ ≈ ' + d.price_aeq_in_tusd.toFixed(4) + ' tUSD')
+      : 'No liquidity yet';
+    const desc = document.getElementById('swap-addliq-desc');
+    if (desc) {
+      desc.textContent = d.reserve_aeq > 0
+        ? ('Pool ratio: 1 AEQ ≈ ' + d.price_aeq_in_tusd.toFixed(4) + ' tUSD — match this ratio when depositing')
+        : 'Be the first to deposit — your ratio sets the starting price.';
+    }
+  } catch (e) {}
+}
+
+function setSwapDirection(dir) {
+  swapDirection = dir;
+  const a2t = document.getElementById('swap-dir-a2t');
+  const t2a = document.getElementById('swap-dir-t2a');
+  if (dir === 'aeq_to_tusd') {
+    a2t.style.background = 'var(--gold)'; a2t.style.color = '#050A14';
+    t2a.style.background = ''; t2a.style.color = '';
+  } else {
+    t2a.style.background = 'var(--gold)'; t2a.style.color = '#050A14';
+    a2t.style.background = ''; a2t.style.color = '';
+  }
+  updateFeeEstimate();
+}
+
+function updateFeeEstimate() {
+  const amt = parseFloat(document.getElementById('swap-amount').value || '0');
+  const fee = amt * 0.001;
+  const unit = swapDirection === 'aeq_to_tusd' ? 'AEQ' : 'tUSD';
+  document.getElementById('swap-fee-est').textContent = fee > 0 ? (fee.toFixed(6) + ' ' + unit) : '—';
+}
+
+async function connectSwapWallet() {
+  if (!window.ethereum) {
+    swapLog('MetaMask not found. Please install MetaMask.', 'err');
+    return;
+  }
+  try {
+    await addToMetaMask();
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    swapWaddr = accounts[0];
+    document.getElementById('swap-wbox').style.display = 'block';
+    document.getElementById('swap-wadr').textContent = swapWaddr;
+    const btn = document.getElementById('swap-btn-conn');
+    btn.textContent = swapWaddr.slice(0, 10) + '...' + swapWaddr.slice(-4);
+    btn.style.background = 'var(--green)';
+    btn.style.color = '#050A14';
+    await refreshSwapBalances();
+    document.getElementById('swap-btn-go').disabled = false;
+    document.getElementById('swap-btn-faucet').disabled = false;
+    document.getElementById('swap-btn-addliq').disabled = false;
+    setSwapDirection('aeq_to_tusd');
+  } catch (e) {
+    swapLog('Connection failed: ' + e.message, 'err');
+  }
+}
+
+async function refreshSwapBalances() {
+  if (!swapWaddr) return;
+  try {
+    const br = await fetch('/api/balance?wallet=' + swapWaddr);
+    const bd = await br.json();
+    document.getElementById('swap-bal-aeq').textContent = fmt(bd.balance) + ' AEQ';
+    document.getElementById('swap-bal-tusd').textContent = fmt(bd.tusd_balance) + ' tUSD';
+  } catch (e) {}
+}
+
+// Signs a fixed, human-readable message describing exactly what's being
+// authorized — the wallet owner sees this in MetaMask's signing prompt
+// before approving, and the server checks the signature matches both the
+// claimed wallet AND this exact message (see verifyPersonalSign in swap.go).
+async function signMessage(message) {
+  return await window.ethereum.request({
+    method: 'personal_sign',
+    params: [message, swapWaddr]
+  });
+}
+
+async function doSwap() {
+  if (!swapWaddr) return;
+  const amount = parseFloat(document.getElementById('swap-amount').value || '0');
+  if (amount <= 0) { swapLog('Enter a valid amount', 'err'); return; }
+
+  document.getElementById('swap-btn-go').disabled = true;
+  try {
+    const message = 'Aequitas Swap: ' + swapDirection + ' ' + amount.toFixed(8);
+    swapLog('Sign the message in MetaMask to confirm this swap...', 'info');
+    const signature = await signMessage(message);
+
+    const resp = await fetch('/api/swap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount, signature })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      swapLog('✓ Swapped! Received ' + data.amount_out.toFixed(6) + ' ' + (swapDirection === 'aeq_to_tusd' ? 'tUSD' : 'AEQ'), 'ok');
+      document.getElementById('swap-bal-aeq').textContent = fmt(data.new_aeq_balance) + ' AEQ';
+      document.getElementById('swap-bal-tusd').textContent = fmt(data.new_tusd_balance) + ' tUSD';
+      loadPoolStatus();
+    } else {
+      swapLog('✗ Swap failed: ' + data.message, 'err');
+    }
+  } catch (e) {
+    swapLog('✗ Error: ' + e.message, 'err');
+  }
+  document.getElementById('swap-btn-go').disabled = false;
+}
+
+async function claimFaucet() {
+  if (!swapWaddr) return;
+  document.getElementById('swap-btn-faucet').disabled = true;
+  try {
+    const message = 'Aequitas tUSD Faucet Claim: ' + swapWaddr.toLowerCase();
+    swapLog('Sign the message in MetaMask to claim test-tUSD...', 'info');
+    const signature = await signMessage(message);
+
+    const resp = await fetch('/api/faucet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: swapWaddr, signature })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      swapLog('✓ Claimed ' + data.granted + ' test-tUSD', 'ok');
+      document.getElementById('swap-bal-tusd').textContent = fmt(data.granted) + ' tUSD';
+    } else {
+      swapLog('✗ Faucet claim failed: ' + data.message, 'err');
+      document.getElementById('swap-btn-faucet').disabled = false;
+    }
+  } catch (e) {
+    swapLog('✗ Error: ' + e.message, 'err');
+    document.getElementById('swap-btn-faucet').disabled = false;
+  }
+}
+
+// When the pool already has liquidity, typing one amount auto-fills the
+// other at the pool's current ratio — matches what AddLiquidity itself
+// requires (within 1% tolerance), so users don't have to calculate it
+// by hand and then get rejected for a slightly-off ratio.
+function updateLiquidityRatio(changed) {
+  if (currentPoolAEQ <= 0 || currentPoolTUSD <= 0) return; // first depositor sets any ratio
+  const aeqInput = document.getElementById('addliq-aeq');
+  const tusdInput = document.getElementById('addliq-tusd');
+  if (changed === 'aeq') {
+    const aeq = parseFloat(aeqInput.value || '0');
+    if (aeq > 0) tusdInput.value = (aeq * (currentPoolTUSD / currentPoolAEQ)).toFixed(6);
+  } else {
+    const tusd = parseFloat(tusdInput.value || '0');
+    if (tusd > 0) aeqInput.value = (tusd * (currentPoolAEQ / currentPoolTUSD)).toFixed(6);
+  }
+}
+
+async function doAddLiquidity() {
+  if (!swapWaddr) return;
+  const amountAEQ = parseFloat(document.getElementById('addliq-aeq').value || '0');
+  const amountTUSD = parseFloat(document.getElementById('addliq-tusd').value || '0');
+  if (amountAEQ <= 0 || amountTUSD <= 0) { swapLog('Enter both AEQ and tUSD amounts', 'err'); return; }
+
+  document.getElementById('swap-btn-addliq').disabled = true;
+  try {
+    const message = 'Aequitas Add Liquidity: ' + amountAEQ.toFixed(8) + ' AEQ + ' + amountTUSD.toFixed(8) + ' tUSD';
+    swapLog('Sign the message in MetaMask to confirm this deposit...', 'info');
+    const signature = await signMessage(message);
+
+    const resp = await fetch('/api/add-liquidity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: swapWaddr, amount_aeq: amountAEQ, amount_tusd: amountTUSD, signature })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      swapLog('✓ Liquidity added: ' + amountAEQ + ' AEQ + ' + amountTUSD + ' tUSD', 'ok');
+      document.getElementById('addliq-aeq').value = '';
+      document.getElementById('addliq-tusd').value = '';
+      await refreshSwapBalances();
+      await loadPoolStatus();
+    } else {
+      swapLog('✗ Add liquidity failed: ' + data.message, 'err');
+    }
+  } catch (e) {
+    swapLog('✗ Error: ' + e.message, 'err');
+  }
+  document.getElementById('swap-btn-addliq').disabled = false;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const amtInput = document.getElementById('swap-amount');
+  if (amtInput) amtInput.addEventListener('input', updateFeeEstimate);
+});
 
 function checkProofParams() {
   const p = new URLSearchParams(window.location.search);
@@ -1131,6 +1401,7 @@ loadHumans();
 setInterval(loadStatus, 6000);
 setInterval(loadBlocks, 6000);
 setInterval(loadHumans, 10000);
+setInterval(loadPoolStatus, 8000);
 </script>
 </body>
 </html>`
