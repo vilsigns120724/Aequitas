@@ -178,7 +178,28 @@ return contractAddr, runtimeCode, nil
 
 // ─── CALL ─────────────────────────────────────────────────────────────────────
 
-func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int) (ret []byte, err error) {
+// CallContract executes a contract call against a fresh StateDB built from
+// PostgreSQL. The persist parameter controls whether the resulting state
+// changes are written back to PostgreSQL:
+//   - persist=true:  use ONLY for a call that represents a real, intended
+//     state change (the actual execution inside sendRawTransaction).
+//   - persist=false: use for read-only queries (eth_call, isHuman/balanceOf
+//     lookups in api.go) AND for dry-run simulations (register.go's
+//     pre-flight check before the real submit). Nothing is written back.
+//
+// Previously this function ALWAYS persisted, regardless of why it was
+// called. That meant a pure eth_call (e.g. checking someone's balance) or
+// a dry-run simulation (checking whether a registration WOULD succeed,
+// before actually submitting it) had the exact same side effect as a real,
+// committed registration: isHuman/balanceOf were written to evm_storage as
+// if the call had truly happened. In practice this meant every attempt to
+// register — even ones whose real submission later failed or was never
+// sent — already "registered" the wallet the moment the dry-run ran,
+// making "already registered" errors appear for wallets that, from the
+// chain's own database tables, looked completely unregistered. Database
+// resets could never fix this because the very next read-only status
+// check would silently re-create the same state.
+func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int, persist bool) (ret []byte, err error) {
 defer func() {
 if r := recover(); r != nil {
 err = fmt.Errorf("EVM panic: %v", r)
@@ -193,8 +214,8 @@ return nil, fmt.Errorf("stateDB: %w", err)
 
 // Verify contract code is loaded
 code := sdb.GetCode(to)
-fmt.Printf("[EVM] CallContract to=%s codeLen=%d data=%x\n",
-to.Hex(), len(code), data[:min4b(len(data), 4)])
+fmt.Printf("[EVM] CallContract to=%s codeLen=%d data=%x persist=%v\n",
+to.Hex(), len(code), data[:min4b(len(data), 4)], persist)
 
 if len(code) == 0 {
 return nil, fmt.Errorf("no code at %s", to.Hex())
@@ -217,6 +238,11 @@ if reason != "" {
 return nil, fmt.Errorf("%s", reason)
 }
 return nil, fmt.Errorf("call failed: %w", execErr)
+}
+
+if !persist {
+fmt.Printf("[EVM] Call result (not persisted): %d bytes: %x\n", len(ret), ret)
+return ret, nil
 }
 
 // Persist any state changes from the call.

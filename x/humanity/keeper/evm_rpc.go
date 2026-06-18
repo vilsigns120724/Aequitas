@@ -290,7 +290,7 @@ s.evm.SetCode(to, bytecode)
 s.evm.LoadContractStorage(to)
 }
 
-result, callErr := s.evm.CallContract(from, to, data, big.NewInt(0))
+result, callErr := s.evm.CallContract(from, to, data, big.NewInt(0), false)
 if callErr != nil {
 fmt.Printf("[RPC] eth_call error: %v\n", callErr)
 return "0x", nil
@@ -388,7 +388,10 @@ s.evm.SetCode(toAddr, bytecode)
 s.evm.LoadContractStorage(toAddr)
 }
 
-result, callErr := s.evm.CallContract(sender, toAddr, tx.Data(), tx.Value())
+// persist=true: this is the actual execution of a real, signed
+// transaction submitted via sendRawTransaction — the one place where a
+// state change should genuinely be written to PostgreSQL.
+result, callErr := s.evm.CallContract(sender, toAddr, tx.Data(), tx.Value(), true)
 
 // Update nonce regardless — the nonce is consumed whether the call
 // succeeded or reverted, exactly like real EVM semantics.

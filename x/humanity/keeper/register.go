@@ -163,7 +163,13 @@ to := common.HexToAddress(V7_CONTRACT_ADDR)
 // If the contract would revert (invalid signature, invalid proof, already
 // registered, etc.), CallContract returns an error and we abort here with
 // the real reason — instead of reporting false success to the caller.
-_, dryRunErr := evmRPC.evm.CallContract(relayerAddr, to, calldata, big.NewInt(0))
+// persist=false is critical here: this is ONLY a simulation. Previously
+// CallContract always persisted its result regardless of intent, which
+// meant this dry-run alone — even for an attempt that was never actually
+// submitted, or whose real submission later failed — already wrote
+// isHuman=true/balance=1000 to evm_storage as a side effect of merely
+// checking whether registration would succeed.
+_, dryRunErr := evmRPC.evm.CallContract(relayerAddr, to, calldata, big.NewInt(0), false)
 if dryRunErr != nil {
 return "", fmt.Errorf("registration would fail on-chain: %w", dryRunErr)
 }

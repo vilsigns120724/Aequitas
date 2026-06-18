@@ -218,8 +218,13 @@ to := common.HexToAddress(V7_CONTRACT_ADDR)
 from := common.HexToAddress(wallet)
 
 // isHuman(address) — selector 0xf72c436f
+// persist=false: this is a read-only status query (used by the explorer
+// frontend's balance/status display), not a real registration. Previously
+// every poll of this endpoint silently wrote isHuman=true to evm_storage
+// as a side effect, which is part of why "already registered" kept
+// reappearing even right after a full database reset.
 isHumanData := append(common.Hex2Bytes("f72c436f"), common.LeftPadBytes(from.Bytes(), 32)...)
-isHumanRet, err := evmRPC.evm.CallContract(from, to, isHumanData, big.NewInt(0))
+isHumanRet, err := evmRPC.evm.CallContract(from, to, isHumanData, big.NewInt(0), false)
 isHuman := false
 if err == nil && len(isHumanRet) >= 32 {
 isHuman = isHumanRet[31] == 1
@@ -231,7 +236,7 @@ return 0, false
 
 // balanceOf(address) — selector 0x70a08231
 balanceData := append(common.Hex2Bytes("70a08231"), common.LeftPadBytes(from.Bytes(), 32)...)
-balanceRet, err := evmRPC.evm.CallContract(from, to, balanceData, big.NewInt(0))
+balanceRet, err := evmRPC.evm.CallContract(from, to, balanceData, big.NewInt(0), false)
 balance := 0.0
 if err == nil && len(balanceRet) >= 32 {
 weiInt := new(big.Int).SetBytes(balanceRet)
