@@ -345,8 +345,20 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
     <div class="ic" style="margin-top:20px">
       <div class="ic-title" data-i18n="swap-addliq-title">Provide Liquidity</div>
       <div class="ic-row"><span class="ic-key" id="swap-addliq-desc" data-i18n="swap-addliq-desc">Be the first to deposit — your ratio sets the starting price.</span></div>
-      <input type="number" id="addliq-aeq" placeholder="AEQ amount" oninput="updateLiquidityRatio('aeq')" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:15px;margin:8px 0;box-sizing:border-box">
-      <input type="number" id="addliq-tusd" placeholder="tUSD amount" oninput="updateLiquidityRatio('tusd')" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:15px;margin-bottom:8px;box-sizing:border-box">
+      <input type="number" id="addliq-aeq" placeholder="AEQ amount" oninput="updateLiquidityRatio('aeq')" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:15px;margin:8px 0 4px;box-sizing:border-box">
+      <div class="pct-row" style="display:flex;gap:6px;margin-bottom:8px">
+        <button class="rbtn pctbtn" onclick="setPctAmount('aeq',0.25)" style="flex:1;padding:8px;font-size:12px">25%</button>
+        <button class="rbtn pctbtn" onclick="setPctAmount('aeq',0.5)" style="flex:1;padding:8px;font-size:12px">50%</button>
+        <button class="rbtn pctbtn" onclick="setPctAmount('aeq',0.75)" style="flex:1;padding:8px;font-size:12px">75%</button>
+        <button class="rbtn pctbtn" onclick="setPctAmount('aeq',1)" style="flex:1;padding:8px;font-size:12px">MAX</button>
+      </div>
+      <input type="number" id="addliq-tusd" placeholder="tUSD amount" oninput="updateLiquidityRatio('tusd')" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:15px;margin-bottom:4px;box-sizing:border-box">
+      <div class="pct-row" style="display:flex;gap:6px;margin-bottom:8px">
+        <button class="rbtn pctbtn" onclick="setPctAmount('tusd',0.25)" style="flex:1;padding:8px;font-size:12px">25%</button>
+        <button class="rbtn pctbtn" onclick="setPctAmount('tusd',0.5)" style="flex:1;padding:8px;font-size:12px">50%</button>
+        <button class="rbtn pctbtn" onclick="setPctAmount('tusd',0.75)" style="flex:1;padding:8px;font-size:12px">75%</button>
+        <button class="rbtn pctbtn" onclick="setPctAmount('tusd',1)" style="flex:1;padding:8px;font-size:12px">MAX</button>
+      </div>
       <button class="rbtn" id="swap-btn-addliq" onclick="doAddLiquidity()" disabled data-i18n="swap-btn-addliq" style="margin-top:4px">💧 ADD LIQUIDITY</button>
     </div>
   </div>
@@ -1062,6 +1074,8 @@ let swapWaddr = null;
 let swapDirection = 'aeq_to_tusd';
 let currentPoolAEQ = 0;
 let currentPoolTUSD = 0;
+let myAEQBalance = 0;
+let myTUSDBalance = 0;
 
 function swapLog(msg, type) {
   const el = document.getElementById('swap-log');
@@ -1139,9 +1153,28 @@ async function refreshSwapBalances() {
   try {
     const br = await fetch('/api/balance?wallet=' + swapWaddr);
     const bd = await br.json();
+    myAEQBalance = bd.balance || 0;
+    myTUSDBalance = bd.tusd_balance || 0;
     document.getElementById('swap-bal-aeq').textContent = fmt(bd.balance) + ' AEQ';
     document.getElementById('swap-bal-tusd').textContent = fmt(bd.tusd_balance) + ' tUSD';
   } catch (e) {}
+}
+
+// Fills the AddLiquidity input for side ('aeq' or 'tusd') with pct of
+// the user's own balance for that currency (0.25/0.5/0.75/1 = 25/50/75/
+// 100%). Triggers the existing ratio-matching logic afterward so the
+// OTHER field auto-fills too, exactly as if the user had typed it
+// themselves — same behavior, just one click instead of a calculator.
+function setPctAmount(side, pct) {
+  if (side === 'aeq') {
+    const amt = myAEQBalance * pct;
+    document.getElementById('addliq-aeq').value = amt > 0 ? amt.toFixed(6) : '';
+    updateLiquidityRatio('aeq');
+  } else {
+    const amt = myTUSDBalance * pct;
+    document.getElementById('addliq-tusd').value = amt > 0 ? amt.toFixed(6) : '';
+    updateLiquidityRatio('tusd');
+  }
 }
 
 // Signs a fixed, human-readable message describing exactly what's being
