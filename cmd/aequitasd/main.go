@@ -122,18 +122,17 @@ time.Unix(block.Timestamp, 0).Format("15:04:05"),
 }()
 
 fmt.Println("── Starting Daily UBI Distribution ──────")
-// Runs independently of block production — UBI payout is a once-a-day
-// event, not something tied to the ~6-second block cadence. Every node
-// running this same loop would double/triple-pay the pool if more than
-// one node's distribution call landed in the same day; for the current
-// single-node deployment this is fine, but multi-node deployments would
-// need this gated to a single designated node (not yet implemented).
+if os.Getenv("IS_PRIMARY_NODE") == "true" {
+fmt.Println("[UBI] This is the primary node — daily distribution enabled")
 go func() {
 ticker := time.NewTicker(24 * time.Hour)
 for range ticker.C {
 chainState.DistributeUBIPool()
 }
 }()
+} else {
+fmt.Println("[UBI] Not primary node — skipping daily distribution (set IS_PRIMARY_NODE=true to enable)")
+}
 
 fmt.Println("╔════════════════════════════════════════╗")
 fmt.Println("║     Aequitas Node Running ✓            ║")
