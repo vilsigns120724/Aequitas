@@ -7,7 +7,16 @@ const explorerHTML = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Aequitas — Proof of Humanity Chain</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* System font fallbacks in case Google Fonts is unavailable */
+:root {
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Courier New', monospace;
+}
+</style>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -17,7 +26,7 @@ const explorerHTML = `<!DOCTYPE html>
   --shadow:0 2px 12px rgba(0,0,0,0.4);--shadow-lg:0 8px 32px rgba(0,0,0,0.5);
   --radius:12px;--radius-sm:8px;
 }
-body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden;line-height:1.5}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;overflow-x:hidden;line-height:1.5}
 header{background:rgba(6,9,26,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 24px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;height:60px;gap:10px}
 .logo-wrap{display:flex;align-items:center;gap:12px;flex-shrink:0}
 .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--gold),#E67E00);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 8px rgba(245,166,35,0.3)}
@@ -29,7 +38,7 @@ header{background:rgba(6,9,26,0.95);backdrop-filter:blur(12px);border-bottom:1px
 .badge-dag{background:rgba(96,165,250,0.1);border:1px solid rgba(96,165,250,0.25);color:var(--blue)}
 .pulse{width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.8)}}
-.lang-sel{background:var(--card);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-family:'Inter',sans-serif;font-size:0.62rem;outline:none;cursor:pointer}
+.lang-sel{background:var(--card);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-family:var(--font-body);font-size:0.62rem;outline:none;cursor:pointer}
 .tabs{background:rgba(6,9,26,0.8);border-bottom:1px solid var(--border);padding:0 24px;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:4px}
 .tabs::-webkit-scrollbar{display:none}
 .tab{padding:16px 16px;font-size:0.65rem;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;flex-shrink:0}
@@ -43,7 +52,7 @@ header{background:rgba(6,9,26,0.95);backdrop-filter:blur(12px);border-bottom:1px
 .stat-accent{position:absolute;top:0;left:0;right:0;height:3px}
 .stat-icon{font-size:1rem;margin-bottom:8px}
 .stat-lbl{font-size:0.6rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;font-weight:500}
-.stat-val{font-size:1.7rem;font-weight:900;line-height:1;margin-bottom:4px;font-family:'DM Serif Display',serif}
+.stat-val{font-size:1.7rem;font-weight:900;line-height:1;margin-bottom:4px;font-family:var(--font-display)}
 .stat-sub{font-size:0.58rem;color:var(--muted);line-height:1.5}
 .c-green .stat-val{color:var(--green)}.c-green .stat-accent{background:linear-gradient(90deg,var(--green),transparent)}
 .c-blue .stat-val{color:var(--blue)}.c-blue .stat-accent{background:linear-gradient(90deg,var(--blue),transparent)}
@@ -64,8 +73,8 @@ header{background:rgba(6,9,26,0.95);backdrop-filter:blur(12px);border-bottom:1px
 .sec-desc{padding:10px 18px;font-size:0.65rem;color:var(--muted);background:var(--card2);border-bottom:1px solid var(--border);line-height:1.7}
 .block-item{padding:12px 18px;border-bottom:1px solid rgba(28,43,72,0.5);display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center;transition:background 0.15s}
 .block-item:hover{background:var(--card2)}.block-item:last-child{border-bottom:none}
-.block-num{font-size:0.8rem;font-weight:700;color:var(--blue);font-family:'JetBrains Mono',monospace}
-.block-hash{font-size:0.63rem;color:var(--muted);margin-bottom:2px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace}
+.block-num{font-size:0.8rem;font-weight:700;color:var(--blue);font-family:var(--font-mono)}
+.block-hash{font-size:0.63rem;color:var(--muted);margin-bottom:2px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-family:var(--font-mono)}
 .block-parents{font-size:0.57rem;color:#3A5570}
 .block-right{text-align:right}
 .block-humans{font-size:0.65rem;color:var(--gold);margin-bottom:2px;font-weight:600}
@@ -85,33 +94,33 @@ header{background:rgba(6,9,26,0.95);backdrop-filter:blur(12px);border-bottom:1px
 .mm-title{font-size:0.6rem;color:var(--blue);letter-spacing:1.5px;margin-bottom:12px;font-weight:700;text-transform:uppercase}
 .mm-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(28,43,72,0.5)}
 .mm-row:last-child{border-bottom:none}
-.mm-key{font-size:0.6rem;color:var(--muted)}.mm-val{font-size:0.6rem;color:var(--purple);font-family:'JetBrains Mono',monospace}
-.mm-btn{width:100%;margin-top:12px;padding:11px;background:var(--blue);color:#06091A;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:'Inter',sans-serif;font-size:0.68rem;font-weight:700;letter-spacing:0.5px;transition:all 0.2s}
+.mm-key{font-size:0.6rem;color:var(--muted)}.mm-val{font-size:0.6rem;color:var(--purple);font-family:var(--font-mono)}
+.mm-btn{width:100%;margin-top:12px;padding:11px;background:var(--blue);color:#06091A;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-body);font-size:0.68rem;font-weight:700;letter-spacing:0.5px;transition:all 0.2s}
 .mm-btn:hover{opacity:0.87;transform:translateY(-1px)}
 .phil-card{background:linear-gradient(135deg,rgba(245,166,35,0.08),rgba(12,18,40,0.9));border:1px solid rgba(245,166,35,0.2);border-radius:var(--radius);padding:22px;text-align:center}
-.phil-quote{font-size:0.85rem;color:var(--gold);font-style:italic;line-height:2;margin-bottom:6px;font-family:'DM Serif Display',serif}
+.phil-quote{font-size:0.85rem;color:var(--gold);font-style:italic;line-height:2;margin-bottom:6px;font-family:var(--font-display)}
 .phil-sub{font-size:0.58rem;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase}
 .hs{padding:20px;display:grid;grid-template-columns:1fr 290px;gap:16px}
 @media(max-width:800px){.hs{grid-template-columns:1fr}}
 .hi{padding:12px 18px;border-bottom:1px solid rgba(28,43,72,0.5);display:flex;align-items:center;gap:12px;transition:background 0.15s}
 .hi:hover{background:var(--card2)}.hi:last-child{border-bottom:none}
 .hav{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:bold;flex-shrink:0;border:2px solid}
-.hbal{font-size:0.82rem;color:var(--gold);font-weight:700;margin-bottom:1px;font-family:'DM Serif Display',serif}
-.hadr{font-size:0.6rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'JetBrains Mono',monospace}
+.hbal{font-size:0.82rem;color:var(--gold);font-weight:700;margin-bottom:1px;font-family:var(--font-display)}
+.hadr{font-size:0.6rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono)}
 .hbdg{font-size:0.56rem;padding:3px 8px;border-radius:10px;flex-shrink:0;background:rgba(16,185,129,0.1);color:var(--green);border:1px solid rgba(16,185,129,0.2);font-weight:600}
 .is{padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:700px){.is{grid-template-columns:1fr}}
 .idx{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow)}
 .idx-title{font-size:0.6rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;font-weight:600}
 .idx-desc{font-size:0.67rem;color:var(--muted);line-height:1.8;margin-bottom:16px}
-.idx-big{font-size:2.8rem;font-weight:900;color:var(--gold);line-height:1;font-family:'DM Serif Display',serif}
+.idx-big{font-size:2.8rem;font-weight:900;color:var(--gold);line-height:1;font-family:var(--font-display)}
 .idx-lbl{font-size:0.6rem;color:var(--muted);margin-top:4px}
 .bar-bg{height:8px;background:var(--card2);border-radius:6px;overflow:hidden;margin:14px 0 6px}
 .bar-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--green),var(--gold),var(--red));transition:width 1.5s ease}
 .bar-lbl{display:flex;justify-content:space-between;font-size:0.55rem;color:var(--muted)}
 .mrow{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:14px}
 .mbox{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center}
-.mval{font-size:1.15rem;font-weight:700;color:var(--gold);font-family:'DM Serif Display',serif}
+.mval{font-size:1.15rem;font-weight:700;color:var(--gold);font-family:var(--font-display)}
 .mlbl{font-size:0.57rem;color:var(--muted);margin-top:3px;font-weight:500}
 .story{font-size:0.7rem;line-height:2;color:var(--muted)}
 .story p{margin-bottom:14px}
@@ -123,17 +132,17 @@ header{background:rgba(6,9,26,0.95);backdrop-filter:blur(12px);border-bottom:1px
 .nbox{background:var(--card2);border-radius:var(--radius-sm);padding:14px;border:1px solid var(--border);margin-bottom:10px}
 .nstat{display:flex;align-items:center;gap:6px;font-size:0.67rem;color:var(--green);margin-bottom:5px;font-weight:600}
 .ndot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
-.nurl{font-size:0.58rem;color:var(--muted);word-break:break-all;margin-bottom:3px;font-family:'JetBrains Mono',monospace}
+.nurl{font-size:0.58rem;color:var(--muted);word-break:break-all;margin-bottom:3px;font-family:var(--font-mono)}
 .ndesc{font-size:0.58rem;color:#3A5570}
 .spect{width:100%;border-collapse:collapse}
 .spect td{padding:8px 0;border-bottom:1px solid rgba(28,43,72,0.5);font-size:0.63rem}
 .spect tr:last-child td{border-bottom:none}
 .spect td:first-child{color:var(--muted);width:45%}
-.spect td:last-child{text-align:right;font-family:'JetBrains Mono',monospace;font-size:0.6rem}
-.bsbox{background:var(--card2);border-radius:var(--radius-sm);padding:12px;font-size:0.58rem;color:var(--purple);word-break:break-all;line-height:1.7;border:1px solid var(--border);font-family:'JetBrains Mono',monospace}
+.spect td:last-child{text-align:right;font-family:var(--font-mono);font-size:0.6rem}
+.bsbox{background:var(--card2);border-radius:var(--radius-sm);padding:12px;font-size:0.58rem;color:var(--purple);word-break:break-all;line-height:1.7;border:1px solid var(--border);font-family:var(--font-mono)}
 .rs{padding:20px;max-width:600px;margin:0 auto}
 .rhero{background:linear-gradient(135deg,rgba(96,165,250,0.08),rgba(12,18,40,0.9));border:1px solid rgba(96,165,250,0.2);border-radius:var(--radius);padding:24px;margin-bottom:16px;text-align:center;box-shadow:var(--shadow)}
-.rhero-title{font-size:1.05rem;font-weight:700;color:var(--text);margin-bottom:8px;font-family:'DM Serif Display',serif}
+.rhero-title{font-size:1.05rem;font-weight:700;color:var(--text);margin-bottom:8px;font-family:var(--font-display)}
 .rhero-sub{font-size:0.67rem;color:var(--muted);line-height:1.9}
 .aonly{background:rgba(167,139,250,0.05);border:1px solid rgba(167,139,250,0.15);border-radius:var(--radius);padding:20px;text-align:center;margin-bottom:16px}
 .aonly-icon{font-size:2rem;margin-bottom:8px}
@@ -150,27 +159,27 @@ header{background:rgba(6,9,26,0.95);backdrop-filter:blur(12px);border-bottom:1px
 .rcard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:14px;box-shadow:var(--shadow)}
 .wbox{background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:var(--radius-sm);padding:10px;margin-bottom:10px;display:none}
 .wlbl{font-size:0.57rem;color:var(--muted);margin-bottom:2px;letter-spacing:1px;font-weight:500}
-.wadr{font-size:0.72rem;color:var(--green);font-weight:700;font-family:'JetBrains Mono',monospace}
+.wadr{font-size:0.72rem;color:var(--green);font-weight:700;font-family:var(--font-mono)}
 .pbox{background:var(--card2);border:1px solid rgba(245,166,35,0.15);border-radius:var(--radius-sm);padding:10px;margin-bottom:10px;display:none}
 .plbl{font-size:0.57rem;color:var(--gold);margin-bottom:2px;letter-spacing:1px;font-weight:500}
-.pval{font-size:0.63rem;color:var(--muted);font-family:'JetBrains Mono',monospace}
-.rbtn{width:100%;padding:14px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.74rem;font-weight:700;letter-spacing:0.3px;transition:all 0.2s;margin-bottom:8px}
+.pval{font-size:0.63rem;color:var(--muted);font-family:var(--font-mono)}
+.rbtn{width:100%;padding:14px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-family:var(--font-body);font-size:0.74rem;font-weight:700;letter-spacing:0.3px;transition:all 0.2s;margin-bottom:8px}
 .rbtn:hover{opacity:0.87;transform:translateY(-1px)}
 .bc{background:var(--blue);color:#06091A}.br{background:var(--gold);color:#06091A}
 .rbtn:disabled{opacity:0.3;cursor:not-allowed;transform:none}
-.rlog{background:var(--card2);border-radius:var(--radius-sm);padding:12px;font-size:0.63rem;line-height:2;min-height:52px;border:1px solid var(--border);font-family:'JetBrains Mono',monospace}
+.rlog{background:var(--card2);border-radius:var(--radius-sm);padding:12px;font-size:0.63rem;line-height:2;min-height:52px;border:1px solid var(--border);font-family:var(--font-mono)}
 .rlog .ok{color:var(--green)}.rlog .err{color:var(--red)}.rlog .info{color:var(--gold)}
 .ps{padding:20px;max-width:800px;margin:0 auto}
 /* Swap tab */
 .pct-row{display:flex;gap:6px;margin-bottom:8px}
-.pctbtn{flex:1;padding:8px;font-size:12px;background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);cursor:pointer;font-family:'Inter',sans-serif;font-weight:600;transition:all 0.2s}
+.pctbtn{flex:1;padding:8px;font-size:12px;background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-body);font-weight:600;transition:all 0.2s}
 .pctbtn:hover{border-color:var(--gold);color:var(--gold)}
 /* Demurrage notice */
 #demurrage-notice{font-size:13px;padding:12px 14px;border-radius:var(--radius-sm);background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.2);color:var(--gold);margin:10px 0;line-height:1.7}
 /* Swap specific */
 .swap-dir{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;cursor:pointer;font-size:1rem;transition:all 0.2s;width:100%;margin:8px 0}
 .swap-dir:hover{border-color:var(--blue)}
-input[type=number]{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px 12px;font-family:'Inter',sans-serif;font-size:0.8rem;outline:none;transition:border-color 0.2s}
+input[type=number]{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px 12px;font-family:var(--font-body);font-size:0.8rem;outline:none;transition:border-color 0.2s}
 input[type=number]:focus{border-color:var(--blue)}
 input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 @media(max-width:480px){
@@ -437,7 +446,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div>
         <div class="bar-bg"><div class="bar-fill" id="idx-bar" style="width:0%"></div></div>
         <div class="bar-lbl"><span data-i18n="bar-0">0 — Perfect Equality</span><span>50</span><span data-i18n="bar-100">100 — Max Inequality</span></div>
-        <div style="margin-top:8px;font-size:0.63rem;color:var(--muted);background:#080F1E;padding:8px;border-radius:6px" id="idx-phase-desc">—</div>
+        <div style="margin-top:8px;font-size:0.63rem;color:var(--muted);background:var(--card2);padding:8px 12px;border-radius:6px;border:1px solid var(--border)" id="idx-phase-desc">—</div>
       </div>
     </div>
     <div class="mrow" style="grid-template-columns:repeat(4,1fr)">
@@ -451,10 +460,27 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="idx-title" data-i18n="pools-title">Redistribution Pools</div>
     <div class="idx-desc" data-i18n="pools-desc">When inequality thresholds are exceeded, AEQ is automatically redirected. Controlled entirely by protocol logic.</div>
     <div class="mrow">
-      <div class="mbox"><div class="mval" id="pool-v">—</div><div class="mlbl" data-i18n="vel-pool">Velocity Pool</div></div>
-      <div class="mbox"><div class="mval" id="pool-l">—</div><div class="mlbl" data-i18n="liq-pool">Liquidity Pool</div></div>
-      <div class="mbox"><div class="mval" id="pool-u">—</div><div class="mlbl" data-i18n="ubi-pool">UBI Pool</div></div>
-      <div class="mbox"><div class="mval" id="pool-t">—</div><div class="mlbl" data-i18n="treasury">Treasury</div></div>
+      <div class="mbox">
+        <div class="mval" id="pool-v" style="font-size:0.95rem">0.0000</div>
+        <div class="mlbl" data-i18n="vel-pool">Validators Pool</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">40% of fees</div>
+      </div>
+      <div class="mbox">
+        <div class="mval" id="pool-l" style="font-size:0.95rem">0.0000</div>
+        <div class="mlbl" data-i18n="liq-pool">Liquidity Pool</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">30% of fees</div>
+      </div>
+      <div class="mbox" style="border:1px solid rgba(245,166,35,0.2);background:rgba(245,166,35,0.05)">
+        <div class="mval" id="pool-u" style="font-size:0.95rem">0.0000</div>
+        <div class="mlbl" style="color:var(--gold)" data-i18n="ubi-pool">UBI Pool</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">20% of fees · daily payout</div>
+        <div style="margin-top:6px;font-size:0.6rem;color:var(--gold);font-weight:600">⏰ Next: <span id="ubi-timer">—</span></div>
+      </div>
+      <div class="mbox">
+        <div class="mval" id="pool-t" style="font-size:0.95rem">0.0000</div>
+        <div class="mlbl" data-i18n="treasury">Treasury</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">10% of fees</div>
+      </div>
     </div>
   </div>
   <div class="idx">
@@ -477,6 +503,13 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <!-- NETWORK -->
 <div id="tab-network" class="tab-content">
 <div class="ns">
+  <div class="nc" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(245,166,35,0.06),rgba(12,18,40,0.9));border-color:rgba(245,166,35,0.2)">
+    <div class="nc-title" style="color:var(--gold)">Run Your Own Node</div>
+    <div style="font-size:0.67rem;color:var(--muted);line-height:1.9;margin-bottom:16px">Want to contribute to the Aequitas network? Anyone can run a node — no permission required. Nodes participate in block production, validate the human registry, and earn a share of protocol fees via the Validators Pool once the network grows.</div>
+    <a href="https://raw.githubusercontent.com/hanoi96international-gif/Aequitas/main/aequitas-chain/docs/node-guide.pdf" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;letter-spacing:0.3px;transition:opacity 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
+      📄 Download Node Operator Guide (PDF)
+    </a>
+  </div>
   <div class="nc" style="grid-column:1/-1">
     <div class="nc-title" data-i18n="nodes-title">Active Nodes — Current Network Topology</div>
     <div style="font-size:0.65rem;color:var(--muted);line-height:1.8;margin-bottom:12px" data-i18n="nodes-desc">The Aequitas network operates on two nodes in geographically distributed cloud environments. Both participate in block production, state synchronization, and API serving. They communicate via libp2p and sync via HTTP. Both share the same PostgreSQL database.</div>
@@ -707,7 +740,7 @@ de:{
   'cap-title':'4. VERMÖGENSOBERGRENZE',
   'cap-box':'Phase 0: 50x fairShare · Phase 1: 20x · Phase 2: 10x · Phase 3: 5x · Phase 4: 3x<br><br>Immer aktiv ab Mensch #1. Überschuss wird sofort gleichmäßig an ALLE aktiven Menschen verteilt.',
   'ubi-title':'5. UNIVERSELLES GRUNDEINKOMMEN',
-  'ubi-box':'Quellen: Transaktionsgebühren · Vermögensobergrenze-Überschuss · Demurrage · Inaktive Treuhand<br><br>Monatlich: UBI-Pool gleichmäßig unter allen aktiven Menschen verteilt',
+  'ubi-box':'Quellen: Transaktionsgebühren (20%) · Vermögensobergrenze-Überschuss · Demurrage · Inaktive Treuhand<br><br>Täglich: UBI-Pool gleichmäßig unter allen registrierten Menschen verteilt. Pool wird nach jeder Ausschüttung zurückgesetzt.',
   'inf-title':'6. KEINE ALGORITHMISCHE INFLATION',
   'inf-box':'Das EINZIGE Ereignis das neues AEQ schafft: ein neuer verifizierter Mensch registriert sich<br><br>Gesamt-AEQ = Verifizierte aktive Menschen x 1.000'
 },
@@ -747,7 +780,7 @@ es:{
   'humans-title':'Humanos Verificados en Aequitas Chain',
   'h-what':'¿Qué es un Humano Verificado?','h-what-t':'Un Humano Verificado es una dirección wallet demostrada criptográficamente que pertenece a un humano único vivo.',
   'h-zkp':'Sistema ZKP','h-zkp-t':'Aequitas usa Groth16 sobre BN128. Tamaño de prueba: ~200 bytes. Verificación: ~10ms.',
-  'h-sybil':'Prevención de Ataques Sybil','h-sybil-t':'Cada hash biométrico se almacena permanentemente. Intentar registrarse dos veces se rechaza inmediatamente.',
+  'h-sybil':'Prevención de Ataques Sybil','h-sybil-t':'Cada hash biométrico se almacena permanentemente. Intentar registrarse dos veces se rechaza inmediatamente. ⚠ Fase de prueba: la verificación actual está vinculada al dispositivo. Se planea un sensor fisiológico (MAX30102 PPG) para identificación independiente del dispositivo.',
   'h-global':'Inclusión Global','h-global-t':'Sin cuenta bancaria, tarjeta de crédito ni criptomoneda. Solo un smartphone Android con sensor de huella.',
   'reg-humans':'Humanos Registrados','h-desc':'Cada dirección verificada como humano único mediante ZKP biométrico. Cada uno recibió 1,000 AEQ. Permanente.',
   'no-humans':'No hay humanos registrados aún.\n\n¡Descarga la App Android Aequitas y sé el primero!',
@@ -777,7 +810,7 @@ es:{
   'dem-title':'3. DEMURRAGE','dem-box':'1% anual sobre saldo POR ENCIMA de fairShare va al Pool UBI',
   'dem-text':'<p>Precedente: Wörgl, Austria (1932) — redujo el desempleo 25% en un año.</p>',
   'cap-title':'4. LÍMITE DE RIQUEZA','cap-box':'Fase 0: 50x · Fase 1: 20x · Fase 2: 10x · Fase 3: 5x · Fase 4: 3x fairShare',
-  'ubi-title':'5. INGRESO BÁSICO UNIVERSAL','ubi-box':'Fuentes: Comisiones · Desbordamiento de límite · Demurrage · Custodia inactiva',
+  'ubi-title':'5. INGRESO BÁSICO UNIVERSAL','ubi-box':'Fuentes: Comisiones (20%) · Desbordamiento de límite · Demurrage · Custodia inactiva<br><br>Diariamente: Pool UBI dividido igualmente entre todos los humanos registrados.',
   'inf-title':'6. SIN INFLACIÓN ALGORÍTMICA','inf-box':'El ÚNICO evento que crea AEQ: un nuevo humano verificado se registra'
 },
 ru:{
@@ -816,7 +849,7 @@ ru:{
   'humans-title':'Верифицированные Люди на Aequitas Chain',
   'h-what':'Что такое Верифицированный Человек?','h-what-t':'Верифицированный Человек — это адрес кошелька, доказанно принадлежащий уникальному живому человеку.',
   'h-zkp':'Система ZKP','h-zkp-t':'Aequitas использует Groth16 над BN128. Размер доказательства: ~200 байт. Верификация: ~10мс.',
-  'h-sybil':'Защита от Атак Сивиллы','h-sybil-t':'Каждый биометрический хэш хранится постоянно. Двойная регистрация немедленно отклоняется.',
+  'h-sybil':'Защита от Атак Сивиллы','h-sybil-t':'Каждый биометрический хэш хранится постоянно. Двойная регистрация немедленно отклоняется. ⚠ Тестовая фаза: текущая верификация привязана к устройству. Планируется физиологический сенсор (MAX30102) для независимой идентификации.',
   'h-global':'Глобальное Включение','h-global-t':'Не нужен банковский счёт, кредитная карта или криптовалюта. Только Android-смартфон с сенсором отпечатка.',
   'reg-humans':'Зарегистрированных Людей','h-desc':'Каждый адрес верифицирован через биометрический ZKP. Каждый получил 1 000 AEQ. Постоянно, неизменно.',
   'no-humans':'Людей ещё нет.\n\nСкачай приложение Aequitas Android и стань первым!',
@@ -847,7 +880,7 @@ ru:{
   'dem-title':'3. ДЕМУРРЕДЖ','dem-box':'1% годовых на баланс ВЫШЕ fairShare идёт в Пул UBI',
   'dem-text':'<p>Исторический прецедент: Вёргль, Австрия (1932) — сократил безработицу на 25% за год.</p>',
   'cap-title':'4. ОГРАНИЧЕНИЕ БОГАТСТВА','cap-box':'Фаза 0: 50x · Фаза 1: 20x · Фаза 2: 10x · Фаза 3: 5x · Фаза 4: 3x fairShare',
-  'ubi-title':'5. БАЗОВЫЙ ДОХОД','ubi-box':'Источники: Комиссии · Переполнение лимита · Демурредж · Неактивный эскроу',
+  'ubi-title':'5. БАЗОВЫЙ ДОХОД','ubi-box':'Источники: Комиссии (20%) · Переполнение лимита · Демурредж · Неактивный эскроу<br><br>Ежедневно: Пул UBI делится поровну между всеми зарегистрированными людьми.',
   'inf-title':'6. БЕЗ АЛГОРИТМИЧЕСКОЙ ИНФЛЯЦИИ','inf-box':'Единственное событие создающее AEQ: регистрация нового верифицированного человека'
 },
 zh:{
@@ -886,7 +919,7 @@ zh:{
   'humans-title':'Aequitas Chain上的已验证人类',
   'h-what':'已验证人类是什么？','h-what-t':'已验证人类是一个加密证明属于独特活人的钱包地址。生物特征数据从不传输或存储。',
   'h-zkp':'零知识证明系统','h-zkp-t':'Aequitas使用BN128上的Groth16。证明大小：~200字节。验证：~10ms。',
-  'h-sybil':'女巫攻击防护','h-sybil-t':'每个生物特征哈希永久存储。尝试用同一指纹注册两次立即被拒绝。',
+  'h-sybil':'女巫攻击防护','h-sybil-t':'每个生物特征哈希永久存储。尝试用同一指纹注册两次立即被拒绝。⚠ 测试阶段：当前验证与设备绑定。计划使用生理传感器（MAX30102）实现独立于设备的身份识别。',
   'h-global':'全球包容','h-global-t':'不需要银行账户、信用卡或加密货币。只需Android智能手机。',
   'reg-humans':'已注册人类','h-desc':'每个地址通过生物特征ZKP验证为唯一人类。每人获得1,000 AEQ。永久，不可变。',
   'no-humans':'还没有人类注册。\n\n下载Aequitas Android应用成为第一个！',
@@ -916,7 +949,7 @@ zh:{
   'dem-title':'3. 滞留费','dem-box':'超出fairShare部分的余额每年1%费用进入UBI池',
   'dem-text':'<p>历史先例：奥地利沃尔格尔（1932年）— 一年内将失业率降低了25%。</p>',
   'cap-title':'4. 财富上限','cap-box':'第0阶段：50x · 第1阶段：20x · 第2阶段：10x · 第3阶段：5x · 第4阶段：3x fairShare',
-  'ubi-title':'5. 全民基本收入','ubi-box':'来源：交易费用 · 财富上限溢出 · 滞留费 · 非活跃托管',
+  'ubi-title':'5. 全民基本收入','ubi-box':'来源：交易费用（20%）· 财富上限溢出 · 滞留费 · 非活跃托管<br><br>每日：UBI池平均分配给所有已注册的人。',
   'inf-title':'6. 无算法通胀','inf-box':'创造新AEQ的唯一事件：新验证人类注册'
 },
 id:{
@@ -955,7 +988,7 @@ id:{
   'humans-title':'Manusia Terverifikasi di Aequitas Chain',
   'h-what':'Apa itu Manusia Terverifikasi?','h-what-t':'Manusia Terverifikasi adalah alamat wallet yang terbukti secara kriptografis milik manusia unik yang hidup.',
   'h-zkp':'Sistem Bukti Zero-Knowledge','h-zkp-t':'Aequitas menggunakan Groth16 atas BN128. Ukuran bukti: ~200 byte. Verifikasi: ~10ms.',
-  'h-sybil':'Pencegahan Serangan Sybil','h-sybil-t':'Setiap hash biometrik disimpan secara permanen. Mencoba mendaftar dua kali langsung ditolak.',
+  'h-sybil':'Pencegahan Serangan Sybil','h-sybil-t':'Setiap hash biometrik disimpan secara permanen. Mencoba mendaftar dua kali langsung ditolak. ⚠ Fase uji coba: verifikasi saat ini terikat perangkat. Sensor fisiologis (MAX30102 PPG) direncanakan untuk identifikasi independen perangkat.',
   'h-global':'Inklusi Global','h-global-t':'Tidak perlu rekening bank, kartu kredit, atau cryptocurrency. Hanya smartphone Android.',
   'reg-humans':'Manusia Terdaftar','h-desc':'Setiap alamat diverifikasi sebagai manusia unik melalui ZKP biometrik. Masing-masing menerima 1.000 AEQ. Permanen.',
   'no-humans':'Belum ada manusia terdaftar.\n\nUnduh Aplikasi Android Aequitas dan jadilah yang pertama!',
@@ -985,7 +1018,7 @@ id:{
   'dem-title':'3. DEMURRAGE','dem-box':'1% biaya tahunan atas saldo DI ATAS fairShare ke Pool UBI',
   'dem-text':'<p>Preseden: Worgl, Austria (1932) — mengurangi pengangguran 25% dalam satu tahun.</p>',
   'cap-title':'4. BATAS KEKAYAAN','cap-box':'Fase 0: 50x · Fase 1: 20x · Fase 2: 10x · Fase 3: 5x · Fase 4: 3x fairShare',
-  'ubi-title':'5. PENDAPATAN DASAR UNIVERSAL','ubi-box':'Sumber: Biaya transaksi · Kelebihan batas · Demurrage · Escrow tidak aktif',
+  'ubi-title':'5. PENDAPATAN DASAR UNIVERSAL','ubi-box':'Sumber: Biaya transaksi (20%) · Kelebihan batas kekayaan · Demurrage · Escrow tidak aktif<br><br>Harian: Pool UBI dibagi rata di antara semua manusia terdaftar.',
   'inf-title':'6. TANPA INFLASI ALGORITMIK','inf-box':'Satu-satunya peristiwa yang menciptakan AEQ baru: manusia terverifikasi baru mendaftar'
 }
 };
@@ -1062,6 +1095,36 @@ async function addToMetaMask() {
   } catch (e) { console.error('MetaMask error:', e); }
 }
 
+// UBI countdown timer — counts down to the next daily distribution.
+// secsRemaining comes from the server (uptime modulo 86400 subtracted from 86400).
+// Once it reaches zero it resets to 24h and keeps ticking, since the
+// distribution just ran and the next one is 24h away again.
+let ubiTimerInterval = null;
+function startUBITimer(secsRemaining) {
+  if (ubiTimerInterval) clearInterval(ubiTimerInterval);
+  let secs = secsRemaining;
+  const el = document.getElementById('ubi-timer');
+  if (!el) return;
+
+  const fmt = s => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return String(h).padStart(2,'0') + 'h ' + String(m).padStart(2,'0') + 'm ' + String(sec).padStart(2,'0') + 's';
+  };
+
+  el.textContent = fmt(secs);
+  ubiTimerInterval = setInterval(() => {
+    secs--;
+    if (secs <= 0) {
+      secs = 86400; // reset to 24h after distribution
+      el.style.color = 'var(--green)';
+      setTimeout(() => { el.style.color = ''; }, 3000);
+    }
+    el.textContent = fmt(secs);
+  }, 1000);
+}
+
 async function loadStatus() {
   try {
     const d = await (await fetch('/api/status')).json();
@@ -1079,12 +1142,17 @@ async function loadStatus() {
     document.getElementById('stat-humans').textContent = fmt(d.total_humans);
     document.getElementById('stat-supply').textContent = d.total_supply || '—';
 
-    // Pool balances
-    const fmtPool = v => v && v !== '0.0000' ? v + ' AEQ' : '—';
+    // Pool balances — show 0.0000 instead of — when pool is empty
+    const fmtPool = v => (v || '0.0000') + ' AEQ';
     document.getElementById('pool-v').textContent = fmtPool(d.pool_validators);
     document.getElementById('pool-l').textContent = fmtPool(d.pool_lp);
     document.getElementById('pool-u').textContent = fmtPool(d.pool_ubi);
     document.getElementById('pool-t').textContent = fmtPool(d.pool_treasury);
+
+    // UBI countdown timer
+    if (d.ubi_next_payout_secs !== undefined) {
+      startUBITimer(d.ubi_next_payout_secs);
+    }
 
     // Fix stale subtitle now that demurrage/wealth-cap mean supply can drift
     const subEl = document.getElementById('s-supply-sub');
