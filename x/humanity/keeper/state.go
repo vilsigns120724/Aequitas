@@ -1142,6 +1142,13 @@ total := 0.0
 for _, acc := range cs.accounts {
 total += acc.Balance
 }
+// The AMM liquidity pool reserves are stored separately from cs.accounts
+// (in cs.pool.ReserveAEQ) — they must be included in the total supply
+// or the displayed number will be lower than the real circulating amount
+// by however much AEQ is currently sitting in the pool as liquidity.
+if cs.pool != nil {
+total += cs.pool.ReserveAEQ
+}
 return total
 }
 
