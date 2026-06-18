@@ -362,6 +362,19 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
       </div>
       <button class="rbtn" id="swap-btn-addliq" onclick="doAddLiquidity()" disabled data-i18n="swap-btn-addliq" style="margin-top:4px">💧 ADD LIQUIDITY</button>
     </div>
+
+    <div class="ic" id="lp-position-box" style="margin-top:20px;display:none">
+      <div class="ic-title" data-i18n="swap-lp-title">Your LP Position</div>
+      <div class="ic-row"><span class="ic-key" data-i18n="swap-lp-share">Pool Share</span><span class="ic-val go" id="lp-share-pct">—</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="swap-lp-withdrawable">Withdrawable</span><span class="ic-val" id="lp-withdrawable">—</span></div>
+      <div class="pct-row" style="display:flex;gap:6px;margin:8px 0">
+        <button class="rbtn pctbtn" onclick="setRemovePct(0.25,this)" style="flex:1;padding:8px;font-size:12px">25%</button>
+        <button class="rbtn pctbtn" onclick="setRemovePct(0.5,this)" style="flex:1;padding:8px;font-size:12px">50%</button>
+        <button class="rbtn pctbtn" onclick="setRemovePct(0.75,this)" style="flex:1;padding:8px;font-size:12px">75%</button>
+        <button class="rbtn pctbtn" onclick="setRemovePct(1,this)" style="flex:1;padding:8px;font-size:12px">MAX</button>
+      </div>
+      <button class="rbtn br" id="swap-btn-removeliq" onclick="doRemoveLiquidity()" data-i18n="swap-btn-removeliq">🔥 REMOVE LIQUIDITY</button>
+    </div>
   </div>
 
   <div class="ic">
@@ -1197,6 +1210,7 @@ async function connectSwapWallet() {
     btn.style.background = 'var(--green)';
     btn.style.color = '#050A14';
     await refreshSwapBalances();
+    await loadLPPosition();
     document.getElementById('swap-btn-go').disabled = false;
     document.getElementById('swap-btn-faucet').disabled = false;
     document.getElementById('swap-btn-addliq').disabled = false;
@@ -1345,6 +1359,7 @@ async function doAddLiquidity() {
       document.getElementById('addliq-tusd').value = '';
       await refreshSwapBalances();
       await loadPoolStatus();
+      await loadLPPosition();
     } else {
       swapLog('✗ Add liquidity failed: ' + data.message, 'err');
     }
@@ -1352,6 +1367,67 @@ async function doAddLiquidity() {
     swapLog('✗ Error: ' + e.message, 'err');
   }
   document.getElementById('swap-btn-addliq').disabled = false;
+}
+
+// ── LP POSITION / REMOVE LIQUIDITY ──────────────────────────────────────
+let myLPShares = 0;
+
+async function loadLPPosition() {
+  if (!swapWaddr) return;
+  try {
+    const d = await (await fetch('/api/lp-position?wallet=' + swapWaddr)).json();
+    myLPShares = d.shares || 0;
+    const box = document.getElementById('lp-position-box');
+    if (myLPShares > 0) {
+      box.style.display = 'block';
+      document.getElementById('lp-share-pct').textContent = d.pool_share_pct.toFixed(4) + '%';
+      document.getElementById('lp-withdrawable').textContent =
+        d.withdrawable_aeq.toFixed(4) + ' AEQ + ' + d.withdrawable_tusd.toFixed(4) + ' tUSD';
+    } else {
+      box.style.display = 'none';
+    }
+  } catch (e) {}
+}
+
+// Stores the chosen withdrawal fraction (set by the 25/50/75/MAX buttons)
+// so doRemoveLiquidity knows how many shares to burn without needing a
+// raw share-count input field — most people think in "withdraw half my
+// position", not in the underlying share units.
+let removePct = 1;
+function setRemovePct(pct, btn) {
+  removePct = pct;
+  document.querySelectorAll('#lp-position-box .pctbtn').forEach(b => { b.style.background = ''; b.style.color = ''; });
+  if (btn) { btn.style.background = 'var(--gold)'; btn.style.color = '#050A14'; }
+}
+
+async function doRemoveLiquidity() {
+  if (!swapWaddr || myLPShares <= 0) return;
+  const sharesToBurn = myLPShares * removePct;
+
+  document.getElementById('swap-btn-removeliq').disabled = true;
+  try {
+    const message = 'Aequitas Remove Liquidity: ' + sharesToBurn.toFixed(8) + ' shares';
+    swapLog('Sign the message in MetaMask to confirm this withdrawal...', 'info');
+    const signature = await signMessage(message);
+
+    const resp = await fetch('/api/remove-liquidity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: swapWaddr, shares: sharesToBurn, signature })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      swapLog('✓ Removed liquidity: received ' + data.amount_aeq.toFixed(4) + ' AEQ + ' + data.amount_tusd.toFixed(4) + ' tUSD', 'ok');
+      await refreshSwapBalances();
+      await loadPoolStatus();
+      await loadLPPosition();
+    } else {
+      swapLog('✗ Remove liquidity failed: ' + data.message, 'err');
+    }
+  } catch (e) {
+    swapLog('✗ Error: ' + e.message, 'err');
+  }
+  document.getElementById('swap-btn-removeliq').disabled = false;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

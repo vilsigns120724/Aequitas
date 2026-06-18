@@ -6,6 +6,7 @@ import (
 "encoding/hex"
 "encoding/json"
 "fmt"
+"math"
 "os"
 "sync"
 	"strings"
@@ -23,6 +24,15 @@ IsHuman     bool    `json:"is_human"`
 // below for the actual AEQ<->tUSD liquidity pool this balance interacts
 // with.
 TUsdBalance float64 `json:"tusd_balance"`
+// LPShares is this account's claim on the liquidity pool, in the same
+// units as PoolState.TotalLPShares. An account's withdrawable amount at
+// any moment is (LPShares / TotalLPShares) * each reserve — see
+// RemoveLiquidity. This is the standard Uniswap v2 share-accounting
+// model: shares are minted on deposit and burned on withdrawal, so each
+// LP's claim automatically reflects fees/price-impact accumulated by the
+// pool since they joined, without needing per-LP bookkeeping of "their"
+// specific tokens.
+LPShares float64 `json:"lp_shares"`
 }
 
 // PoolState holds the two reserves of the single AEQ<->tUSD liquidity pool.
@@ -36,8 +46,14 @@ TUsdBalance float64 `json:"tusd_balance"`
 // see DistributeSwapFee. Ordinary AEQ-to-AEQ transfers (state.Transfer)
 // are NOT touched by this fee; it only applies to swaps through this pool.
 type PoolState struct {
-ReserveAEQ  float64 `json:"reserve_aeq"`
-ReserveTUSD float64 `json:"reserve_tusd"`
+ReserveAEQ    float64 `json:"reserve_aeq"`
+ReserveTUSD   float64 `json:"reserve_tusd"`
+// TotalLPShares is the sum of every account's LPShares. Starts at 0; the
+// very first deposit mints sqrt(amountAEQ * amountTUSD) shares (the
+// standard Uniswap v2 formula — using the geometric mean means the
+// first depositor's chosen ratio doesn't let them mint an arbitrarily
+// large or small initial share count by gaming the two amounts).
+TotalLPShares float64 `json:"total_lp_shares"`
 }
 
 type ChainState struct {
@@ -116,6 +132,7 @@ is_human BOOLEAN NOT NULL DEFAULT false
 // CREATE TABLE) so this upgrade doesn't require recreating the table on
 // chains that already have chain_accounts from before this feature.
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS tusd_balance FLOAT NOT NULL DEFAULT 0`)
+cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS lp_shares FLOAT NOT NULL DEFAULT 0`)
 // Links a ZK proof commitment to the wallet that successfully registered
 // with it, so the app can ask "did MY proof get registered, and to which
 // wallet?" instead of guessing from a global, unfiltered list.
@@ -132,12 +149,14 @@ registered_at TIMESTAMP DEFAULT NOW()
 cs.db.Exec(`CREATE TABLE IF NOT EXISTS liquidity_pool (
 id INTEGER PRIMARY KEY DEFAULT 1,
 reserve_aeq FLOAT NOT NULL DEFAULT 0,
-reserve_tusd FLOAT NOT NULL DEFAULT 0
+reserve_tusd FLOAT NOT NULL DEFAULT 0,
+total_lp_shares FLOAT NOT NULL DEFAULT 0
 )`)
+cs.db.Exec(`ALTER TABLE liquidity_pool ADD COLUMN IF NOT EXISTS total_lp_shares FLOAT NOT NULL DEFAULT 0`)
 }
 
 func (cs *ChainState) loadFromDB() {
-rows, err := cs.db.Query("SELECT address, balance, is_human, tusd_balance FROM chain_accounts")
+rows, err := cs.db.Query("SELECT address, balance, is_human, tusd_balance, lp_shares FROM chain_accounts")
 if err != nil {
 fmt.Printf("⚠ Could not load from DB: %v\n", err)
 return
@@ -146,7 +165,7 @@ defer rows.Close()
 count := 0
 for rows.Next() {
 acc := &AccountState{}
-rows.Scan(&acc.Address, &acc.Balance, &acc.IsHuman, &acc.TUsdBalance)
+rows.Scan(&acc.Address, &acc.Balance, &acc.IsHuman, &acc.TUsdBalance, &acc.LPShares)
 cs.accounts[acc.Address] = acc
 count++
 }
@@ -156,27 +175,27 @@ cs.loadOrInitPool()
 }
 
 // loadOrInitPool reads the single liquidity_pool row, creating it (at
-// 0/0) if it doesn't exist yet. The pool intentionally does NOT get
+// 0/0/0) if it doesn't exist yet. The pool intentionally does NOT get
 // auto-filled with any starting reserves: every AEQ in this system only
 // ever exists because a real human registered for it ("money exists
 // because people exist"), so a pool can't be seeded out of thin air
 // without breaking that principle. Real liquidity has to come from
 // someone actually depositing AEQ they earned via AddLiquidity below.
 func (cs *ChainState) loadOrInitPool() {
-var reserveAEQ, reserveTUSD float64
-err := cs.db.QueryRow("SELECT reserve_aeq, reserve_tusd FROM liquidity_pool WHERE id = 1").Scan(&reserveAEQ, &reserveTUSD)
+var reserveAEQ, reserveTUSD, totalShares float64
+err := cs.db.QueryRow("SELECT reserve_aeq, reserve_tusd, total_lp_shares FROM liquidity_pool WHERE id = 1").Scan(&reserveAEQ, &reserveTUSD, &totalShares)
 if err != nil {
-_, insertErr := cs.db.Exec(`INSERT INTO liquidity_pool (id, reserve_aeq, reserve_tusd) VALUES (1, 0, 0)
+_, insertErr := cs.db.Exec(`INSERT INTO liquidity_pool (id, reserve_aeq, reserve_tusd, total_lp_shares) VALUES (1, 0, 0, 0)
 ON CONFLICT (id) DO NOTHING`)
 if insertErr != nil {
 fmt.Printf("⚠ Could not create liquidity pool row: %v\n", insertErr)
 }
-cs.pool = &PoolState{ReserveAEQ: 0, ReserveTUSD: 0}
+cs.pool = &PoolState{ReserveAEQ: 0, ReserveTUSD: 0, TotalLPShares: 0}
 fmt.Printf("✓ Liquidity pool created (empty — awaiting first deposit via AddLiquidity)\n")
 return
 }
-cs.pool = &PoolState{ReserveAEQ: reserveAEQ, ReserveTUSD: reserveTUSD}
-fmt.Printf("✓ Liquidity pool loaded: %.2f AEQ / %.2f tUSD\n", reserveAEQ, reserveTUSD)
+cs.pool = &PoolState{ReserveAEQ: reserveAEQ, ReserveTUSD: reserveTUSD, TotalLPShares: totalShares}
+fmt.Printf("✓ Liquidity pool loaded: %.2f AEQ / %.2f tUSD / %.6f shares\n", reserveAEQ, reserveTUSD, totalShares)
 }
 
 func (cs *ChainState) loadFromFile(dataFile string) {
@@ -206,13 +225,13 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) {
 if !cs.useDB {
 return
 }
-_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance) VALUES ($1, $2, $3, $4)
-ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4`,
-acc.Address, acc.Balance, acc.IsHuman, acc.TUsdBalance)
+_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5`,
+acc.Address, acc.Balance, acc.IsHuman, acc.TUsdBalance, acc.LPShares)
 if err != nil {
 fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
 } else {
-fmt.Printf("[DB] Saved account %s | balance=%.2f | tusd=%.2f | is_human=%v\n", acc.Address, acc.Balance, acc.TUsdBalance, acc.IsHuman)
+fmt.Printf("[DB] Saved account %s | balance=%.2f | tusd=%.2f | lp=%.6f | is_human=%v\n", acc.Address, acc.Balance, acc.TUsdBalance, acc.LPShares, acc.IsHuman)
 }
 }
 
@@ -421,8 +440,8 @@ func (cs *ChainState) savePoolToDB() {
 if !cs.useDB || cs.pool == nil {
 return
 }
-_, err := cs.db.Exec(`UPDATE liquidity_pool SET reserve_aeq = $1, reserve_tusd = $2 WHERE id = 1`,
-cs.pool.ReserveAEQ, cs.pool.ReserveTUSD)
+_, err := cs.db.Exec(`UPDATE liquidity_pool SET reserve_aeq = $1, reserve_tusd = $2, total_lp_shares = $3 WHERE id = 1`,
+cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, cs.pool.TotalLPShares)
 if err != nil {
 fmt.Printf("[DB] Error saving pool: %v\n", err)
 }
@@ -501,25 +520,98 @@ return fmt.Errorf("insufficient tUSD balance")
 // If the pool already has liquidity, require the deposit to roughly
 // match the existing ratio — an unbalanced deposit would otherwise
 // instantly shift the price, which is the same rule real AMMs enforce.
+var mintedShares float64
 if cs.pool.ReserveAEQ > 0 && cs.pool.ReserveTUSD > 0 {
 expectedTUSD := amountAEQ * (cs.pool.ReserveTUSD / cs.pool.ReserveAEQ)
 tolerance := expectedTUSD * 0.01 // 1% slack for rounding
 if amountTUSD < expectedTUSD-tolerance || amountTUSD > expectedTUSD+tolerance {
 return fmt.Errorf("deposit ratio does not match pool ratio (expected ~%.4f tUSD for %.4f AEQ)", expectedTUSD, amountAEQ)
 }
+// Proportional to the pool's existing size — same fraction of the
+// AEQ reserve as the fraction of total shares being minted, so an
+// LP's claim accurately tracks how much of the pool they actually
+// own (including any fees the pool has accumulated since genesis).
+mintedShares = (amountAEQ / cs.pool.ReserveAEQ) * cs.pool.TotalLPShares
+} else {
+// First-ever deposit: shares = geometric mean of the two amounts
+// (standard Uniswap v2 bootstrap formula). Using sqrt(x*y) instead
+// of, say, just amountAEQ means the first depositor can't mint an
+// outsized number of shares simply by picking a lopsided ratio.
+mintedShares = math.Sqrt(amountAEQ * amountTUSD)
 }
 
 acc.Balance -= amountAEQ
 acc.TUsdBalance -= amountTUSD
+acc.LPShares += mintedShares
 cs.pool.ReserveAEQ += amountAEQ
 cs.pool.ReserveTUSD += amountTUSD
+cs.pool.TotalLPShares += mintedShares
 
 cs.saveAccountToDB(acc)
 cs.savePoolToDB()
 cs.save()
 
-fmt.Printf("[POOL] ✓ %s added liquidity: %.4f AEQ + %.4f tUSD\n", address, amountAEQ, amountTUSD)
+fmt.Printf("[POOL] ✓ %s added liquidity: %.4f AEQ + %.4f tUSD → %.6f LP shares\n", address, amountAEQ, amountTUSD, mintedShares)
 return nil
+}
+
+// RemoveLiquidity burns sharesToBurn of address's LP shares and returns
+// the corresponding proportional amount of both reserves to their
+// balances. sharesToBurn must not exceed the account's own LPShares —
+// an account can only withdraw its own claim, never another LP's.
+func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (float64, float64, error) {
+cs.mu.Lock()
+defer cs.mu.Unlock()
+
+if sharesToBurn <= 0 {
+return 0, 0, fmt.Errorf("shares must be positive")
+}
+if cs.pool == nil || cs.pool.TotalLPShares <= 0 {
+return 0, 0, fmt.Errorf("liquidity pool is empty")
+}
+
+acc, ok := cs.accounts[address]
+if !ok {
+return 0, 0, fmt.Errorf("account not found")
+}
+if acc.LPShares < sharesToBurn {
+return 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)", acc.LPShares, sharesToBurn)
+}
+
+fraction := sharesToBurn / cs.pool.TotalLPShares
+outAEQ := cs.pool.ReserveAEQ * fraction
+outTUSD := cs.pool.ReserveTUSD * fraction
+
+acc.LPShares -= sharesToBurn
+acc.Balance += outAEQ
+acc.TUsdBalance += outTUSD
+cs.pool.ReserveAEQ -= outAEQ
+cs.pool.ReserveTUSD -= outTUSD
+cs.pool.TotalLPShares -= sharesToBurn
+
+cs.saveAccountToDB(acc)
+cs.savePoolToDB()
+cs.save()
+
+fmt.Printf("[POOL] ✓ %s removed liquidity: %.6f shares → %.4f AEQ + %.4f tUSD\n", address, sharesToBurn, outAEQ, outTUSD)
+return outAEQ, outTUSD, nil
+}
+
+// GetLPShares returns address's current LP share balance, and the pool's
+// total shares — callers can compute the account's ownership fraction
+// (and therefore its withdrawable amounts) from these two numbers.
+func (cs *ChainState) GetLPShares(address string) (float64, float64) {
+cs.mu.RLock()
+defer cs.mu.RUnlock()
+var mine float64
+if acc, ok := cs.accounts[address]; ok {
+mine = acc.LPShares
+}
+total := 0.0
+if cs.pool != nil {
+total = cs.pool.TotalLPShares
+}
+return mine, total
 }
 
 func (cs *ChainState) TotalSupply() float64 {

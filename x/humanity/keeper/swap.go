@@ -191,7 +191,103 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(AddLiquidityResponse{Success: true, Message: "liquidity added"})
 }
 
-// ── FAUCET ───────────────────────────────────────────────────────────────
+// ── REMOVE LIQUIDITY ─────────────────────────────────────────────────────
+
+type RemoveLiquidityRequest struct {
+	Wallet      string  `json:"wallet"`
+	SharesToBurn float64 `json:"shares"` // pass the full LP share balance to withdraw everything
+	Signature   string  `json:"signature"`
+}
+
+type RemoveLiquidityResponse struct {
+	Success    bool    `json:"success"`
+	Message    string  `json:"message"`
+	AmountAEQ  float64 `json:"amount_aeq"`
+	AmountTUSD float64 `json:"amount_tusd"`
+}
+
+func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(200)
+		return
+	}
+	if r.Method != "POST" {
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "POST required"})
+		return
+	}
+
+	body, _ := io.ReadAll(r.Body)
+	var req RemoveLiquidityRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "invalid request"})
+		return
+	}
+
+	wallet := strings.ToLower(req.Wallet)
+	if wallet == "" || req.SharesToBurn <= 0 {
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "wallet and positive shares required"})
+		return
+	}
+
+	message := fmt.Sprintf("Aequitas Remove Liquidity: %.8f shares", req.SharesToBurn)
+	if err := verifyPersonalSign(message, req.Signature, wallet); err != nil {
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "signature invalid: " + err.Error()})
+		return
+	}
+
+	outAEQ, outTUSD, err := a.state.RemoveLiquidity(wallet, req.SharesToBurn)
+	if err != nil {
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(RemoveLiquidityResponse{
+		Success:    true,
+		Message:    "liquidity removed",
+		AmountAEQ:  outAEQ,
+		AmountTUSD: outTUSD,
+	})
+}
+
+// ── LP POSITION STATUS ───────────────────────────────────────────────────
+
+func (a *APIServer) handleLPPosition(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
+	if wallet == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"shares": 0, "total_shares": 0, "pool_share_pct": 0})
+		return
+	}
+	mine, total := a.state.GetLPShares(wallet)
+	pct := 0.0
+	if total > 0 {
+		pct = mine / total * 100
+	}
+	reserveAEQ, reserveTUSD := a.state.GetPoolReserves()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"shares":          mine,
+		"total_shares":    total,
+		"pool_share_pct":  pct,
+		"withdrawable_aeq": func() float64 {
+			if total == 0 {
+				return 0
+			}
+			return reserveAEQ * (mine / total)
+		}(),
+		"withdrawable_tusd": func() float64 {
+			if total == 0 {
+				return 0
+			}
+			return reserveTUSD * (mine / total)
+		}(),
+	})
+}
 
 type FaucetRequest struct {
 	Wallet    string `json:"wallet"`
