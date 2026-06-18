@@ -924,23 +924,24 @@ async function addToMetaMask() {
       params: [{
         chainId: CID,
         chainName: 'Aequitas Chain',
+        // AEQ is declared here as the chain's native currency (like ETH on
+        // Ethereum) — MetaMask shows this automatically in the main
+        // account balance display once eth_getBalance returns real
+        // values, no further setup needed. We previously ALSO called
+        // wallet_watchAsset below to add AEQ again as a separate ERC20
+        // custom token. That meant AEQ showed up twice in MetaMask: once
+        // correctly as the native balance, and once as an ERC20 entry
+        // whose balance came from the V7 contract's balanceOf() mapping
+        // instead — two numbers for "your AEQ" that could drift apart
+        // (e.g. after a native transfer, only the native number changes,
+        // while the ERC20 entry still shows the contract's value). Now
+        // that registration and transfers write to the native balance,
+        // the ERC20 entry no longer reflects the real, current state and
+        // has been removed.
         nativeCurrency: { name: 'AEQ', symbol: 'AEQ', decimals: 18 },
         rpcUrls: ['https://aequitas-production-9fba.up.railway.app/rpc'],
         blockExplorerUrls: ['https://aequitas-production-9fba.up.railway.app']
       }]
-    });
-    // Add AEQ as watchable token
-    await window.ethereum.request({
-      method: 'wallet_watchAsset',
-      params: {
-        type: 'ERC20',
-        options: {
-          address: '0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
-          symbol: 'AEQ',
-          decimals: 18,
-          name: 'Aequitas'
-        }
-      }
     });
   } catch (e) { console.error('MetaMask error:', e); }
 }
