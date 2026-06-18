@@ -183,10 +183,10 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
   <div class="tab active" onclick="showTab('register',this)" data-i18n="tab-register">🔐 Register</div>
   <div class="tab" onclick="showTab('explorer',this)" data-i18n="tab-explorer">🔍 Explorer</div>
   <div class="tab" onclick="showTab('humans',this)" data-i18n="tab-humans">👥 Humans</div>
-  <div class="tab" onclick="showTab('swap',this)" data-i18n="tab-swap">🔄 Swap</div>
   <div class="tab" onclick="showTab('index',this)" data-i18n="tab-index">📊 Index</div>
   <div class="tab" onclick="showTab('network',this)" data-i18n="tab-network">🌐 Network</div>
   <div class="tab" onclick="showTab('protocol',this)" data-i18n="tab-protocol">📜 Protocol V7</div>
+  <div class="tab" onclick="showTab('swap',this)" data-i18n="tab-swap">🔄 Swap</div>
 </div>
 
 <!-- REGISTER -->
@@ -288,7 +288,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
   <div class="info-banner">
     <div><div class="ib-icon">🔒</div><div class="ib-title" data-i18n="h-what">What is a Verified Human?</div><div class="ib-text" data-i18n="h-what-t">A Verified Human is a wallet address cryptographically proven to belong to a unique living human. Biometric data is never transmitted or stored. Only a Zero-Knowledge Proof is used.</div></div>
     <div><div class="ib-icon">🧮</div><div class="ib-title" data-i18n="h-zkp">Zero-Knowledge Proof System</div><div class="ib-text" data-i18n="h-zkp-t">Aequitas uses the Groth16 proving system over BN128 elliptic curve. Proof size: ~200 bytes. Verification: ~10ms. The same system used by Zcash.</div></div>
-    <div><div class="ib-icon">🛡</div><div class="ib-title" data-i18n="h-sybil">Sybil Attack Prevention</div><div class="ib-text" data-i18n="h-sybil-t">Each biometric hash is stored permanently. Attempting to register twice with the same fingerprint is immediately rejected. One human, one wallet, forever.</div></div>
+    <div><div class="ib-icon">🛡</div><div class="ib-title" data-i18n="h-sybil">Sybil Attack Prevention</div><div class="ib-text" data-i18n="h-sybil-t">Each biometric hash is stored permanently. Attempting to register twice with the same fingerprint is immediately rejected. One human, one wallet, forever. <strong style="color:var(--gold)">⚠ Test phase:</strong> Current biometric verification is device-bound. A hardware physiological sensor (MAX30102 PPG) is planned to provide device-independent identity verification in a future update.</div></div>
     <div><div class="ib-icon">🌍</div><div class="ib-title" data-i18n="h-global">Global Inclusion</div><div class="ib-text" data-i18n="h-global-t">No bank account, no credit card, no cryptocurrency required. Just an Android smartphone with a fingerprint sensor — a device over 3 billion people already own.</div></div>
   </div>
 </div>
@@ -523,7 +523,7 @@ header{background:#080F1E;border-bottom:1px solid var(--border);padding:0 20px;p
   </div>
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="ubi-title">5. UNIVERSAL BASIC INCOME</div>
-    <div class="hlbox" data-i18n="ubi-box">Sources: Transaction fees · Wealth cap overflow · Demurrage · Inactive escrow<br><br>Monthly: UBI Pool divided equally among all active humans</div>
+    <div class="hlbox" data-i18n="ubi-box">Sources: Transaction fees (20%) · Wealth cap overflow · Demurrage · Inactive escrow<br><br>Daily: UBI Pool divided equally among all registered humans. Pool resets to zero after each distribution and refills continuously from protocol fees.</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="inf-title">6. NO ALGORITHMIC INFLATION</div>
@@ -575,7 +575,7 @@ en:{
   'humans-title':'Verified Humans on Aequitas Chain',
   'h-what':'What is a Verified Human?','h-what-t':'A Verified Human is a wallet address cryptographically proven to belong to a unique living human. Biometric data is never transmitted or stored.',
   'h-zkp':'Zero-Knowledge Proof System','h-zkp-t':'Aequitas uses the Groth16 proving system over BN128 elliptic curve. Proof size: ~200 bytes. Verification: ~10ms.',
-  'h-sybil':'Sybil Attack Prevention','h-sybil-t':'Each biometric hash is stored permanently. Attempting to register twice is immediately rejected. One human, one wallet, forever.',
+  'h-sybil':'Sybil Attack Prevention','h-sybil-t':'Each biometric hash is stored permanently. Attempting to register twice is immediately rejected. One human, one wallet, forever. ⚠ Test phase: current verification is device-bound. A physiological sensor (MAX30102 PPG) is planned for device-independent identity in a future update.',
   'h-global':'Global Inclusion','h-global-t':'No bank account, no credit card, no cryptocurrency required. Just an Android smartphone with a fingerprint sensor.',
   'reg-humans':'Registered Humans','h-desc':'Every address verified as unique human through biometric ZKP. Each received 1,000 AEQ. Permanent, immutable, on-chain.',
   'no-humans':'No humans registered yet.\n\nDownload the Aequitas Android App and be the first human on the chain!',
@@ -608,7 +608,7 @@ en:{
   'dem-box':'1% annual fee on balance ABOVE fairShare goes to UBI Pool<br><br>Example: fairShare=1,000 · Balance=3,000 · Excess=2,000 · Monthly fee=1.67 AEQ',
   'dem-text':'<p>Historical precedent: Worgl, Austria (1932) — demurrage currency reduced unemployment 25% in one year.</p>',
   'cap-title':'4. WEALTH CAP','cap-box':'Phase 0: 50x fairShare · Phase 1: 20x · Phase 2: 10x · Phase 3: 5x · Phase 4: 3x<br><br>Always active from human #1. Excess instantly redistributed to ALL active humans.',
-  'ubi-title':'5. UNIVERSAL BASIC INCOME','ubi-box':'Sources: Transaction fees · Wealth cap overflow · Demurrage · Inactive escrow<br><br>Monthly: UBI Pool divided equally among all active humans',
+  'ubi-title':'5. UNIVERSAL BASIC INCOME','ubi-box':'Sources: Transaction fees (20%) · Wealth cap overflow · Demurrage · Inactive escrow<br><br>Daily: UBI Pool divided equally among all registered humans. Pool resets after each distribution.',
   'inf-title':'6. NO ALGORITHMIC INFLATION','inf-box':'The ONLY event that creates new AEQ: a new verified human registers<br><br>Total AEQ = Verified Active Humans x 1,000'
 },
 de:{
@@ -647,7 +647,7 @@ de:{
   'humans-title':'Verifizierte Menschen auf der Aequitas Chain',
   'h-what':'Was ist ein verifizierter Mensch?','h-what-t':'Ein verifizierter Mensch ist eine Wallet-Adresse, die kryptographisch bewiesen wurde, einem einzigartigen lebenden Menschen zu gehören.',
   'h-zkp':'Zero-Knowledge-Proof-System','h-zkp-t':'Aequitas verwendet das Groth16-Beweissystem über die BN128-elliptische Kurve. Beweisdauer: ~200 Bytes. Verifizierungszeit: ~10ms.',
-  'h-sybil':'Schutz vor Sybil-Angriffen','h-sybil-t':'Jeder biometrische Hash wird dauerhaft gespeichert. Doppelregistrierung wird sofort abgelehnt. Eine Person, eine Wallet, für immer.',
+  'h-sybil':'Schutz vor Sybil-Angriffen','h-sybil-t':'Jeder biometrische Hash wird dauerhaft gespeichert. Doppelregistrierung wird sofort abgelehnt. Eine Person, eine Wallet, für immer. ⚠ Testphase: Aktuelle Verifizierung ist gerätegebunden. Ein physiologischer Sensor (MAX30102 PPG) ist für geräteunabhängige Identität in einem zukünftigen Update geplant.',
   'h-global':'Globale Inklusion','h-global-t':'Kein Bankkonto, keine Kreditkarte, keine Kryptowährung erforderlich. Nur ein Android-Smartphone mit Fingerabdrucksensor.',
   'reg-humans':'Registrierte Menschen','h-desc':'Jede Adresse als einzigartiger Mensch durch biometrischen ZKP verifiziert. Jeder erhielt 1.000 AEQ. Dauerhaft, unveränderlich.',
   'no-humans':'Noch keine Menschen registriert.\n\nLade die Aequitas Android-App herunter und sei der erste!',
@@ -1053,6 +1053,18 @@ async function loadStatus() {
     document.getElementById('idx-humans2').textContent = fmt(d.total_humans);
     document.getElementById('stat-humans').textContent = fmt(d.total_humans);
     document.getElementById('stat-supply').textContent = d.total_supply || '—';
+
+    // Pool balances
+    const fmtPool = v => v && v !== '0.0000' ? v + ' AEQ' : '—';
+    document.getElementById('pool-v').textContent = fmtPool(d.pool_validators);
+    document.getElementById('pool-l').textContent = fmtPool(d.pool_lp);
+    document.getElementById('pool-u').textContent = fmtPool(d.pool_ubi);
+    document.getElementById('pool-t').textContent = fmtPool(d.pool_treasury);
+
+    // Fix stale subtitle now that demurrage/wealth-cap mean supply can drift
+    const subEl = document.getElementById('s-supply-sub');
+    if (subEl) subEl.textContent = 'Circulating across all accounts';
+
     if (d.index !== undefined) {
       document.getElementById('idx-bar').style.width = Math.min(d.index, 100) + '%';
       const phases = ['Phase 0: Bootstrap — building the network', 'Phase 1: Growth — expanding human registry', 'Phase 2: Stability — redistribution active', 'Phase 3: Maturity — full decentralization'];

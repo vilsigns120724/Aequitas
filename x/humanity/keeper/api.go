@@ -116,6 +116,11 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "velocity":     50,
 "phase":        a.state.CalcPhase(),
 "fee_bps":      10,
+"pool_validators": fmt.Sprintf("%.4f", a.state.GetBalance("0x78c1c143e395b181f13bcb6868ff53aa86c3d2ba")),
+"pool_lp":         fmt.Sprintf("%.4f", a.state.GetBalance("0xc181c3a4d09444b99089ae0f56c1e7f4c20d01eb")),
+"pool_ubi":        fmt.Sprintf("%.4f", a.state.GetBalance("0x4a9b8f99f0d8cff0e510fef502100571203b054a")),
+"pool_treasury":   fmt.Sprintf("%.4f", a.state.GetBalance("0x2273894fb781978d54e767f9fba2dcb33d93eb15")),
+"ubi_next_payout": "Daily at server restart time",
 })
 }
 
