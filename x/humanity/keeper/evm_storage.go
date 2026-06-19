@@ -220,24 +220,3 @@ return ""
 }
 return wallet
 }
-
-// CopyContractStorage copies all storage slots from one contract address to another.
-// Used when a contract deploys at a different address than expected and we need
-// to copy its state to the canonical address.
-func (cs *ChainState) CopyContractStorage(fromAddr, toAddr string) error {
-if cs.db == nil {
-return nil
-}
-rows, err := cs.db.Query(
-`SELECT slot, value FROM evm_storage WHERE address = $1`, fromAddr)
-if err != nil {
-return err
-}
-defer rows.Close()
-for rows.Next() {
-var slot, value string
-rows.Scan(&slot, &value)
-cs.SaveStorageSlot(toAddr, slot, value)
-}
-return nil
-}
