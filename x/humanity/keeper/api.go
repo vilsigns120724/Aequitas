@@ -391,10 +391,22 @@ fmt.Fprint(w, explorerHTML)
 }
 
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
+const apkPath = "downloads/aequitas-app.apk"
+const fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/raw/main/downloads/aequitas-app.apk"
+f, err := os.Open(apkPath)
+if err != nil {
+	// File not found in container — redirect to GitHub raw URL.
+	http.Redirect(w, r, fallbackURL, http.StatusFound)
+	return
+}
+defer f.Close()
+fi, err := f.Stat()
+if err != nil {
+	http.Redirect(w, r, fallbackURL, http.StatusFound)
+	return
+}
 w.Header().Set("Content-Disposition", "attachment; filename=aequitas-app.apk")
 w.Header().Set("Content-Type", "application/vnd.android.package-archive")
 w.Header().Set("Access-Control-Allow-Origin", "*")
-// Serve from the downloads directory relative to the working directory.
-// On Railway the file is included in the deployment at downloads/aequitas-app.apk.
-http.ServeFile(w, r, "downloads/aequitas-app.apk")
+http.ServeContent(w, r, "aequitas-app.apk", fi.ModTime(), f)
 }
