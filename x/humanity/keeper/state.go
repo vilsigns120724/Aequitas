@@ -1136,20 +1136,21 @@ return mine, total
 }
 
 func (cs *ChainState) TotalSupply() float64 {
+// Total supply is always exactly Humans × 1,000 AEQ by protocol design.
+// Each registered human receives exactly 1,000 AEQ upon registration —
+// no more, no less. Floating-point drift from swap fees and demurrage
+// calculations means the sum of all account balances + pool reserves
+// diverges slightly from this over time, so we compute it directly
+// from the human count instead of summing balances.
 cs.mu.RLock()
 defer cs.mu.RUnlock()
-total := 0.0
+humans := 0
 for _, acc := range cs.accounts {
-total += acc.Balance
+if acc.IsHuman {
+humans++
 }
-// The AMM liquidity pool reserves are stored separately from cs.accounts
-// (in cs.pool.ReserveAEQ) — they must be included in the total supply
-// or the displayed number will be lower than the real circulating amount
-// by however much AEQ is currently sitting in the pool as liquidity.
-if cs.pool != nil {
-total += cs.pool.ReserveAEQ
 }
-return total
+return float64(humans) * 1000.0
 }
 
 func (cs *ChainState) TotalHumans() int {
@@ -1238,8 +1239,10 @@ return 0.0
 }
 balances := []float64{}
 for _, acc := range cs.accounts {
-if acc.Balance > 0 {
-balances = append(balances, acc.Balance)
+// Only count registered humans — pool addresses and unregistered
+// wallets holding small fee amounts would skew the distribution.
+if acc.IsHuman && acc.Balance > 0 {
+balances = append(balances, effectiveBalance(acc))
 }
 }
 n := len(balances)

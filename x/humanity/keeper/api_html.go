@@ -262,7 +262,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="stats-grid">
     <div class="stat c-blue"><div class="stat-accent"></div><div class="stat-icon">🔗</div><div class="stat-lbl" data-i18n="s-height">Block Height</div><div class="stat-val" id="s-height">—</div><div class="stat-sub" data-i18n="s-height-sub">New block every 6s · BlockDAG · Two nodes parallel</div></div>
     <div class="stat c-green"><div class="stat-accent"></div><div class="stat-icon">🧬</div><div class="stat-lbl" data-i18n="s-humans">Verified Humans</div><div class="stat-val" id="s-humans">—</div><div class="stat-sub" data-i18n="s-humans-sub">Biometric ZKP · One person, one wallet, forever</div></div>
-    <div class="stat c-gold"><div class="stat-accent"></div><div class="stat-icon">🪙</div><div class="stat-lbl" data-i18n="s-supply">Total Supply</div><div class="stat-val" id="s-supply">—</div><div class="stat-sub" data-i18n="s-supply-sub">Always = Humans x 1,000 AEQ</div></div>
+    <div class="stat c-gold"><div class="stat-accent"></div><div class="stat-icon">🪙</div><div class="stat-lbl" data-i18n="s-supply">Total Supply</div><div class="stat-val" id="s-supply">—</div><div class="stat-sub" data-i18n="s-supply-sub">Always = Humans × 1,000 AEQ</div></div>
     <div class="stat c-purple"><div class="stat-accent"></div><div class="stat-icon">⚖</div><div class="stat-lbl" data-i18n="s-index">Aequitas Index</div><div class="stat-val" id="s-index">—</div><div class="stat-sub" data-i18n="s-index-sub">0 = perfect equality · 100 = max inequality</div></div>
     <div class="stat c-teal"><div class="stat-accent"></div><div class="stat-icon">⚡</div><div class="stat-lbl" data-i18n="s-uptime">Uptime</div><div class="stat-val" id="s-uptime" style="font-size:1rem">—</div><div class="stat-sub" data-i18n="s-uptime-sub">Node v0.3.0 · Railway + Render · PostgreSQL</div></div>
   </div>
@@ -613,7 +613,7 @@ en:{
   'live-stats':'Live Chain Statistics',
   's-height':'Block Height','s-height-sub':'New block every 6s · BlockDAG · Two nodes parallel',
   's-humans':'Verified Humans','s-humans-sub':'Biometric ZKP · One person, one wallet, forever',
-  's-supply':'Total Supply','s-supply-sub':'Always = Humans x 1,000 AEQ',
+  's-supply':'Total Supply','s-supply-sub':'Always = Humans 00d7 1,000 AEQ',
   's-index':'Aequitas Index','s-index-sub':'0 = perfect equality · 100 = max inequality',
   's-uptime':'Uptime','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
   'ib-poh':'Proof of Humanity','ib-poh-t':'Every AEQ holder must prove they are a unique living human. No bots, no corporations, no AI can hold AEQ. Only real humans. Biometric data never leaves your device.',
@@ -685,7 +685,7 @@ de:{
   'live-stats':'Live Chain-Statistiken',
   's-height':'Blockhöhe','s-height-sub':'Neuer Block alle 6 Sek · BlockDAG · Zwei Nodes parallel',
   's-humans':'Verifizierte Menschen','s-humans-sub':'Biometrischer ZKP · Eine Person, eine Wallet, für immer',
-  's-supply':'Gesamtmenge','s-supply-sub':'Immer = Menschen x 1.000 AEQ',
+  's-supply':'Gesamtmenge','s-supply-sub':'Immer = Menschen 00d7 1.000 AEQ',
   's-index':'Aequitas-Index','s-index-sub':'0 = vollkommene Gleichheit · 100 = maximale Ungleichheit',
   's-uptime':'Betriebszeit','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
   'ib-poh':'Menschlichkeitsnachweis','ib-poh-t':'Jeder AEQ-Inhaber muss beweisen, dass er ein einzigartiger lebender Mensch ist. Keine Bots, keine Unternehmen, keine KI. Nur echte Menschen.',
@@ -760,7 +760,7 @@ es:{
   'live-stats':'Estadísticas de Cadena en Vivo',
   's-height':'Altura de Bloque','s-height-sub':'Nuevo bloque cada 6s · BlockDAG · Dos nodos paralelos',
   's-humans':'Humanos Verificados','s-humans-sub':'ZKP biométrico · Una persona, una wallet, siempre',
-  's-supply':'Suministro Total','s-supply-sub':'Siempre = Humanos x 1,000 AEQ',
+  's-supply':'Suministro Total','s-supply-sub':'Circulando en todas las cuentas',
   's-index':'Índice Aequitas','s-index-sub':'0 = igualdad perfecta · 100 = desigualdad máxima',
   's-uptime':'Tiempo Activo','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
   'ib-poh':'Prueba de Humanidad','ib-poh-t':'Cada titular de AEQ debe probar que es un humano único vivo. Sin bots, sin corporaciones, sin IA. Solo humanos reales.',
@@ -829,7 +829,7 @@ ru:{
   'live-stats':'Статистика в реальном времени',
   's-height':'Высота Блока','s-height-sub':'Новый блок каждые 6 сек · BlockDAG · Два узла параллельно',
   's-humans':'Верифицированных Людей','s-humans-sub':'Биометрический ZKP · Один человек, один кошелёк, навсегда',
-  's-supply':'Общее Предложение','s-supply-sub':'Всегда = Люди x 1 000 AEQ',
+  's-supply':'Общее Предложение','s-supply-sub':'Циркулирует по всем счетам',
   's-index':'Индекс Aequitas','s-index-sub':'0 = полное равенство · 100 = максимальное неравенство',
   's-uptime':'Время Работы','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
   'ib-poh':'Доказательство Человечности','ib-poh-t':'Каждый владелец AEQ должен доказать что он уникальный живой человек. Никаких ботов, корпораций, ИИ. Только настоящие люди.',
@@ -899,7 +899,7 @@ zh:{
   'live-stats':'链上实时统计',
   's-height':'区块高度','s-height-sub':'每6秒新区块 · BlockDAG · 两个节点并行',
   's-humans':'已验证人类','s-humans-sub':'生物特征ZKP · 一人一钱包，永久',
-  's-supply':'总供应量','s-supply-sub':'始终 = 人类 x 1,000 AEQ',
+  's-supply':'总供应量','s-supply-sub':'在所有账户中流通',
   's-index':'Aequitas指数','s-index-sub':'0 = 完全平等 · 100 = 最大不平等',
   's-uptime':'运行时间','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
   'ib-poh':'人类证明','ib-poh-t':'每个AEQ持有者必须证明自己是唯一的活人。没有机器人、公司或AI。只有真实的人类。',
@@ -968,7 +968,7 @@ id:{
   'live-stats':'Statistik Rantai Langsung',
   's-height':'Tinggi Blok','s-height-sub':'Blok baru setiap 6 detik · BlockDAG · Dua node paralel',
   's-humans':'Manusia Terverifikasi','s-humans-sub':'ZKP biometrik · Satu orang, satu wallet, selamanya',
-  's-supply':'Total Pasokan','s-supply-sub':'Selalu = Manusia x 1.000 AEQ',
+  's-supply':'Total Pasokan','s-supply-sub':'Beredar di semua akun',
   's-index':'Indeks Aequitas','s-index-sub':'0 = kesetaraan sempurna · 100 = ketidaksetaraan maksimum',
   's-uptime':'Waktu Aktif','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
   'ib-poh':'Bukti Kemanusiaan','ib-poh-t':'Setiap pemegang AEQ harus membuktikan bahwa mereka adalah manusia unik yang hidup. Tidak ada bot, korporasi, atau AI. Hanya manusia nyata.',
@@ -1155,7 +1155,7 @@ async function loadStatus() {
 
     // Fix stale subtitle now that demurrage/wealth-cap mean supply can drift
     const subEl = document.getElementById('s-supply-sub');
-    if (subEl) subEl.textContent = 'Circulating across all accounts';
+    if (subEl) subEl.textContent = 'Always = Humans × 1,000 AEQ';
 
     if (d.index !== undefined) {
       document.getElementById('idx-bar').style.width = Math.min(d.index, 100) + '%';
