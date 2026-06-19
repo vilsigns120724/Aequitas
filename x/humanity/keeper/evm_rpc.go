@@ -283,6 +283,32 @@ data, _ := hex.DecodeString(strings.TrimPrefix(callObj["data"], "0x"))
 
 fmt.Printf("[RPC] eth_call to=%s data=%x\n", toStr, data[:min4(len(data), 4)])
 
+// Intercept balanceOf(address) calls (selector 0x70a08231) to the V7
+// contract — MetaMask Mobile uses this ERC-20 call to display token
+// balances, but AEQ is now a native currency so the contract returns 0.
+// We redirect these to the real native balance so Mobile shows the
+// correct amount, matching what eth_getBalance returns.
+if len(data) >= 4 && hex.EncodeToString(data[:4]) == "70a08231" &&
+toStr == strings.ToLower(V7_CONTRACT_ADDR) {
+// ABI-decode the address argument (bytes 4..36, left-padded to 32 bytes)
+if len(data) >= 36 {
+addrBytes := data[16:36] // last 20 bytes of the 32-byte padded argument
+addrHex := "0x" + hex.EncodeToString(addrBytes)
+balance := s.state.GetBalance(addrHex)
+wei := new(big.Float).Mul(
+big.NewFloat(balance),
+new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)),
+)
+weiInt, _ := wei.Int(nil)
+// ABI-encode as uint256 (32 bytes, big-endian)
+result := make([]byte, 32)
+weiBytes := weiInt.Bytes()
+copy(result[32-len(weiBytes):], weiBytes)
+fmt.Printf("[RPC] balanceOf(%s) → native balance %.4f AEQ\n", addrHex, balance)
+return "0x" + hex.EncodeToString(result), nil
+}
+}
+
 // Always reload contract from DB before call to ensure fresh state
 bytecode, err := s.state.LoadContract(toStr)
 if err == nil && len(bytecode) > 0 {
