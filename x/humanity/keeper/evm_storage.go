@@ -233,3 +233,21 @@ func (cs *ChainState) GetWalletByBioHash(bioHash string) string {
 	}
 	return wallet
 }
+
+// SaveBioHash writes the biometric hash into the bio_hashes table after a
+// confirmed registration. The proof server's /check and /prove endpoints
+// read from this table to block duplicate biometric registrations — keeping
+// it in sync with bio_registrations ensures both layers see the same state.
+func (cs *ChainState) SaveBioHash(bioHash, walletAddress string) {
+	if cs.db == nil || bioHash == "" {
+		return
+	}
+	walletAddress = strings.ToLower(walletAddress)
+	_, err := cs.db.Exec(
+		`INSERT INTO bio_hashes (hash, wallet_address) VALUES ($1, $2) ON CONFLICT (hash) DO NOTHING`,
+		bioHash, walletAddress,
+	)
+	if err != nil {
+		fmt.Printf("[REGISTER] Warning: could not sync bio_hashes: %v\n", err)
+	}
+}

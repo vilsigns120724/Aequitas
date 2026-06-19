@@ -105,6 +105,12 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Early reject: wallet already registered — saves the expensive EVM call.
+	if a.state.IsHuman(wallet) {
+		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "wallet already registered"})
+		return
+	}
+
 	fmt.Printf("[REGISTER] Relaying registerWithSig for: %s\n", wallet)
 
 	evmRPC := NewEVMRPCServer(a.blockchain, a.state)
@@ -213,6 +219,9 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 				fmt.Printf("[REGISTER] Warning: could not save bio registration link: %v\n", saveErr)
 			}
 		}
+		if req.BioHash != "" {
+			a.state.SaveBioHash(req.BioHash, wallet)
+		}
 		return txHash, nil
 	}
 
@@ -280,6 +289,12 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		if saveErr := a.state.SaveBioRegistration(commitment, wallet, txHash, req.BioHash); saveErr != nil {
 			fmt.Printf("[REGISTER] Warning: could not save bio registration link: %v\n", saveErr)
 		}
+	}
+
+	// Keep bio_hashes in sync so the proof server's /check and /prove
+	// endpoints can block duplicate biometric registrations via that table.
+	if req.BioHash != "" {
+		a.state.SaveBioHash(req.BioHash, wallet)
 	}
 
 	return txHash, nil
