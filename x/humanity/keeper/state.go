@@ -1301,15 +1301,7 @@ return gini
 
 func (cs *ChainState) CalcAequitasIndex() float64 {
 gini := cs.CalcGini()
-humans := float64(cs.TotalHumans())
-// Base index from Gini (0-100)
 index := gini * 100.0
-// Adjust for network size (small networks have inherently low inequality)
-if humans < 10 {
-// Bootstrap phase - index reflects growth potential
-index = index * (humans / 10.0)
-}
-// Round to 1 decimal
 return float64(int(index*10)) / 10.0
 }
 
