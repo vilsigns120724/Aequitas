@@ -68,6 +68,7 @@ mux.HandleFunc("/api/lp-position", a.handleLPPosition)
 mux.HandleFunc("/api/faucet", a.handleFaucet)
 mux.HandleFunc("/api/pool", a.handlePoolStatus)
 mux.HandleFunc("/registered", a.handleRegistered)
+mux.HandleFunc("/download/app.apk", a.handleAppDownload)
 fmt.Println("── Starting EVM RPC ─────────────────────")
 evmRPC := NewEVMRPCServer(a.blockchain, a.state)
 mux.HandleFunc("/rpc", evmRPC.handleRPC)
@@ -387,4 +388,13 @@ Return to the <span class="hl">Aequitas App</span> — it will confirm your regi
 func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "text/html")
 fmt.Fprint(w, explorerHTML)
+}
+
+func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Disposition", "attachment; filename=aequitas-app.apk")
+w.Header().Set("Content-Type", "application/vnd.android.package-archive")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+// Serve from the downloads directory relative to the working directory.
+// On Railway the file is included in the deployment at downloads/aequitas-app.apk.
+http.ServeFile(w, r, "downloads/aequitas-app.apk")
 }

@@ -268,10 +268,11 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="rhero">
     <div class="rhero-title" data-i18n="reg-title">🔐 Register as a Verified Human</div>
     <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ Universal Basic Income grant. Registration is one-time, permanent, and completely gasless. No personal data is ever stored — only a cryptographic proof that you are a unique human being.</div>
-    <a href="#" style="display:inline-flex;align-items:center;gap:10px;margin-top:18px;background:var(--grad);color:#fff;padding:13px 28px;border-radius:10px;font-size:0.75rem;font-weight:700;text-decoration:none;letter-spacing:0.5px;box-shadow:var(--glow-purple);transition:all 0.2s" onmouseover="this.style.opacity='0.87';this.style.transform='translateY(-2px)'" onmouseout="this.style.opacity='1';this.style.transform='translateY(0)'">
+    <a href="/download/app.apk" style="display:inline-flex;align-items:center;gap:10px;margin-top:18px;background:var(--grad);color:#fff;padding:13px 28px;border-radius:10px;font-size:0.75rem;font-weight:700;text-decoration:none;letter-spacing:0.5px;box-shadow:var(--glow-purple);transition:all 0.2s" onmouseover="this.style.opacity='0.87';this.style.transform='translateY(-2px)'" onmouseout="this.style.opacity='1';this.style.transform='translateY(0)'">
       <span style="font-size:1.1rem">📱</span>
       <span data-i18n="btn-download-app">DOWNLOAD AEQUITASBIO APP</span>
     </a>
+    <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);margin-top:8px">Android APK · direct download · BETA</div>
   </div>
   <div class="aonly">
     <div class="aonly-icon">📱</div>
@@ -734,13 +735,99 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="nc" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(245,166,35,0.06),rgba(13,8,32,0.9));border-color:rgba(245,166,35,0.2)">
     <div class="nc-title" style="color:var(--gold)" data-i18n="run-node-title">Run Your Own Node — Help Secure the Network</div>
     <div style="font-size:0.67rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Anyone can run an Aequitas node — no permission, no stake, no application required. Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all swap fees, distributed daily). The more nodes that run, the more decentralized and resilient the network becomes.</div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap">
-      <a href="https://raw.githubusercontent.com/hanoi96international-gif/Aequitas/main/aequitas-chain/docs/node-guide.pdf" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
-        📄 Download Node Operator Guide (PDF)
-      </a>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      <button onclick="document.getElementById('node-guide').style.display=document.getElementById('node-guide').style.display==='none'?'block':'none'" style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;cursor:pointer;border:none;font-family:var(--font-body);transition:opacity 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
+        📄 Node Operator Guide
+      </button>
       <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:all 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
         🐙 View Source on GitHub
       </a>
+    </div>
+    <!-- INLINE NODE GUIDE -->
+    <div id="node-guide" style="display:none;background:var(--card);border:1px solid rgba(245,166,35,0.2);border-radius:var(--radius);padding:24px;margin-top:4px">
+      <div style="font-size:0.58rem;color:var(--gold);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px">
+        📄 Aequitas Node Operator Guide — BETA
+        <span style="font-size:0.52rem;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.3);color:var(--gold);padding:2px 8px;border-radius:10px">v0.1</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+        <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
+          <div style="font-size:0.58rem;color:var(--neon);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">What a node does</div>
+          <div style="font-size:0.62rem;color:var(--muted);line-height:1.85">Produces blocks in the Aequitas BlockDAG, validates Zero-Knowledge biometric proofs, enforces wealth caps and demurrage, distributes daily pool payouts, and syncs state with peer nodes via libp2p + HTTP. Every node runs the full chain — there are no light clients.</div>
+        </div>
+        <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
+          <div style="font-size:0.58rem;color:var(--neon);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">What you earn</div>
+          <div style="font-size:0.62rem;color:var(--muted);line-height:1.85">40% of all protocol fees (swap fees, demurrage, wealth cap overflow) are distributed to the Validators Pool and paid out daily. The more blocks you produce proportional to the network, the larger your share. There is no staking requirement — block production is permissionless.</div>
+        </div>
+      </div>
+
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">1. Requirements</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:6px 0;width:40%">OS</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">Linux (recommended: Ubuntu 22.04) or any Docker-capable host</td></tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:6px 0">RAM</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">Minimum 512 MB · Recommended 1 GB (EVM engine needs headroom)</td></tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:6px 0">CPU</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">1 vCPU minimum (Groth16 proof verification is CPU-bound)</td></tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:6px 0">Storage</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">2 GB+ (chain grows with every block; PostgreSQL recommended)</td></tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:6px 0">Database</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">PostgreSQL 14+ (Railway, Supabase, or self-hosted) — set DATABASE_URL</td></tr>
+        <tr><td style="font-size:0.62rem;color:var(--muted);padding:6px 0">Network</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">Public IP or port forwarding · TCP 8080 (API + RPC) · P2P port (auto)</td></tr>
+      </table>
+
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">2. Environment Variables</div>
+      <div style="font-size:0.62rem;font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;line-height:2.2;overflow-x:auto">
+        <span style="color:var(--muted)"># Required</span><br>
+        <span style="color:var(--neon)">DATABASE_URL</span>=<span style="color:var(--gold)">postgres://user:pass@host:5432/aequitas</span><br>
+        <span style="color:var(--neon)">RELAYER_PRIVATE_KEY</span>=<span style="color:var(--gold)">0xYOUR_PRIVATE_KEY</span>  <span style="color:var(--muted)"># EOA that signs registrations</span><br>
+        <span style="color:var(--neon)">RELAYER_ADDRESS</span>=<span style="color:var(--gold)">0xYOUR_ADDRESS</span><br>
+        <span style="color:var(--muted)"># Optional</span><br>
+        <span style="color:var(--teal)">PORT</span>=<span style="color:var(--gold)">8080</span><br>
+        <span style="color:var(--teal)">PEER_NODES</span>=<span style="color:var(--gold)">https://aequitas-production-9fba.up.railway.app</span>  <span style="color:var(--muted)"># Comma-separated bootstrap peers</span><br>
+        <span style="color:var(--teal)">NODE_KEY</span>=<span style="color:var(--gold)">hex32bytes</span>  <span style="color:var(--muted)"># Stable P2P identity (generated if omitted)</span><br>
+        <span style="color:var(--teal)">IS_PRIMARY_NODE</span>=<span style="color:var(--gold)">false</span>  <span style="color:var(--muted)"># true only on the network's designated primary</span><br>
+        <span style="color:var(--teal)">RESET_STATE</span>=<span style="color:var(--gold)">false</span>  <span style="color:var(--muted)"># true wipes the DB on startup — destructive!</span>
+      </div>
+
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">3. Quick Start — Railway (recommended)</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Railway is the fastest way to get a node running. Free tier supports the minimum requirements during BETA.</div>
+      <div style="font-size:0.62rem;font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;line-height:2.2">
+        <span style="color:var(--muted)"># 1. Fork or clone the repo</span><br>
+        <span style="color:var(--neon)">git clone</span> https://github.com/hanoi96international-gif/Aequitas<br>
+        <span style="color:var(--muted)"># 2. Create a new Railway project, connect your repo</span><br>
+        <span style="color:var(--muted)"># 3. Add a PostgreSQL plugin to the project</span><br>
+        <span style="color:var(--muted)"># 4. Set the environment variables above in Railway Settings → Variables</span><br>
+        <span style="color:var(--muted)"># 5. Set PEER_NODES to the primary node URL so your node syncs on startup</span><br>
+        <span style="color:var(--neon)">PEER_NODES</span>=https://aequitas-production-9fba.up.railway.app<br>
+        <span style="color:var(--muted)"># 6. Deploy — the node starts producing blocks automatically</span>
+      </div>
+
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">4. Quick Start — Docker</div>
+      <div style="font-size:0.62rem;font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;line-height:2.2">
+        <span style="color:var(--neon)">docker build</span> -t aequitas-node .<br>
+        <span style="color:var(--neon)">docker run</span> -d --name aequitas \<br>
+        &nbsp;&nbsp;-e DATABASE_URL=<span style="color:var(--gold)">postgres://...</span> \<br>
+        &nbsp;&nbsp;-e RELAYER_PRIVATE_KEY=<span style="color:var(--gold)">0x...</span> \<br>
+        &nbsp;&nbsp;-e RELAYER_ADDRESS=<span style="color:var(--gold)">0x...</span> \<br>
+        &nbsp;&nbsp;-e PEER_NODES=https://aequitas-production-9fba.up.railway.app \<br>
+        &nbsp;&nbsp;-p 8080:8080 \<br>
+        &nbsp;&nbsp;aequitas-node
+      </div>
+
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">5. Verify Your Node</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Once running, check the health endpoint. You should see your node's block height climbing and human count matching the primary node within a few seconds of sync.</div>
+      <div style="font-size:0.62rem;font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;line-height:2.2">
+        <span style="color:var(--neon)">curl</span> https://YOUR-NODE-URL/api/status | jq<br>
+        <span style="color:var(--muted)"># Expect: { "height": ..., "total_humans": ..., "index": ... }</span><br><br>
+        <span style="color:var(--muted)"># Add MetaMask network pointing to your node:</span><br>
+        <span style="color:var(--muted)"># RPC URL: https://YOUR-NODE-URL/rpc</span><br>
+        <span style="color:var(--muted)"># Chain ID: 1926 · Symbol: AEQ · Name: Aequitas</span>
+      </div>
+
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">6. P2P Networking</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:16px">Nodes discover each other via libp2p. Set <span style="color:var(--neon);font-family:var(--font-mono)">PEER_NODES</span> to at least one known bootstrap peer (the primary node URL works). Your node will then auto-discover additional peers over time. Block sync happens via both P2P gossip and a periodic HTTP pull from peers.</div>
+
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">7. Earning Rewards</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:16px">Your node must have a registered human wallet (RELAYER_ADDRESS) to receive validator rewards. Rewards from the Validators Pool (40% of all fees) are distributed daily to all active node operator wallets proportional to blocks produced. Make sure your relayer wallet is registered as a human — run the Aequitas Android app on a device and register with the same wallet address as RELAYER_ADDRESS.</div>
+
+      <div style="font-size:0.58rem;color:var(--gold);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid rgba(245,166,35,0.2);padding-bottom:6px">Questions / Feedback</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9">Open an issue on <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--purple)">GitHub</a> or reach the Aequitas team via the repository. BETA feedback on node setup friction, performance, and documentation gaps is especially welcome.</div>
     </div>
   </div>
   <div class="nc" style="grid-column:1/-1">
