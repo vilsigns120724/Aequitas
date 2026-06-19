@@ -186,6 +186,13 @@ func (cs *ChainState) SaveBioRegistration(commitment, walletAddress, txHash, bio
 	if cs.db == nil {
 		return nil
 	}
+	walletAddress = strings.ToLower(walletAddress)
+	if bioHash != "" {
+		existing := cs.GetWalletByBioHash(bioHash)
+		if existing != "" && strings.ToLower(existing) != walletAddress {
+			return fmt.Errorf("biometric already registered to %s", existing)
+		}
+	}
 	_, err := cs.db.Exec(
 		`INSERT INTO bio_registrations (commitment, wallet_address, tx_hash, bio_hash) VALUES ($1, $2, $3, $4)
  ON CONFLICT (commitment) DO UPDATE SET wallet_address = $2, tx_hash = $3, bio_hash = $4`,

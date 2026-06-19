@@ -174,6 +174,11 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	}
 
 	claimedHuman := common.HexToAddress(wallet)
+	if req.BioHash != "" {
+		if existingWallet := a.state.GetWalletByBioHash(req.BioHash); existingWallet != "" {
+			return "", fmt.Errorf("biometric already registered to %s", existingWallet)
+		}
+	}
 
 	calldata, err := parsedABI.Pack("registerWithSig", pA, pB, pC, pubSignals, claimedHuman, sigBytes)
 	if err != nil {
