@@ -240,6 +240,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="rstep"><div class="snum">4</div><div class="stitle" data-i18n="s4t">1,000 AEQ</div><div class="sdesc" data-i18n="s4d">Registered on V6 · confirmed in next block · app notifies automatically</div></div>
   </div>
   <div class="pbar" data-i18n="priv-bar">🔒 Hardware Secure Element · Groth16 ZKP · Data never leaves device · No gas fees · Permanent Sybil protection</div>
+  <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
   <div class="rcard">
     <div class="wbox" id="wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="wadr">—</div></div>
     <div class="pbox" id="pbox"><div class="plbl" data-i18n="proof-recv">⚡ ZK PROOF RECEIVED</div><div class="pval" id="pval" data-i18n="proof-hint">Connect wallet to register</div></div>
