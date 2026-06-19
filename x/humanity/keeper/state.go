@@ -1296,6 +1296,13 @@ gini := numerator / (float64(n) * sum)
 if gini < 0 {
 gini = -gini
 }
+// Correct for small-sample bias: the standard formula caps at (n-1)/n,
+// so with 2 people the maximum is 0.5 even with total concentration.
+// Multiplying by n/(n-1) gives the unbiased estimator that reaches 1.0.
+gini = gini * float64(n) / float64(n-1)
+if gini > 1.0 {
+gini = 1.0
+}
 return gini
 }
 
