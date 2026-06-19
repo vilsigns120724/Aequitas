@@ -770,91 +770,235 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     </div>
     <!-- INLINE NODE GUIDE -->
     <div id="node-guide" style="display:block;background:var(--card);border:1px solid rgba(245,166,35,0.2);border-radius:var(--radius);padding:24px;margin-top:4px">
-      <div style="font-size:0.58rem;color:var(--gold);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:18px;display:flex;align-items:center;gap:8px">
-        📄 Aequitas Node Operator Guide — BETA
-        <span style="font-size:0.52rem;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.3);color:var(--gold);padding:2px 8px;border-radius:10px">v0.1</span>
-      </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
-        <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
-          <div style="font-size:0.58rem;color:var(--neon);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">What a node does</div>
-          <div style="font-size:0.62rem;color:var(--muted);line-height:1.85">Produces blocks in the Aequitas BlockDAG, validates Zero-Knowledge biometric proofs, enforces wealth caps and demurrage, distributes daily pool payouts, and syncs state with peer nodes via libp2p + HTTP. Every node runs the full chain — there are no light clients.</div>
-        </div>
-        <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
-          <div style="font-size:0.58rem;color:var(--neon);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">What you earn</div>
-          <div style="font-size:0.62rem;color:var(--muted);line-height:1.85">40% of all protocol fees (swap fees, demurrage, wealth cap overflow) are distributed to the Validators Pool and paid out daily. The more blocks you produce proportional to the network, the larger your share. There is no staking requirement — block production is permissionless.</div>
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:20px">
+        <div>
+          <div style="font-size:0.58rem;color:var(--gold);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:8px">
+            AEQUITAS NODE OPERATOR GUIDE
+            <span style="font-size:0.52rem;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.3);color:var(--gold);padding:2px 8px;border-radius:10px">BETA v0.1</span>
+          </div>
+          <div style="font-size:0.6rem;color:var(--muted);margin-top:4px">Complete step-by-step guide &middot; No prior blockchain experience required &middot; Estimated time: 20&ndash;30 min</div>
         </div>
       </div>
 
-      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">1. Requirements</div>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:6px 0;width:40%">OS</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">Linux (recommended: Ubuntu 22.04) or any Docker-capable host</td></tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:6px 0">RAM</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">Minimum 512 MB · Recommended 1 GB (EVM engine needs headroom)</td></tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:6px 0">CPU</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">1 vCPU minimum (Groth16 proof verification is CPU-bound)</td></tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:6px 0">Storage</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">2 GB+ (chain grows with every block; PostgreSQL recommended)</td></tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:6px 0">Database</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">PostgreSQL 14+ (Railway, Supabase, or self-hosted) — set DATABASE_URL</td></tr>
-        <tr><td style="font-size:0.62rem;color:var(--muted);padding:6px 0">Network</td><td style="font-size:0.62rem;color:var(--text);padding:6px 0">Public IP or port forwarding · TCP 8080 (API + RPC) · P2P port (auto)</td></tr>
+      <!-- What is a node -->
+      <div style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.2);border-radius:8px;padding:14px;margin-bottom:20px">
+        <div style="font-size:0.6rem;color:var(--purple);font-weight:700;margin-bottom:6px">What is an Aequitas Node?</div>
+        <div style="font-size:0.62rem;color:var(--muted);line-height:1.9">An Aequitas node is a program that runs in the cloud and participates in the Aequitas network. It keeps a copy of the entire blockchain, validates who is a registered human, and produces new blocks (like new pages in the global ledger). The more nodes exist, the more decentralized and resilient the network becomes. As a reward for running a node, you receive a daily share of all protocol fees &mdash; automatically, with no further action required on your part.</div>
+      </div>
+
+      <!-- Checklist -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Before You Start &mdash; What You Need</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:2.1;margin-bottom:18px">
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">1.</span><span><strong style="color:var(--text)">An Aequitas account:</strong> You must first be registered as a human on Aequitas. Install the Android app, complete biometric registration, and note your wallet address. Without this, you cannot receive validator rewards.</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span><strong style="color:var(--text)">A GitHub account (free):</strong> Go to github.com and create a free account. You need this to copy (fork) the Aequitas code so Railway can deploy it.</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">3.</span><span><strong style="color:var(--text)">A Railway account (free):</strong> Go to railway.app and sign in with GitHub. Railway is a hosting platform that runs your node in the cloud &mdash; no server or command line required.</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="color:var(--gold);font-weight:700;min-width:16px">4.</span><span><strong style="color:var(--text)">A dedicated node wallet:</strong> Your node needs its own Ethereum wallet to sign transactions. This is NOT your personal AEQ wallet. Install MetaMask (metamask.io), create a new account specifically for your node, then export its private key: MetaMask &rarr; click account icon &rarr; Account Details &rarr; Show Private Key &rarr; enter your MetaMask password &rarr; copy. Keep this key strictly private &mdash; treat it like a password.</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--gold);font-weight:700;min-width:16px">5.</span><span><strong style="color:var(--text)">10&ndash;30 minutes of your time.</strong> Railway does most of the work automatically.</span></div>
+      </div>
+
+      <!-- Step 1: Fork -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 1 &mdash; Fork the Aequitas Repository on GitHub</div>
+      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.6rem"><span style="color:var(--teal);font-weight:700">What is a fork?</span> <span style="color:var(--muted)">A fork is your own personal copy of the Aequitas code on GitHub. Railway deploys directly from your fork, so you need one first.</span></div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:2.2;margin-bottom:18px">
+        <div><span style="color:var(--gold);font-weight:700">a)</span> Open <span style="font-family:var(--font-mono);color:var(--neon)">github.com/hanoi96international-gif/Aequitas</span> in your browser</div>
+        <div><span style="color:var(--gold);font-weight:700">b)</span> Click the <strong style="color:var(--text)">Fork</strong> button in the top-right corner of the page</div>
+        <div><span style="color:var(--gold);font-weight:700">c)</span> Click <strong style="color:var(--text)">Create fork</strong> &mdash; GitHub creates a copy under your own account (e.g. github.com/YOUR-NAME/Aequitas)</div>
+        <div><span style="color:var(--gold);font-weight:700">d)</span> Done &mdash; you now have your own copy of the Aequitas node code</div>
+      </div>
+
+      <!-- Step 2: Database -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 2 &mdash; Create a PostgreSQL Database</div>
+      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:0.6rem"><span style="color:var(--teal);font-weight:700">What is a database?</span> <span style="color:var(--muted)">Your node needs permanent storage for all block data and human registrations. Think of it like a cloud hard drive. Without a database, your node loses all data every time it restarts. PostgreSQL is the storage system Aequitas uses.</span></div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:2.2;margin-bottom:18px">
+        <div><span style="color:var(--gold);font-weight:700">a)</span> Go to <strong style="color:var(--text)">railway.app</strong> and sign in with your GitHub account</div>
+        <div><span style="color:var(--gold);font-weight:700">b)</span> Click <strong style="color:var(--text)">New Project</strong></div>
+        <div><span style="color:var(--gold);font-weight:700">c)</span> Inside your new project, click <strong style="color:var(--text)">+ New</strong> &rarr; <strong style="color:var(--text)">Database</strong> &rarr; <strong style="color:var(--text)">Add PostgreSQL</strong></div>
+        <div><span style="color:var(--gold);font-weight:700">d)</span> Railway creates your database automatically. When you add the node service to the same project in Step 4, Railway injects the DATABASE_URL connection string for you &mdash; no manual configuration needed.</div>
+      </div>
+
+      <!-- Step 3: Env vars -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 3 &mdash; Understand the Environment Variables</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Environment variables are configuration settings you pass to your node before it starts. Think of them like a settings file. Collect these values before deploying &mdash; you will enter them in Step 4.</div>
+      <div style="background:rgba(220,50,50,0.06);border:1px solid rgba(220,50,50,0.2);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:0.6rem"><span style="color:#f87171;font-weight:700">Security Warning: </span><span style="color:var(--muted)">Your RELAYER_PRIVATE_KEY is like a master password. Anyone who has it controls your node wallet. Never share it publicly, never paste it in chat or email. Use a dedicated wallet just for the node &mdash; not your personal AEQ wallet.</span></div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+        <tr style="background:rgba(139,92,246,0.15)">
+          <td style="font-size:0.6rem;color:var(--text);padding:8px;font-weight:700;width:36%">Variable</td>
+          <td style="font-size:0.6rem;color:var(--text);padding:8px;font-weight:700;width:12%">Required?</td>
+          <td style="font-size:0.6rem;color:var(--text);padding:8px;font-weight:700">What to enter and where to find it</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">DATABASE_URL</td>
+          <td style="font-size:0.6rem;color:#f87171;padding:8px;font-weight:700">YES</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Your PostgreSQL connection string. On Railway: auto-injected when PostgreSQL is in the same project. Format: <span style="font-family:var(--font-mono)">postgres://user:pass@host:5432/dbname</span></td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">RELAYER_PRIVATE_KEY</td>
+          <td style="font-size:0.6rem;color:#f87171;padding:8px;font-weight:700">YES</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">The private key (starts with 0x, 66 characters total) of your dedicated node wallet. In MetaMask: click account icon &rarr; Account Details &rarr; Show Private Key &rarr; enter your MetaMask password &rarr; copy the key</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">RELAYER_ADDRESS</td>
+          <td style="font-size:0.6rem;color:var(--teal);padding:8px">Recommended</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">The wallet address (starts with 0x, 42 characters) matching RELAYER_PRIVATE_KEY. This is the public address &mdash; safe to share. Copy it from MetaMask. A fallback exists in the node code, but setting this explicitly prevents startup errors.</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">NODE_OPERATOR_WALLET</td>
+          <td style="font-size:0.6rem;color:var(--teal);padding:8px">For rewards</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Your Aequitas human wallet address &mdash; the one you registered with via the Android app. This wallet receives your daily validator rewards (40% of all protocol fees). Must be a registered human on Aequitas. Find it in the app under your profile.</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--muted);padding:8px">PEER_NODES</td>
+          <td style="font-size:0.6rem;color:var(--teal);padding:8px">Recommended</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Set to: <span style="font-family:var(--font-mono);color:var(--neon)">https://aequitas-production-9fba.up.railway.app</span> &mdash; this is the primary node your node syncs from on startup. Without this your node starts at block 0 instead of the current chain height.</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--muted);padding:8px">PORT</td>
+          <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Leave unset on Railway &mdash; Railway sets this automatically. Default is 8080.</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--muted);padding:8px">NODE_KEY</td>
+          <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">32-byte hex string that gives your node a stable P2P identity. Auto-generated if omitted, but changes on every restart (peers temporarily lose your node). To generate one: <span style="font-family:var(--font-mono)">node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"</span></td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--muted);padding:8px">IS_PRIMARY_NODE</td>
+          <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Leave unset or false. Only the official Aequitas primary node should set this to true. Setting it to true on a secondary node causes double pool distributions &mdash; do not do this.</td>
+        </tr>
+        <tr>
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">RESET_STATE</td>
+          <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">DANGEROUS: Setting this to true wipes your entire database on every restart. Development use only. Never in production.</td>
+        </tr>
       </table>
 
-      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">2. Environment Variables</div>
-      <div style="font-size:0.62rem;font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;line-height:2.2;overflow-x:auto">
-        <span style="color:var(--muted)"># Required</span><br>
-        <span style="color:var(--neon)">DATABASE_URL</span>=<span style="color:var(--gold)">postgres://user:pass@host:5432/aequitas</span><br>
-        <span style="color:var(--neon)">RELAYER_PRIVATE_KEY</span>=<span style="color:var(--gold)">0xYOUR_PRIVATE_KEY</span>  <span style="color:var(--muted)"># EOA that signs registrations</span><br>
-        <span style="color:var(--muted)"># Strongly recommended</span><br>
-        <span style="color:var(--neon)">NODE_OPERATOR_WALLET</span>=<span style="color:var(--gold)">0xYOUR_HUMAN_WALLET</span>  <span style="color:var(--muted)"># receives daily validator rewards (must be a registered human)</span><br>
-        <span style="color:var(--teal)">RELAYER_ADDRESS</span>=<span style="color:var(--gold)">0xYOUR_ADDRESS</span>  <span style="color:var(--muted)"># fallback exists, but set explicitly</span><br>
-        <span style="color:var(--muted)"># Optional</span><br>
-        <span style="color:var(--teal)">PORT</span>=<span style="color:var(--gold)">8080</span><br>
-        <span style="color:var(--teal)">PEER_NODES</span>=<span style="color:var(--gold)">https://aequitas-production-9fba.up.railway.app</span>  <span style="color:var(--muted)"># Comma-separated bootstrap peers</span><br>
-        <span style="color:var(--teal)">NODE_KEY</span>=<span style="color:var(--gold)">hex32bytes</span>  <span style="color:var(--muted)"># Stable P2P identity (generated if omitted)</span><br>
-        <span style="color:var(--teal)">IS_PRIMARY_NODE</span>=<span style="color:var(--gold)">false</span>  <span style="color:var(--muted)"># true only on the network's designated primary</span><br>
-        <span style="color:var(--teal)">RESET_STATE</span>=<span style="color:var(--gold)">false</span>  <span style="color:var(--muted)"># true wipes the DB on startup — destructive!</span>
+      <!-- Step 4 Railway -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 4 &mdash; Deploy on Railway (Recommended)</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:12px">Railway is the easiest way to run your node &mdash; no server setup, no command line required. The free tier covers all BETA requirements. Total time: about 10&ndash;15 minutes.</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:2.2;margin-bottom:18px">
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">1</span><span>In your Railway project (from Step 2), click <strong style="color:var(--text)">+ New</strong> &rarr; <strong style="color:var(--text)">GitHub Repo</strong></span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">2</span><span>Select your Aequitas fork (from Step 1) &mdash; Railway detects the Dockerfile automatically</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">3</span><span>Click <strong style="color:var(--text)">Deploy Now</strong> &mdash; a first build starts (may fail without env vars, that is normal)</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">4</span><span>Click your Aequitas service &rarr; <strong style="color:var(--text)">Variables</strong> &rarr; add each variable:</span></div>
+        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:12px;margin:4px 0 8px 32px;font-size:0.61rem;line-height:2.1;overflow-x:auto">
+          <span style="color:var(--muted)"># Railway auto-sets DATABASE_URL if PostgreSQL is in the same project</span><br>
+          <span style="color:var(--neon)">RELAYER_PRIVATE_KEY</span> = <span style="color:var(--gold)">0xYOUR_PRIVATE_KEY</span><br>
+          <span style="color:var(--neon)">RELAYER_ADDRESS</span> = <span style="color:var(--gold)">0xYOUR_NODE_WALLET_ADDRESS</span><br>
+          <span style="color:var(--neon)">NODE_OPERATOR_WALLET</span> = <span style="color:var(--gold)">0xYOUR_HUMAN_WALLET</span><br>
+          <span style="color:var(--neon)">PEER_NODES</span> = <span style="color:var(--gold)">https://aequitas-production-9fba.up.railway.app</span>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">5</span><span>Click <strong style="color:var(--text)">Deploy</strong> (or save variables to trigger auto-redeploy). Build takes ~3 minutes while Go compiles the node binary.</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">6</span><span>Watch <strong style="color:var(--text)">Deploy Logs</strong>. Success looks like: <span style="font-family:var(--font-mono);color:var(--teal)">Aequitas Node Running V</span> and <span style="font-family:var(--font-mono);color:var(--teal)">[NODE] Registered node operator wallet: 0x...</span></span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">7</span><span>Go to <strong style="color:var(--text)">Settings</strong> &rarr; <strong style="color:var(--text)">Networking</strong> &rarr; <strong style="color:var(--text)">Generate Domain</strong> to get your public URL</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px"><span style="display:inline-flex;align-items:center;justify-content:center;background:rgba(139,92,246,0.2);color:var(--purple);font-weight:700;font-size:0.58rem;min-width:22px;height:22px;border-radius:50%">8</span><span>Open <span style="font-family:var(--font-mono);color:var(--neon)">https://YOUR-URL/api/status</span> in your browser &mdash; you should see JSON with <strong style="color:var(--text)">height</strong> climbing every ~6 seconds</span></div>
       </div>
 
-      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">3. Quick Start — Railway (recommended)</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Railway is the fastest way to get a node running. Free tier supports the minimum requirements during BETA.</div>
-      <div style="font-size:0.62rem;font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;line-height:2.2">
-        <span style="color:var(--muted)"># 1. Fork or clone the repo</span><br>
-        <span style="color:var(--neon)">git clone</span> https://github.com/hanoi96international-gif/Aequitas<br>
-        <span style="color:var(--muted)"># 2. Create a new Railway project, connect your repo</span><br>
-        <span style="color:var(--muted)"># 3. Add a PostgreSQL plugin to the project</span><br>
-        <span style="color:var(--muted)"># 4. Set the environment variables above in Railway Settings → Variables</span><br>
-        <span style="color:var(--muted)"># 5. Set PEER_NODES to the primary node URL so your node syncs on startup</span><br>
-        <span style="color:var(--neon)">PEER_NODES</span>=https://aequitas-production-9fba.up.railway.app<br>
-        <span style="color:var(--muted)"># 6. Deploy — the node starts producing blocks automatically</span>
-      </div>
-
-      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">4. Quick Start — Docker</div>
-      <div style="font-size:0.62rem;font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;line-height:2.2">
-        <span style="color:var(--neon)">docker build</span> -t aequitas-node .<br>
-        <span style="color:var(--neon)">docker run</span> -d --name aequitas \<br>
-        &nbsp;&nbsp;-e DATABASE_URL=<span style="color:var(--gold)">postgres://...</span> \<br>
-        &nbsp;&nbsp;-e RELAYER_PRIVATE_KEY=<span style="color:var(--gold)">0x...</span> \<br>
-        &nbsp;&nbsp;-e RELAYER_ADDRESS=<span style="color:var(--gold)">0x...</span> \<br>
-        &nbsp;&nbsp;-e PEER_NODES=https://aequitas-production-9fba.up.railway.app \<br>
+      <!-- Step 4b Docker -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 4b &mdash; Alternative: Deploy with Docker (Advanced)</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:8px">Use this if you have your own server (VPS, home server, cloud VM). Requires Docker installed and a PostgreSQL database (Railway or Supabase both work as external databases). Skip to Step 5 if you used Railway above.</div>
+      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:18px;font-size:0.61rem;line-height:2.2;overflow-x:auto">
+        <span style="color:var(--muted)"># 1. Download the code</span><br>
+        git clone https://github.com/hanoi96international-gif/Aequitas &amp;&amp; cd Aequitas<br><br>
+        <span style="color:var(--muted)"># 2. Build the node image (takes ~3 min for Go compilation)</span><br>
+        docker build -t aequitas-node .<br><br>
+        <span style="color:var(--muted)"># 3. Start the node &mdash; replace all placeholder values</span><br>
+        docker run -d --name aequitas-node --restart unless-stopped \<br>
+        &nbsp;&nbsp;-e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \<br>
+        &nbsp;&nbsp;-e RELAYER_PRIVATE_KEY="0xYOUR_PRIVATE_KEY" \<br>
+        &nbsp;&nbsp;-e RELAYER_ADDRESS="0xYOUR_NODE_WALLET_ADDRESS" \<br>
+        &nbsp;&nbsp;-e NODE_OPERATOR_WALLET="0xYOUR_HUMAN_WALLET" \<br>
+        &nbsp;&nbsp;-e PEER_NODES="https://aequitas-production-9fba.up.railway.app" \<br>
         &nbsp;&nbsp;-p 8080:8080 \<br>
-        &nbsp;&nbsp;aequitas-node
+        &nbsp;&nbsp;aequitas-node<br><br>
+        <span style="color:var(--muted)"># 4. Watch the live logs</span><br>
+        docker logs -f aequitas-node
       </div>
 
-      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">5. Verify Your Node</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Once running, check the health endpoint. You should see your node's block height climbing and human count matching the primary node within a few seconds of sync.</div>
-      <div style="font-size:0.62rem;font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;line-height:2.2">
-        <span style="color:var(--neon)">curl</span> https://YOUR-NODE-URL/api/status | jq<br>
-        <span style="color:var(--muted)"># Expect: { "height": ..., "total_humans": ..., "index": ... }</span><br><br>
-        <span style="color:var(--muted)"># Add MetaMask network pointing to your node:</span><br>
-        <span style="color:var(--muted)"># RPC URL: https://YOUR-NODE-URL/rpc</span><br>
-        <span style="color:var(--muted)"># Chain ID: 1926 · Symbol: AEQ · Name: Aequitas</span>
+      <!-- Step 5: Verify -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5 &mdash; Verify Your Node is Running</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:8px">Open these URLs in your browser. Replace <span style="font-family:var(--font-mono);color:var(--neon)">YOUR-NODE-URL</span> with your actual Railway domain or server address.</div>
+      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:14px;margin-bottom:8px;font-size:0.61rem;line-height:2.2">
+        https://YOUR-NODE-URL/api/status<br>
+        <span style="color:var(--muted)">&nbsp;&rarr; Expected: {"height": 1234, "total_humans": N, "aequitas_index": N}</span><br><br>
+        https://YOUR-NODE-URL/rpc<br>
+        <span style="color:var(--muted)">&nbsp;&rarr; Expected: {"jsonrpc":"2.0","error":"method not specified"} &mdash; this confirms RPC is alive</span>
+      </div>
+      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:0.62rem;color:var(--muted)">The block height should match the primary node within 1&ndash;2 blocks within seconds of startup. If it stays at 0, check that PEER_NODES is set correctly and the primary node URL is reachable.</div>
+
+      <!-- Step 6: MetaMask -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 6 &mdash; Connect MetaMask to Your Node (Optional)</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:8px">You can use your own node as a custom RPC in MetaMask so your wallet connects through your node instead of the shared public node. In MetaMask: click the network dropdown at the top &rarr; <strong style="color:var(--text)">Add network</strong> &rarr; <strong style="color:var(--text)">Add a network manually</strong>, then enter:</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:7px 0;width:40%">Network Name</td><td style="font-size:0.62rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">Aequitas Chain</td></tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:7px 0">RPC URL</td><td style="font-size:0.62rem;font-family:var(--font-mono);color:var(--neon);padding:7px 0">https://YOUR-NODE-URL/rpc</td></tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:7px 0">Chain ID</td><td style="font-size:0.62rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">1926</td></tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:7px 0">Currency Symbol</td><td style="font-size:0.62rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">AEQ</td></tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)"><td style="font-size:0.62rem;color:var(--muted);padding:7px 0">Decimals</td><td style="font-size:0.62rem;font-family:var(--font-mono);color:var(--text);padding:7px 0">18</td></tr>
+        <tr><td style="font-size:0.62rem;color:var(--muted);padding:7px 0">Block Explorer</td><td style="font-size:0.62rem;font-family:var(--font-mono);color:var(--purple);padding:7px 0">https://aequitas-production-9fba.up.railway.app</td></tr>
+      </table>
+
+      <!-- Step 7: Rewards -->
+      <div style="font-size:0.58rem;color:var(--gold);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid rgba(245,166,35,0.2);padding-bottom:6px">Step 7 &mdash; Earning Validator Rewards</div>
+      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:0.62rem;color:var(--muted);line-height:1.9">The Validators Pool collects 40% of all protocol fees (swap fees, demurrage, wealth cap overflow). Every 24 hours the primary node distributes the pool balance to all registered node operator wallets proportionally. The more consistently your node runs, the larger your share.</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:2.2;margin-bottom:18px">
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">1.</span><span>Make sure you are registered as a human on Aequitas. If not: install the Android app and complete biometric registration first. You will receive a wallet address and 1,000 AEQ.</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span>Set <span style="font-family:var(--font-mono);color:var(--neon)">NODE_OPERATOR_WALLET</span> = your Aequitas human wallet address in your Railway Variables</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">3.</span><span>Save &mdash; Railway redeploys automatically. On Docker: <span style="font-family:var(--font-mono);color:var(--teal)">docker restart aequitas-node</span></span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">4.</span><span>In your node logs, confirm: <span style="font-family:var(--font-mono);color:var(--teal)">[NODE] Registered node operator wallet: 0x...</span></span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--gold);font-weight:700;min-width:16px">5.</span><span>Rewards are distributed automatically every 24 hours. Just keep your node running &mdash; no further action needed.</span></div>
       </div>
 
-      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">6. P2P Networking</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:16px">Nodes discover each other via libp2p. Set <span style="color:var(--neon);font-family:var(--font-mono)">PEER_NODES</span> to at least one known bootstrap peer (the primary node URL works). Your node will then auto-discover additional peers over time. Block sync happens via both P2P gossip and a periodic HTTP pull from peers.</div>
+      <!-- Troubleshooting -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Troubleshooting</div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:18px">
+        <tr style="background:rgba(139,92,246,0.12)">
+          <td style="font-size:0.6rem;color:var(--text);padding:8px;font-weight:700;width:32%">Symptom</td>
+          <td style="font-size:0.6rem;color:var(--text);padding:8px;font-weight:700;width:32%">Likely cause</td>
+          <td style="font-size:0.6rem;color:var(--text);padding:8px;font-weight:700">Solution</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Block height stays at 0</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">PEER_NODES not set or wrong</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Set PEER_NODES=https://aequitas-production-9fba.up.railway.app and redeploy</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">DATABASE_URL error on startup</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Wrong connection string or PostgreSQL unreachable</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Check format: postgres://user:pass@host:5432/dbname &mdash; make sure PostgreSQL is running and accessible</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">"no code at address" in logs</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">V7 contract not yet deployed in this EVM</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Normal on first start when RELAYER_ADDRESS is set &mdash; node auto-deploys V7. Wait a few seconds and check again.</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">"NODE_OPERATOR_WALLET not set" in logs</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Missing environment variable</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Add NODE_OPERATOR_WALLET=0xYOUR_HUMAN_WALLET to your variables. Node runs fine without it but you won't receive rewards.</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Railway shows "Application error"</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Build or startup failure</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Check Deploy Logs in Railway for the error message. Most common cause: DATABASE_URL missing or RELAYER_PRIVATE_KEY in wrong format (must start with 0x).</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Port 8080 not reachable (Docker)</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Firewall or cloud provider config</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Open TCP port 8080 inbound in your firewall or cloud security group settings.</td>
+        </tr>
+        <tr>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Docker build fails with module error</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">No internet access during build</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Docker build needs outbound internet to download Go modules. Railway handles this automatically.</td>
+        </tr>
+      </table>
 
-      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">7. Earning Rewards</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:16px">Set <span style="color:var(--neon);font-family:var(--font-mono)">NODE_OPERATOR_WALLET</span> to a wallet address that is registered as a human on Aequitas. The node auto-registers it on startup and you will see <span style="color:var(--teal);font-family:var(--font-mono)">[NODE] Registered node operator wallet: 0x…</span> in the logs. Rewards from the Validators Pool (40% of all protocol fees) are distributed every 24 h by the primary node proportionally to all registered node operator wallets. Secondary nodes do not need to trigger the distribution themselves — just keep the node running.</div>
-
+      <!-- Footer -->
       <div style="font-size:0.58rem;color:var(--gold);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid rgba(245,166,35,0.2);padding-bottom:6px">Questions / Feedback</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9">Open an issue on <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--purple)">GitHub</a> or reach the Aequitas team via the repository. BETA feedback on node setup friction, performance, and documentation gaps is especially welcome.</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9">Open an issue on <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--purple)">GitHub</a> or reach the Aequitas team via the repository. BETA feedback on node setup, performance, and documentation gaps is especially welcome. Download this guide as a PDF in your selected language using the button above.</div>
     </div>
   </div>
   <div class="nc" style="grid-column:1/-1">
@@ -2827,7 +2971,46 @@ function _buildNodeGuidePDF(lang) {
       s8:'8. Validator-Belöhnungen erhalten',w8:'Validator-Belöhnungen kommen aus dem Validators-Pool (40% aller Protokollgebühren). Schritte um Belöhnungen zu erhalten:',b8:['Zuerst als Mensch auf Aequitas registrieren: Android-App installieren und biometrische Registrierung abschließen um Wallet-Adresse und 1.000 AEQ zu erhalten','NODE_OPERATOR_WALLET auf diese registrierte Wallet-Adresse in den Umgebungsvariablen des Nodes setzen','Node starten (oder neu starten) — er ruft RegisterNode() beim Start auf. In Logs bestätigen: "[NODE] Registered node operator wallet: 0xDEINE_WALLET"','Der Primär-Node verteilt Belöhnungen alle 24 Stunden an alle registrierten Node-Betreiber-Wallets proportional zur Blockproduktion','Sekundäre Nodes müssen die Verteilung NICHT auslösen — einfach den Node laufen lassen und synchronisiert halten','In der BETA keine Mindest-Verfügbarkeit erforderlich, aber dauerhaft offline Nodes tragen weniger zur Blockproduktion und zum Pool-Anteil bei'],
       s9:'9. Fehlerbehebung',th:['Symptom','Wahrscheinliche Ursache','Lösung'],tr:[['Höhe bleibt bei 0 nach Start','PEER_NODES nicht gesetzt oder nicht erreichbar','PEER_NODES=https://aequitas-production-9fba.up.railway.app setzen und neu deployen'],['"no code at address" in Logs','V7-Contract nicht im EVM deployed','RELAYER_ADDRESS prüfen; Node deployed V7 automatisch beim Start wenn fehlend'],['"NODE_OPERATOR_WALLET not set" in Logs','Fehlende Umgebungsvariable','NODE_OPERATOR_WALLET auf registrierte Mensch-Wallet-Adresse setzen'],['DATABASE_URL-Fehler beim Start','Falscher Verbindungsstring oder DB nicht erreichbar','Format prüfen: postgres://user:pass@host:5432/dbname und PostgreSQL-Erreichbarkeit'],['Port 8080 nicht erreichbar','Firewall oder Cloud-Provider-Konfiguration','TCP 8080 eingehend öffnen; Railway/Render/VPS-Port-Einstellungen prüfen'],['Docker-Build mit Go-Modul-Fehler','Kein Internetzugang beim Build','Build-Umgebung muss ausgehenden Internetzugang haben; Railway handhabt dies automatisch']],
       s10:'10. MetaMask-Konfiguration',m10:'Um deinen eigenen Node als RPC-Endpunkt in MetaMask oder einer anderen EVM-kompatiblen Wallet zu verwenden:',mh:['Feld','Wert'],mr:[['Netzwerkname','Aequitas Chain'],['RPC-URL','https://DEINE-NODE-URL/rpc'],['Chain-ID','1926  (hex: 0x786)'],['Währungssymbol','AEQ'],['Dezimalstellen','18'],['Block-Explorer','https://aequitas-production-9fba.up.railway.app']],
-      foot:'Open Source · Erlaubnisfrei · Keine Admin-Schlüssel · Aequitas Chain V7 · Chain ID 1926',link:'github.com/hanoi96international-gif/Aequitas'}
+      foot:'Open Source · Erlaubnisfrei · Keine Admin-Schlüssel · Aequitas Chain V7 · Chain ID 1926',link:'github.com/hanoi96international-gif/Aequitas'},
+    es:{title:'Guia del Operador de Nodos Aequitas',sub:'Guia completa paso a paso · Aequitas Chain (Chain ID 1926)',badge:'BETA v0.1 · Codigo Abierto · Sin permisos · Sin stake requerido',
+      s1:'1. Vision General',what:'Que hace un nodo',wtxt:'Un nodo Aequitas participa plenamente en la red: produce bloques en el consenso BlockDAG, valida pruebas biometricas Groth16 de conocimiento cero para nuevos registros humanos, aplica limites de riqueza y demurrage a nivel de protocolo, sincroniza el estado con pares via libp2p + HTTP y ejecuta distribuciones diarias de pools. Cada nodo ejecuta la cadena completa: no hay clientes ligeros.',
+      earn:'Que ganas',etxt:'Establece NODE_OPERATOR_WALLET en una billetera humana registrada. El Pool de Validadores acumula el 40% de todas las tarifas del protocolo. Cada 24 h el nodo primario distribuye el saldo proporcionalmente entre todos los operadores registrados. No se requiere stake.',
+      s2:'2. Requisitos',rh:['Componente','Minimo','Recomendado'],rr:[['SO','Linux / host con Docker','Ubuntu 22.04 LTS'],['RAM','512 MB','1 GB'],['CPU','1 vCPU','2 vCPU'],['Almacenamiento','2 GB','10 GB SSD'],['Base de datos','PostgreSQL 14+','Railway o Supabase'],['Red','IP publica / reenvio de puerto','TCP 8080 abierto']],
+      s3:'3. Variables de Entorno',e3:'Configura estas variables antes de iniciar el nodo. Las marcadas SI son obligatorias.',eh:['Variable','Proposito','Requerida?'],er:[['DATABASE_URL','Cadena de conexion PostgreSQL: postgres://user:pass@host:5432/aequitas','SI'],['RELAYER_PRIVATE_KEY','Clave privada (0x...) del EOA que firma registros on-chain','SI'],['NODE_OPERATOR_WALLET','Billetera humana registrada que recibe recompensas diarias del pool','Para recomp.'],['RELAYER_ADDRESS','Direccion EOA. Tiene fallback pero configurar explicitamente.','Recomendado'],['PORT','Puerto HTTP. Por defecto: 8080','NO'],['PEER_NODES','URLs de bootstrap (separadas por coma). Usar URL del nodo primario.','Recomendado'],['NODE_KEY','Hex 32 bytes para identidad P2P estable. Se genera automaticamente si no se establece.','NO'],['IS_PRIMARY_NODE','"true" solo en el nodo primario designado. Activa distribuciones diarias.','NO'],['RESET_STATE','"true" borra la BD al iniciar. DESTRUCTIVO.','NO']],
+      s4:'4. Inicio Rapido — Railway (Recomendado)',r4:'Railway es la forma mas rapida de comenzar. El nivel gratuito cubre los requisitos minimos para BETA. Tiempo estimado: 10-15 minutos.',rs:['Haz un fork del repo: https://github.com/hanoi96international-gif/Aequitas','Crea una cuenta en railway.app e inicia un nuevo proyecto','Haz clic en "Deploy from GitHub Repo" y selecciona tu fork','En el proyecto: + New → Database → Add PostgreSQL','Ve a tu servicio → Variables y agrega las variables de la Seccion 3','Establece PEER_NODES=https://aequitas-production-9fba.up.railway.app','Establece NODE_OPERATOR_WALLET=<tu billetera humana AEQ>','Establece RELAYER_PRIVATE_KEY=<tu clave privada EOA>','Haz clic en "Deploy" — el Dockerfile gestiona la compilacion (~3 min)','En los logs busca: "Aequitas Node Running" y "[NODE] Registered node operator wallet"','Abre TU-URL/api/status para confirmar que el nodo esta activo','Agrega el RPC a MetaMask: Chain ID 1926, Simbolo AEQ, URL https://TU-URL/rpc'],rn:'Railway asigna un subdominio aleatorio; los dominios personalizados se configuran en ajustes del proyecto.',
+      s5:'5. Inicio Rapido — Docker',d5:'Para VPS, VM en la nube o servidor local. Requiere Docker y PostgreSQL disponibles.',dc:'git clone https://github.com/hanoi96international-gif/Aequitas\ncd Aequitas\n\n# Construir imagen (~3 min)\ndocker build -t aequitas-node .\n\n# Ejecutar nodo\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n  -e RELAYER_PRIVATE_KEY="0xTU_CLAVE_PRIVADA" \\\n  -e RELAYER_ADDRESS="0xTU_DIRECCION" \\\n  -e NODE_OPERATOR_WALLET="0xTU_BILLETERA_HUMANA" \\\n  -e PEER_NODES="https://aequitas-production-9fba.up.railway.app" \\\n  -p 8080:8080 aequitas-node\n\ndocker logs -f aequitas-node',dn:'El contenedor expone el puerto 8080. Abre TCP 8080 entrante en tu firewall.',
+      s6:'6. Verificar el Nodo',v6:'Una vez en ejecucion, comprueba estos endpoints:',vc:'curl https://TU-NODO-URL/api/status\n# Esperado: {"height": N, "total_humans": N}\n\ncurl -X POST https://TU-NODO-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'',
+      s7:'7. Red P2P y Sincronizacion',p7:'Establece PEER_NODES en al menos una URL de bootstrap. El nodo sincroniza la cadena automaticamente. Multidireccion libp2p del nodo primario:',pa:'/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R',pn:'La URL HTTP en PEER_NODES es mas estable para bootstrap. La multidireccion puede cambiar si el nodo primario se reimplementa.',
+      s8:'8. Ganar Recompensas de Validador',w8:'Las recompensas provienen del Pool de Validadores (40% de todas las tarifas del protocolo). Pasos:',b8:['Registrate como humano en Aequitas: instala la app Android y completa el registro biometrico','Establece NODE_OPERATOR_WALLET en esa direccion de billetera registrada','Reinicia tu nodo y confirma en logs: "[NODE] Registered node operator wallet: 0x..."','El nodo primario distribuye recompensas cada 24 h a todos los operadores registrados','Los nodos secundarios NO necesitan activar la distribucion — solo manten tu nodo en ejecucion'],
+      s9:'9. Solucion de Problemas',th:['Sintoma','Causa probable','Solucion'],tr:[['Altura permanece en 0','PEER_NODES no configurado','Establece PEER_NODES=https://aequitas-production-9fba.up.railway.app y redespliega'],['"no code at address" en logs','Contrato V7 no desplegado aun','Normal en el primer inicio — el nodo despliega V7 automaticamente'],['Error DATABASE_URL','Cadena de conexion incorrecta','Verifica el formato: postgres://usuario:clave@host:5432/dbname'],['Puerto 8080 no accesible','Firewall o configuracion del proveedor','Abre TCP 8080 entrante en tu firewall']],
+      s10:'10. Configuracion de MetaMask',m10:'Para usar tu nodo como endpoint RPC en MetaMask:',mh:['Campo','Valor'],mr:[['Nombre de red','Aequitas Chain'],['URL RPC','https://TU-NODO-URL/rpc'],['Chain ID','1926  (hex: 0x786)'],['Simbolo','AEQ'],['Decimales','18'],['Explorador','https://aequitas-production-9fba.up.railway.app']],
+      foot:'Codigo abierto · Sin permisos · Sin claves de administrador · Aequitas Chain V7 · Chain ID 1926',link:'github.com/hanoi96international-gif/Aequitas'},
+    it:{title:'Guida per Operatori di Nodi Aequitas',sub:'Guida completa passo dopo passo · Aequitas Chain (Chain ID 1926)',badge:'BETA v0.1 · Open Source · Senza permessi · Nessuno stake richiesto',
+      s1:'1. Panoramica',what:'Cosa fa un nodo',wtxt:'Un nodo Aequitas partecipa pienamente alla rete: produce blocchi nel consenso BlockDAG, valida prove biometriche Groth16 a conoscenza zero per le nuove registrazioni umane, applica limiti di ricchezza e demurrage a livello di protocollo, sincronizza lo stato con i peer via libp2p + HTTP ed esegue distribuzioni giornaliere dei pool. Ogni nodo esegue la catena completa: non esistono client leggeri.',
+      earn:'Cosa guadagni',etxt:'Imposta NODE_OPERATOR_WALLET su un indirizzo wallet registrato come umano. Il Pool Validatori accumula il 40% di tutte le commissioni di protocollo. Ogni 24 h il nodo primario distribuisce il saldo del pool proporzionalmente tra tutti i wallet degli operatori registrati. Nessuno stake richiesto.',
+      s2:'2. Requisiti',rh:['Componente','Minimo','Consigliato'],rr:[['SO','Linux / host con Docker','Ubuntu 22.04 LTS'],['RAM','512 MB','1 GB'],['CPU','1 vCPU','2 vCPU'],['Archiviazione','2 GB','10 GB SSD'],['Database','PostgreSQL 14+','Railway o Supabase'],['Rete','IP pubblica / port forward','TCP 8080 aperto']],
+      s3:'3. Variabili di Ambiente',e3:'Configura queste variabili prima di avviare il nodo. Quelle contrassegnate con SI sono obbligatorie.',eh:['Variabile','Scopo','Richiesta?'],er:[['DATABASE_URL','Stringa di connessione PostgreSQL: postgres://user:pass@host:5432/aequitas','SI'],['RELAYER_PRIVATE_KEY','Chiave privata (0x...) dell\'EOA che firma le registrazioni on-chain','SI'],['NODE_OPERATOR_WALLET','Wallet umano registrato che riceve le ricompense giornaliere del pool','Per ricomp.'],['RELAYER_ADDRESS','Indirizzo EOA corrispondente a RELAYER_PRIVATE_KEY. Ha un fallback ma impostalo esplicitamente.','Consigliato'],['PORT','Porta HTTP per API + JSON-RPC. Default: 8080','NO'],['PEER_NODES','URL dei peer bootstrap (separati da virgola). Usa l\'URL del nodo primario.','Consigliato'],['NODE_KEY','Hex 32 byte per identita P2P stabile. Auto-generato se omesso.','NO'],['IS_PRIMARY_NODE','"true" solo sul nodo primario designato. Abilita distribuzioni giornaliere.','NO'],['RESET_STATE','"true" cancella il DB all\'avvio. DISTRUTTIVO.','NO']],
+      s4:'4. Avvio Rapido — Railway (Consigliato)',r4:'Railway e il modo piu veloce per iniziare. Il livello gratuito soddisfa i requisiti minimi per la BETA. Tempo stimato: 10-15 minuti.',rs:['Fai un fork del repo: https://github.com/hanoi96international-gif/Aequitas','Crea un account su railway.app e avvia un nuovo progetto','Clicca "Deploy from GitHub Repo" e seleziona il tuo fork','Nel progetto: + New → Database → Add PostgreSQL','Vai al tuo servizio → Variables e aggiungi le variabili della Sezione 3','Imposta PEER_NODES=https://aequitas-production-9fba.up.railway.app','Imposta NODE_OPERATOR_WALLET=<il tuo wallet umano AEQ>','Imposta RELAYER_PRIVATE_KEY=<la tua chiave privata EOA>','Clicca "Deploy" — il Dockerfile gestisce la compilazione (~3 min)','Nei log cerca: "Aequitas Node Running" e "[NODE] Registered node operator wallet"','Apri TUO-URL/api/status per confermare che il nodo e attivo','Aggiungi il tuo RPC a MetaMask: Chain ID 1926, Simbolo AEQ, URL https://TUO-URL/rpc'],rn:'Railway assegna un sottodominio casuale; i domini personalizzati si configurano nelle impostazioni del progetto.',
+      s5:'5. Avvio Rapido — Docker',d5:'Per VPS, VM cloud o server locale. Prerequisiti: Docker installato e PostgreSQL disponibile.',dc:'git clone https://github.com/hanoi96international-gif/Aequitas\ncd Aequitas\n\n# Crea immagine (~3 min)\ndocker build -t aequitas-node .\n\n# Avvia nodo\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n  -e RELAYER_PRIVATE_KEY="0xLA_TUA_CHIAVE_PRIVATA" \\\n  -e RELAYER_ADDRESS="0xIL_TUO_INDIRIZZO" \\\n  -e NODE_OPERATOR_WALLET="0xIL_TUO_WALLET_UMANO" \\\n  -e PEER_NODES="https://aequitas-production-9fba.up.railway.app" \\\n  -p 8080:8080 aequitas-node\n\ndocker logs -f aequitas-node',dn:'Il container espone la porta 8080. Apri TCP 8080 in entrata nel firewall o nel gruppo di sicurezza cloud.',
+      s6:'6. Verifica il Nodo',v6:'Una volta avviato, controlla questi endpoint per confermare che il nodo e sincronizzato.',vc:'curl https://TUO-NODO-URL/api/status\n# Atteso: {"height": N, "total_humans": N}\n\ncurl -X POST https://TUO-NODO-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'',
+      s7:'7. Rete P2P e Sincronizzazione',p7:'Imposta PEER_NODES su almeno un URL di bootstrap noto. Il nodo si connette e sincronizza la catena automaticamente. Multiindirizzo libp2p del nodo primario:',pa:'/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R',pn:'L\'URL HTTP in PEER_NODES e piu stabile per il bootstrap. Il multiindirizzo puo cambiare se il nodo primario viene ridistribuito su Railway.',
+      s8:'8. Guadagnare Ricompense da Validatore',w8:'Le ricompense provengono dal Pool Validatori (40% di tutte le commissioni di protocollo). Passaggi:',b8:['Prima registrati come umano su Aequitas: installa l\'app Android e completa la registrazione biometrica','Imposta NODE_OPERATOR_WALLET su quell\'indirizzo wallet registrato','Riavvia il nodo e conferma nei log: "[NODE] Registered node operator wallet: 0x..."','Il nodo primario distribuisce le ricompense ogni 24 h a tutti i wallet degli operatori registrati','I nodi secondari NON devono attivare la distribuzione — tieni solo il nodo in esecuzione'],
+      s9:'9. Risoluzione dei Problemi',th:['Sintomo','Causa probabile','Soluzione'],tr:[['L\'altezza rimane a 0','PEER_NODES non impostato','Imposta PEER_NODES=https://aequitas-production-9fba.up.railway.app e ridistribuisci'],['"no code at address" nei log','Contratto V7 non ancora distribuito','Normale al primo avvio — il nodo distribuisce V7 automaticamente'],['Errore DATABASE_URL','Stringa di connessione errata','Verifica il formato: postgres://utente:password@host:5432/dbname'],['Porta 8080 non raggiungibile','Firewall o configurazione del provider','Apri TCP 8080 in entrata nel tuo firewall']],
+      s10:'10. Configurazione MetaMask',m10:'Per usare il tuo nodo come endpoint RPC in MetaMask:',mh:['Campo','Valore'],mr:[['Nome rete','Aequitas Chain'],['URL RPC','https://TUO-NODO-URL/rpc'],['Chain ID','1926  (hex: 0x786)'],['Simbolo','AEQ'],['Decimali','18'],['Block Explorer','https://aequitas-production-9fba.up.railway.app']],
+      foot:'Open source · Senza permessi · Senza chiavi admin · Aequitas Chain V7 · Chain ID 1926',link:'github.com/hanoi96international-gif/Aequitas'},
+    id:{title:'Panduan Operator Node Aequitas',sub:'Panduan lengkap langkah demi langkah · Aequitas Chain (Chain ID 1926)',badge:'BETA v0.1 · Open Source · Tanpa Izin · Tidak perlu stake',
+      s1:'1. Gambaran Umum',what:'Apa yang dilakukan node',wtxt:'Node Aequitas berpartisipasi penuh dalam jaringan: memproduksi blok dalam konsensus BlockDAG, memvalidasi bukti biometrik Groth16 zero-knowledge untuk pendaftaran manusia baru, menerapkan batas kekayaan dan demurrage di tingkat protokol, menyinkronkan status dengan peer via libp2p + HTTP, dan menjalankan distribusi pool harian. Setiap node menjalankan rantai penuh — tidak ada klien ringan.',
+      earn:'Apa yang kamu dapatkan',etxt:'Atur NODE_OPERATOR_WALLET ke alamat wallet manusia terdaftar. Pool Validator mengumpulkan 40% dari semua biaya protokol. Setiap 24 jam, node primer mendistribusikan saldo pool secara proporsional ke semua wallet operator node terdaftar. Tidak perlu stake.',
+      s2:'2. Persyaratan',rh:['Komponen','Minimum','Direkomendasikan'],rr:[['OS','Linux / host berkemampuan Docker','Ubuntu 22.04 LTS'],['RAM','512 MB','1 GB'],['CPU','1 vCPU','2 vCPU'],['Penyimpanan','2 GB','10 GB SSD'],['Database','PostgreSQL 14+','Railway atau Supabase'],['Jaringan','IP publik / port forward','TCP 8080 terbuka']],
+      s3:'3. Variabel Lingkungan',e3:'Atur variabel ini sebelum memulai node. Yang ditandai YA wajib diisi.',eh:['Variabel','Tujuan','Wajib?'],er:[['DATABASE_URL','String koneksi PostgreSQL: postgres://user:pass@host:5432/aequitas','YA'],['RELAYER_PRIVATE_KEY','Kunci privat (0x...) EOA yang menandatangani pendaftaran on-chain','YA'],['NODE_OPERATOR_WALLET','Wallet manusia terdaftar yang menerima hadiah validator harian','Untuk hadiah'],['RELAYER_ADDRESS','Alamat EOA yang cocok dengan RELAYER_PRIVATE_KEY. Ada fallback tapi atur secara eksplisit.','Direkomendasikan'],['PORT','Port HTTP untuk API + JSON-RPC. Default: 8080','TIDAK'],['PEER_NODES','URL peer bootstrap (dipisah koma). Gunakan URL node primer.','Direkomendasikan'],['NODE_KEY','Hex 32 byte untuk identitas P2P stabil. Dibuat otomatis jika tidak diatur.','TIDAK'],['IS_PRIMARY_NODE','"true" hanya pada node primer yang ditunjuk. Mengaktifkan distribusi harian.','TIDAK'],['RESET_STATE','"true" menghapus database saat startup. DESTRUKTIF.','TIDAK']],
+      s4:'4. Mulai Cepat — Railway (Direkomendasikan)',r4:'Railway adalah cara tercepat untuk memulai. Tingkat gratis memenuhi persyaratan minimum untuk BETA. Perkiraan waktu: 10-15 menit.',rs:['Fork repo: https://github.com/hanoi96international-gif/Aequitas','Buat akun di railway.app dan mulai proyek baru','Klik "Deploy from GitHub Repo" dan pilih fork kamu','Di proyek: + New → Database → Add PostgreSQL','Buka layanan kamu → Variables dan tambahkan variabel dari Bagian 3','Atur PEER_NODES=https://aequitas-production-9fba.up.railway.app','Atur NODE_OPERATOR_WALLET=<wallet manusia AEQ kamu>','Atur RELAYER_PRIVATE_KEY=<kunci privat EOA kamu>','Klik "Deploy" — Dockerfile mengelola kompilasi (~3 menit)','Di log cari: "Aequitas Node Running" dan "[NODE] Registered node operator wallet"','Buka URL-KAMU/api/status untuk memastikan node aktif','Tambahkan RPC ke MetaMask: Chain ID 1926, Simbol AEQ, URL https://URL-KAMU/rpc'],rn:'Railway menetapkan subdomain acak; domain kustom dapat diatur di pengaturan proyek.',
+      s5:'5. Mulai Cepat — Docker',d5:'Untuk VPS, VM cloud, atau server lokal. Prasyarat: Docker terinstal, PostgreSQL tersedia.',dc:'git clone https://github.com/hanoi96international-gif/Aequitas\ncd Aequitas\n\n# Buat image (~3 menit)\ndocker build -t aequitas-node .\n\n# Jalankan node\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n  -e RELAYER_PRIVATE_KEY="0xKUNCI_PRIVAT_KAMU" \\\n  -e RELAYER_ADDRESS="0xALAMAT_KAMU" \\\n  -e NODE_OPERATOR_WALLET="0xWALLET_MANUSIA_KAMU" \\\n  -e PEER_NODES="https://aequitas-production-9fba.up.railway.app" \\\n  -p 8080:8080 aequitas-node\n\ndocker logs -f aequitas-node',dn:'Container mengekspos port 8080. Buka TCP 8080 inbound di firewall atau security group cloud kamu.',
+      s6:'6. Verifikasi Node',v6:'Setelah berjalan, periksa endpoint ini untuk memastikan node tersinkronisasi.',vc:'curl https://URL-NODE-KAMU/api/status\n# Diharapkan: {"height": N, "total_humans": N}\n\ncurl -X POST https://URL-NODE-KAMU/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'',
+      s7:'7. Jaringan P2P dan Sinkronisasi',p7:'Atur PEER_NODES ke setidaknya satu URL bootstrap yang diketahui. Node terhubung dan menyinkronkan rantai penuh secara otomatis. Multialamat libp2p node primer:',pa:'/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R',pn:'URL HTTP di PEER_NODES lebih stabil untuk bootstrap. Multialamat libp2p dapat berubah jika node primer di-redeploy di Railway.',
+      s8:'8. Mendapatkan Hadiah Validator',w8:'Hadiah berasal dari Pool Validator (40% dari semua biaya protokol). Langkah-langkah:',b8:['Pertama daftar sebagai manusia di Aequitas: instal aplikasi Android dan selesaikan pendaftaran biometrik','Atur NODE_OPERATOR_WALLET ke alamat wallet terdaftar tersebut','Mulai ulang node kamu dan konfirmasi di log: "[NODE] Registered node operator wallet: 0x..."','Node primer mendistribusikan hadiah setiap 24 jam ke semua wallet operator terdaftar','Node sekunder TIDAK perlu memicu distribusi — cukup jalankan node kamu'],
+      s9:'9. Pemecahan Masalah',th:['Gejala','Kemungkinan Penyebab','Solusi'],tr:[['Tinggi tetap di 0','PEER_NODES tidak diatur','Atur PEER_NODES=https://aequitas-production-9fba.up.railway.app dan deploy ulang'],['"no code at address" di log','Kontrak V7 belum di-deploy','Normal saat pertama kali — node men-deploy V7 secara otomatis'],['Error DATABASE_URL','String koneksi salah','Periksa format: postgres://user:pass@host:5432/dbname'],['Port 8080 tidak dapat diakses','Firewall atau konfigurasi provider','Buka TCP 8080 inbound di firewall kamu']],
+      s10:'10. Konfigurasi MetaMask',m10:'Untuk menggunakan node kamu sebagai endpoint RPC di MetaMask:',mh:['Kolom','Nilai'],mr:[['Nama Jaringan','Aequitas Chain'],['URL RPC','https://URL-NODE-KAMU/rpc'],['Chain ID','1926  (hex: 0x786)'],['Simbol','AEQ'],['Desimal','18'],['Block Explorer','https://aequitas-production-9fba.up.railway.app']],
+      foot:'Open source · Tanpa izin · Tanpa kunci admin · Aequitas Chain V7 · Chain ID 1926',link:'github.com/hanoi96international-gif/Aequitas'}
   };
   var c=C[lang]||C['en'];
   var fn='aequitas-node-operator-guide-'+lang+'.pdf';

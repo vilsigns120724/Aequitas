@@ -172,7 +172,7 @@ registered_at TIMESTAMP DEFAULT NOW()
 // supplies the real wallet), the app itself never computes a commitment
 // and so can't poll by one. It only ever knows its own bio_hash.
 cs.db.Exec(`ALTER TABLE bio_registrations ADD COLUMN IF NOT EXISTS bio_hash TEXT`)
-cs.db.Exec(`CREATE INDEX IF NOT EXISTS idx_bio_registrations_bio_hash ON bio_registrations(bio_hash)`)
+cs.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_bio_registrations_bio_hash ON bio_registrations(bio_hash) WHERE bio_hash IS NOT NULL`)
 // Single-row table holding the AEQ<->tUSD pool reserves. A fixed id=1 row
 // is used instead of a key-value table since there's only ever one pool
 // right now — simpler queries, and trivial to extend to multiple pools
@@ -644,6 +644,28 @@ return true
 return false
 }
 
+// bootstrapMultiplierLocked returns the effective wealth cap multiplier.
+// During bootstrap (< 25 registered humans) the multiplier scales with the
+// human count — max(5, min(N, 25)) — so early joiners cannot accumulate
+// 25,000 AEQ before meaningful participation exists. At 25+ humans the
+// full wealthCapMultiplier (25×) applies permanently. Caller must hold cs.mu.
+func (cs *ChainState) bootstrapMultiplierLocked() float64 {
+count := 0
+for _, acc := range cs.accounts {
+if acc.IsHuman {
+count++
+}
+}
+if count >= 25 {
+return wealthCapMultiplier
+}
+m := float64(count)
+if m < 5.0 {
+m = 5.0
+}
+return m
+}
+
 func (cs *ChainState) enforceWealthCapLocked(acc *AccountState) {
 if isTokenomicsPoolAddress(acc.Address) {
 return
@@ -659,7 +681,8 @@ avg := cs.getAverageBalanceLocked()
 if avg <= 0 {
 return // no meaningful average yet (e.g. only one human registered so far)
 }
-cap := avg * wealthCapMultiplier
+multiplier := cs.bootstrapMultiplierLocked()
+cap := avg * multiplier
 if acc.Balance <= cap {
 return
 }
@@ -667,7 +690,7 @@ excess := acc.Balance - cap
 acc.Balance = cap
 cs.distributeSwapFee(excess, true)
 fmt.Printf("[WEALTH CAP] %s exceeded %.2fx average (%.2f AEQ) — %.4f AEQ excess redistributed to pools\n",
-acc.Address, wealthCapMultiplier, cap, excess)
+acc.Address, multiplier, cap, excess)
 }
 
 // DemurrageStatus describes whether/when an idle account's AEQ will

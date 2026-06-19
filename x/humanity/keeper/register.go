@@ -298,13 +298,51 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// endpoints can block duplicate biometric registrations via that table.
 	// Use the keccak256 bioHashKey when available — it matches the format
 	// the proof server uses for its own duplicate checks.
-	if req.BioHashKey != "" {
-		a.state.SaveBioHash(req.BioHashKey, wallet)
-	} else if req.BioHash != "" {
-		a.state.SaveBioHash(req.BioHash, wallet)
+	bioHashKey := req.BioHashKey
+	if bioHashKey == "" {
+		bioHashKey = req.BioHash
+	}
+	if bioHashKey != "" {
+		a.state.SaveBioHash(bioHashKey, wallet)
+		// Fire-and-forget: sync to proof server so its /prove duplicate check
+		// is actually populated. Non-blocking — a slow proof server must not
+		// delay the registration response.
+		go notifyProofServer(bioHashKey, wallet)
 	}
 
 	return txHash, nil
+}
+
+// notifyProofServer POSTs the registered bioHashKey to the proof server's
+// /store-bio endpoint so its duplicate check stays in sync with the chain.
+// Requires PROOF_SERVER_URL and CHAIN_SERVICE_TOKEN env vars on the chain node;
+// if either is missing the call is skipped silently (registration already succeeded).
+func notifyProofServer(bioHashKey, wallet string) {
+	proofServerURL := os.Getenv("PROOF_SERVER_URL")
+	if proofServerURL == "" {
+		proofServerURL = "https://aequitas-proof-server-production.up.railway.app"
+	}
+	token := os.Getenv("CHAIN_SERVICE_TOKEN")
+	if token == "" {
+		return
+	}
+	body, _ := json.Marshal(map[string]string{"bioHashKey": bioHashKey, "wallet": wallet})
+	req, err := http.NewRequest("POST", proofServerURL+"/store-bio", bytes.NewReader(body))
+	if err != nil {
+		fmt.Printf("[REGISTER] Warning: could not build proof-server notify request: %v\n", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-chain-token", token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Printf("[REGISTER] Warning: proof-server /store-bio call failed: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		fmt.Printf("[REGISTER] Warning: proof-server /store-bio returned %d\n", resp.StatusCode)
+	}
 }
 
 func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractAddr, claimedHuman common.Address, pA [2]*big.Int, pB [2][2]*big.Int, pC [2]*big.Int, pubSignals [2]*big.Int, sigBytes []byte, calldata []byte) (string, error) {
