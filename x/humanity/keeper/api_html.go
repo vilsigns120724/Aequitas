@@ -183,6 +183,48 @@ input[type=number]{background:var(--card2);border:1px solid var(--border);color:
 input[type=number]:focus{border-color:var(--purple);box-shadow:0 0 8px rgba(139,92,246,0.2)}
 input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 @media(max-width:480px){.stats-grid{grid-template-columns:repeat(2,1fr)}.stat-val{font-size:1.4rem}header{height:52px}.logo-text{font-size:0.85rem;letter-spacing:2px}.badge-dag{display:none}.main-grid{padding:0 12px 12px}.hero{padding:14px 12px 0}}
+/* ── SWAP ENHANCEMENTS ────────────────────────────────────── */
+.sd-panel{background:var(--card2);border:1px solid rgba(139,92,246,0.18);border-radius:var(--radius-sm);padding:13px;margin:8px 0;animation:sdIn 0.18s ease}
+@keyframes sdIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.sd-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:0.63rem;border-bottom:1px solid rgba(139,92,246,0.07)}
+.sd-row:last-child{border-bottom:none}
+.sd-key{color:var(--muted)}
+.sd-val{font-weight:600}
+.impact-low{color:var(--neon)}.impact-med{color:var(--gold)}.impact-hi{color:var(--red)}
+.sd-header{font-size:0.54rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.sd-header::before{content:'';display:inline-block;width:3px;height:10px;background:var(--purple);border-radius:2px}
+/* ── POOL DEPTH BAR ──────────────────────────────────────── */
+.depth-track{height:14px;border-radius:7px;overflow:hidden;display:flex;border:1px solid var(--border)}
+.depth-aeq-fill{background:linear-gradient(90deg,var(--purple),rgba(139,92,246,0.55));transition:width 1.2s ease}
+.depth-tusd-fill{background:linear-gradient(90deg,rgba(6,182,212,0.55),var(--teal));flex:1}
+.depth-lbls{display:flex;justify-content:space-between;font-size:0.56rem;color:var(--muted);margin-top:5px}
+.amm-box{background:rgba(139,92,246,0.04);border:1px solid rgba(139,92,246,0.13);border-radius:var(--radius-sm);padding:13px;margin-top:10px}
+.amm-formula{font-size:0.67rem;color:var(--purple);font-family:var(--font-mono);text-align:center;padding:9px;background:rgba(139,92,246,0.09);border-radius:6px;margin:8px 0;border:1px solid rgba(139,92,246,0.13);letter-spacing:0.5px}
+.amm-text{font-size:0.6rem;color:var(--muted);line-height:1.88}
+/* ── UBI HERO ────────────────────────────────────────────── */
+.ubi-hero-section{background:linear-gradient(135deg,rgba(245,166,35,0.1),rgba(139,92,246,0.06),rgba(0,255,209,0.04));border:1px solid rgba(245,166,35,0.3);border-radius:var(--radius);padding:24px;margin:14px 0;text-align:center;position:relative;overflow:hidden;box-shadow:0 0 40px rgba(245,166,35,0.07)}
+.ubi-hero-section::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--gold),var(--neon),var(--purple),var(--neon),var(--gold))}
+.ubi-big-timer{font-size:2rem;font-weight:900;font-family:var(--font-mono);color:var(--gold);text-shadow:0 0 25px rgba(245,166,35,0.5);letter-spacing:3px;margin:8px 0}
+.ubi-pool-amount{font-size:1.5rem;font-weight:700;font-family:var(--font-display);color:var(--neon);text-shadow:0 0 15px rgba(0,255,209,0.35);margin:4px 0}
+.ubi-fill-track{height:7px;background:rgba(245,166,35,0.1);border-radius:4px;overflow:hidden;margin:12px auto;max-width:320px;border:1px solid rgba(245,166,35,0.18)}
+.ubi-fill-bar{height:100%;background:linear-gradient(90deg,var(--gold),var(--neon));border-radius:4px;transition:width 2s ease;box-shadow:0 0 8px rgba(245,166,35,0.4);width:0%}
+.ubi-src-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+@media(max-width:580px){.ubi-src-grid{grid-template-columns:1fr}}
+.ubi-src-card{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center;transition:all 0.2s}
+.ubi-src-card:hover{transform:translateY(-2px);box-shadow:var(--glow-purple)}
+.ubi-src-pct{font-size:1.25rem;font-weight:700;font-family:var(--font-display);margin-bottom:3px}
+.ubi-src-name{font-size:0.6rem;font-weight:700;margin-bottom:5px;letter-spacing:0.3px}
+.ubi-src-desc{font-size:0.57rem;color:var(--muted);line-height:1.75}
+.pools4-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:580px){.pools4-grid{grid-template-columns:1fr}}
+.pool4-card{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;transition:all 0.2s}
+.pool4-card:hover{transform:translateY(-2px);box-shadow:var(--glow-purple)}
+.pool4-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.pool4-name{font-size:0.61rem;font-weight:700;letter-spacing:0.3px}
+.pool4-badge{font-size:0.56rem;color:var(--muted);background:var(--card);border:1px solid var(--border);padding:2px 8px;border-radius:10px}
+.pool4-amount{font-size:1.05rem;font-weight:700;font-family:var(--font-display);margin-bottom:3px}
+.pool4-timer{font-size:0.59rem;font-weight:600;margin-bottom:7px}
+.pool4-desc{font-size:0.57rem;color:var(--muted);line-height:1.75}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.0/ethers.umd.min.js"></script>
 </head>
@@ -415,9 +457,15 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <button class="rbtn" id="swap-dir-a2t" onclick="setSwapDirection('aeq_to_tusd')" data-i18n="swap-aeq-to-tusd" style="flex:1">AEQ → tUSD</button>
       <button class="rbtn" id="swap-dir-t2a" onclick="setSwapDirection('tusd_to_aeq')" data-i18n="swap-tusd-to-aeq" style="flex:1">tUSD → AEQ</button>
     </div>
-    <input type="number" id="swap-amount" placeholder="Amount" style="width:100%;padding:14px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:16px;margin-bottom:8px;box-sizing:border-box">
-    <div class="ic-row" style="margin-bottom:8px"><span class="ic-key" data-i18n="swap-fee-est">Estimated 0.1% fee</span><span class="ic-val" id="swap-fee-est">—</span></div>
-    <div id="swap-warn" style="display:none;font-size:13px;padding:10px 12px;border-radius:8px;background:rgba(255,179,0,0.1);border:1px solid rgba(255,179,0,0.3);color:var(--gold);margin-bottom:16px"></div>
+    <input type="number" id="swap-amount" placeholder="Amount" oninput="updateFeeEstimate()" style="width:100%;padding:14px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:16px;margin-bottom:8px;box-sizing:border-box">
+    <div id="swap-details-panel" class="sd-panel" style="display:none">
+      <div class="sd-header" data-i18n="swap-details-hdr">Swap Details</div>
+      <div class="sd-row"><span class="sd-key">You receive (est.)</span><span class="sd-val" id="swap-out-est" style="color:var(--neon)">—</span></div>
+      <div class="sd-row"><span class="sd-key">Price impact</span><span class="sd-val" id="swap-price-impact">—</span></div>
+      <div class="sd-row"><span class="sd-key" data-i18n="swap-fee-est">Protocol fee (0.1%)</span><span class="sd-val" id="swap-fee-est" style="color:var(--muted)">—</span></div>
+      <div class="sd-row"><span class="sd-key">Exchange rate</span><span class="sd-val" id="swap-rate-display" style="color:var(--purple)">—</span></div>
+    </div>
+    <div id="swap-warn" style="display:none;font-size:13px;padding:10px 12px;border-radius:8px;background:rgba(255,179,0,0.1);border:1px solid rgba(255,179,0,0.3);color:var(--gold);margin-bottom:10px"></div>
 
     <button class="rbtn bc" id="swap-btn-conn" onclick="connectSwapWallet()" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
     <button class="rbtn br" id="swap-btn-go" onclick="doSwap()" disabled data-i18n="swap-btn-go">🔄 SWAP</button>
@@ -469,12 +517,27 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   </div>
 
   <div class="ic">
-    <div class="ic-title" data-i18n="swap-pool-title">Pool Status</div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-aeq">Pool AEQ Reserve</span><span class="ic-val" id="pool-reserve-aeq">—</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-tusd">Pool tUSD Reserve</span><span class="ic-val" id="pool-reserve-tusd">—</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-price">Current Price</span><span class="ic-val go" id="pool-price">—</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-fee-bps">Swap Fee</span><span class="ic-val g">0.1%</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-fee-split">Fee Distribution</span><span class="ic-val" data-i18n="swap-fee-split-v">40% Validators / 30% LPs / 20% UBI / 10% Treasury</span></div>
+    <div class="ic-title" data-i18n="swap-pool-title">AEQ / tUSD — Pool Status</div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-price">Spot Price</span><span class="ic-val go" id="pool-price">—</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-aeq">AEQ Reserve</span><span class="ic-val p" id="pool-reserve-aeq">—</span></div>
+    <div class="ic-row" style="margin-bottom:4px"><span class="ic-key" data-i18n="swap-pool-tusd">tUSD Reserve</span><span class="ic-val b" id="pool-reserve-tusd">—</span></div>
+    <div style="margin:12px 0 4px">
+      <div style="font-size:0.54rem;color:var(--muted);margin-bottom:6px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase">Pool Composition</div>
+      <div class="depth-track">
+        <div id="depth-aeq-fill" class="depth-aeq-fill" style="width:50%"></div>
+        <div class="depth-tusd-fill"></div>
+      </div>
+      <div class="depth-lbls">
+        <span style="color:var(--purple)">AEQ <span id="depth-aeq-pct">50%</span></span>
+        <span style="color:var(--teal)"><span id="depth-tusd-pct">50%</span> tUSD</span>
+      </div>
+    </div>
+    <div class="ic-row" style="padding-top:4px"><span class="ic-key" data-i18n="swap-fee-bps">Swap Fee</span><span class="ic-val g">0.1% · split 40/30/20/10</span></div>
+    <div class="amm-box">
+      <div style="font-size:0.54rem;color:var(--purple);font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">x × y = k — Constant Product AMM</div>
+      <div class="amm-formula">AEQ_reserve × tUSD_reserve = k (constant)</div>
+      <div class="amm-text">When you swap AEQ for tUSD, AEQ reserve grows and tUSD reserve shrinks — their product always stays equal to k. Every swap moves the price. Larger swaps relative to pool size cause greater price impact. The 0.1% fee is taken from the input before the formula is applied, ensuring the pool earns on every trade.</div>
+    </div>
   </div>
   <div class="ic">
     <div class="ic-title" data-i18n="swap-pools-addr-title">Tokenomics Pool Addresses</div>
@@ -560,32 +623,79 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div style="font-size:0.63rem;color:var(--muted);line-height:1.9" data-i18n="gini-why-text">A simple "richest vs. poorest" ratio is easy to game and misses what happens in the middle: a network could have 10,000 people, a low min/max spread, yet 90% of all AEQ concentrated in 100 wallets. The Gini coefficient detects this — a ratio does not. It captures the complete distribution across all verified humans in a single auditable number. Because Aequitas publishes this number on-chain (via updateGini), it is transparent, tamper-evident, and globally verifiable. The protocol uses it as the primary input signal for automatic phase transitions, wealth cap multiplier selection, and redistribution intensity — creating a self-correcting economic system governed entirely by mathematics. No human, no committee, no foundation can override the index reading or the mechanisms it triggers.</div>
     </div>
   </div>
-  <div class="idx">
-    <div class="idx-title" data-i18n="pools-title">Redistribution Pools</div>
-    <div class="idx-desc" data-i18n="pools-desc">Every swap fee, demurrage charge, and wealth cap overflow is automatically distributed across four pools. No manual intervention — the protocol handles all redistribution through code. Pools pay out daily to their respective beneficiaries.</div>
-    <div class="mrow">
-      <div class="mbox">
-        <div class="mval" id="pool-v" style="font-size:0.95rem">0.0000</div>
-        <div class="mlbl" data-i18n="vel-pool">Validators Pool</div>
-        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px" data-i18n="vel-pool-desc">40% of all fees → node operators who secure the network</div>
-        <div style="margin-top:6px;font-size:0.6rem;color:var(--purple);font-weight:600">⏰ Next: <span id="validators-timer">—</span></div>
+  <div class="idx" style="grid-column:1/-1">
+    <div class="idx-title" data-i18n="pools-title">Redistribution Pools — Daily Economic Rebalancing</div>
+    <div class="idx-desc" data-i18n="pools-desc">Every swap fee, demurrage charge, and wealth cap overflow flows automatically into four on-chain pools. No manual intervention, no admin key, no governance vote — the protocol distributes everything through code. Each pool pays out once per 24 hours.</div>
+
+    <!-- UBI HERO SECTION -->
+    <div class="ubi-hero-section">
+      <div style="font-size:0.58rem;color:var(--gold);letter-spacing:3px;text-transform:uppercase;font-weight:700;margin-bottom:6px" data-i18n="ubi-hero-title">Universal Basic Income Pool</div>
+      <div style="font-size:0.62rem;color:var(--muted);margin-bottom:10px" data-i18n="ubi-hero-sub">Accumulating — next payout distributed equally to all verified humans in:</div>
+      <div id="ubi-timer" class="ubi-big-timer">—</div>
+      <div style="font-size:0.6rem;color:var(--muted);margin-bottom:6px">current pool balance</div>
+      <div id="pool-u" class="ubi-pool-amount">0.0000 AEQ</div>
+      <div class="ubi-fill-track"><div id="ubi-fill-bar" class="ubi-fill-bar"></div></div>
+      <div style="font-size:0.61rem;color:var(--muted);line-height:1.85;margin-top:6px" data-i18n="ubi-hero-desc">Split equally among all verified humans · paid every 24 h · pool resets to zero after each payout · no minimum balance required to receive</div>
+    </div>
+
+    <!-- UBI SOURCE BREAKDOWN -->
+    <div style="font-size:0.54rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin:16px 0 8px">How the UBI Pool fills up</div>
+    <div class="ubi-src-grid">
+      <div class="ubi-src-card" style="border-color:rgba(6,182,212,0.2)">
+        <div class="ubi-src-pct" style="color:var(--teal)">20%</div>
+        <div class="ubi-src-name" style="color:var(--teal)">Swap Fees</div>
+        <div class="ubi-src-desc">Every AEQ↔tUSD swap contributes 20% of its 0.1% fee here. More trading activity = faster pool fill.</div>
       </div>
-      <div class="mbox">
-        <div class="mval" id="pool-l" style="font-size:0.95rem">0.0000</div>
-        <div class="mlbl" data-i18n="liq-pool">Liquidity Pool</div>
-        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px" data-i18n="liq-pool-desc">30% of all fees → liquidity providers, proportional to LP shares</div>
-        <div style="margin-top:6px;font-size:0.6rem;color:var(--teal);font-weight:600">⏰ Next: <span id="lp-timer">—</span></div>
+      <div class="ubi-src-card" style="border-color:rgba(245,166,35,0.2)">
+        <div class="ubi-src-pct" style="color:var(--gold)">variable</div>
+        <div class="ubi-src-name" style="color:var(--gold)">Demurrage</div>
+        <div class="ubi-src-desc">Idle AEQ (3+ months inactive) decays at 0.5%/month. The decayed amount enters the 40/30/20/10 split — 20% goes to UBI.</div>
       </div>
-      <div class="mbox" style="border:1px solid rgba(245,166,35,0.25);background:rgba(245,166,35,0.04)">
-        <div class="mval" id="pool-u" style="font-size:0.95rem">0.0000</div>
-        <div class="mlbl" style="color:var(--gold)" data-i18n="ubi-pool">UBI Pool</div>
-        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px" data-i18n="ubi-pool-desc">20% of all fees → all verified humans equally, every 24 hours</div>
-        <div style="margin-top:6px;font-size:0.6rem;color:var(--gold);font-weight:600">⏰ Next: <span id="ubi-timer">—</span></div>
+      <div class="ubi-src-card" style="border-color:rgba(139,92,246,0.2)">
+        <div class="ubi-src-pct" style="color:var(--purple)">variable</div>
+        <div class="ubi-src-name" style="color:var(--purple)">Wealth Cap Overflow</div>
+        <div class="ubi-src-desc">Wallets exceeding 25× average balance have the excess confiscated instantly. 20% flows to UBI immediately.</div>
       </div>
-      <div class="mbox">
-        <div class="mval" id="pool-t" style="font-size:0.95rem">0.0000</div>
-        <div class="mlbl" data-i18n="treasury">Treasury</div>
-        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px" data-i18n="treasury-desc">10% of all fees → protocol development and maintenance</div>
+    </div>
+
+    <!-- ALL FOUR POOLS GRID -->
+    <div style="font-size:0.54rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin:16px 0 10px">All four redistribution pools</div>
+    <div class="pools4-grid">
+      <div class="pool4-card" style="border-color:rgba(139,92,246,0.2)" onmouseover="this.style.borderColor='rgba(139,92,246,0.4)'" onmouseout="this.style.borderColor='rgba(139,92,246,0.2)'">
+        <div class="pool4-head">
+          <span class="pool4-name" style="color:var(--purple)" data-i18n="vel-pool">VALIDATORS</span>
+          <span class="pool4-badge">40% of fees</span>
+        </div>
+        <div id="pool-v" class="pool4-amount" style="color:var(--purple)">0.0000 AEQ</div>
+        <div class="pool4-timer" style="color:var(--purple)">⏰ Next: <span id="validators-timer">—</span></div>
+        <div class="pool4-desc" data-i18n="vel-pool-desc">Node operators who produce blocks, validate ZK registrations, and secure the Aequitas BlockDAG. Paid daily, proportional to block production.</div>
+      </div>
+      <div class="pool4-card" style="border-color:rgba(6,182,212,0.2)" onmouseover="this.style.borderColor='rgba(6,182,212,0.4)'" onmouseout="this.style.borderColor='rgba(6,182,212,0.2)'">
+        <div class="pool4-head">
+          <span class="pool4-name" style="color:var(--teal)" data-i18n="liq-pool">LIQUIDITY PROVIDERS</span>
+          <span class="pool4-badge">30% of fees</span>
+        </div>
+        <div id="pool-l" class="pool4-amount" style="color:var(--teal)">0.0000 AEQ</div>
+        <div class="pool4-timer" style="color:var(--teal)">⏰ Next: <span id="lp-timer">—</span></div>
+        <div class="pool4-desc" data-i18n="liq-pool-desc">Providers of AEQ/tUSD liquidity to the AMM pool receive 30% of all fees, proportional to their LP share. Deeper liquidity = lower price impact for every trader.</div>
+      </div>
+      <div class="pool4-card" style="border:1px solid rgba(245,166,35,0.3);background:linear-gradient(135deg,rgba(245,166,35,0.06),var(--card2))" onmouseover="this.style.borderColor='rgba(245,166,35,0.5)'" onmouseout="this.style.borderColor='rgba(245,166,35,0.3)'">
+        <div class="pool4-head">
+          <span class="pool4-name" style="color:var(--gold)" data-i18n="ubi-pool">UBI POOL</span>
+          <span class="pool4-badge">20% of fees</span>
+        </div>
+        <div class="pool4-amount" style="color:var(--gold)">see countdown above</div>
+        <div class="pool4-timer" style="color:var(--gold)">⏰ countdown displayed above</div>
+        <div class="pool4-desc" data-i18n="ubi-pool-desc">20% of swap fees + demurrage + wealth cap overflow → divided equally among all verified humans every 24 hours. Even with zero trading, demurrage and wealth cap ensure the pool always fills.</div>
+      </div>
+      <div class="pool4-card" style="border-color:rgba(96,165,250,0.2)" onmouseover="this.style.borderColor='rgba(96,165,250,0.4)'" onmouseout="this.style.borderColor='rgba(96,165,250,0.2)'">
+        <div class="pool4-head">
+          <span class="pool4-name" style="color:var(--blue)" data-i18n="treasury">TREASURY</span>
+          <span class="pool4-badge">10% of fees</span>
+        </div>
+        <div id="pool-t" class="pool4-amount" style="color:var(--blue)">0.0000 AEQ</div>
+        <div class="pool4-timer" style="color:var(--blue)">Accumulates — no timer</div>
+        <div class="pool4-desc" data-i18n="treasury-desc">Protocol development, infrastructure, security audits, and future upgrades. Governed by the Aequitas team with full on-chain transparency.</div>
       </div>
     </div>
   </div>
@@ -1556,9 +1666,12 @@ async function loadStatus() {
     document.getElementById('pool-u').textContent = fmtPool(d.pool_ubi);
     document.getElementById('pool-t').textContent = fmtPool(d.pool_treasury);
 
-    // UBI countdown timer
+    // UBI countdown timer + fill bar (shows time elapsed since last payout)
     if (d.ubi_next_payout_secs !== undefined) {
       startUBITimer(d.ubi_next_payout_secs);
+      const fillPct = Math.min(100, Math.max(0, (86400 - d.ubi_next_payout_secs) / 86400 * 100));
+      const fillBar = document.getElementById('ubi-fill-bar');
+      if (fillBar) fillBar.style.width = fillPct.toFixed(1) + '%';
     }
 
     // Fix stale subtitle now that demurrage/wealth-cap mean supply can drift
@@ -1625,6 +1738,16 @@ async function loadPoolStatus() {
     document.getElementById('pool-price').textContent = d.reserve_aeq > 0
       ? ('1 AEQ ≈ ' + d.price_aeq_in_tusd.toFixed(4) + ' tUSD')
       : 'No liquidity yet';
+    const total = (d.reserve_aeq || 0) + (d.reserve_tusd || 0);
+    if (total > 0) {
+      const aeqPct = (d.reserve_aeq / total * 100).toFixed(1);
+      const depthFill = document.getElementById('depth-aeq-fill');
+      const aeqPctEl = document.getElementById('depth-aeq-pct');
+      const tusdPctEl = document.getElementById('depth-tusd-pct');
+      if (depthFill) depthFill.style.width = aeqPct + '%';
+      if (aeqPctEl) aeqPctEl.textContent = aeqPct + '%';
+      if (tusdPctEl) tusdPctEl.textContent = (100 - parseFloat(aeqPct)).toFixed(1) + '%';
+    }
     const desc = document.getElementById('swap-addliq-desc');
     if (desc) {
       desc.textContent = d.reserve_aeq > 0
@@ -1671,26 +1794,33 @@ function estimateSwapOutput(amountIn, aeqToTusd) {
 
 function updateFeeEstimate() {
   const amt = parseFloat(document.getElementById('swap-amount').value || '0');
-  const unit = swapDirection === 'aeq_to_tusd' ? 'AEQ' : 'tUSD';
-  const outUnit = swapDirection === 'aeq_to_tusd' ? 'tUSD' : 'AEQ';
+  const aeqToTusd = swapDirection === 'aeq_to_tusd';
+  const unit = aeqToTusd ? 'AEQ' : 'tUSD';
+  const outUnit = aeqToTusd ? 'tUSD' : 'AEQ';
   const fee = amt * 0.001;
-  document.getElementById('swap-fee-est').textContent = fee > 0 ? (fee.toFixed(6) + ' ' + unit) : '—';
+  const feeEl = document.getElementById('swap-fee-est');
+  if (feeEl) feeEl.textContent = fee > 0 ? (fee.toFixed(6) + ' ' + unit) : '—';
 
+  const panel = document.getElementById('swap-details-panel');
   const goBtn = document.getElementById('swap-btn-go');
   const warnEl = document.getElementById('swap-warn');
+
+  if (amt <= 0) {
+    if (panel) panel.style.display = 'none';
+    warnEl.style.display = 'none';
+    if (swapWaddr) goBtn.disabled = false;
+    return;
+  }
   if (currentPoolAEQ <= 0 || currentPoolTUSD <= 0) {
+    if (panel) panel.style.display = 'none';
     warnEl.textContent = '⚠ Pool has no liquidity yet — deposit some below before swapping.';
     warnEl.style.display = 'block';
     if (swapWaddr) goBtn.disabled = true;
     return;
   }
-  if (amt <= 0) {
-    warnEl.style.display = 'none';
-    if (swapWaddr) goBtn.disabled = false;
-    return;
-  }
-  const est = estimateSwapOutput(amt, swapDirection === 'aeq_to_tusd');
+  const est = estimateSwapOutput(amt, aeqToTusd);
   if (est && est.tooLarge) {
+    if (panel) panel.style.display = 'none';
     // Binary-search the largest input that stays safely under the
     // reserve, so the warning can suggest a concrete number instead of
     // just saying "too much" — 99% of the output reserve as a safety
@@ -1698,16 +1828,43 @@ function updateFeeEstimate() {
     let lo = 0, hi = amt;
     for (let i = 0; i < 30; i++) {
       const mid = (lo + hi) / 2;
-      const midEst = estimateSwapOutput(mid, swapDirection === 'aeq_to_tusd');
-      if (midEst && midEst.amountOut < (swapDirection === 'aeq_to_tusd' ? currentPoolTUSD : currentPoolAEQ) * 0.99) lo = mid;
+      const midEst = estimateSwapOutput(mid, aeqToTusd);
+      if (midEst && midEst.amountOut < (aeqToTusd ? currentPoolTUSD : currentPoolAEQ) * 0.99) lo = mid;
       else hi = mid;
     }
     warnEl.innerHTML = '⚠ Too large for current pool liquidity. Try up to ~' + lo.toFixed(4) + ' ' + unit + '.';
     warnEl.style.display = 'block';
     if (swapWaddr) goBtn.disabled = true;
   } else if (est) {
-    warnEl.innerHTML = 'You will receive ≈ ' + est.amountOut.toFixed(6) + ' ' + outUnit;
-    warnEl.style.display = 'block';
+    // Show swap details panel with price impact calculation
+    if (panel) {
+      panel.style.display = 'block';
+      const outEl = document.getElementById('swap-out-est');
+      if (outEl) outEl.textContent = est.amountOut.toFixed(6) + ' ' + outUnit;
+      // Price impact = how far execution price deviates from spot price
+      const spotPrice = aeqToTusd ? (currentPoolTUSD / currentPoolAEQ) : (currentPoolAEQ / currentPoolTUSD);
+      const amtAfterFee = amt - est.fee;
+      const execPrice = amtAfterFee > 0 ? est.amountOut / amtAfterFee : 0;
+      const impact = spotPrice > 0 ? Math.max(0, (1 - execPrice / spotPrice) * 100) : 0;
+      const impEl = document.getElementById('swap-price-impact');
+      if (impEl) {
+        impEl.textContent = impact.toFixed(2) + '%';
+        impEl.style.color = impact < 1 ? 'var(--neon)' : impact < 3 ? 'var(--gold)' : 'var(--red)';
+      }
+      const rateEl = document.getElementById('swap-rate-display');
+      if (rateEl) rateEl.textContent = aeqToTusd
+        ? ('1 AEQ = ' + (est.amountOut / amt).toFixed(4) + ' tUSD')
+        : ('1 tUSD = ' + (est.amountOut / amt).toFixed(4) + ' AEQ');
+      if (impact >= 5) {
+        warnEl.innerHTML = '⚠ High price impact (' + impact.toFixed(2) + '%). Consider a smaller amount.';
+        warnEl.style.display = 'block';
+      } else {
+        warnEl.style.display = 'none';
+      }
+    } else {
+      warnEl.innerHTML = 'You will receive ≈ ' + est.amountOut.toFixed(6) + ' ' + outUnit;
+      warnEl.style.display = 'block';
+    }
     if (swapWaddr) goBtn.disabled = false;
   }
 }
