@@ -274,6 +274,31 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     </a>
     <div style="font-size:0.55rem;color:rgba(255,255,255,0.35);margin-top:8px">Android APK · direct download · BETA</div>
   </div>
+  <!-- USP / EQUAL START SECTION -->
+  <div style="background:linear-gradient(135deg,rgba(0,255,209,0.06),rgba(139,92,246,0.04));border:1px solid rgba(0,255,209,0.2);border-radius:var(--radius);padding:22px;margin-bottom:16px;position:relative;overflow:hidden">
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--neon),var(--purple))"></div>
+    <div style="font-size:0.78rem;font-weight:700;font-family:var(--font-display);color:var(--neon);margin-bottom:4px;line-height:1.4" data-i18n="usp-headline">For the first time in history — everyone starts equal</div>
+    <div style="font-size:0.62rem;color:var(--muted);margin-bottom:16px;line-height:1.7" data-i18n="usp-sub">If you own an Android smartphone, you qualify. No bank, no crypto background, no investment needed.</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
+      <div style="background:var(--card);border:1px solid rgba(0,255,209,0.15);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:0.67rem;font-weight:700;color:var(--neon);margin-bottom:4px" data-i18n="usp-c1-title">0.00 Start Investment</div>
+        <div style="font-size:0.59rem;color:var(--muted);line-height:1.75" data-i18n="usp-c1-desc">Registration is completely gasless. No ETH, no MATIC, no credit card. The protocol pays all fees on your behalf.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid rgba(245,166,35,0.15);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:0.67rem;font-weight:700;color:var(--gold);margin-bottom:4px" data-i18n="usp-c2-title">1,000 AEQ for every human</div>
+        <div style="font-size:0.59rem;color:var(--muted);line-height:1.75" data-i18n="usp-c2-desc">Billionaire or subsistence farmer — everyone gets exactly 1,000 AEQ. Not more, not less. Equal start, guaranteed by math.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid rgba(139,92,246,0.15);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:0.67rem;font-weight:700;color:var(--purple);margin-bottom:4px" data-i18n="usp-c3-title">Just a smartphone</div>
+        <div style="font-size:0.59rem;color:var(--muted);line-height:1.75" data-i18n="usp-c3-desc">No computer, no bank account, no ID document. An Android phone with a fingerprint sensor is all you need to join.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid rgba(6,182,212,0.15);border-radius:var(--radius-sm);padding:12px">
+        <div style="font-size:0.67rem;font-weight:700;color:var(--teal);margin-bottom:4px" data-i18n="usp-c4-title">Daily UBI forever</div>
+        <div style="font-size:0.59rem;color:var(--muted);line-height:1.75" data-i18n="usp-c4-desc">Once registered, you receive a daily share of UBI payouts automatically — every day, no action required.</div>
+      </div>
+    </div>
+  </div>
+
   <div class="aonly">
     <div class="aonly-icon">📱</div>
     <div class="aonly-title" data-i18n="app-title">REGISTRATION VIA ANDROID APP</div>
@@ -461,10 +486,10 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <input type="number" id="swap-amount" placeholder="Amount" oninput="updateFeeEstimate()" style="width:100%;padding:14px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:16px;margin-bottom:8px;box-sizing:border-box">
     <div id="swap-details-panel" class="sd-panel" style="display:none">
       <div class="sd-header" data-i18n="swap-details-hdr">Swap Details</div>
-      <div class="sd-row"><span class="sd-key">You receive (est.)</span><span class="sd-val" id="swap-out-est" style="color:var(--neon)">—</span></div>
-      <div class="sd-row"><span class="sd-key">Price impact</span><span class="sd-val" id="swap-price-impact">—</span></div>
+      <div class="sd-row"><span class="sd-key" data-i18n="swap-out-lbl">You receive (est.)</span><span class="sd-val" id="swap-out-est" style="color:var(--neon)">—</span></div>
+      <div class="sd-row"><span class="sd-key" data-i18n="swap-impact-lbl">Price impact</span><span class="sd-val" id="swap-price-impact">—</span></div>
       <div class="sd-row"><span class="sd-key" data-i18n="swap-fee-est">Protocol fee (0.1%)</span><span class="sd-val" id="swap-fee-est" style="color:var(--muted)">—</span></div>
-      <div class="sd-row"><span class="sd-key">Exchange rate</span><span class="sd-val" id="swap-rate-display" style="color:var(--purple)">—</span></div>
+      <div class="sd-row"><span class="sd-key" data-i18n="swap-rate-lbl">Exchange rate</span><span class="sd-val" id="swap-rate-display" style="color:var(--purple)">—</span></div>
     </div>
     <div id="swap-warn" style="display:none;font-size:13px;padding:10px 12px;border-radius:8px;background:rgba(255,179,0,0.1);border:1px solid rgba(255,179,0,0.3);color:var(--gold);margin-bottom:10px"></div>
 
@@ -523,7 +548,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-aeq">AEQ Reserve</span><span class="ic-val p" id="pool-reserve-aeq">—</span></div>
     <div class="ic-row" style="margin-bottom:4px"><span class="ic-key" data-i18n="swap-pool-tusd">tUSD Reserve</span><span class="ic-val b" id="pool-reserve-tusd">—</span></div>
     <div style="margin:12px 0 4px">
-      <div style="font-size:0.54rem;color:var(--muted);margin-bottom:6px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase">Pool Composition</div>
+      <div style="font-size:0.54rem;color:var(--muted);margin-bottom:6px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase" data-i18n="swap-depth-lbl">Pool Composition</div>
       <div class="depth-track">
         <div id="depth-aeq-fill" class="depth-aeq-fill" style="width:50%"></div>
         <div class="depth-tusd-fill"></div>
@@ -535,9 +560,9 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     </div>
     <div class="ic-row" style="padding-top:4px"><span class="ic-key" data-i18n="swap-fee-bps">Swap Fee</span><span class="ic-val g">0.1% · split 40/30/20/10</span></div>
     <div class="amm-box">
-      <div style="font-size:0.54rem;color:var(--purple);font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px">x × y = k — Constant Product AMM</div>
+      <div style="font-size:0.54rem;color:var(--purple);font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px" data-i18n="amm-title">x × y = k — Constant Product AMM</div>
       <div class="amm-formula">AEQ_reserve × tUSD_reserve = k (constant)</div>
-      <div class="amm-text">When you swap AEQ for tUSD, AEQ reserve grows and tUSD reserve shrinks — their product always stays equal to k. Every swap moves the price. Larger swaps relative to pool size cause greater price impact. The 0.1% fee is taken from the input before the formula is applied, ensuring the pool earns on every trade.</div>
+      <div class="amm-text" data-i18n="amm-text">When you swap AEQ for tUSD, AEQ reserve grows and tUSD reserve shrinks — their product always stays equal to k. Every swap moves the price. Larger swaps relative to pool size cause greater price impact. The 0.1% fee is taken from the input before the formula is applied, ensuring the pool earns on every trade.</div>
     </div>
   </div>
   <div class="ic">
@@ -633,34 +658,34 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div style="font-size:0.58rem;color:var(--gold);letter-spacing:3px;text-transform:uppercase;font-weight:700;margin-bottom:6px" data-i18n="ubi-hero-title">Universal Basic Income Pool</div>
       <div style="font-size:0.62rem;color:var(--muted);margin-bottom:10px" data-i18n="ubi-hero-sub">Accumulating — next payout distributed equally to all verified humans in:</div>
       <div id="ubi-timer" class="ubi-big-timer">—</div>
-      <div style="font-size:0.6rem;color:var(--muted);margin-bottom:6px">current pool balance</div>
+      <div style="font-size:0.6rem;color:var(--muted);margin-bottom:6px" data-i18n="ubi-bal-lbl">current pool balance</div>
       <div id="pool-u" class="ubi-pool-amount">0.0000 AEQ</div>
       <div class="ubi-fill-track"><div id="ubi-fill-bar" class="ubi-fill-bar"></div></div>
       <div style="font-size:0.61rem;color:var(--muted);line-height:1.85;margin-top:6px" data-i18n="ubi-hero-desc">Split equally among all verified humans · paid every 24 h · pool resets to zero after each payout · no minimum balance required to receive</div>
     </div>
 
     <!-- UBI SOURCE BREAKDOWN -->
-    <div style="font-size:0.54rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin:16px 0 8px">How the UBI Pool fills up</div>
+    <div style="font-size:0.54rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin:16px 0 8px" data-i18n="ubi-how-fills">How the UBI Pool fills up</div>
     <div class="ubi-src-grid">
       <div class="ubi-src-card" style="border-color:rgba(6,182,212,0.2)">
         <div class="ubi-src-pct" style="color:var(--teal)">20%</div>
-        <div class="ubi-src-name" style="color:var(--teal)">Swap Fees</div>
-        <div class="ubi-src-desc">Every AEQ↔tUSD swap contributes 20% of its 0.1% fee here. More trading activity = faster pool fill.</div>
+        <div class="ubi-src-name" style="color:var(--teal)" data-i18n="ubi-src-swap">Swap Fees</div>
+        <div class="ubi-src-desc" data-i18n="ubi-src-swap-d">Every AEQ↔tUSD swap contributes 20% of its 0.1% fee here. More trading activity = faster pool fill.</div>
       </div>
       <div class="ubi-src-card" style="border-color:rgba(245,166,35,0.2)">
         <div class="ubi-src-pct" style="color:var(--gold)">variable</div>
-        <div class="ubi-src-name" style="color:var(--gold)">Demurrage</div>
-        <div class="ubi-src-desc">Idle AEQ (3+ months inactive) decays at 0.5%/month. The decayed amount enters the 40/30/20/10 split — 20% goes to UBI.</div>
+        <div class="ubi-src-name" style="color:var(--gold)" data-i18n="ubi-src-dem">Demurrage</div>
+        <div class="ubi-src-desc" data-i18n="ubi-src-dem-d">Idle AEQ (3+ months inactive) decays at 0.5%/month. The decayed amount enters the 40/30/20/10 split — 20% goes to UBI.</div>
       </div>
       <div class="ubi-src-card" style="border-color:rgba(139,92,246,0.2)">
         <div class="ubi-src-pct" style="color:var(--purple)">variable</div>
-        <div class="ubi-src-name" style="color:var(--purple)">Wealth Cap Overflow</div>
-        <div class="ubi-src-desc">Wallets exceeding 25× average balance have the excess confiscated instantly. 20% flows to UBI immediately.</div>
+        <div class="ubi-src-name" style="color:var(--purple)" data-i18n="ubi-src-cap">Wealth Cap Overflow</div>
+        <div class="ubi-src-desc" data-i18n="ubi-src-cap-d">Wallets exceeding 25× average balance have the excess confiscated instantly. 20% flows to UBI immediately.</div>
       </div>
     </div>
 
     <!-- ALL FOUR POOLS GRID -->
-    <div style="font-size:0.54rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin:16px 0 10px">All four redistribution pools</div>
+    <div style="font-size:0.54rem;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;font-weight:600;margin:16px 0 10px" data-i18n="pools4-header">All four redistribution pools</div>
     <div class="pools4-grid">
       <div class="pool4-card" style="border-color:rgba(139,92,246,0.2)" onmouseover="this.style.borderColor='rgba(139,92,246,0.4)'" onmouseout="this.style.borderColor='rgba(139,92,246,0.2)'">
         <div class="pool4-head">
@@ -685,8 +710,8 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
           <span class="pool4-name" style="color:var(--gold)" data-i18n="ubi-pool">UBI POOL</span>
           <span class="pool4-badge">20% of fees</span>
         </div>
-        <div class="pool4-amount" style="color:var(--gold)">see countdown above</div>
-        <div class="pool4-timer" style="color:var(--gold)">⏰ countdown displayed above</div>
+        <div class="pool4-amount" style="color:var(--gold)" data-i18n="ubi-see-above">see countdown above</div>
+        <div class="pool4-timer" style="color:var(--gold)" data-i18n="ubi-timer-above">⏰ countdown displayed above</div>
         <div class="pool4-desc" data-i18n="ubi-pool-desc">20% of swap fees + demurrage + wealth cap overflow → divided equally among all verified humans every 24 hours. Even with zero trading, demurrage and wealth cap ensure the pool always fills.</div>
       </div>
       <div class="pool4-card" style="border-color:rgba(96,165,250,0.2)" onmouseover="this.style.borderColor='rgba(96,165,250,0.4)'" onmouseout="this.style.borderColor='rgba(96,165,250,0.2)'">
@@ -695,7 +720,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
           <span class="pool4-badge">10% of fees</span>
         </div>
         <div id="pool-t" class="pool4-amount" style="color:var(--blue)">0.0000 AEQ</div>
-        <div class="pool4-timer" style="color:var(--blue)">Accumulates — no timer</div>
+        <div class="pool4-timer" style="color:var(--blue)" data-i18n="pool-t-timer">Accumulates — no timer</div>
         <div class="pool4-desc" data-i18n="treasury-desc">Protocol development, infrastructure, security audits, and future upgrades. Governed by the Aequitas team with full on-chain transparency.</div>
       </div>
     </div>
@@ -892,6 +917,27 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div id="tab-protocol" class="tab-content">
 <div class="ps">
   <div class="section-label" data-i18n="proto-label">Aequitas V7 Protocol — Technical Documentation</div>
+
+  <!-- V7 INTRO CARD -->
+  <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.08),rgba(6,182,212,0.04));border-color:rgba(139,92,246,0.25)">
+    <div class="idx-title" data-i18n="v7-intro-title">What is AequitasV7?</div>
+    <div style="font-size:0.65rem;color:var(--muted);line-height:1.9;margin-bottom:14px" data-i18n="v7-intro-text">AequitasV7 is the central smart contract of the Aequitas protocol. "V7" refers to the 7th major version of the fairness contract — the result of iterative design refinement focused on mathematical correctness, gas efficiency, and attack resistance. It is deployed on Aequitas Chain (Chain ID 1926) and handles every aspect of the protocol: human registration, ZK proof verification, balance management, wealth cap enforcement, UBI distribution, swap fees, and all governance parameters. No admin can upgrade or replace the contract — it is the immutable law of the Aequitas economy. The six mechanisms below do not work in isolation. They form a self-reinforcing system: demurrage feeds the UBI pool, wealth cap overflows add to UBI, swap fees distribute to all four pools simultaneously. Every economic activity strengthens redistribution.</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">
+        <div style="font-size:0.85rem;font-weight:700;color:var(--purple);font-family:var(--font-display)">6</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">Protocol Mechanisms</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">
+        <div style="font-size:0.85rem;font-weight:700;color:var(--neon);font-family:var(--font-display)">0</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">Admin Keys</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center">
+        <div style="font-size:0.7rem;font-weight:700;color:var(--gold);font-family:var(--font-display)">immutable</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">Contract Code</div>
+      </div>
+    </div>
+  </div>
+
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="ca-title">Contract &amp; Network Addresses</div>
     <div style="font-size:0.65rem;color:var(--muted);line-height:1.8;margin-bottom:10px">The Aequitas V7 contract is deployed on Aequitas Chain (Chain ID 1926). It handles human registration, balance tracking, UBI distribution, and all governance parameters. The BioVerifier contract validates Groth16 proofs on-chain before any registration is accepted.</div>
@@ -1141,7 +1187,53 @@ de:{
   'dem-text':'<p>Demurrage ist ein Haltungskosten auf Geld — ein negativer Zinssatz der Horten teuer und Zirkulation attraktiv macht. Historisches Beispiel: Das Wörgl-Experiment (Österreich, 1932) verwendete eine Demurrage-Währung und reduzierte die lokale Arbeitslosigkeit innerhalb eines Jahres um 25%. Die Österreichische Zentralbank stellte es genau deshalb ein weil es zu gut funktionierte. Der Chiemgauer (Deutschland, 2003) arbeitet nach demselben Prinzip und zirkuliert seit über 20 Jahren erfolgreich.</p>',
   'cap-title':'4. VERMÖGENSOBERGRENZE — Mathematische Fairness-Durchsetzung','cap-box':'Obergrenze = 25× aktuelles Durchschnittsguthaben aller verifizierten Menschen<br>Passt sich automatisch an während das Netzwerk wächst und sich Guthaben ändern<br>Gilt für ALLE Adressen außer den 4 Protokoll-Pool-Adressen<br>Überschuss-AEQ wird sofort an die 4 Umverteilungspools weitergeleitet<br>Keine manuelle Eingriffe erforderlich — auf Protokollebene bei jeder eingehenden Überweisung erzwungen',
   'ubi-title':'5. UNIVERSELLES GRUNDEINKOMMEN — Tägliche Umverteilung','ubi-box':'Quellen des UBI-Pool-Einkommens:<br>· 20% aller Swap-Gebühren aus dem AEQ↔tUSD AMM-Pool<br>· Überschuss aus der Vermögensobergrenze-Durchsetzung<br>· Demurrage-Gebühren von inaktiven Konten<br>· Inaktive Treuhand nach 4 Jahren freigegeben<br><br>Ausschüttung: Alle 24 Stunden wird der gesamte UBI-Pool-Saldo gleichmäßig unter allen registrierten verifizierten Menschen aufgeteilt. Der Pool setzt sich auf null zurück und beginnt sofort wieder aus der laufenden Protokollaktivität aufzufüllen.',
-  'inf-title':'6. KEINE ALGORITHMISCHE INFLATION — Feste Mengenformel','inf-box':'Das EINZIGE Ereignis das neues AEQ schafft: ein neuer verifizierter Mensch registriert sich.<br><br>Gesamtmenge = Verifizierte Menschen × 1.000 AEQ<br><br>Dies ist keine Richtlinie — es wird durch das Protokoll erzwungen. Kein Admin kann zusätzliches AEQ prägen, kein Governance-Votum kann die Ausgabe ändern, keine Gründer-Zuteilung wurde vorab gemint. AEQ ist die einzige Kryptowährung bei der die Gesamtmenge ausschließlich durch die Anzahl verifizierter lebender Menschen bestimmt wird.'
+  'inf-title':'6. KEINE ALGORITHMISCHE INFLATION — Feste Mengenformel','inf-box':'Das EINZIGE Ereignis das neues AEQ schafft: ein neuer verifizierter Mensch registriert sich.<br><br>Gesamtmenge = Verifizierte Menschen × 1.000 AEQ<br><br>Dies ist keine Richtlinie — es wird durch das Protokoll erzwungen. Kein Admin kann zusätzliches AEQ prägen, kein Governance-Votum kann die Ausgabe ändern, keine Gründer-Zuteilung wurde vorab gemint. AEQ ist die einzige Kryptowährung bei der die Gesamtmenge ausschließlich durch die Anzahl verifizierter lebender Menschen bestimmt wird.',
+  'btn-download-app':'AEQUITASBIO APP HERUNTERLADEN',
+  'swap-title':'🔄 Tausche AEQ ↔ tUSD',
+  'swap-sub':'Tausche AEQ gegen tUSD (ein simulierter Test-Dollar) über den nativen Liquiditäts-Pool. 0,1% Gebühr gilt nur für Swaps — gewöhnliche AEQ-Transfers zwischen Menschen bleiben vollständig kostenlos.',
+  'swap-priv-bar':'🔒 Nur 0,1% Swap-Gebühr · AEQ-zu-AEQ-Transfers kostenlos · tUSD ist eine Testwährung ohne realen Wert',
+  'swap-your-aeq':'Dein AEQ','swap-your-tusd':'Dein tUSD',
+  'swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-fee-est':'Protokollgebühr (0,1%)','swap-details-hdr':'Swap-Details',
+  'swap-out-lbl':'Du erhältst (ca.)','swap-impact-lbl':'Preisauswirkung','swap-rate-lbl':'Wechselkurs',
+  'swap-btn-conn':'🦊 METAMASK VERBINDEN','swap-btn-go':'🔄 TAUSCHEN',
+  'swap-log-hint':'// Wallet verbinden um zu tauschen...',
+  'swap-no-liquidity':'Noch kein tUSD?','swap-faucet-desc':'Registrierte Menschen können einmalig Test-tUSD beanspruchen',
+  'swap-btn-faucet':'💧 TEST-tUSD BEANSPRUCHEN',
+  'swap-addliq-title':'Liquidität bereitstellen','swap-addliq-desc':'Sei der Erste der einzahlt — dein Verhältnis legt den Startpreis fest.',
+  'swap-btn-addliq':'💧 LIQUIDITÄT HINZUFÜGEN',
+  'swap-lp-title':'Deine LP-Position','swap-lp-share':'Pool-Anteil','swap-lp-withdrawable':'Auszahlbar',
+  'swap-lp-pct-label':'% deiner Position','swap-lp-youget':'Du erhältst','swap-btn-removeliq':'🔥 LIQUIDITÄT ENTFERNEN',
+  'swap-pool-title':'AEQ / tUSD — Pool-Status',
+  'swap-pool-aeq':'AEQ-Reserve','swap-pool-tusd':'tUSD-Reserve','swap-pool-price':'Spot-Preis',
+  'swap-depth-lbl':'Pool-Zusammensetzung',
+  'amm-title':'x × y = k — Konstantprodukt-AMM',
+  'amm-text':'Wenn du AEQ gegen tUSD tauschst, wächst die AEQ-Reserve und die tUSD-Reserve schrumpft — ihr Produkt bleibt immer gleich k. Jeder Swap bewegt den Preis. Größere Swaps relativ zur Pool-Größe führen zu größerer Preisauswirkung. Die 0,1% Gebühr wird vor Anwendung der Formel abgezogen — so verdient der Pool an jedem Trade.',
+  'swap-fee-bps':'Swap-Gebühr','swap-fee-split':'Gebührenverteilung','swap-fee-split-v':'40% Validatoren / 30% LPs / 20% UBI / 10% Schatzkammer',
+  'swap-pools-addr-title':'Tokenomics-Pool-Adressen',
+  'swap-validators':'Validatoren (40%)','swap-lps':'Liquiditätsanbieter (30%)','swap-ubi':'UBI-Pool (20%)','swap-treasury':'Schatzkammer (10%)',
+  'ubi-hero-title':'UNIVERSELLES GRUNDEINKOMMEN — UBI-POOL',
+  'ubi-hero-sub':'Akkumuliert — nächste Ausschüttung gleichmäßig an alle verifizierten Menschen in:',
+  'ubi-bal-lbl':'aktuelles Pool-Guthaben',
+  'ubi-hero-desc':'Gleichmäßig unter allen verifizierten Menschen aufgeteilt · alle 24h ausgezahlt · Pool setzt auf null zurück · kein Mindestguthaben nötig',
+  'ubi-how-fills':'Wie der UBI-Pool sich füllt',
+  'ubi-src-swap':'Swap-Gebühren','ubi-src-swap-d':'Jeder AEQ↔tUSD-Swap trägt 20% seiner 0,1% Gebühr bei. Mehr Handelsaktivität = schnelleres Auffüllen.',
+  'ubi-src-dem':'Demurrage','ubi-src-dem-d':'Inaktives AEQ (3+ Monate) verfällt mit 0,5%/Monat. Der verfallene Betrag geht in die 40/30/20/10-Aufteilung — 20% an UBI.',
+  'ubi-src-cap':'Vermögensobergrenze-Überschuss','ubi-src-cap-d':'Wallets die 25× den Durchschnittssaldo überschreiten werden sofort gekappt. 20% fließt direkt an UBI.',
+  'pools4-header':'Alle vier Umverteilungs-Pools',
+  'vel-pool-desc':'Node-Betreiber die Blöcke produzieren, ZK-Registrierungen validieren und den BlockDAG sichern. Täglich ausgezahlt proportional zur Blockproduktion.',
+  'liq-pool-desc':'Anbieter von AEQ/tUSD-Liquidität erhalten 30% aller Gebühren proportional zu ihrem LP-Anteil. Tiefere Liquidität = geringere Preisauswirkung für alle Nutzer.',
+  'ubi-pool-desc':'20% der Swap-Gebühren + Demurrage + Vermögensobergrenze-Überschuss → gleichmäßig unter allen verifizierten Menschen alle 24 Stunden. Auch ohne Trading füllt sich der Pool durch Demurrage und Vermögensobergrenze.',
+  'treasury-desc':'Protokollentwicklung, Infrastruktur, Sicherheitsprüfungen und zukünftige Upgrades. Vollständige On-Chain-Transparenz.',
+  'ubi-see-above':'siehe Countdown oben','ubi-timer-above':'⏰ Countdown oben angezeigt','pool-t-timer':'Akkumuliert — kein Timer',
+  'usp-headline':'Zum ersten Mal in der Geschichte — alle starten gleich',
+  'usp-sub':'Ein Android-Smartphone genügt. Kein Bankkonto, keine Kreditkarte, keine Vorkenntnisse, keine Investition.',
+  'usp-c1-title':'0,00 € Startinvestition','usp-c1-desc':'Die Registrierung ist vollständig gebührenfrei. Kein ETH, kein BNB, keine Kreditkarte. Das Protokoll übernimmt alle Transaktionskosten — du startest bei null.',
+  'usp-c2-title':'1.000 AEQ für jeden Menschen','usp-c2-desc':'Millionär oder Subsistenzlandwirt — jeder erhält exakt 1.000 AEQ. Nicht mehr, nicht weniger. Gleicher Start, mathematisch garantiert.',
+  'usp-c3-title':'Nur ein Smartphone nötig','usp-c3-desc':'Kein Computer, kein Bankkonto, kein Personalausweis. Ein Android-Gerät mit Fingerabdrucksensor reicht aus um dem Netzwerk beizutreten.',
+  'usp-c4-title':'Täglich UBI empfangen','usp-c4-desc':'Nach der Registrierung erhältst du automatisch täglich einen Anteil der UBI-Ausschüttung — jeden Tag, ohne Aktion, solange du AEQ hältst.',
+  'v7-intro-title':'Was ist AequitasV7?',
+  'v7-intro-text':'AequitasV7 ist der zentrale Smart Contract des Aequitas-Protokolls. "V7" steht für die 7. Hauptversion des Fairness-Contracts — das Ergebnis iterativer Designverbesserung. Er ist unveränderlich auf der Aequitas Chain (Chain ID 1926) deployed und regelt jeden Aspekt des Protokolls: Menschenregistrierung, ZK-Beweisverifizierung, Guthabenverwaltung, Vermögensobergrenze, UBI-Ausschüttung, Swap-Gebühren und alle Governance-Parameter. Kein Admin kann den Contract upgraden oder ersetzen — er ist das unveränderliche Gesetz der Aequitas-Wirtschaft.'
 },
 es:{
   'logo-sub':'PRUEBA DE HUMANIDAD','live':'EN VIVO',
