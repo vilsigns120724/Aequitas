@@ -6,6 +6,7 @@ import (
 "io"
 "math/big"
 "net/http"
+"os"
 "strings"
 "time"
 
@@ -72,6 +73,14 @@ evmRPC := NewEVMRPCServer(a.blockchain, a.state)
 mux.HandleFunc("/rpc", evmRPC.handleRPC)
 if evmRPC.evm != nil {
 fmt.Println("✓ EVM Engine ready")
+// Ensure V7 contract is deployed — redeploys from hardcoded bytecode
+// if missing (e.g. after a DB reset). Without this the node fails with
+// "no code at address" on every registration attempt.
+deployerAddr := os.Getenv("RELAYER_ADDRESS")
+if deployerAddr == "" {
+deployerAddr = "0x0BE8b961CBf6564bd1931B0803D35C0659E0D016"
+}
+EnsureContractsDeployed(evmRPC.evm, a.state, deployerAddr)
 } else {
 fmt.Println("✗ EVM Engine failed")
 }
