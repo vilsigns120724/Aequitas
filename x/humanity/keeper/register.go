@@ -52,14 +52,15 @@ type RegisterRequest struct {
 	PB         [][]string `json:"pB"`
 	PC         []string   `json:"pC"`
 	Signature  string     `json:"signature"` // hex-encoded, 65 bytes, from personal_sign
-	// BioHash is the device's biometric identity hash, sent only under the
-	// new website-side proof flow (see checkProofParams/connectWalletAndProve
-	// in api_html.go) so SaveBioRegistration can record it alongside the
-	// commitment — letting the app poll for its own registration by bioHash
-	// instead of needing to compute a commitment itself. Empty under the
-	// older proofId/proof URL-parameter flows, which is fine: those still
-	// work via GetWalletByCommitment instead.
+	// BioHash is the raw bigint biometric hash from the device, used to
+	// record the registration in bio_registrations so the app can poll for
+	// its own registration by bioHash on startup.
 	BioHash string `json:"bioHash"`
+	// BioHashKey is the keccak256-hashed version of BioHash, as computed
+	// by the proof server. Stored in bio_hashes so the proof server's
+	// duplicate check (which also uses keccak256) can detect re-registrations
+	// even when the user generates a new wallet on the same device.
+	BioHashKey string `json:"bioHashKey"`
 }
 
 type RegisterResponse struct {
@@ -219,7 +220,9 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 				fmt.Printf("[REGISTER] Warning: could not save bio registration link: %v\n", saveErr)
 			}
 		}
-		if req.BioHash != "" {
+		if req.BioHashKey != "" {
+			a.state.SaveBioHash(req.BioHashKey, wallet)
+		} else if req.BioHash != "" {
 			a.state.SaveBioHash(req.BioHash, wallet)
 		}
 		return txHash, nil
@@ -293,7 +296,11 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 
 	// Keep bio_hashes in sync so the proof server's /check and /prove
 	// endpoints can block duplicate biometric registrations via that table.
-	if req.BioHash != "" {
+	// Use the keccak256 bioHashKey when available — it matches the format
+	// the proof server uses for its own duplicate checks.
+	if req.BioHashKey != "" {
+		a.state.SaveBioHash(req.BioHashKey, wallet)
+	} else if req.BioHash != "" {
 		a.state.SaveBioHash(req.BioHash, wallet)
 	}
 
