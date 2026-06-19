@@ -358,7 +358,7 @@ fmt.Fprintf(w, `<!DOCTYPE html>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0A0E1A;color:#C9A84C;font-family:'Courier New',monospace;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;flex-direction:column;gap:20px;text-align:center}
 .logo{font-size:2rem;font-weight:900;letter-spacing:8px;color:#C9A84C}
-.box{background:#111827;border:1px solid #1E2D45;border-radius:12px;padding:32px;max-width:440px;width:100%}
+.box{background:#111827;border:1px solid #1E2D45;border-radius:12px;padding:32px;max-width:440px;width:100%%}
 .title{color:#22C55E;font-size:1.4rem;font-weight:bold;margin-bottom:8px}
 .wallet{color:#6B7A99;font-size:0.7rem;margin-bottom:20px;word-break:break-all}
 .divider{border-top:1px solid #1E2D45;margin:16px 0}
