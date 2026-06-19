@@ -2129,7 +2129,8 @@ async function doRegister() {
         wallet: waddr,
         pA: proofData.pA, pB: proofData.pB, pC: proofData.pC, pubSignals: proofData.pubSignals,
         signature: signature,
-        bioHash: pendingBioHash || ''
+        bioHash: pendingBioHash || '',
+        bioHashKey: proofData.bioHashKey || ''
       })
     });
     const d = await r.json();

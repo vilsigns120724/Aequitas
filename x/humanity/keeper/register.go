@@ -36,15 +36,9 @@ PubSignals []string   `json:"pubSignals"`
 PA         []string   `json:"pA"`
 PB         [][]string `json:"pB"`
 PC         []string   `json:"pC"`
-Signature  string     `json:"signature"` // hex-encoded, 65 bytes, from personal_sign
-// BioHash is the device's biometric identity hash, sent only under the
-// new website-side proof flow (see checkProofParams/connectWalletAndProve
-// in api_html.go) so SaveBioRegistration can record it alongside the
-// commitment — letting the app poll for its own registration by bioHash
-// instead of needing to compute a commitment itself. Empty under the
-// older proofId/proof URL-parameter flows, which is fine: those still
-// work via GetWalletByCommitment instead.
-BioHash string `json:"bioHash"`
+Signature  string     `json:"signature"`
+BioHash    string     `json:"bioHash"`
+BioHashKey string     `json:"bioHashKey"` // keccak256 hash key, stored after successful registration
 }
 
 type RegisterResponse struct {
@@ -246,6 +240,26 @@ commitment := req.PubSignals[0]
 if saveErr := a.state.SaveBioRegistration(commitment, wallet, txHash, req.BioHash); saveErr != nil {
 fmt.Printf("[REGISTER] Warning: could not save bio registration link: %v\n", saveErr)
 }
+}
+
+// Store bioHash in proof server AFTER successful on-chain registration.
+// This prevents bio_hashes from containing failed/partial registrations
+// that would permanently block users from retrying.
+if req.BioHashKey != "" {
+proofServerURL := os.Getenv("PROOF_SERVER_URL")
+if proofServerURL == "" {
+proofServerURL = "https://aequitas-proof-server-production.up.railway.app"
+}
+go func() {
+body := fmt.Sprintf(`{"bioHashKey":"%s","wallet":"%s"}`, req.BioHashKey, wallet)
+resp, err := http.Post(proofServerURL+"/store-bio", "application/json", strings.NewReader(body))
+if err != nil {
+fmt.Printf("[REGISTER] Warning: could not store bioHash: %v\n", err)
+} else {
+resp.Body.Close()
+fmt.Printf("[REGISTER] ✓ BioHash stored for %s\n", wallet)
+}
+}()
 }
 
 return txHash, nil
