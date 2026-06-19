@@ -199,6 +199,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <option value="ru">🌐 RU</option>
     <option value="zh">🌐 ZH</option>
     <option value="id">🌐 ID</option>
+    <option value="it">🌐 IT</option>
   </select>
   <div class="header-right">
     <div class="badge badge-live"><span class="pulse"></span><span data-i18n="live">LIVE</span></div>
@@ -220,23 +221,24 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div class="rs">
   <div class="rhero">
     <div class="rhero-title" data-i18n="reg-title">🔐 Register as a Verified Human</div>
-    <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive 1,000 AEQ. One-time, permanent, gasless. No personal data stored.</div>
+    <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ Universal Basic Income grant. Registration is one-time, permanent, and completely gasless. No personal data is ever stored — only a cryptographic proof that you are a unique human being.</div>
   </div>
   <div class="aonly">
     <div class="aonly-icon">📱</div>
     <div class="aonly-title" data-i18n="app-title">REGISTRATION VIA ANDROID APP</div>
-    <div class="aonly-text" data-i18n="app-text">Proof of Humanity requires biometric verification on your personal device. Your fingerprint is processed by the Hardware Secure Element — raw data never leaves your phone. Download the app, scan your fingerprint, connect your wallet, and your <strong style="color:var(--gold)">1,000 AEQ will be granted automatically</strong>.</div>
+    <div class="aonly-text" data-i18n="app-text">Proof of Humanity requires biometric verification on your personal device. Your fingerprint or face scan is processed exclusively by the Hardware Secure Element (HSE) inside your phone — raw biometric data never leaves your device, never touches any server, and is never stored anywhere. The app generates a Zero-Knowledge Proof that mathematically proves your uniqueness without revealing any personal information. Download the AequitasBio app, scan your biometrics, connect your MetaMask wallet, and your <strong style="color:var(--gold)">1,000 AEQ will be credited automatically</strong> within seconds.</div>
   </div>
   <div class="rsteps">
-    <div class="rstep"><div class="snum">1</div><div class="stitle" data-i18n="s1t">Biometric Scan</div><div class="sdesc" data-i18n="s1d">Open app · scan fingerprint · HSE processes · data never leaves device</div></div>
-    <div class="rstep"><div class="snum">2</div><div class="stitle" data-i18n="s2t">ZKP Generation</div><div class="sdesc" data-i18n="s2d">Groth16 proof generated · uniqueness verified · hash never revealed</div></div>
-    <div class="rstep"><div class="snum">3</div><div class="stitle" data-i18n="s3t">Connect Wallet</div><div class="sdesc" data-i18n="s3d">App opens MetaMask · connect wallet · address receives 1,000 AEQ</div></div>
-    <div class="rstep"><div class="snum">4</div><div class="stitle" data-i18n="s4t">1,000 AEQ</div><div class="sdesc" data-i18n="s4d">Registered on V6 · confirmed in next block · app notifies automatically</div></div>
+    <div class="rstep"><div class="snum">1</div><div class="stitle" data-i18n="s1t">Biometric Scan</div><div class="sdesc" data-i18n="s1d">Open the AequitasBio app and scan your fingerprint or use face recognition. Your biometric data is processed by your phone's Hardware Secure Element and never leaves your device.</div></div>
+    <div class="rstep"><div class="snum">2</div><div class="stitle" data-i18n="s2t">ZK Proof Generation</div><div class="sdesc" data-i18n="s2d">A Groth16 Zero-Knowledge Proof is generated on our proof server. This cryptographically proves your uniqueness without revealing your identity — your hash is never exposed.</div></div>
+    <div class="rstep"><div class="snum">3</div><div class="stitle" data-i18n="s3t">Connect Wallet</div><div class="sdesc" data-i18n="s3d">The app opens MetaMask on this page. Connect your Ethereum wallet — this is the address that will receive your 1,000 AEQ grant. The proof is cryptographically bound to your wallet.</div></div>
+    <div class="rstep"><div class="snum">4</div><div class="stitle" data-i18n="s4t">1,000 AEQ Granted</div><div class="sdesc" data-i18n="s4d">Your registration is confirmed on the Aequitas BlockDAG within 6 seconds. 1,000 AEQ is credited to your wallet instantly, gasless. Your identity is permanently recorded as verified human.</div></div>
   </div>
-  <div class="pbar" data-i18n="priv-bar">🔒 Hardware Secure Element · Groth16 ZKP · Data never leaves device · No gas fees · Permanent Sybil protection</div>
+  <div class="pbar" data-i18n="priv-bar">🔒 Hardware Secure Element · Groth16 Zero-Knowledge Proof · Biometric data never leaves your device · No gas fees · One registration per human · Permanent &amp; immutable</div>
   <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
   <div class="rcard">
     <div class="wbox" id="wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="wadr">—</div></div>
+    <div id="demurrage-notice" style="display:none"></div>
     <div class="pbox" id="pbox"><div class="plbl" data-i18n="proof-recv">⚡ ZK PROOF RECEIVED</div><div class="pval" id="pval" data-i18n="proof-hint">Connect wallet to register</div></div>
     <button class="rbtn bc" id="btn-conn" onclick="connectWallet()" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
     <button class="rbtn br" id="btn-reg" onclick="doRegister()" disabled data-i18n="btn-reg">🔐 REGISTER ON-CHAIN</button>
@@ -245,12 +247,14 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="ic">
     <div class="ic-title" data-i18n="reg-details">Registration Details</div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-network">Network</span><span class="ic-val p">Aequitas Chain (BlockDAG)</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-chainid">Chain ID</span><span class="ic-val b">1926</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-grant">Grant Amount</span><span class="ic-val go">1,000 AEQ</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">FREE (gasless)</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-chainid">Chain ID</span><span class="ic-val b">1926 (0x786)</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-grant">UBI Grant</span><span class="ic-val go">1,000 AEQ per human</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Gas Fee</span><span class="ic-val g" data-i18n="free">FREE — completely gasless</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-limit">Registrations</span><span class="ic-val" data-i18n="k-limit-v">Once per human · permanent · immutable</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Biometric Data</span><span class="ic-val g" data-i18n="never-stored">Never stored anywhere</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="k-conf">Confirmation</span><span class="ic-val" data-i18n="k-conf-v">Within 6 seconds</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Biometric Data</span><span class="ic-val g" data-i18n="never-stored">Never stored — stays on your device</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-proof">Proof System</span><span class="ic-val p">Groth16 ZKP (Zero-Knowledge)</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-conf">Confirmation</span><span class="ic-val" data-i18n="k-conf-v">Within 6 seconds (1 block)</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="k-sybil">Sybil Protection</span><span class="ic-val g" data-i18n="k-sybil-v">One identity per biometric · permanent lock</span></div>
   </div>
 </div>
 </div>
@@ -260,39 +264,58 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div class="hero">
   <div class="section-label" data-i18n="live-stats">Live Chain Statistics</div>
   <div class="stats-grid">
-    <div class="stat c-blue"><div class="stat-accent"></div><div class="stat-icon">🔗</div><div class="stat-lbl" data-i18n="s-height">Block Height</div><div class="stat-val" id="s-height">—</div><div class="stat-sub" data-i18n="s-height-sub">New block every 6s · BlockDAG · Two nodes parallel</div></div>
+    <div class="stat c-blue"><div class="stat-accent"></div><div class="stat-icon">🔗</div><div class="stat-lbl" data-i18n="s-height">Block Height</div><div class="stat-val" id="s-height">—</div><div class="stat-sub" data-i18n="s-height-sub">New block every ~6s · BlockDAG · Parallel production</div></div>
     <div class="stat c-green"><div class="stat-accent"></div><div class="stat-icon">🧬</div><div class="stat-lbl" data-i18n="s-humans">Verified Humans</div><div class="stat-val" id="s-humans">—</div><div class="stat-sub" data-i18n="s-humans-sub">Biometric ZKP · One person, one wallet, forever</div></div>
     <div class="stat c-gold"><div class="stat-accent"></div><div class="stat-icon">🪙</div><div class="stat-lbl" data-i18n="s-supply">Total Supply</div><div class="stat-val" id="s-supply">—</div><div class="stat-sub" data-i18n="s-supply-sub">Always = Humans × 1,000 AEQ</div></div>
     <div class="stat c-purple"><div class="stat-accent"></div><div class="stat-icon">⚖</div><div class="stat-lbl" data-i18n="s-index">Aequitas Index</div><div class="stat-val" id="s-index">—</div><div class="stat-sub" data-i18n="s-index-sub">0 = perfect equality · 100 = max inequality</div></div>
     <div class="stat c-teal"><div class="stat-accent"></div><div class="stat-icon">⚡</div><div class="stat-lbl" data-i18n="s-uptime">Uptime</div><div class="stat-val" id="s-uptime" style="font-size:1rem">—</div><div class="stat-sub" data-i18n="s-uptime-sub">Node v0.3.0 · Railway + Render · PostgreSQL</div></div>
   </div>
   <div class="info-banner">
-    <div><div class="ib-icon">🧬</div><div class="ib-title" data-i18n="ib-poh">Proof of Humanity</div><div class="ib-text" data-i18n="ib-poh-t">Every AEQ holder must prove they are a unique living human. No bots, no corporations, no AI can hold AEQ. Only real humans. Biometric data never leaves your device.</div></div>
-    <div><div class="ib-icon">⚖</div><div class="ib-title" data-i18n="ib-fair">Radically Fair</div><div class="ib-text" data-i18n="ib-fair-t">Every verified human receives exactly 1,000 AEQ. No pre-mine, no founder allocation. Total supply always equals verified humans x 1,000.</div></div>
-    <div><div class="ib-icon">🔗</div><div class="ib-title" data-i18n="ib-dag">BlockDAG Architecture</div><div class="ib-text" data-i18n="ib-dag-t">Multiple blocks can be produced simultaneously and merged. Higher throughput, lower latency, better fault tolerance. Merge events marked with a special badge in the explorer.</div></div>
-    <div><div class="ib-icon">⛽</div><div class="ib-title" data-i18n="ib-gas">Truly Gasless</div><div class="ib-text" data-i18n="ib-gas-t">Registration costs absolutely nothing. No ETH, BNB, or MATIC required. No credit card, no bank account. If you are a human with a smartphone, you can register.</div></div>
+    <div>
+      <div class="ib-icon">🧬</div>
+      <div class="ib-title" data-i18n="ib-poh">Proof of Humanity</div>
+      <div class="ib-text" data-i18n="ib-poh-t">Every AEQ holder must cryptographically prove they are a unique living human. No bots, no corporations, no AI, no duplicates. Biometric data never leaves your device — only a mathematical proof of uniqueness is transmitted. This means AEQ is the first currency that is exclusively human.</div>
+    </div>
+    <div>
+      <div class="ib-icon">⚖</div>
+      <div class="ib-title" data-i18n="ib-fair">Radically Fair Distribution</div>
+      <div class="ib-text" data-i18n="ib-fair-t">Every verified human receives exactly 1,000 AEQ upon registration — no more, no less. No pre-mine, no founder allocation, no investor rounds. The total supply always and exactly equals the number of verified humans multiplied by 1,000. This is enforced mathematically, not by policy.</div>
+    </div>
+    <div>
+      <div class="ib-icon">🔗</div>
+      <div class="ib-title" data-i18n="ib-dag">BlockDAG Architecture</div>
+      <div class="ib-text" data-i18n="ib-dag-t">Unlike traditional blockchains where only one block can exist per height, Aequitas uses a Directed Acyclic Graph (DAG) structure. Multiple blocks can be produced simultaneously by different nodes and later merged into the DAG. This enables higher throughput, lower latency, and eliminates single-node bottlenecks. Merge events are marked with a special badge in the explorer below.</div>
+    </div>
+    <div>
+      <div class="ib-icon">⛽</div>
+      <div class="ib-title" data-i18n="ib-gas">Truly Gasless</div>
+      <div class="ib-text" data-i18n="ib-gas-t">All registrations and AEQ transfers cost absolutely nothing. No ETH, BNB, or MATIC required. No credit card, no bank account, no prior cryptocurrency needed. The relayer covers all transaction costs on behalf of users. If you are a human with a smartphone, you can participate — regardless of your economic situation.</div>
+    </div>
   </div>
 </div>
 <div class="main-grid">
   <div class="section">
     <div class="sec-head"><div class="sec-title"><span class="sec-dot"></span><span data-i18n="recent-blocks">Recent Blocks</span></div><div class="sec-count" id="block-count">—</div></div>
-    <div class="sec-desc" data-i18n="blocks-desc">MERGE = multiple parents (BlockDAG feature). TX = registration transaction. Block time: ~6 seconds average.</div>
+    <div class="sec-desc" data-i18n="blocks-desc">Each row represents one block in the Aequitas BlockDAG. MERGE = this block has multiple parents, meaning two blocks were produced in parallel and later merged — the core feature of BlockDAG. TX = this block contains a human registration transaction. Block time averages ~6 seconds.</div>
     <div id="blocks-list"><div class="empty" data-i18n="loading">Loading blocks...</div></div>
   </div>
   <div class="right-col">
     <div class="ic">
       <div class="ic-title" data-i18n="net-info">Network Info</div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-chain">Chain Name</span><span class="ic-val go">Aequitas Chain</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-chainid">Chain ID</span><span class="ic-val b">1926</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-chainid">Chain ID</span><span class="ic-val b">1926 (0x786)</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-symbol">Symbol</span><span class="ic-val go">AEQ</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-btime">Block Time</span><span class="ic-val">6 seconds</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-btime">Block Time</span><span class="ic-val">~6 seconds</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-cons">Consensus</span><span class="ic-val p">BlockDAG + PoH</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-nodes">Active Nodes</span><span class="ic-val g">2 Online</span></div>
-      <div class="ic-row"><span class="ic-key">ZKP</span><span class="ic-val">Groth16</span></div>
+      <div class="ic-row"><span class="ic-key">ZKP System</span><span class="ic-val p">Groth16 / BN128</span></div>
+      <div class="ic-row"><span class="ic-key">EVM Compatible</span><span class="ic-val g">Yes (Chain ID 1926)</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-storage">Storage</span><span class="ic-val g">PostgreSQL</span></div>
+      <div class="ic-row"><span class="ic-key">P2P</span><span class="ic-val">libp2p (Go)</span></div>
     </div>
     <div class="mm-card">
       <div class="mm-title" data-i18n="add-mm">ADD TO METAMASK</div>
+      <div style="font-size:0.6rem;color:var(--muted);margin-bottom:10px;line-height:1.7">Add Aequitas Chain to MetaMask to view your AEQ balance and interact with the network directly from your browser or mobile wallet.</div>
       <div class="mm-row"><span class="mm-key" data-i18n="k-chain">Network Name</span><span class="mm-val">Aequitas Chain</span></div>
       <div class="mm-row"><span class="mm-key">RPC URL</span><span class="mm-val" style="font-size:0.5rem">...9fba.up.railway.app/rpc</span></div>
       <div class="mm-row"><span class="mm-key" data-i18n="k-chainid">Chain ID</span><span class="mm-val">1926</span></div>
@@ -313,16 +336,32 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div class="hero">
   <div class="section-label" data-i18n="humans-title">Verified Humans on Aequitas Chain</div>
   <div class="info-banner">
-    <div><div class="ib-icon">🔒</div><div class="ib-title" data-i18n="h-what">What is a Verified Human?</div><div class="ib-text" data-i18n="h-what-t">A Verified Human is a wallet address cryptographically proven to belong to a unique living human. Biometric data is never transmitted or stored. Only a Zero-Knowledge Proof is used.</div></div>
-    <div><div class="ib-icon">🧮</div><div class="ib-title" data-i18n="h-zkp">Zero-Knowledge Proof System</div><div class="ib-text" data-i18n="h-zkp-t">Aequitas uses the Groth16 proving system over BN128 elliptic curve. Proof size: ~200 bytes. Verification: ~10ms. The same system used by Zcash.</div></div>
-    <div><div class="ib-icon">🛡</div><div class="ib-title" data-i18n="h-sybil">Sybil Attack Prevention</div><div class="ib-text" data-i18n="h-sybil-t">Each biometric hash is stored permanently. Attempting to register twice with the same fingerprint is immediately rejected. One human, one wallet, forever. <strong style="color:var(--gold)">⚠ Test phase:</strong> Current biometric verification is device-bound. A hardware physiological sensor (MAX30102 PPG) is planned to provide device-independent identity verification in a future update.</div></div>
-    <div><div class="ib-icon">🌍</div><div class="ib-title" data-i18n="h-global">Global Inclusion</div><div class="ib-text" data-i18n="h-global-t">No bank account, no credit card, no cryptocurrency required. Just an Android smartphone with a fingerprint sensor — a device over 3 billion people already own.</div></div>
+    <div>
+      <div class="ib-icon">🔒</div>
+      <div class="ib-title" data-i18n="h-what">What is a Verified Human?</div>
+      <div class="ib-text" data-i18n="h-what-t">A Verified Human is a wallet address cryptographically proven to belong to a unique living human being. The verification happens through biometric authentication on your personal device — your fingerprint or face scan unlocks a key pair stored in your phone's Hardware Secure Element. Only a mathematical proof of uniqueness is ever transmitted. Your biometric data never leaves your device, never touches a server, and is never stored anywhere.</div>
+    </div>
+    <div>
+      <div class="ib-icon">🧮</div>
+      <div class="ib-title" data-i18n="h-zkp">Zero-Knowledge Proof System</div>
+      <div class="ib-text" data-i18n="h-zkp-t">Aequitas uses the Groth16 proving system on the BN128 (alt-bn128) elliptic curve — the same curve used by Ethereum and Zcash. A ZK proof allows one party to prove they know a secret without revealing the secret itself. In Aequitas, this means proving "I am a unique human" without revealing who you are or what your biometrics look like. Proof size: ~200 bytes. Verification time: ~10ms. The proof is generated client-side on the proof server after your device authenticates.</div>
+    </div>
+    <div>
+      <div class="ib-icon">🛡</div>
+      <div class="ib-title" data-i18n="h-sybil">Sybil Attack Prevention</div>
+      <div class="ib-text" data-i18n="h-sybil-t">A Sybil attack is when one person creates multiple identities to gain an unfair advantage. Aequitas prevents this by storing a permanent keccak256 hash of each biometric identity. Attempting to register a second wallet with the same fingerprint is immediately rejected — the hash is already in the database. One human, one wallet, forever. <strong style="color:var(--gold)">⚠ Current limitation:</strong> The biometric hash is derived from a device key — switching phones creates a new hash. A physiological sensor (MAX30102 PPG heart-rate sensor) is planned to provide truly device-independent identity verification.</div>
+    </div>
+    <div>
+      <div class="ib-icon">🌍</div>
+      <div class="ib-title" data-i18n="h-global">Global Financial Inclusion</div>
+      <div class="ib-text" data-i18n="h-global-t">1.4 billion adults worldwide have no bank account. Aequitas requires nothing more than an Android smartphone with a fingerprint or face sensor — a device over 3 billion people already own. No bank account, no credit card, no prior cryptocurrency, no government ID. Just being human is enough to participate in the Aequitas economy.</div>
+    </div>
   </div>
 </div>
 <div class="hs">
   <div class="section">
     <div class="sec-head"><div class="sec-title"><span class="sec-dot"></span><span data-i18n="reg-humans">Registered Humans</span></div><div class="sec-count" id="h-count">0</div></div>
-    <div class="sec-desc" data-i18n="h-desc">Every address verified as unique human through biometric ZKP. Each received 1,000 AEQ. Permanent, immutable, on-chain.</div>
+    <div class="sec-desc" data-i18n="h-desc">Every address below has been verified as a unique human through biometric Zero-Knowledge Proof. Each received exactly 1,000 AEQ upon registration. The registry is permanent, immutable, and on-chain — no entry can ever be deleted or modified.</div>
     <div id="humans-list"><div class="empty" data-i18n="no-humans">No humans registered yet. Download the Aequitas Android App and be the first!</div></div>
   </div>
   <div class="right-col">
@@ -331,9 +370,20 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div class="ic-row"><span class="ic-key" data-i18n="total-humans">Total Humans</span><span class="ic-val g" id="stat-humans">0</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="s-supply">Total Supply</span><span class="ic-val go" id="stat-supply">0 AEQ</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-grant">Grant per Human</span><span class="ic-val go">1,000 AEQ</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Registration Fee</span><span class="ic-val g" data-i18n="free">FREE</span></div>
-      <div class="ic-row"><span class="ic-key">ZKP System</span><span class="ic-val">Groth16 / BN128</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Registration Fee</span><span class="ic-val g" data-i18n="free">FREE — gasless</span></div>
+      <div class="ic-row"><span class="ic-key">ZKP System</span><span class="ic-val p">Groth16 / BN128</span></div>
+      <div class="ic-row"><span class="ic-key">Hash System</span><span class="ic-val p">keccak256</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Biometric Storage</span><span class="ic-val g" data-i18n="never-stored">Never stored</span></div>
+      <div class="ic-row"><span class="ic-key">Sybil Protection</span><span class="ic-val g">Permanent · On-chain</span></div>
+    </div>
+    <div class="ic" style="margin-top:12px">
+      <div class="ic-title">❓ FAQ</div>
+      <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600">Is my biometric data safe?</div>
+      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7">Yes. Your fingerprint or face scan never leaves your device. The Hardware Secure Element processes the biometric and produces a cryptographic key. Only a mathematical proof derived from that key is ever transmitted.</div>
+      <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600">Can I register with a different wallet later?</div>
+      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7">No. Registration is permanently bound to one wallet address per biometric identity. This is by design — it prevents Sybil attacks and ensures the one-person-one-wallet guarantee.</div>
+      <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600">What happens if I lose my phone?</div>
+      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;line-height:1.7">Your AEQ remains in your wallet — it is tied to your private key, not your phone. You can still access your wallet via MetaMask with your seed phrase. Wallet recovery is independent of the biometric registration.</div>
     </div>
   </div>
 </div>
@@ -433,7 +483,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div class="is">
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title" data-i18n="idx-title">Aequitas Index — Real-Time Economic Equality Score</div>
-    <div class="idx-desc" data-i18n="idx-desc">Calculated from the on-chain balance distribution of all verified humans. 0 = perfect equality. 100 = maximum inequality. The protocol uses this to automatically trigger redistribution.</div>
+    <div class="idx-desc" data-i18n="idx-desc">The Aequitas Index measures economic inequality across all verified humans on the network in real time. It is calculated from the Gini coefficient of on-chain balance distribution. <strong style="color:var(--text)">0 = perfect equality</strong> (everyone holds the same amount). <strong style="color:var(--red)">100 = maximum inequality</strong> (one person holds everything). The protocol automatically triggers redistribution mechanisms when the index rises above phase thresholds — no human governance required.</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;margin-top:12px">
       <div><div class="idx-big" id="idx-score">—</div><div class="idx-lbl" data-i18n="curr-idx">Current Index</div></div>
       <div>
@@ -443,54 +493,82 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       </div>
     </div>
     <div class="mrow" style="grid-template-columns:repeat(4,1fr)">
-      <div class="mbox"><div class="mval" id="idx-gini">—</div><div class="mlbl" data-i18n="gini">Gini Coefficient</div></div>
-      <div class="mbox"><div class="mval" id="idx-supply2">—</div><div class="mlbl" data-i18n="s-supply">Total Supply</div></div>
-      <div class="mbox"><div class="mval" id="idx-phase">—</div><div class="mlbl" data-i18n="phase">Protocol Phase</div></div>
-      <div class="mbox"><div class="mval" id="idx-humans2">—</div><div class="mlbl" data-i18n="s-humans">Verified Humans</div></div>
+      <div class="mbox">
+        <div class="mval" id="idx-gini">—</div>
+        <div class="mlbl" data-i18n="gini">Gini Coefficient</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:4px" data-i18n="gini-desc">0 = equal · 1 = unequal</div>
+      </div>
+      <div class="mbox">
+        <div class="mval" id="idx-supply2">—</div>
+        <div class="mlbl" data-i18n="s-supply">Total Supply</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:4px" data-i18n="supply-desc">Always = Humans × 1,000 AEQ</div>
+      </div>
+      <div class="mbox">
+        <div class="mval" id="idx-phase">—</div>
+        <div class="mlbl" data-i18n="phase">Protocol Phase</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:4px" data-i18n="phase-desc">Auto-advances by human count</div>
+      </div>
+      <div class="mbox">
+        <div class="mval" id="idx-humans2">—</div>
+        <div class="mlbl" data-i18n="s-humans">Verified Humans</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:4px" data-i18n="humans-desc">Biometrically verified unique humans</div>
+      </div>
     </div>
   </div>
   <div class="idx">
     <div class="idx-title" data-i18n="pools-title">Redistribution Pools</div>
-    <div class="idx-desc" data-i18n="pools-desc">When inequality thresholds are exceeded, AEQ is automatically redirected. Controlled entirely by protocol logic.</div>
+    <div class="idx-desc" data-i18n="pools-desc">Every swap fee, demurrage charge, and wealth cap overflow is automatically distributed across four pools. No manual intervention — the protocol handles all redistribution through code. Pools pay out daily to their respective beneficiaries.</div>
     <div class="mrow">
       <div class="mbox">
         <div class="mval" id="pool-v" style="font-size:0.95rem">0.0000</div>
         <div class="mlbl" data-i18n="vel-pool">Validators Pool</div>
-        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">40% of fees · daily → node operators</div>
-        <div style="margin-top:6px;font-size:0.6rem;color:var(--blue);font-weight:600">⏰ Next: <span id="validators-timer">—</span></div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px" data-i18n="vel-pool-desc">40% of all fees → node operators who secure the network</div>
+        <div style="margin-top:6px;font-size:0.6rem;color:var(--purple);font-weight:600">⏰ Next: <span id="validators-timer">—</span></div>
       </div>
       <div class="mbox">
         <div class="mval" id="pool-l" style="font-size:0.95rem">0.0000</div>
         <div class="mlbl" data-i18n="liq-pool">Liquidity Pool</div>
-        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">30% of fees · daily → LP holders</div>
-        <div style="margin-top:6px;font-size:0.6rem;color:var(--blue);font-weight:600">⏰ Next: <span id="lp-timer">—</span></div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px" data-i18n="liq-pool-desc">30% of all fees → liquidity providers, proportional to LP shares</div>
+        <div style="margin-top:6px;font-size:0.6rem;color:var(--teal);font-weight:600">⏰ Next: <span id="lp-timer">—</span></div>
       </div>
-      <div class="mbox" style="border:1px solid rgba(245,166,35,0.2);background:rgba(245,166,35,0.05)">
+      <div class="mbox" style="border:1px solid rgba(245,166,35,0.25);background:rgba(245,166,35,0.04)">
         <div class="mval" id="pool-u" style="font-size:0.95rem">0.0000</div>
         <div class="mlbl" style="color:var(--gold)" data-i18n="ubi-pool">UBI Pool</div>
-        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">20% of fees · daily payout</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px" data-i18n="ubi-pool-desc">20% of all fees → all verified humans equally, every 24 hours</div>
         <div style="margin-top:6px;font-size:0.6rem;color:var(--gold);font-weight:600">⏰ Next: <span id="ubi-timer">—</span></div>
       </div>
       <div class="mbox">
         <div class="mval" id="pool-t" style="font-size:0.95rem">0.0000</div>
         <div class="mlbl" data-i18n="treasury">Treasury</div>
-        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px">10% of fees</div>
+        <div style="font-size:0.55rem;color:var(--muted);margin-top:3px" data-i18n="treasury-desc">10% of all fees → protocol development and maintenance</div>
       </div>
     </div>
   </div>
   <div class="idx">
     <div class="idx-title" data-i18n="phases-title">Protocol Phases</div>
-    <div class="idx-desc" data-i18n="phases-desc">Transitions happen automatically — no governance vote required.</div>
+    <div class="idx-desc" data-i18n="phases-desc">Aequitas evolves automatically as the number of verified humans grows. Each phase adjusts the wealth cap multiplier to maintain fairness at scale. Phase transitions are triggered by human count — no voting, no governance, no admin keys.</div>
     <table class="spect">
-      <tr><td>Phase 0</td><td style="color:var(--green)" data-i18n="p0">Bootstrap · &lt;100 humans · Cap: 50x fairShare</td></tr>
-      <tr><td>Phase 1</td><td style="color:var(--blue)" data-i18n="p1">Growth · 100-10,000 · Cap: 20x</td></tr>
-      <tr><td>Phase 2</td><td style="color:var(--gold)" data-i18n="p2">Stability · 10k-1M · Cap: 10x</td></tr>
-      <tr><td>Phase 3</td><td style="color:var(--purple)" data-i18n="p3">Maturity · 1M+ · Cap: 3x</td></tr>
+      <tr><td><strong style="color:var(--neon)">Phase 0</strong></td><td style="color:var(--neon)" data-i18n="p0">Bootstrap · &lt;100 humans · Wealth Cap: 50× average balance · Currently active</td></tr>
+      <tr><td><strong style="color:var(--blue)">Phase 1</strong></td><td style="color:var(--blue)" data-i18n="p1">Growth · 100–10,000 humans · Wealth Cap: 20× average balance</td></tr>
+      <tr><td><strong style="color:var(--gold)">Phase 2</strong></td><td style="color:var(--gold)" data-i18n="p2">Stability · 10,000–1M humans · Wealth Cap: 10× average balance</td></tr>
+      <tr><td><strong style="color:var(--purple)">Phase 3</strong></td><td style="color:var(--purple)" data-i18n="p3">Maturity · 1M+ humans · Wealth Cap: 3× average balance · Maximum redistribution</td></tr>
+    </table>
+    <div class="hlbox" data-i18n="wealth-cap-explain">The <strong>Wealth Cap</strong> is set as a multiple of the current average AEQ balance across all verified humans — not a fixed number. This means the cap automatically adjusts as the network grows and average wealth changes, always maintaining relative fairness regardless of the total supply.</div>
+  </div>
+  <div class="idx">
+    <div class="idx-title" data-i18n="demurrage-title">Demurrage — Incentive to Circulate</div>
+    <div class="idx-desc" data-i18n="demurrage-desc">Aequitas implements a demurrage mechanism inspired by historical complementary currencies like the Wörgl experiment (1932) and the Chiemgauer (2003). Idle AEQ balances slowly lose value to discourage hoarding and incentivize economic participation.</div>
+    <table class="spect">
+      <tr><td data-i18n="dem-rate-k">Decay Rate</td><td data-i18n="dem-rate-v">0.5% per month (continuous, not stepped)</td></tr>
+      <tr><td data-i18n="dem-grace-k">Grace Period</td><td data-i18n="dem-grace-v">3 months of inactivity before decay begins</td></tr>
+      <tr><td data-i18n="dem-reset-k">Clock Reset</td><td data-i18n="dem-reset-v">Any transfer, swap, or liquidity action resets the timer</td></tr>
+      <tr><td data-i18n="dem-dest-k">Decayed AEQ goes to</td><td data-i18n="dem-dest-v">Redistribution pools (same 40/30/20/10 split)</td></tr>
+      <tr><td data-i18n="dem-warn-k">Warning System</td><td data-i18n="dem-warn-v">14-day notice (once) + 7-day repeated reminder at login</td></tr>
     </table>
   </div>
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title" data-i18n="story-title">The Story of Aequitas — Why This Exists</div>
-    <div class="story" data-i18n="story-text"><p>The year is 2009. Satoshi Nakamoto releases Bitcoin. For the first time, value can transfer between any two people without a bank. A genuine revolution. But something goes wrong almost immediately.</p><p>Early miners accumulate millions of coins at almost zero cost. By 2021, the top 1% of Bitcoin addresses control over 90% of all Bitcoin. Bitcoin's estimated Gini exceeds 0.85 — higher than any country on Earth. The cryptocurrency that was supposed to democratize finance created the most extreme wealth concentration in human history.</p><p><span style="color:var(--gold)">Aequitas</span> — Latin for "fairness" and "equality" — was created to answer: <em style="color:var(--gold)">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em></p><p>The answer: <strong style="color:var(--text)">Money exists because people exist. Therefore, every person should have an equal share of money simply by virtue of being human.</strong></p><p>The Aequitas network launched in June 2026. Currently in Phase 0. The goal: demonstrate that money can be distributed fairly, equality maintained through mathematical governance, and financial inclusion achieved at global scale.</p><p><em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p></div>
+    <div class="story" data-i18n="story-text"><p>The year is 2009. Satoshi Nakamoto releases Bitcoin. For the first time, value can transfer between any two people without a bank. A genuine revolution. But something goes wrong almost immediately.</p><p>Early miners accumulate millions of coins at almost zero cost. By 2021, the top 1% of Bitcoin addresses control over 90% of all Bitcoin. Bitcoin's estimated Gini coefficient exceeds 0.85 — higher than any country on Earth. The cryptocurrency that was supposed to democratize finance created the most extreme wealth concentration in human history.</p><p><span style="color:var(--gold)">Aequitas</span> — Latin for "fairness" and "equality" — was created to answer a single question: <em style="color:var(--gold)">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em></p><p>The answer is simple: <strong style="color:var(--text)">Money exists because people exist. Therefore, every person should have an equal share of money simply by virtue of being human.</strong></p><p>Aequitas implements this principle mathematically. Every verified human receives 1,000 AEQ. No mining, no staking, no early-adopter advantage. The wealth cap, demurrage, and redistribution pools ensure that inequality cannot accumulate indefinitely. The Gini coefficient and Aequitas Index are calculated on-chain in real time, and the protocol adjusts automatically.</p><p>The Aequitas network launched in June 2026. Currently in Phase 0 (Bootstrap). The goal: demonstrate that money can be distributed fairly, equality maintained through mathematical governance, and financial inclusion achieved at global scale — without any central authority.</p><p><em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p></div>
   </div>
 </div>
 </div>
@@ -498,89 +576,111 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <!-- NETWORK -->
 <div id="tab-network" class="tab-content">
 <div class="ns">
-  <div class="nc" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(245,166,35,0.06),rgba(12,18,40,0.9));border-color:rgba(245,166,35,0.2)">
-    <div class="nc-title" style="color:var(--gold)">Run Your Own Node</div>
-    <div style="font-size:0.67rem;color:var(--muted);line-height:1.9;margin-bottom:16px">Want to contribute to the Aequitas network? Anyone can run a node — no permission required. Nodes participate in block production, validate the human registry, and earn a share of protocol fees via the Validators Pool once the network grows.</div>
-    <a href="https://raw.githubusercontent.com/hanoi96international-gif/Aequitas/main/aequitas-chain/docs/node-guide.pdf" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;letter-spacing:0.3px;transition:opacity 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
-      📄 Download Node Operator Guide (PDF)
-    </a>
+  <div class="nc" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(245,166,35,0.06),rgba(13,8,32,0.9));border-color:rgba(245,166,35,0.2)">
+    <div class="nc-title" style="color:var(--gold)" data-i18n="run-node-title">Run Your Own Node — Help Secure the Network</div>
+    <div style="font-size:0.67rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Anyone can run an Aequitas node — no permission, no stake, no application required. Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all swap fees, distributed daily). The more nodes that run, the more decentralized and resilient the network becomes.</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <a href="https://raw.githubusercontent.com/hanoi96international-gif/Aequitas/main/aequitas-chain/docs/node-guide.pdf" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
+        📄 Download Node Operator Guide (PDF)
+      </a>
+      <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:all 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
+        🐙 View Source on GitHub
+      </a>
+    </div>
   </div>
   <div class="nc" style="grid-column:1/-1">
     <div class="nc-title" data-i18n="nodes-title">Active Nodes — Current Network Topology</div>
-    <div style="font-size:0.65rem;color:var(--muted);line-height:1.8;margin-bottom:12px" data-i18n="nodes-desc">The Aequitas network operates on two nodes in geographically distributed cloud environments. Both participate in block production, state synchronization, and API serving. They communicate via libp2p and sync via HTTP. Both share the same PostgreSQL database.</div>
+    <div style="font-size:0.65rem;color:var(--muted);line-height:1.8;margin-bottom:12px" data-i18n="nodes-desc">The Aequitas network currently operates on two geographically distributed nodes. Both participate in block production, state synchronization, and API serving. They communicate peer-to-peer via libp2p and synchronize block state via HTTP. Both share access to the same PostgreSQL database for persistent state. The network is designed to support additional nodes — any third-party operator can join by setting the bootstrap peer address.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="nbox"><div class="nstat"><span class="ndot"></span><span data-i18n="node1">Node 1 — Railway (Primary)</span></div><div class="nurl">aequitas-production-9fba.up.railway.app</div><div class="ndesc" data-i18n="node1-desc">Primary API · Block producer · P2P bootstrap · PostgreSQL · RPC for MetaMask</div></div>
-      <div class="nbox"><div class="nstat"><span class="ndot"></span><span data-i18n="node2">Node 2 — Render (Secondary)</span></div><div class="nurl">aequitas-node-2.onrender.com</div><div class="ndesc" data-i18n="node2-desc">Secondary API · Block producer · P2P peer · HTTP sync · Shared PostgreSQL</div></div>
+      <div class="nbox">
+        <div class="nstat"><span class="ndot"></span><span data-i18n="node1">Node 1 — Railway (Primary)</span></div>
+        <div class="nurl">aequitas-production-9fba.up.railway.app</div>
+        <div class="ndesc" data-i18n="node1-desc">Primary API · Block producer · UBI distribution · P2P bootstrap · PostgreSQL · RPC for MetaMask</div>
+        <div style="margin-top:6px;font-size:0.57rem;color:rgba(0,255,209,0.5)">IS_PRIMARY_NODE=true · Daily pool distributions</div>
+      </div>
+      <div class="nbox">
+        <div class="nstat"><span class="ndot"></span><span data-i18n="node2">Node 2 — Render (Secondary)</span></div>
+        <div class="nurl">aequitas-node-2.onrender.com</div>
+        <div class="ndesc" data-i18n="node2-desc">Secondary API · Block producer · P2P peer · HTTP sync · Shared PostgreSQL state</div>
+        <div style="margin-top:6px;font-size:0.57rem;color:rgba(139,92,246,0.5)">Redundancy · Geographic distribution</div>
+      </div>
     </div>
   </div>
   <div class="nc">
-    <div class="nc-title" data-i18n="bootstrap-title">Bootstrap Node</div>
-    <div style="font-size:0.63rem;color:var(--muted);line-height:1.8;margin-bottom:10px" data-i18n="bootstrap-desc">To run your own Aequitas node, connect to the bootstrap node using the libp2p multiaddress below.</div>
+    <div class="nc-title" data-i18n="bootstrap-title">Connect a New Node</div>
+    <div style="font-size:0.63rem;color:var(--muted);line-height:1.8;margin-bottom:10px" data-i18n="bootstrap-desc">To run your own Aequitas node, set the PEER_NODES environment variable to the bootstrap node address below. Your node will automatically sync the full chain state and begin participating in block production.</div>
+    <div style="font-size:0.6rem;color:var(--muted);margin-bottom:6px;letter-spacing:1px">LIBP2P MULTIADDRESS</div>
     <div class="bsbox">/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R</div>
+    <div style="font-size:0.6rem;color:var(--muted);margin-top:10px;line-height:1.7">Set in your environment: <span style="color:var(--purple);font-family:var(--font-mono)">PEER_NODES=https://aequitas-production-9fba.up.railway.app</span></div>
   </div>
   <div class="nc">
     <div class="nc-title" data-i18n="tech-title">Technical Specifications</div>
     <table class="spect">
       <tr><td data-i18n="k-chainid">Chain ID</td><td>1926 (0x786)</td></tr>
-      <tr><td>EVM</td><td style="color:var(--green)" data-i18n="evm-yes">Yes — JSON-RPC /rpc · MetaMask</td></tr>
-      <tr><td data-i18n="k-btime">Block Time</td><td>~6 seconds</td></tr>
-      <tr><td data-i18n="k-cons">Consensus</td><td style="color:var(--purple)">BlockDAG + PoH</td></tr>
-      <tr><td>P2P</td><td>libp2p (Go)</td></tr>
-      <tr><td>ZKP</td><td>Groth16 / snarkjs / circom</td></tr>
-      <tr><td>Curve</td><td>BN128 (alt-bn128)</td></tr>
-      <tr><td data-i18n="k-storage">Storage</td><td style="color:var(--green)">PostgreSQL</td></tr>
-      <tr><td data-i18n="k-lang">Language</td><td>Go 1.24</td></tr>
-      <tr><td data-i18n="k-src">Source</td><td><a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--blue)">GitHub</a></td></tr>
+      <tr><td>Architecture</td><td style="color:var(--purple)">BlockDAG (Directed Acyclic Graph)</td></tr>
+      <tr><td>EVM Compatible</td><td style="color:var(--green)" data-i18n="evm-yes">Yes — JSON-RPC /rpc · MetaMask</td></tr>
+      <tr><td data-i18n="k-btime">Block Time</td><td>~6 seconds average</td></tr>
+      <tr><td data-i18n="k-cons">Consensus</td><td style="color:var(--purple)">BlockDAG + Proof of Humanity</td></tr>
+      <tr><td>P2P Protocol</td><td>libp2p (Go implementation)</td></tr>
+      <tr><td>ZKP System</td><td>Groth16 / snarkjs / circom</td></tr>
+      <tr><td>Elliptic Curve</td><td>BN128 (alt-bn128)</td></tr>
+      <tr><td>Bio Hash</td><td style="color:var(--teal)">keccak256 (post-quantum safe)</td></tr>
+      <tr><td data-i18n="k-storage">Storage</td><td style="color:var(--green)">PostgreSQL (persistent)</td></tr>
+      <tr><td data-i18n="k-lang">Language</td><td>Go 1.24 (chain) · Node.js (proof server)</td></tr>
+      <tr><td data-i18n="k-src">Source Code</td><td><a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--blue)">GitHub — Open Source</a></td></tr>
     </table>
   </div>
   <div class="nc">
     <div class="nc-title" data-i18n="mm-config">MetaMask Configuration</div>
+    <div style="font-size:0.62rem;color:var(--muted);line-height:1.7;margin-bottom:12px">Add Aequitas Chain to MetaMask to view your AEQ balance, send transactions, and interact with the V7 contract directly from your browser or mobile wallet.</div>
     <table class="spect">
       <tr><td data-i18n="k-chain">Network Name</td><td style="color:var(--gold)">Aequitas Chain</td></tr>
-      <tr><td>RPC URL</td><td style="color:var(--blue);font-size:0.55rem">https://aequitas-production-9fba.up.railway.app/rpc</td></tr>
+      <tr><td>RPC URL</td><td style="color:var(--blue);font-size:0.52rem">https://aequitas-production-9fba.up.railway.app/rpc</td></tr>
       <tr><td data-i18n="k-chainid">Chain ID</td><td style="color:var(--gold)">1926</td></tr>
-      <tr><td data-i18n="k-symbol">Symbol</td><td style="color:var(--gold)">AEQ</td></tr>
+      <tr><td data-i18n="k-symbol">Currency Symbol</td><td style="color:var(--gold)">AEQ</td></tr>
       <tr><td data-i18n="k-dec">Decimals</td><td>18</td></tr>
     </table>
     <button class="mm-btn" onclick="addToMetaMask()" style="margin-top:12px" data-i18n="btn-add-mm">+ ADD TO METAMASK</button>
+    <div style="font-size:0.58rem;color:var(--muted);margin-top:8px;line-height:1.6">📱 MetaMask Mobile: if AEQ shows 0 after adding, delete the network and re-add it using the button above.</div>
   </div>
 </div>
 </div>
 
-<!-- PROTOCOL V6 -->
+<!-- PROTOCOL V7 -->
 <div id="tab-protocol" class="tab-content">
 <div class="ps">
-  <div class="section-label" data-i18n="proto-label">Aequitas V6 Protocol — Technical Documentation</div>
+  <div class="section-label" data-i18n="proto-label">Aequitas V7 Protocol — Technical Documentation</div>
   <div class="idx" style="margin-bottom:12px">
-    <div class="idx-title" data-i18n="ca-title">Contract Addresses</div>
-    <div class="hlbox" data-i18n="ca-text">Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier (Groth16): 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main):     0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae<br>V5 (Sepolia legacy):   0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5</div>
+    <div class="idx-title" data-i18n="ca-title">Contract &amp; Network Addresses</div>
+    <div style="font-size:0.65rem;color:var(--muted);line-height:1.8;margin-bottom:10px">The Aequitas V7 contract is deployed on Aequitas Chain (Chain ID 1926). It handles human registration, balance tracking, UBI distribution, and all governance parameters. The BioVerifier contract validates Groth16 proofs on-chain before any registration is accepted.</div>
+    <div class="hlbox" data-i18n="ca-text">Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier (Groth16 on-chain verifier): 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main contract): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
-    <div class="idx-title" data-i18n="poa-title">1. PROOF OF ALIVE</div>
-    <div class="story" data-i18n="poa-text"><p>What happens to money when people die or disappear? In Bitcoin, millions of BTC are permanently lost. In Aequitas, if someone disappears, their AEQ eventually returns to the community.</p></div>
-    <div class="hlbox" data-i18n="poa-box">Year 0-2: Normal usage<br>Year 2: Warning 1 — Guardian can respond<br>Year 2+60d: Warning 2<br>Year 2+120d: Warning 3<br>Year 2+180d: AEQ goes to PERSONAL ESCROW<br>Year 4: If still inactive — UBI Pool — distributed equally</div>
+    <div class="idx-title" data-i18n="poa-title">1. PROOF OF ALIVE — Inactive Balance Recovery</div>
+    <div class="story" data-i18n="poa-text"><p>What happens to AEQ when people die or become permanently incapacitated? In Bitcoin and most cryptocurrencies, lost wallets mean permanently lost supply — millions of BTC are estimated to be inaccessible forever. Aequitas solves this through a multi-stage inactivity recovery system: if a wallet shows no activity for an extended period, its balance is gradually returned to the community through the UBI pool, ensuring the total effective supply remains meaningful.</p></div>
+    <div class="hlbox" data-i18n="poa-box">Year 0–2: Normal usage — no restrictions<br>Year 2: Warning 1 sent — Guardian can respond on behalf<br>Year 2+60d: Warning 2 — escalating urgency<br>Year 2+120d: Warning 3 — final notice<br>Year 2+180d: AEQ moved to personal ESCROW (still recoverable)<br>Year 4: If still inactive — ESCROW released to UBI Pool</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
-    <div class="idx-title" data-i18n="guard-title">2. GUARDIAN SYSTEM</div>
-    <div class="story" data-i18n="guard-text"><p>What if someone cannot access their device for months? A trusted Guardian can confirm they are still alive — without any transaction rights.</p></div>
-    <div class="hlbox" data-i18n="guard-box">1 Guardian per human (another verified human)<br>Guardian can ONLY call confirmAlive() — zero transaction rights<br>Guardian CANNOT move funds or transfer AEQ<br>Max 3 wards per Guardian<br>7-day timelock on assignment (prevents forced assignment)<br>No circular relationships</div>
+    <div class="idx-title" data-i18n="guard-title">2. GUARDIAN SYSTEM — Human Failsafe</div>
+    <div class="story" data-i18n="guard-text"><p>What if someone is hospitalized, incarcerated, or otherwise unable to access their device for months? The Guardian system allows a trusted person — another verified human — to confirm that the wallet owner is still alive, preventing their AEQ from being moved to escrow. The Guardian has strictly zero financial access: they can only call a single function that resets the inactivity clock. They cannot move, spend, or access any funds under any circumstances.</p></div>
+    <div class="hlbox" data-i18n="guard-box">1 Guardian per human · must be a verified human on Aequitas<br>Guardian can ONLY call confirmAlive() — zero transaction rights<br>Guardian CANNOT move funds, transfer AEQ, or access the wallet<br>Maximum 3 wards per Guardian (prevents centralization of trust)<br>7-day timelock on Guardian assignment (prevents forced assignment)<br>No circular guardian relationships allowed</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
-    <div class="idx-title" data-i18n="dem-title">3. DEMURRAGE — Anti-Hoarding</div>
-    <div class="hlbox" data-i18n="dem-box">1% annual fee on balance ABOVE your fairShare goes to UBI Pool<br><br>Example: fairShare = 1,000 AEQ · Your balance = 3,000 AEQ<br>Excess: 2,000 AEQ · Monthly fee: 1.67 AEQ to UBI Pool</div>
-    <div class="story" style="margin-top:12px" data-i18n="dem-text"><p>Historical precedent: Worgl, Austria (1932) — demurrage currency reduced unemployment 25% in one year. The Central Bank shut it down because it worked too well.</p></div>
+    <div class="idx-title" data-i18n="dem-title">3. DEMURRAGE — Anti-Hoarding Mechanism</div>
+    <div class="story" data-i18n="dem-text"><p>Demurrage is a holding cost on money — a negative interest rate that makes hoarding expensive and circulation attractive. It has historical precedent: the Wörgl experiment (Austria, 1932) used a demurrage currency and reduced local unemployment by 25% within one year. The Central Bank of Austria shut it down precisely because it worked too well and threatened the banking monopoly. The Chiemgauer (Germany, 2003) operates on the same principle and has circulated successfully for over 20 years. Aequitas implements continuous demurrage at 0.5% per month, applied only after a 3-month grace period of inactivity.</p></div>
+    <div class="hlbox" data-i18n="dem-box">Rate: 0.5% per month after 3 months of inactivity (continuous, not stepped)<br>Clock resets automatically on any transfer, swap, or liquidity action<br>Decayed AEQ is redistributed to the four pools — never burned<br>14-day warning shown once · 7-day warning repeated on each active session</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
-    <div class="idx-title" data-i18n="cap-title">4. WEALTH CAP</div>
-    <div class="hlbox" data-i18n="cap-box">Phase 0: 50x fairShare · Phase 1: 20x · Phase 2: 10x · Phase 3: 5x · Phase 4: 3x<br><br>Always active from human #1. Excess is instantly redistributed equally to ALL active humans.</div>
+    <div class="idx-title" data-i18n="cap-title">4. WEALTH CAP — Mathematical Fairness Enforcement</div>
+    <div class="hlbox" data-i18n="cap-box">Cap = 25× current average AEQ balance of all verified humans<br>Automatically adjusts as the network grows and balances change<br>Applies to ALL addresses except the 4 protocol pool addresses<br>Excess AEQ is instantly redistributed to the 4 redistribution pools<br>No manual intervention required — enforced at the protocol level on every incoming transfer</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
-    <div class="idx-title" data-i18n="ubi-title">5. UNIVERSAL BASIC INCOME</div>
-    <div class="hlbox" data-i18n="ubi-box">Sources: Transaction fees (20%) · Wealth cap overflow · Demurrage · Inactive escrow<br><br>Daily: UBI Pool divided equally among all registered humans. Pool resets to zero after each distribution and refills continuously from protocol fees.</div>
+    <div class="idx-title" data-i18n="ubi-title">5. UNIVERSAL BASIC INCOME — Daily Redistribution</div>
+    <div class="hlbox" data-i18n="ubi-box">Sources of UBI Pool income:<br>· 20% of all swap fees from the AEQ↔tUSD AMM pool<br>· Overflow from wealth cap enforcement<br>· Demurrage charges from inactive accounts<br>· Inactive escrow released after 4 years<br><br>Distribution: Every 24 hours, the entire UBI pool balance is divided equally among all registered verified humans. The pool resets to zero and begins filling again immediately from ongoing protocol activity.</div>
   </div>
   <div class="idx" style="margin-bottom:12px">
-    <div class="idx-title" data-i18n="inf-title">6. NO ALGORITHMIC INFLATION</div>
-    <div class="hlbox" data-i18n="inf-box">The ONLY event that creates new AEQ: a new verified human registers<br><br>Total AEQ = Verified Active Humans x 1,000 (always true, always verifiable)</div>
+    <div class="idx-title" data-i18n="inf-title">6. NO ALGORITHMIC INFLATION — Fixed Supply Formula</div>
+    <div class="hlbox" data-i18n="inf-box">The ONLY event that creates new AEQ: a new verified human registers.<br><br>Total Supply = Verified Humans × 1,000 AEQ<br><br>This is not a policy — it is enforced by the protocol. No admin can mint additional AEQ, no governance vote can change the issuance, no founder allocation was pre-mined. AEQ is the only cryptocurrency where the total supply is determined solely by the number of verified living humans.</div>
   </div>
 </div>
 </div>
@@ -594,427 +694,645 @@ let waddr = '', proofData = null, curLang = 'en';
 const T = {
 en:{
   'logo-sub':'PROOF OF HUMANITY','live':'LIVE',
-  'tab-register':'🔐 Register','tab-explorer':'🔍 Explorer','tab-humans':'👥 Humans','tab-index':'📊 Index','tab-network':'🌐 Network','tab-protocol':'📜 Protocol V7',
+  'tab-register':'🔐 Register','tab-explorer':'🔍 Explorer','tab-humans':'👥 Humans','tab-index':'📊 Index','tab-network':'🌐 Network','tab-protocol':'📜 Protocol V7','tab-swap':'🔄 Swap',
   'reg-title':'🔐 Register as a Verified Human',
-  'reg-sub':'Join the Aequitas network and receive 1,000 AEQ. One-time, permanent, gasless. No personal data stored.',
+  'reg-sub':'Join the Aequitas network and receive your 1,000 AEQ Universal Basic Income grant. Registration is one-time, permanent, and completely gasless. No personal data is ever stored.',
   'app-title':'REGISTRATION VIA ANDROID APP',
-  'app-text':'Proof of Humanity requires biometric verification on your personal device. Your fingerprint is processed by the Hardware Secure Element — raw data never leaves your phone. Download the app, scan your fingerprint, connect your wallet, and your <strong style="color:var(--gold)">1,000 AEQ will be granted automatically</strong>.',
-  's1t':'Biometric Scan','s1d':'Open app · scan fingerprint · HSE processes · data never leaves device',
-  's2t':'ZKP Generation','s2d':'Groth16 proof generated · uniqueness verified · hash never revealed',
-  's3t':'Connect Wallet','s3d':'App opens MetaMask · connect wallet · address receives 1,000 AEQ',
-  's4t':'1,000 AEQ','s4d':'Registered on V6 · confirmed in next block · app notifies automatically',
-  'priv-bar':'🔒 Hardware Secure Element · Groth16 ZKP · Data never leaves device · No gas fees · Permanent Sybil protection',
+  'app-text':'Proof of Humanity requires biometric verification on your personal device. Your fingerprint or face scan is processed exclusively by the Hardware Secure Element inside your phone — raw biometric data never leaves your device, never touches any server. The app generates a Zero-Knowledge Proof that proves your uniqueness without revealing any personal information. Download AequitasBio, scan your biometrics, connect MetaMask, and your <strong style="color:var(--gold)">1,000 AEQ will be credited automatically</strong>.',
+  's1t':'Biometric Scan','s1d':'Open AequitasBio app · scan fingerprint or face · Hardware Secure Element processes locally · biometric data never leaves your device',
+  's2t':'ZK Proof Generation','s2d':'Groth16 Zero-Knowledge Proof is generated on the proof server · your uniqueness is verified cryptographically · your identity is never revealed',
+  's3t':'Connect Wallet','s3d':'The app opens MetaMask on this page · connect your Ethereum wallet · the proof is cryptographically bound to your wallet address',
+  's4t':'1,000 AEQ Granted','s4d':'Registration confirmed on Aequitas BlockDAG within 6 seconds · 1,000 AEQ credited instantly · your identity is permanently recorded as a verified human',
+  'priv-bar':'🔒 Hardware Secure Element · Groth16 Zero-Knowledge Proof · Biometric data never leaves your device · No gas fees · One registration per human · Permanent &amp; immutable',
   'conn-wallet':'CONNECTED WALLET','proof-recv':'⚡ ZK PROOF RECEIVED','proof-hint':'Connect wallet to register',
   'btn-conn':'🦊 CONNECT METAMASK','btn-reg':'🔐 REGISTER ON-CHAIN',
   'reg-log-hint':'// Open Aequitas Android App to generate your proof, then return here...',
-  'reg-details':'Registration Details','k-network':'Network','k-chainid':'Chain ID','k-grant':'Grant Amount',
-  'k-fee':'Gas Fee','free':'FREE (gasless)','k-limit':'Registrations','k-limit-v':'Once per human · permanent · immutable',
-  'k-bio':'Biometric Data','never-stored':'Never stored anywhere','k-conf':'Confirmation','k-conf-v':'Within 6 seconds',
+  'reg-details':'Registration Details','k-network':'Network','k-chainid':'Chain ID','k-grant':'UBI Grant',
+  'k-fee':'Gas Fee','free':'FREE — completely gasless','k-limit':'Registrations','k-limit-v':'Once per human · permanent · immutable',
+  'k-bio':'Biometric Data','never-stored':'Never stored — stays on your device',
+  'k-proof':'Proof System','k-conf':'Confirmation','k-conf-v':'Within 6 seconds (1 block)',
+  'k-sybil':'Sybil Protection','k-sybil-v':'One identity per biometric · permanent lock',
   'live-stats':'Live Chain Statistics',
-  's-height':'Block Height','s-height-sub':'New block every 6s · BlockDAG · Two nodes parallel',
+  's-height':'Block Height','s-height-sub':'New block every ~6s · BlockDAG · Parallel production',
   's-humans':'Verified Humans','s-humans-sub':'Biometric ZKP · One person, one wallet, forever',
-  's-supply':'Total Supply','s-supply-sub':'Always = Humans 00d7 1,000 AEQ',
+  's-supply':'Total Supply','s-supply-sub':'Always = Humans × 1,000 AEQ',
   's-index':'Aequitas Index','s-index-sub':'0 = perfect equality · 100 = max inequality',
   's-uptime':'Uptime','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
-  'ib-poh':'Proof of Humanity','ib-poh-t':'Every AEQ holder must prove they are a unique living human. No bots, no corporations, no AI can hold AEQ. Only real humans. Biometric data never leaves your device.',
-  'ib-fair':'Radically Fair','ib-fair-t':'Every verified human receives exactly 1,000 AEQ. No pre-mine, no founder allocation. Total supply always equals verified humans x 1,000.',
-  'ib-dag':'BlockDAG Architecture','ib-dag-t':'Multiple blocks can be produced simultaneously and merged. Higher throughput, lower latency, better fault tolerance.',
-  'ib-gas':'Truly Gasless','ib-gas-t':'Registration costs absolutely nothing. No ETH, BNB, or MATIC required. No credit card, no bank account.',
-  'recent-blocks':'Recent Blocks','blocks-desc':'MERGE = multiple parents (BlockDAG). TX = registration transaction. Block time: ~6 seconds.',
+  'ib-poh':'Proof of Humanity','ib-poh-t':'Every AEQ holder must cryptographically prove they are a unique living human. No bots, no corporations, no AI, no duplicates. Biometric data never leaves your device — only a mathematical proof is transmitted.',
+  'ib-fair':'Radically Fair Distribution','ib-fair-t':'Every verified human receives exactly 1,000 AEQ upon registration — no more, no less. No pre-mine, no founder allocation, no investor rounds. Total supply always equals verified humans × 1,000.',
+  'ib-dag':'BlockDAG Architecture','ib-dag-t':'Multiple blocks can be produced simultaneously and merged into the DAG. Higher throughput, lower latency, better fault tolerance than traditional linear blockchains.',
+  'ib-gas':'Truly Gasless','ib-gas-t':'Registration and AEQ transfers cost absolutely nothing. No ETH, BNB, or MATIC required. No credit card, no bank account, no prior cryptocurrency needed.',
+  'recent-blocks':'Recent Blocks','blocks-desc':'MERGE = multiple parents merged (BlockDAG). TX = registration transaction. Block time: ~6 seconds. Two nodes produce blocks in parallel.',
   'loading':'Loading blocks...','net-info':'Network Info','k-chain':'Chain Name','k-symbol':'Symbol','k-btime':'Block Time',
   'k-cons':'Consensus','k-nodes':'Active Nodes','k-storage':'Storage','add-mm':'🦊 ADD TO METAMASK','k-dec':'Decimals',
   'btn-add-mm':'+ ADD AEQUITAS NETWORK',
   'phil':'"Money exists because people exist.<br>Nothing more, nothing less."','phil-sub':'— THE AEQUITAS PRINCIPLE —',
   'humans-title':'Verified Humans on Aequitas Chain',
-  'h-what':'What is a Verified Human?','h-what-t':'A Verified Human is a wallet address cryptographically proven to belong to a unique living human. Biometric data is never transmitted or stored.',
-  'h-zkp':'Zero-Knowledge Proof System','h-zkp-t':'Aequitas uses the Groth16 proving system over BN128 elliptic curve. Proof size: ~200 bytes. Verification: ~10ms.',
-  'h-sybil':'Sybil Attack Prevention','h-sybil-t':'Each biometric hash is stored permanently. Attempting to register twice is immediately rejected. One human, one wallet, forever. ⚠ Test phase: current verification is device-bound. A physiological sensor (MAX30102 PPG) is planned for device-independent identity in a future update.',
-  'h-global':'Global Inclusion','h-global-t':'No bank account, no credit card, no cryptocurrency required. Just an Android smartphone with a fingerprint sensor.',
-  'reg-humans':'Registered Humans','h-desc':'Every address verified as unique human through biometric ZKP. Each received 1,000 AEQ. Permanent, immutable, on-chain.',
+  'h-what':'What is a Verified Human?','h-what-t':'A Verified Human is a wallet address cryptographically proven to belong to a unique living human through biometric Zero-Knowledge Proof. Biometric data is never transmitted or stored — only the mathematical proof of uniqueness.',
+  'h-zkp':'Zero-Knowledge Proof System','h-zkp-t':'Aequitas uses the Groth16 proving system over the BN128 elliptic curve. Proof size: ~200 bytes. Verification time: ~10ms. The proof mathematically demonstrates uniqueness without revealing any identifying information.',
+  'h-sybil':'Sybil Attack Prevention','h-sybil-t':'Each biometric hash is stored permanently using keccak256. Attempting to register twice is immediately rejected. One human, one wallet, forever. ⚠ Test phase: current verification is device-bound. A physiological sensor (MAX30102 PPG) is planned for fully device-independent identity verification in a future update.',
+  'h-global':'Global Financial Inclusion','h-global-t':'No bank account, no credit card, no prior cryptocurrency required. Just an Android smartphone with a fingerprint or face sensor. Aequitas is designed to be accessible to every human on Earth.',
+  'reg-humans':'Registered Humans','h-desc':'Every address below has been verified as a unique human through biometric ZKP. Each received exactly 1,000 AEQ. The registry is permanent, immutable, and on-chain.',
   'no-humans':'No humans registered yet.\n\nDownload the Aequitas Android App and be the first human on the chain!',
   'reg-stats':'Registry Stats','total-humans':'Total Humans',
   'idx-title':'Aequitas Index — Real-Time Economic Equality Score',
-  'idx-desc':'Calculated from the on-chain balance distribution of all verified humans. 0 = perfect equality. 100 = maximum inequality.',
+  'idx-desc':'The Aequitas Index measures economic inequality across all verified humans in real time. It is derived from the Gini coefficient of on-chain balance distribution. 0 = perfect equality (everyone holds the same). 100 = maximum inequality (one person holds everything). The protocol automatically triggers redistribution when the index rises.',
   'curr-idx':'Current Index','bar-0':'0 — Perfect Equality','bar-100':'100 — Max Inequality',
-  'gini':'Gini Coefficient','phase':'Protocol Phase',
-  'pools-title':'Redistribution Pools','pools-desc':'When inequality thresholds are exceeded, AEQ is automatically redirected. Controlled entirely by protocol logic.',
-  'vel-pool':'Velocity Pool','liq-pool':'Liquidity Pool','ubi-pool':'UBI Pool','treasury':'Treasury',
-  'phases-title':'Protocol Phases','phases-desc':'Transitions happen automatically — no governance vote required.',
-  'p0':'Bootstrap · &lt;100 humans · Cap: 50x','p1':'Growth · 100-10,000 · Cap: 20x',
-  'p2':'Stability · 10k-1M · Cap: 10x','p3':'Maturity · 1M+ · Cap: 3x',
+  'gini':'Gini Coefficient','gini-desc':'0 = equal · 1 = unequal',
+  'supply-desc':'Always = Humans × 1,000 AEQ',
+  'phase':'Protocol Phase','phase-desc':'Auto-advances by human count',
+  'humans-desc':'Biometrically verified unique humans',
+  'pools-title':'Redistribution Pools',
+  'pools-desc':'Every swap fee, demurrage charge, and wealth cap overflow is automatically split across four pools. No manual intervention — the protocol handles all redistribution through code alone. All pools pay out daily.',
+  'vel-pool':'Validators Pool','vel-pool-desc':'40% of all fees → node operators who secure the network',
+  'liq-pool':'Liquidity Pool','liq-pool-desc':'30% of all fees → liquidity providers, proportional to LP shares',
+  'ubi-pool':'UBI Pool','ubi-pool-desc':'20% of all fees → all verified humans equally, every 24 hours',
+  'treasury':'Treasury','treasury-desc':'10% of all fees → protocol development and maintenance',
+  'phases-title':'Protocol Phases',
+  'phases-desc':'Phase transitions are triggered automatically by human count — no voting, no governance, no admin keys required.',
+  'p0':'Bootstrap · &lt;100 humans · Wealth Cap: 50× average balance · Currently active',
+  'p1':'Growth · 100–10,000 humans · Wealth Cap: 20× average balance',
+  'p2':'Stability · 10,000–1M humans · Wealth Cap: 10× average balance',
+  'p3':'Maturity · 1M+ humans · Wealth Cap: 3× average balance · Maximum redistribution',
+  'wealth-cap-explain':'The Wealth Cap is set as a multiple of the current average AEQ balance across all verified humans — not a fixed number. This means it automatically adjusts as the network grows, always maintaining relative fairness regardless of total supply.',
+  'demurrage-title':'Demurrage — Incentive to Circulate',
+  'demurrage-desc':'Aequitas implements a demurrage mechanism inspired by historical complementary currencies. Idle AEQ balances slowly lose value to discourage hoarding and incentivize economic participation.',
+  'dem-rate-k':'Decay Rate','dem-rate-v':'0.5% per month (continuous, not stepped)',
+  'dem-grace-k':'Grace Period','dem-grace-v':'3 months of inactivity before decay begins',
+  'dem-reset-k':'Clock Reset','dem-reset-v':'Any transfer, swap, or liquidity action resets the timer to zero',
+  'dem-dest-k':'Decayed AEQ goes to','dem-dest-v':'Redistribution pools (40/30/20/10 split)',
+  'dem-warn-k':'Warning System','dem-warn-v':'14-day notice (shown once) + 7-day repeated reminder at each login',
   'story-title':'The Story of Aequitas — Why This Exists',
-  'story-text':'<p>The year is 2009. Satoshi Nakamoto releases Bitcoin. For the first time, value can transfer between any two people without a bank. A genuine revolution. But something goes wrong almost immediately.</p><p>Early miners accumulate millions of coins at almost zero cost. By 2021, the top 1% of Bitcoin addresses control over 90% of all Bitcoin. Bitcoin\'s estimated Gini exceeds 0.85 — higher than any country on Earth.</p><p><span style="color:var(--gold)">Aequitas</span> was created to answer: <em style="color:var(--gold)">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em></p><p>The answer: <strong>Money exists because people exist. Therefore, every person should have an equal share of money simply by virtue of being human.</strong></p><p><em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p>',
+  'story-text':'<p>The year is 2009. Satoshi Nakamoto releases Bitcoin. For the first time, value can transfer between any two people without a bank. A genuine revolution. But something goes wrong almost immediately.</p><p>Early miners accumulate millions of coins at almost zero cost. By 2021, the top 1% of Bitcoin addresses control over 90% of all Bitcoin. Bitcoin\'s estimated Gini coefficient exceeds 0.85 — higher than any country on Earth. The cryptocurrency that was supposed to democratize finance created the most extreme wealth concentration in human history.</p><p><span style="color:var(--gold)">Aequitas</span> — Latin for "fairness" and "equality" — was created to answer a single question: <em style="color:var(--gold)">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em></p><p>The answer is simple: <strong style="color:var(--text)">Money exists because people exist. Therefore, every person should have an equal share of money simply by virtue of being human.</strong></p><p>Aequitas implements this mathematically. Every verified human receives 1,000 AEQ. No mining, no staking, no early-adopter advantage. The wealth cap, demurrage, and redistribution pools ensure inequality cannot accumulate indefinitely. The protocol adjusts automatically as the network grows.</p><p>The Aequitas network launched in June 2026. Currently in Phase 0. The goal: demonstrate that money can be distributed fairly, equality maintained through mathematical governance, and financial inclusion achieved at global scale — without any central authority.</p><p><em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p>',
   'nodes-title':'Active Nodes — Current Network Topology',
-  'nodes-desc':'The Aequitas network operates on two nodes in geographically distributed cloud environments. Both participate in block production, state synchronization, and API serving.',
-  'node1':'Node 1 — Railway (Primary)','node1-desc':'Primary API · Block producer · P2P bootstrap · PostgreSQL · RPC for MetaMask',
-  'node2':'Node 2 — Render (Secondary)','node2-desc':'Secondary API · Block producer · P2P peer · HTTP sync · Shared PostgreSQL',
-  'bootstrap-title':'Bootstrap Node','bootstrap-desc':'To run your own Aequitas node, connect to the bootstrap node using the libp2p multiaddress below.',
+  'nodes-desc':'The Aequitas network currently operates on two geographically distributed nodes. Both participate in block production, state synchronization, and API serving. They communicate peer-to-peer via libp2p and synchronize block state via HTTP. Both share access to the same PostgreSQL database for persistent state. The network is designed to support additional nodes — any operator can join.',
+  'node1':'Node 1 — Railway (Primary)','node1-desc':'Primary API · Block producer · UBI distribution · P2P bootstrap · PostgreSQL · RPC for MetaMask',
+  'node2':'Node 2 — Render (Secondary)','node2-desc':'Secondary API · Block producer · P2P peer · HTTP sync · Shared PostgreSQL state',
+  'run-node-title':'Run Your Own Node — Help Secure the Network',
+  'run-node-desc':'Anyone can run an Aequitas node — no permission, no stake, no application required. Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all swap fees, distributed daily).',
+  'bootstrap-title':'Connect a New Node','bootstrap-desc':'To run your own Aequitas node, set the PEER_NODES environment variable to the bootstrap node address below. Your node will automatically sync the full chain state and begin participating in block production.',
   'tech-title':'Technical Specifications','mm-config':'MetaMask Configuration',
-  'k-lang':'Language','k-src':'Source','evm-yes':'Yes — JSON-RPC /rpc · MetaMask',
-  'proto-label':'Aequitas V6 Protocol — Technical Documentation',
-  'ca-title':'Contract Addresses','ca-text':'Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae<br>V5 Sepolia:  0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5',
-  'poa-title':'1. PROOF OF ALIVE','poa-text':'<p>What happens to money when people die or disappear? In Bitcoin, millions of BTC are permanently lost. In Aequitas, if someone disappears, their AEQ eventually returns to the community.</p>',
-  'poa-box':'Year 0-2: Normal usage<br>Year 2: Warning 1 — Guardian can respond<br>Year 2+60d: Warning 2<br>Year 2+120d: Warning 3<br>Year 2+180d: AEQ goes to PERSONAL ESCROW<br>Year 4: If still inactive — UBI Pool',
-  'guard-title':'2. GUARDIAN SYSTEM','guard-text':'<p>What if someone cannot access their device for months? A trusted Guardian can confirm they are still alive — without any transaction rights.</p>',
-  'guard-box':'1 Guardian per human (another verified human)<br>Guardian can ONLY call confirmAlive() — zero transaction rights<br>Guardian CANNOT move funds or transfer AEQ<br>Max 3 wards · 7-day timelock · No circular relationships',
-  'dem-title':'3. DEMURRAGE — Anti-Hoarding',
-  'dem-box':'1% annual fee on balance ABOVE fairShare goes to UBI Pool<br><br>Example: fairShare=1,000 · Balance=3,000 · Excess=2,000 · Monthly fee=1.67 AEQ',
-  'dem-text':'<p>Historical precedent: Worgl, Austria (1932) — demurrage currency reduced unemployment 25% in one year.</p>',
-  'cap-title':'4. WEALTH CAP','cap-box':'Phase 0: 50x fairShare · Phase 1: 20x · Phase 2: 10x · Phase 3: 5x · Phase 4: 3x<br><br>Always active from human #1. Excess instantly redistributed to ALL active humans.',
-  'ubi-title':'5. UNIVERSAL BASIC INCOME','ubi-box':'Sources: Transaction fees (20%) · Wealth cap overflow · Demurrage · Inactive escrow<br><br>Daily: UBI Pool divided equally among all registered humans. Pool resets after each distribution.',
-  'inf-title':'6. NO ALGORITHMIC INFLATION','inf-box':'The ONLY event that creates new AEQ: a new verified human registers<br><br>Total AEQ = Verified Active Humans x 1,000'
+  'k-lang':'Language','k-src':'Source','evm-yes':'Yes — JSON-RPC /rpc · MetaMask compatible',
+  'proto-label':'Aequitas V7 Protocol — Technical Documentation',
+  'ca-title':'Contract Addresses',
+  'ca-text':'Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
+  'poa-title':'1. PROOF OF ALIVE','poa-text':'<p>What happens to AEQ when people die or disappear? In Bitcoin, millions of BTC are permanently lost. In Aequitas, if someone is inactive for an extended period, their AEQ eventually returns to the community through the UBI pool.</p>',
+  'poa-box':'Year 0-2: Normal usage<br>Year 2: Warning 1 — Guardian can respond<br>Year 2+60d: Warning 2<br>Year 2+120d: Warning 3<br>Year 2+180d: AEQ goes to PERSONAL ESCROW<br>Year 4: If still inactive — returns to UBI Pool',
+  'guard-title':'2. GUARDIAN SYSTEM','guard-text':'<p>What if someone cannot access their device for months? A trusted Guardian — another verified human — can confirm they are still alive, without any transaction rights.</p>',
+  'guard-box':'1 Guardian per human (must be another verified human)<br>Guardian can ONLY call confirmAlive() — zero transaction rights<br>Guardian CANNOT move funds or transfer AEQ<br>Max 3 wards · 7-day timelock · No circular relationships allowed',
+  'dem-title':'3. DEMURRAGE — Anti-Hoarding Mechanism',
+  'dem-box':'Rate: 0.5%/month after 3 months grace period<br>Clock resets on any transfer, swap, or liquidity action<br>Decayed AEQ redistributed to pools (not burned)',
+  'dem-text':'<p>Historical precedent: The Wörgl experiment (Austria, 1932) used a demurrage currency and reduced unemployment by 25% in one year. The Chiemgauer (Germany, 2003) has operated successfully for over 20 years using a similar mechanism.</p>',
+  'cap-title':'4. WEALTH CAP — Mathematical Fairness','cap-box':'Cap = 25× current average balance of all verified humans<br>Automatically adjusts as the network grows<br>Excess AEQ instantly redistributed to redistribution pools',
+  'ubi-title':'5. UNIVERSAL BASIC INCOME','ubi-box':'Sources: Swap fees (20%) · Wealth cap overflow · Demurrage · Inactive escrow<br><br>Daily: UBI Pool divided equally among all registered humans. Pool resets to zero after each distribution and refills continuously.',
+  'inf-title':'6. NO ALGORITHMIC INFLATION','inf-box':'The ONLY event that creates new AEQ: a new verified human registers<br><br>Total Supply = Verified Humans × 1,000 AEQ — always, exactly.'
 },
 de:{
   'logo-sub':'MENSCHLICHKEITSNACHWEIS','live':'LIVE',
-  'tab-register':'🔐 Registrieren','tab-explorer':'🔍 Explorer','tab-humans':'👥 Menschen','tab-index':'📊 Index','tab-network':'🌐 Netzwerk','tab-protocol':'📜 Protokoll V7',
+  'tab-register':'🔐 Registrieren','tab-explorer':'🔍 Explorer','tab-humans':'👥 Menschen','tab-index':'📊 Index','tab-network':'🌐 Netzwerk','tab-protocol':'📜 Protokoll V7','tab-swap':'🔄 Tauschen',
   'reg-title':'🔐 Als verifizierter Mensch registrieren',
-  'reg-sub':'Tritt dem Aequitas-Netzwerk bei und erhalte 1.000 AEQ. Einmalig, permanent, gebührenfrei. Keine persönlichen Daten gespeichert.',
+  'reg-sub':'Tritt dem Aequitas-Netzwerk bei und erhalte dein Universelles Grundeinkommen von 1.000 AEQ. Einmalig, permanent und vollständig gebührenfrei. Keine persönlichen Daten werden jemals gespeichert.',
   'app-title':'REGISTRIERUNG NUR ÜBER ANDROID-APP',
-  'app-text':'Der Menschlichkeitsnachweis erfordert biometrische Verifizierung auf deinem Gerät. Dein Fingerabdruck wird durch das Hardware Secure Element verarbeitet — rohe Daten verlassen niemals dein Telefon. Lade die App herunter, scanne deinen Fingerabdruck, verbinde deine Wallet, und deine <strong style="color:var(--gold)">1.000 AEQ werden automatisch gewährt</strong>.',
-  's1t':'Biometrischer Scan','s1d':'App öffnen · Fingerabdruck scannen · HSE verarbeitet · Daten verlassen nie das Gerät',
-  's2t':'ZKP-Erzeugung','s2d':'Groth16-Beweis generiert · Einzigartigkeit verifiziert · Hash nie enthüllt',
-  's3t':'Wallet verbinden','s3d':'App öffnet MetaMask · Wallet verbinden · Adresse erhält 1.000 AEQ',
-  's4t':'1.000 AEQ','s4d':'Auf V6 registriert · im nächsten Block bestätigt · App benachrichtigt automatisch',
-  'priv-bar':'🔒 Hardware Secure Element · Groth16 ZKP · Daten verlassen nie das Gerät · Keine Gasgebühren · Permanenter Sybil-Schutz',
+  'app-text':'Der Menschlichkeitsnachweis erfordert biometrische Verifizierung auf deinem Gerät. Fingerabdruck oder Gesichtserkennung werden ausschliesslich durch das Hardware Secure Element verarbeitet — rohe biometrische Daten verlassen niemals dein Gerät, berühren keinen Server. Die App erstellt einen Zero-Knowledge-Beweis der deine Einzigartigkeit mathematisch beweist ohne persönliche Informationen preiszugeben. Lade AequitasBio herunter, scanne deine Biometrie, verbinde MetaMask, und deine <strong style="color:var(--gold)">1.000 AEQ werden automatisch gutgeschrieben</strong>.',
+  's1t':'Biometrischer Scan','s1d':'AequitasBio-App öffnen · Fingerabdruck oder Gesicht scannen · Hardware Secure Element verarbeitet lokal · biometrische Daten verlassen nie dein Gerät',
+  's2t':'ZK-Beweis-Erzeugung','s2d':'Groth16 Zero-Knowledge-Beweis wird auf dem Proof-Server erzeugt · Einzigartigkeit wird kryptografisch verifiziert · deine Identität wird nie preisgegeben',
+  's3t':'Wallet verbinden','s3d':'Die App öffnet MetaMask auf dieser Seite · verbinde deine Ethereum-Wallet · der Beweis ist kryptografisch an deine Wallet-Adresse gebunden',
+  's4t':'1.000 AEQ gutgeschrieben','s4d':'Registrierung auf Aequitas BlockDAG innerhalb von 6 Sekunden bestätigt · 1.000 AEQ sofort gutgeschrieben · deine Identität ist dauerhaft als verifizierter Mensch gespeichert',
+  'priv-bar':'🔒 Hardware Secure Element · Groth16 Zero-Knowledge-Beweis · Biometrische Daten verlassen nie dein Gerät · Keine Gasgebühren · Eine Registrierung pro Mensch · Permanent und unveränderlich',
   'conn-wallet':'VERBUNDENE WALLET','proof-recv':'⚡ ZK-BEWEIS EMPFANGEN','proof-hint':'Wallet verbinden um zu registrieren',
   'btn-conn':'🦊 METAMASK VERBINDEN','btn-reg':'🔐 ON-CHAIN REGISTRIEREN',
-  'reg-log-hint':'// Öffne die Aequitas Android-App um deinen Beweis zu generieren, dann kehre hierher zurück...',
-  'reg-details':'Registrierungsdetails','k-network':'Netzwerk','k-chainid':'Chain-ID','k-grant':'Zuteilung',
-  'k-fee':'Gasgebühr','free':'KOSTENLOS','k-limit':'Registrierungen','k-limit-v':'Einmalig · permanent · unveränderlich',
-  'k-bio':'Biometrische Daten','never-stored':'Niemals gespeichert','k-conf':'Bestätigung','k-conf-v':'Innerhalb von 6 Sekunden',
-  'live-stats':'Live Chain-Statistiken',
-  's-height':'Blockhöhe','s-height-sub':'Neuer Block alle 6 Sek · BlockDAG · Zwei Nodes parallel',
-  's-humans':'Verifizierte Menschen','s-humans-sub':'Biometrischer ZKP · Eine Person, eine Wallet, für immer',
-  's-supply':'Gesamtmenge','s-supply-sub':'Immer = Menschen 00d7 1.000 AEQ',
-  's-index':'Aequitas-Index','s-index-sub':'0 = vollkommene Gleichheit · 100 = maximale Ungleichheit',
-  's-uptime':'Betriebszeit','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
-  'ib-poh':'Menschlichkeitsnachweis','ib-poh-t':'Jeder AEQ-Inhaber muss beweisen, dass er ein einzigartiger lebender Mensch ist. Keine Bots, keine Unternehmen, keine KI. Nur echte Menschen.',
-  'ib-fair':'Radikal faire Verteilung','ib-fair-t':'Jeder verifizierte Mensch erhält genau 1.000 AEQ. Keine Vorzuteilung, keine Gründeranteile. Gesamtmenge immer = Menschen x 1.000.',
-  'ib-dag':'BlockDAG-Architektur','ib-dag-t':'Mehrere Blöcke können gleichzeitig produziert und zusammengeführt werden. Höherer Durchsatz, niedrigere Latenz.',
-  'ib-gas':'Wirklich gebührenfrei','ib-gas-t':'Registrierung kostet absolut nichts. Kein ETH, BNB oder MATIC. Kein Bankkonto erforderlich.',
-  'recent-blocks':'Aktuelle Blöcke','blocks-desc':'MERGE = mehrere Elternblöcke (BlockDAG). TX = Registrierungstransaktion. Blockzeit: ~6 Sekunden.',
-  'loading':'Blöcke werden geladen...','net-info':'Netzwerkinformationen','k-chain':'Netzwerkname','k-symbol':'Symbol','k-btime':'Blockzeit',
+  'reg-log-hint':'// Öffne die Aequitas Android App um deinen Beweis zu erstellen, dann kehre hierher zurück...',
+  'reg-details':'Registrierungsdetails','k-network':'Netzwerk','k-chainid':'Chain-ID','k-grant':'UBI-Zuteilung',
+  'k-fee':'Gasgebühr','free':'KOSTENLOS — vollständig gebührenfrei','k-limit':'Registrierungen','k-limit-v':'Einmal pro Mensch · permanent · unveränderlich',
+  'k-bio':'Biometrische Daten','never-stored':'Nie gespeichert — bleibt auf deinem Gerät',
+  'k-proof':'Beweissystem','k-conf':'Bestätigung','k-conf-v':'Innerhalb von 6 Sekunden (1 Block)',
+  'k-sybil':'Sybil-Schutz','k-sybil-v':'Eine Identität pro Biometrie · dauerhaft gesperrt',
+  'live-stats':'Live-Chain-Statistiken',
+  's-height':'Blockhöhe','s-height-sub':'Neuer Block alle ~6s · BlockDAG · Parallele Produktion',
+  's-humans':'Verifizierte Menschen','s-humans-sub':'Biometrisches ZKP · Eine Person, eine Wallet, für immer',
+  's-supply':'Gesamtmenge','s-supply-sub':'Immer = Menschen × 1.000 AEQ',
+  's-index':'Aequitas-Index','s-index-sub':'0 = perfekte Gleichheit · 100 = maximale Ungleichheit',
+  's-uptime':'Laufzeit','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
+  'ib-poh':'Menschlichkeitsnachweis','ib-poh-t':'Jeder AEQ-Inhaber muss kryptografisch beweisen dass er ein einzigartiger lebender Mensch ist. Keine Bots, keine Unternehmen, keine KI. Biometrische Daten verlassen nie dein Gerät.',
+  'ib-fair':'Radikal gerechte Verteilung','ib-fair-t':'Jeder verifizierte Mensch erhält genau 1.000 AEQ bei der Registrierung. Kein Pre-Mining, keine Gründerzuteilung. Gesamtmenge entspricht immer Verifizierte Menschen × 1.000.',
+  'ib-dag':'BlockDAG-Architektur','ib-dag-t':'Mehrere Blöcke können gleichzeitig produziert und zusammengeführt werden. Höherer Durchsatz, geringere Latenz als lineare Blockchains.',
+  'ib-gas':'Wirklich gebührenfrei','ib-gas-t':'Registrierung und AEQ-Transfers kosten absolut nichts. Kein ETH, BNB oder MATIC erforderlich. Kein Bankkonto, keine Kreditkarte nötig.',
+  'recent-blocks':'Aktuelle Blöcke','blocks-desc':'MERGE = mehrere Eltern zusammengeführt (BlockDAG). TX = Registrierungstransaktion. Blockzeit: ~6 Sekunden.',
+  'loading':'Blöcke werden geladen...','net-info':'Netzwerkinformationen','k-chain':'Chain-Name','k-symbol':'Symbol','k-btime':'Blockzeit',
   'k-cons':'Konsens','k-nodes':'Aktive Nodes','k-storage':'Speicher','add-mm':'🦊 ZU METAMASK HINZUFÜGEN','k-dec':'Dezimalstellen',
   'btn-add-mm':'+ AEQUITAS-NETZWERK HINZUFÜGEN',
   'phil':'"Geld existiert weil Menschen existieren.<br>Nichts mehr, nichts weniger."','phil-sub':'— DAS AEQUITAS-PRINZIP —',
   'humans-title':'Verifizierte Menschen auf der Aequitas Chain',
-  'h-what':'Was ist ein verifizierter Mensch?','h-what-t':'Ein verifizierter Mensch ist eine Wallet-Adresse, die kryptographisch bewiesen wurde, einem einzigartigen lebenden Menschen zu gehören.',
-  'h-zkp':'Zero-Knowledge-Proof-System','h-zkp-t':'Aequitas verwendet das Groth16-Beweissystem über die BN128-elliptische Kurve. Beweisdauer: ~200 Bytes. Verifizierungszeit: ~10ms.',
-  'h-sybil':'Schutz vor Sybil-Angriffen','h-sybil-t':'Jeder biometrische Hash wird dauerhaft gespeichert. Doppelregistrierung wird sofort abgelehnt. Eine Person, eine Wallet, für immer. ⚠ Testphase: Aktuelle Verifizierung ist gerätegebunden. Ein physiologischer Sensor (MAX30102 PPG) ist für geräteunabhängige Identität in einem zukünftigen Update geplant.',
-  'h-global':'Globale Inklusion','h-global-t':'Kein Bankkonto, keine Kreditkarte, keine Kryptowährung erforderlich. Nur ein Android-Smartphone mit Fingerabdrucksensor.',
-  'reg-humans':'Registrierte Menschen','h-desc':'Jede Adresse als einzigartiger Mensch durch biometrischen ZKP verifiziert. Jeder erhielt 1.000 AEQ. Dauerhaft, unveränderlich.',
-  'no-humans':'Noch keine Menschen registriert.\n\nLade die Aequitas Android-App herunter und sei der erste!',
-  'reg-stats':'Registrierungsstatistik','total-humans':'Gesamte Menschen',
-  'idx-title':'Aequitas-Index — Wirtschaftlicher Gleichheitswert in Echtzeit',
-  'idx-desc':'Berechnet aus der On-Chain-Bilanzverteilung aller verifizierten Menschen. 0 = vollkommene Gleichheit. 100 = maximale Ungleichheit.',
-  'curr-idx':'Aktueller Index','bar-0':'0 — Vollkommene Gleichheit','bar-100':'100 — Max. Ungleichheit',
-  'gini':'Gini-Koeffizient','phase':'Protokollphase',
-  'pools-title':'Umverteilungspools','pools-desc':'Wenn Ungleichheitsschwellenwerte überschritten werden, wird AEQ automatisch umgeleitet.',
-  'vel-pool':'Velocity-Pool','liq-pool':'Liquiditäts-Pool','ubi-pool':'UBI-Pool','treasury':'Tresor',
-  'phases-title':'Protokollphasen','phases-desc':'Übergänge erfolgen automatisch — keine Abstimmung erforderlich.',
-  'p0':'Bootstrap · &lt;100 Menschen · Cap: 50x','p1':'Wachstum · 100-10.000 · Cap: 20x',
-  'p2':'Stabilität · 10k-1M · Cap: 10x','p3':'Reife · 1M+ · Cap: 3x',
-  'story-title':'Die Geschichte von Aequitas — Warum das existiert',
-  'story-text':'<p>Das Jahr ist 2009. Satoshi Nakamoto veröffentlicht Bitcoin. Zum ersten Mal können Werte zwischen zwei Menschen übertragen werden ohne Banken. Eine echte Revolution. Aber fast sofort geht etwas schief.</p><p>Frühe Miner häufen Millionen von Coins an die sie fast nichts kosten. Bis 2021 kontrolliert das oberste 1% der Bitcoin-Adressen über 90% aller Bitcoins.</p><p><span style="color:var(--gold)">Aequitas</span> — Lateinisch für "Fairness" und "Gleichheit" — wurde geschaffen um zu antworten: <em style="color:var(--gold)">"Wie würde eine Kryptowährung aussehen die von Grund auf fair für jeden Menschen konzipiert wurde?"</em></p><p>Die Antwort: <strong>Geld existiert weil Menschen existieren. Daher sollte jeder Mensch einfach aufgrund seiner Menschlichkeit einen gleichen Anteil am Geld haben.</strong></p><p><em style="color:var(--gold)">"Geld existiert weil Menschen existieren. Nichts mehr, nichts weniger."</em></p>',
+  'h-what':'Was ist ein verifizierter Mensch?','h-what-t':'Ein verifizierter Mensch ist eine Wallet-Adresse die kryptografisch bewiesen hat einem einzigartigen lebenden Menschen zu gehören. Biometrische Daten werden nie übertragen oder gespeichert.',
+  'h-zkp':'Zero-Knowledge-Beweissystem','h-zkp-t':'Aequitas verwendet das Groth16-System über der BN128-Kurve. Beweissgröße: ~200 Bytes. Verifizierungszeit: ~10ms. Der Beweis demonstriert mathematisch die Einzigartigkeit ohne Identität preiszugeben.',
+  'h-sybil':'Sybil-Angriff-Prävention','h-sybil-t':'Jeder biometrische Hash wird dauerhaft mit keccak256 gespeichert. Doppelte Registrierungsversuche werden sofort abgelehnt. Ein Mensch, eine Wallet, für immer. ⚠ Testphase: Aktuelle Verifizierung ist gerätegebunden. Ein physiologischer Sensor (MAX30102 PPG) ist für vollständig geräteunabhängige Identifizierung geplant.',
+  'h-global':'Globale finanzielle Inklusion','h-global-t':'Kein Bankkonto, keine Kreditkarte, keine Kryptowährung erforderlich. Nur ein Android-Smartphone mit Fingerabdruck- oder Gesichtssensor.',
+  'reg-humans':'Registrierte Menschen','h-desc':'Jede Adresse wurde als einzigartiger Mensch durch biometrisches ZKP verifiziert. Jeder erhielt genau 1.000 AEQ. Dauerhaft, unveränderlich, on-chain.',
+  'no-humans':'Noch keine Menschen registriert.\n\nLade die Aequitas Android App herunter und sei der erste Mensch auf der Chain!',
+  'reg-stats':'Registrierungsstatistiken','total-humans':'Gesamtmenschen',
+  'idx-title':'Aequitas-Index — Echtzeit-Wirtschaftsgleichheits-Score',
+  'idx-desc':'Der Aequitas-Index misst die wirtschaftliche Ungleichheit aller verifizierten Menschen in Echtzeit. Er wird aus dem Gini-Koeffizienten der On-Chain-Bilanzverteilung abgeleitet. 0 = perfekte Gleichheit. 100 = maximale Ungleichheit. Das Protokoll löst automatisch Umverteilung aus wenn der Index steigt.',
+  'curr-idx':'Aktueller Index','bar-0':'0 — Perfekte Gleichheit','bar-100':'100 — Max. Ungleichheit',
+  'gini':'Gini-Koeffizient','gini-desc':'0 = gleich · 1 = ungleich',
+  'supply-desc':'Immer = Menschen × 1.000 AEQ',
+  'phase':'Protokollphase','phase-desc':'Automatisch nach Menschenanzahl',
+  'humans-desc':'Biometrisch verifizierte einzigartige Menschen',
+  'pools-title':'Umverteilungspools',
+  'pools-desc':'Jede Swap-Gebühr, Demurrage-Belastung und Vermögensobergrenze-Überschuss wird automatisch auf vier Pools aufgeteilt. Keine manuelle Eingriffe. Alle Pools zahlen täglich aus.',
+  'vel-pool':'Validatoren-Pool','vel-pool-desc':'40% aller Gebühren → Node-Betreiber die das Netzwerk sichern',
+  'liq-pool':'Liquiditäts-Pool','liq-pool-desc':'30% aller Gebühren → Liquiditätsanbieter, proportional zu LP-Anteilen',
+  'ubi-pool':'UBI-Pool','ubi-pool-desc':'20% aller Gebühren → alle verifizierten Menschen gleichmäßig, alle 24 Stunden',
+  'treasury':'Schatzkammer','treasury-desc':'10% aller Gebühren → Protokollentwicklung und -wartung',
+  'phases-title':'Protokollphasen',
+  'phases-desc':'Phasenübergänge werden automatisch durch die Menschenanzahl ausgelöst — keine Abstimmung, keine Governance, keine Admin-Schlüssel erforderlich.',
+  'p0':'Bootstrap · &lt;100 Menschen · Vermögensobergrenze: 50× Durchschnittsguthaben · Derzeit aktiv',
+  'p1':'Wachstum · 100–10.000 Menschen · Vermögensobergrenze: 20× Durchschnittsguthaben',
+  'p2':'Stabilität · 10.000–1M Menschen · Vermögensobergrenze: 10× Durchschnittsguthaben',
+  'p3':'Reife · 1M+ Menschen · Vermögensobergrenze: 3× Durchschnittsguthaben · Maximale Umverteilung',
+  'wealth-cap-explain':'Die Vermögensobergrenze wird als Vielfaches des aktuellen Durchschnittsguthabens aller verifizierten Menschen berechnet — keine feste Zahl. Sie passt sich automatisch an wenn das Netzwerk wächst.',
+  'demurrage-title':'Demurrage — Anreiz zum Zirkulieren',
+  'demurrage-desc':'Aequitas implementiert einen Demurrage-Mechanismus inspiriert von historischen Komplementärwährungen. Inaktive AEQ-Guthaben verlieren langsam an Wert um Hortung zu entmutigen.',
+  'dem-rate-k':'Verfallsrate','dem-rate-v':'0,5% pro Monat (kontinuierlich, nicht gestuft)',
+  'dem-grace-k':'Schonfrist','dem-grace-v':'3 Monate Inaktivität bevor der Verfall beginnt',
+  'dem-reset-k':'Uhr-Reset','dem-reset-v':'Jede Überweisung, Swap oder Liquiditätsaktion setzt den Timer zurück',
+  'dem-dest-k':'Verfallenes AEQ geht an','dem-dest-v':'Umverteilungspools (40/30/20/10 Aufteilung)',
+  'dem-warn-k':'Warnsystem','dem-warn-v':'14-Tage-Hinweis (einmal) + 7-Tage-Wiederholung bei jedem Login',
+  'story-title':'Die Geschichte von Aequitas — Warum es das gibt',
+  'story-text':'<p>Das Jahr ist 2009. Satoshi Nakamoto veröffentlicht Bitcoin. Zum ersten Mal kann Wert zwischen zwei Menschen ohne eine Bank übertragen werden. Eine echte Revolution. Aber fast sofort läuft etwas schief.</p><p>Frühe Miner häufen Millionen von Coins zu fast null Kosten an. Bis 2021 kontrollieren die obersten 1% der Bitcoin-Adressen über 90% aller Bitcoin. Bitcoins geschätzter Gini-Koeffizient übersteigt 0,85 — höher als in jedem Land auf der Erde.</p><p><span style="color:var(--gold)">Aequitas</span> — Lateinisch für "Fairness" und "Gleichheit" — wurde geschaffen um eine einzige Frage zu beantworten: <em style="color:var(--gold)">"Wie würde eine Kryptowährung aussehen die von Grund auf fair für jeden Menschen konzipiert wurde?"</em></p><p>Die Antwort ist einfach: <strong style="color:var(--text)">Geld existiert weil Menschen existieren. Daher sollte jeder Mensch einfach durch seine Existenz einen gleichen Anteil am Geld haben.</strong></p><p>Aequitas setzt dies mathematisch um. Jeder verifizierte Mensch erhält 1.000 AEQ. Kein Mining, kein Staking, kein Frühanwender-Vorteil. Die Vermögensobergrenze, Demurrage und Umverteilungspools stellen sicher dass sich Ungleichheit nicht unbegrenzt anhäufen kann.</p><p><em style="color:var(--gold)">"Geld existiert weil Menschen existieren. Nichts mehr, nichts weniger."</em></p>',
   'nodes-title':'Aktive Nodes — Aktuelle Netzwerktopologie',
-  'nodes-desc':'Das Aequitas-Netzwerk betreibt zwei Nodes in geografisch verteilten Cloud-Umgebungen. Beide nehmen an Blockproduktion, Statussynchronisation und API-Bereitstellung teil.',
-  'node1':'Node 1 — Railway (Primär)','node1-desc':'Primärer API-Server · Blockproduzent · P2P-Bootstrap · PostgreSQL · RPC für MetaMask',
-  'node2':'Node 2 — Render (Sekundär)','node2-desc':'Sekundärer API-Server · Blockproduzent · P2P-Peer · HTTP-Sync · Geteiltes PostgreSQL',
-  'bootstrap-title':'Bootstrap-Node','bootstrap-desc':'Um deinen eigenen Aequitas-Node zu betreiben, verbinde dich über die unten stehende libp2p-Multiadresse.',
+  'nodes-desc':'Das Aequitas-Netzwerk betreibt zwei geografisch verteilte Nodes. Beide nehmen an Blockproduktion, Statussynchronisation und API-Bereitstellung teil.',
+  'node1':'Node 1 — Railway (Primär)','node1-desc':'Primärer API-Server · Blockproduzent · UBI-Verteilung · P2P-Bootstrap · PostgreSQL · RPC für MetaMask',
+  'node2':'Node 2 — Render (Sekundär)','node2-desc':'Sekundärer API-Server · Blockproduzent · P2P-Peer · HTTP-Sync · Geteilter PostgreSQL-Status',
+  'bootstrap-title':'Eigenen Node betreiben','bootstrap-desc':'Jeder kann dem Aequitas-Netzwerk beitreten indem er einen Node betreibt. Lade den Node-Leitfaden unten für Schritt-für-Schritt-Anweisungen herunter.',
   'tech-title':'Technische Spezifikationen','mm-config':'MetaMask-Konfiguration',
-  'k-lang':'Sprache','k-src':'Quellcode','evm-yes':'Ja — JSON-RPC /rpc · MetaMask',
-  'proto-label':'Aequitas V6 Protokoll — Technische Dokumentation',
-  'ca-title':'Contract-Adressen','ca-text':'Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae<br>V5 Sepolia:  0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5',
-  'poa-title':'1. LEBENSNACHWEIS','poa-text':'<p>Was passiert mit Geld wenn Menschen sterben oder verschwinden? Bei Bitcoin sind Millionen BTC dauerhaft verloren. Bei Aequitas kehrt das AEQ einer verschwundenen Person schließlich zur Gemeinschaft zurück.</p>',
-  'poa-box':'Jahr 0-2: Normale Nutzung<br>Jahr 2: Warnung 1 — Guardian kann antworten<br>Jahr 2+60T: Warnung 2<br>Jahr 2+120T: Warnung 3<br>Jahr 2+180T: AEQ ins persönliche Treuhand-Konto<br>Jahr 4: Bei weiter Inaktivität — UBI-Pool',
-  'guard-title':'2. GUARDIAN-SYSTEM','guard-text':'<p>Was wenn jemand monatelang nicht auf sein Gerät zugreifen kann? Ein vertrauenswürdiger Guardian kann bestätigen dass sie noch am Leben sind — ohne Transaktionsrechte.</p>',
-  'guard-box':'1 Guardian pro Mensch · Nur confirmAlive() erlaubt · Keine Transaktionsrechte<br>Max 3 Schutzbefohlene · 7-Tage-Zeitsperre · Keine Kreisbeziehungen',
-  'dem-title':'3. DEMURRAGE — Anti-Hortung',
-  'dem-box':'1% jährliche Gebühr auf Guthaben ÜBER fairShare geht in UBI-Pool<br><br>Beispiel: fairShare=1.000 · Guthaben=3.000 · Überschuss=2.000 · Monatliche Gebühr=1,67 AEQ',
-  'dem-text':'<p>Historisches Beispiel: Wörgl, Österreich (1932) — Demurrage-Währung reduzierte die Arbeitslosigkeit in einem Jahr um 25%.</p>',
-  'cap-title':'4. VERMÖGENSOBERGRENZE',
-  'cap-box':'Phase 0: 50x fairShare · Phase 1: 20x · Phase 2: 10x · Phase 3: 5x · Phase 4: 3x<br><br>Immer aktiv ab Mensch #1. Überschuss wird sofort gleichmäßig an ALLE aktiven Menschen verteilt.',
-  'ubi-title':'5. UNIVERSELLES GRUNDEINKOMMEN',
-  'ubi-box':'Quellen: Transaktionsgebühren (20%) · Vermögensobergrenze-Überschuss · Demurrage · Inaktive Treuhand<br><br>Täglich: UBI-Pool gleichmäßig unter allen registrierten Menschen verteilt. Pool wird nach jeder Ausschüttung zurückgesetzt.',
-  'inf-title':'6. KEINE ALGORITHMISCHE INFLATION',
-  'inf-box':'Das EINZIGE Ereignis das neues AEQ schafft: ein neuer verifizierter Mensch registriert sich<br><br>Gesamt-AEQ = Verifizierte aktive Menschen x 1.000'
+  'k-lang':'Sprache','k-src':'Quellcode','evm-yes':'Ja — JSON-RPC /rpc · MetaMask-kompatibel',
+  'proto-label':'Aequitas V7 Protokoll — Technische Dokumentation',
+  'ca-title':'Contract-Adressen','ca-text':'Chain: Aequitas Chain (Chain ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
+  'poa-title':'1. LEBENSNACHWEIS','poa-text':'<p>Was passiert mit AEQ wenn Menschen sterben oder verschwinden? Bei Bitcoin sind Millionen BTC dauerhaft verloren. Bei Aequitas kehrt das AEQ einer inaktiven Person schließlich über den UBI-Pool zur Gemeinschaft zurück.</p>',
+  'poa-box':'Jahr 0-2: Normale Nutzung<br>Jahr 2: Warnung 1 — Guardian kann antworten<br>Jahr 2+60T: Warnung 2<br>Jahr 2+120T: Warnung 3<br>Jahr 2+180T: AEQ ins persönliche Treuhand-Konto<br>Jahr 4: Bei weiter Inaktivität — kehrt in UBI-Pool zurück',
+  'guard-title':'2. GUARDIAN-SYSTEM','guard-text':'<p>Was wenn jemand monatelang nicht auf sein Gerät zugreifen kann? Ein vertrauenswürdiger Guardian — ein anderer verifizierter Mensch — kann bestätigen dass sie noch am Leben sind, ohne Transaktionsrechte.</p>',
+  'guard-box':'1 Guardian pro Mensch (muss ein anderer verifizierter Mensch sein)<br>Guardian darf NUR confirmAlive() aufrufen — null Transaktionsrechte<br>Guardian KANN KEINE Mittel verschieben oder AEQ übertragen<br>Max 3 Schutzbefohlene · 7-Tage-Zeitsperre · Keine Kreisbeziehungen erlaubt',
+  'dem-title':'3. DEMURRAGE — Anti-Hortungs-Mechanismus',
+  'dem-box':'Rate: 0,5%/Monat nach 3 Monaten Schonfrist<br>Uhr setzt sich bei jeder Überweisung, Swap oder Liquiditätsaktion zurück<br>Verfallenes AEQ wird an Pools umverteilt (nicht vernichtet)',
+  'dem-text':'<p>Historisches Vorbild: Das Wörgl-Experiment (Österreich, 1932) verwendete eine Demurrage-Währung und reduzierte die Arbeitslosigkeit in einem Jahr um 25%. Der Chiemgauer (Deutschland, 2003) ist seit über 20 Jahren erfolgreich in Betrieb.</p>',
+  'cap-title':'4. VERMÖGENSOBERGRENZE — Mathematische Fairness','cap-box':'Obergrenze = 25× aktuelles Durchschnittsguthaben aller verifizierten Menschen<br>Passt sich automatisch an wenn das Netzwerk wächst<br>Überschuss-AEQ wird sofort an Umverteilungspools weitergeleitet',
+  'ubi-title':'5. UNIVERSELLES GRUNDEINKOMMEN','ubi-box':'Quellen: Swap-Gebühren (20%) · Vermögensobergrenze-Überschuss · Demurrage · Inaktive Treuhand<br><br>Täglich: UBI-Pool gleichmäßig unter allen registrierten Menschen aufgeteilt. Pool setzt sich nach jeder Ausschüttung zurück.',
+  'inf-title':'6. KEINE ALGORITHMISCHE INFLATION','inf-box':'Das EINZIGE Ereignis das neues AEQ schafft: ein neuer verifizierter Mensch registriert sich<br><br>Gesamtmenge = Verifizierte Menschen × 1.000 AEQ — immer, genau.'
 },
 es:{
   'logo-sub':'PRUEBA DE HUMANIDAD','live':'EN VIVO',
-  'tab-register':'🔐 Registrar','tab-explorer':'🔍 Explorador','tab-humans':'👥 Humanos','tab-index':'📊 Índice','tab-network':'🌐 Red','tab-protocol':'📜 Protocolo V7',
+  'tab-register':'🔐 Registrar','tab-explorer':'🔍 Explorador','tab-humans':'👥 Humanos','tab-index':'📊 Índice','tab-network':'🌐 Red','tab-protocol':'📜 Protocolo V7','tab-swap':'🔄 Intercambiar',
   'reg-title':'🔐 Regístrate como Humano Verificado',
-  'reg-sub':'Únete a la red Aequitas y recibe 1,000 AEQ. Único, permanente, sin gas. Sin datos personales.',
+  'reg-sub':'Únete a la red Aequitas y recibe tu subsidio de Renta Básica Universal de 1,000 AEQ. Único, permanente y completamente gratuito. Ningún dato personal es almacenado.',
   'app-title':'REGISTRO SOLO VÍA APP ANDROID',
-  'app-text':'La Prueba de Humanidad requiere verificación biométrica en tu dispositivo. Tu huella se procesa por el Elemento Seguro de Hardware — los datos brutos nunca salen de tu teléfono. Descarga la app, escanea tu huella, conecta tu wallet, y tus <strong style="color:var(--gold)">1,000 AEQ serán otorgados automáticamente</strong>.',
-  's1t':'Escaneo Biométrico','s1d':'Abrir app · escanear huella · HSE procesa · datos nunca salen del dispositivo',
-  's2t':'Generación ZKP','s2d':'Prueba Groth16 generada · unicidad verificada · hash nunca revelado',
-  's3t':'Conectar Wallet','s3d':'App abre MetaMask · conectar wallet · dirección recibe 1,000 AEQ',
-  's4t':'1,000 AEQ','s4d':'Registrado en V6 · confirmado en próximo bloque · app notifica automáticamente',
-  'priv-bar':'🔒 Elemento Seguro de Hardware · ZKP Groth16 · Datos nunca salen del dispositivo · Sin tarifas de gas',
+  'app-text':'La Prueba de Humanidad requiere verificación biométrica en tu dispositivo. Tu huella o reconocimiento facial se procesa exclusivamente por el Elemento Seguro de Hardware — los datos biométricos nunca salen de tu dispositivo. La app genera una Prueba de Conocimiento Cero que demuestra tu unicidad sin revelar información personal. Descarga AequitasBio, escanea tu biometría, conecta MetaMask, y tus <strong style="color:var(--gold)">1,000 AEQ serán acreditados automáticamente</strong>.',
+  's1t':'Escaneo Biométrico','s1d':'Abrir AequitasBio · escanear huella o cara · el Elemento Seguro de Hardware procesa localmente · los datos biométricos nunca salen del dispositivo',
+  's2t':'Generación de Prueba ZK','s2d':'La Prueba Groth16 de Conocimiento Cero se genera en el servidor · tu unicidad se verifica criptográficamente · tu identidad nunca se revela',
+  's3t':'Conectar Wallet','s3d':'La app abre MetaMask en esta página · conecta tu wallet Ethereum · la prueba está criptográficamente vinculada a tu dirección',
+  's4t':'1,000 AEQ Acreditados','s4d':'Registro confirmado en el BlockDAG de Aequitas en 6 segundos · 1,000 AEQ acreditados instantáneamente · tu identidad queda permanentemente registrada',
+  'priv-bar':'🔒 Elemento Seguro de Hardware · Prueba ZK Groth16 · Datos biométricos nunca salen del dispositivo · Sin tarifas de gas · Un registro por humano · Permanente e inmutable',
   'conn-wallet':'WALLET CONECTADA','proof-recv':'⚡ PRUEBA ZK RECIBIDA','proof-hint':'Conecta wallet para registrar',
   'btn-conn':'🦊 CONECTAR METAMASK','btn-reg':'🔐 REGISTRAR ON-CHAIN',
   'reg-log-hint':'// Abre la App Android Aequitas para generar tu prueba, luego regresa aquí...',
-  'reg-details':'Detalles del Registro','k-network':'Red','k-chainid':'ID de Cadena','k-grant':'Bono',
-  'k-fee':'Tarifa de Gas','free':'GRATIS','k-limit':'Registros','k-limit-v':'Una vez · permanente · inmutable',
-  'k-bio':'Datos Biométricos','never-stored':'Nunca almacenados','k-conf':'Confirmación','k-conf-v':'En 6 segundos',
+  'reg-details':'Detalles del Registro','k-network':'Red','k-chainid':'ID de Cadena','k-grant':'Subsidio UBI',
+  'k-fee':'Tarifa de Gas','free':'GRATIS — completamente sin gas','k-limit':'Registros','k-limit-v':'Una vez · permanente · inmutable',
+  'k-bio':'Datos Biométricos','never-stored':'Nunca almacenados — permanece en tu dispositivo',
+  'k-proof':'Sistema de Prueba','k-conf':'Confirmación','k-conf-v':'En 6 segundos (1 bloque)',
+  'k-sybil':'Protección Sybil','k-sybil-v':'Una identidad por biometría · bloqueo permanente',
   'live-stats':'Estadísticas de Cadena en Vivo',
-  's-height':'Altura de Bloque','s-height-sub':'Nuevo bloque cada 6s · BlockDAG · Dos nodos paralelos',
+  's-height':'Altura de Bloque','s-height-sub':'Nuevo bloque cada ~6s · BlockDAG · Producción paralela',
   's-humans':'Humanos Verificados','s-humans-sub':'ZKP biométrico · Una persona, una wallet, siempre',
-  's-supply':'Suministro Total','s-supply-sub':'Circulando en todas las cuentas',
+  's-supply':'Suministro Total','s-supply-sub':'Siempre = Humanos × 1,000 AEQ',
   's-index':'Índice Aequitas','s-index-sub':'0 = igualdad perfecta · 100 = desigualdad máxima',
   's-uptime':'Tiempo Activo','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
-  'ib-poh':'Prueba de Humanidad','ib-poh-t':'Cada titular de AEQ debe probar que es un humano único vivo. Sin bots, sin corporaciones, sin IA. Solo humanos reales.',
-  'ib-fair':'Distribución Radicalmente Justa','ib-fair-t':'Cada humano verificado recibe exactamente 1,000 AEQ. Sin pre-minado, sin asignación a fundadores.',
-  'ib-dag':'Arquitectura BlockDAG','ib-dag-t':'Múltiples bloques pueden producirse simultáneamente y fusionarse. Mayor rendimiento, menor latencia.',
-  'ib-gas':'Verdaderamente Sin Gas','ib-gas-t':'El registro no cuesta nada. No se necesita ETH, BNB ni MATIC. Sin cuenta bancaria.',
-  'recent-blocks':'Bloques Recientes','blocks-desc':'MERGE = múltiples padres (BlockDAG). TX = transacción de registro. Tiempo de bloque: ~6 segundos.',
-  'loading':'Cargando bloques...','net-info':'Información de Red','k-chain':'Nombre de Red','k-symbol':'Símbolo','k-btime':'Tiempo de Bloque',
+  'ib-poh':'Prueba de Humanidad','ib-poh-t':'Cada titular de AEQ debe probar criptográficamente que es un humano único vivo. Sin bots, sin corporaciones, sin IA. Los datos biométricos nunca salen de tu dispositivo.',
+  'ib-fair':'Distribución Radicalmente Justa','ib-fair-t':'Cada humano verificado recibe exactamente 1,000 AEQ al registrarse. Sin pre-minado, sin asignación a fundadores. El suministro total siempre equivale a humanos verificados × 1,000.',
+  'ib-dag':'Arquitectura BlockDAG','ib-dag-t':'Múltiples bloques pueden producirse simultáneamente y fusionarse. Mayor rendimiento, menor latencia que las blockchains lineales.',
+  'ib-gas':'Verdaderamente Sin Gas','ib-gas-t':'El registro y las transferencias no cuestan nada. No se necesita ETH, BNB ni MATIC. Sin cuenta bancaria ni tarjeta de crédito.',
+  'recent-blocks':'Bloques Recientes','blocks-desc':'MERGE = múltiples padres fusionados (BlockDAG). TX = transacción de registro. Tiempo de bloque: ~6 segundos.',
+  'loading':'Cargando bloques...','net-info':'Información de Red','k-chain':'Nombre de Cadena','k-symbol':'Símbolo','k-btime':'Tiempo de Bloque',
   'k-cons':'Consenso','k-nodes':'Nodos Activos','k-storage':'Almacenamiento','add-mm':'🦊 AGREGAR A METAMASK','k-dec':'Decimales',
   'btn-add-mm':'+ AGREGAR RED AEQUITAS',
   'phil':'"El dinero existe porque las personas existen.<br>Nada más, nada menos."','phil-sub':'— EL PRINCIPIO AEQUITAS —',
   'humans-title':'Humanos Verificados en Aequitas Chain',
-  'h-what':'¿Qué es un Humano Verificado?','h-what-t':'Un Humano Verificado es una dirección wallet demostrada criptográficamente que pertenece a un humano único vivo.',
-  'h-zkp':'Sistema ZKP','h-zkp-t':'Aequitas usa Groth16 sobre BN128. Tamaño de prueba: ~200 bytes. Verificación: ~10ms.',
-  'h-sybil':'Prevención de Ataques Sybil','h-sybil-t':'Cada hash biométrico se almacena permanentemente. Intentar registrarse dos veces se rechaza inmediatamente. ⚠ Fase de prueba: la verificación actual está vinculada al dispositivo. Se planea un sensor fisiológico (MAX30102 PPG) para identificación independiente del dispositivo.',
-  'h-global':'Inclusión Global','h-global-t':'Sin cuenta bancaria, tarjeta de crédito ni criptomoneda. Solo un smartphone Android con sensor de huella.',
-  'reg-humans':'Humanos Registrados','h-desc':'Cada dirección verificada como humano único mediante ZKP biométrico. Cada uno recibió 1,000 AEQ. Permanente.',
+  'h-what':'¿Qué es un Humano Verificado?','h-what-t':'Un Humano Verificado es una dirección wallet demostrada criptográficamente que pertenece a un humano único vivo mediante Prueba de Conocimiento Cero. Los datos biométricos nunca se transmiten ni almacenan.',
+  'h-zkp':'Sistema de Prueba ZK','h-zkp-t':'Aequitas usa Groth16 sobre BN128. Tamaño de prueba: ~200 bytes. Verificación: ~10ms. La prueba demuestra matemáticamente la unicidad sin revelar información identificable.',
+  'h-sybil':'Prevención de Ataques Sybil','h-sybil-t':'Cada hash biométrico se almacena permanentemente con keccak256. Intentar registrarse dos veces se rechaza inmediatamente. ⚠ Fase de prueba: verificación vinculada al dispositivo. Se planea sensor MAX30102 PPG para identificación independiente.',
+  'h-global':'Inclusión Financiera Global','h-global-t':'Sin cuenta bancaria, tarjeta de crédito ni criptomoneda previa. Solo un smartphone Android con sensor biométrico.',
+  'reg-humans':'Humanos Registrados','h-desc':'Cada dirección verificada como humano único mediante ZKP biométrico. Cada uno recibió exactamente 1,000 AEQ. Permanente, inmutable, on-chain.',
   'no-humans':'No hay humanos registrados aún.\n\n¡Descarga la App Android Aequitas y sé el primero!',
   'reg-stats':'Estadísticas del Registro','total-humans':'Total de Humanos',
   'idx-title':'Índice Aequitas — Puntuación de Igualdad Económica en Tiempo Real',
-  'idx-desc':'Calculado desde la distribución de saldos on-chain. 0 = igualdad perfecta. 100 = desigualdad máxima.',
+  'idx-desc':'El Índice Aequitas mide la desigualdad económica de todos los humanos verificados en tiempo real. Se calcula desde el coeficiente Gini de la distribución de saldos on-chain. 0 = igualdad perfecta. 100 = desigualdad máxima.',
   'curr-idx':'Índice Actual','bar-0':'0 — Igualdad Perfecta','bar-100':'100 — Máx. Desigualdad',
-  'gini':'Coeficiente Gini','phase':'Fase del Protocolo',
-  'pools-title':'Pools de Redistribución','pools-desc':'Cuando se superan los umbrales de desigualdad, AEQ se redirige automáticamente.',
-  'vel-pool':'Pool Velocidad','liq-pool':'Pool Liquidez','ubi-pool':'Pool UBI','treasury':'Tesorería',
-  'phases-title':'Fases del Protocolo','phases-desc':'Las transiciones ocurren automáticamente — no se requiere votación.',
-  'p0':'Bootstrap · &lt;100 humanos · Cap: 50x','p1':'Crecimiento · 100-10,000 · Cap: 20x',
-  'p2':'Estabilidad · 10k-1M · Cap: 10x','p3':'Madurez · 1M+ · Cap: 3x',
-  'story-title':'La Historia de Aequitas','story-text':'<p>El año es 2009. Satoshi Nakamoto lanza Bitcoin. Por primera vez, el valor puede transferirse sin bancos. Una revolución genuina. Pero casi de inmediato algo sale mal.</p><p>Los primeros mineros acumulan millones de monedas casi gratis. Para 2021, el 1% superior controla más del 90% de todo el Bitcoin.</p><p><span style="color:var(--gold)">Aequitas</span> fue creado para responder: <em style="color:var(--gold)">"¿Cómo sería una criptomoneda diseñada para ser justa con todo ser humano?"</em></p><p>La respuesta: <strong>El dinero existe porque las personas existen. Por lo tanto, cada persona debería tener una parte igual del dinero.</strong></p><p><em style="color:var(--gold)">"El dinero existe porque las personas existen. Nada más, nada menos."</em></p>',
-  'nodes-title':'Nodos Activos','nodes-desc':'La red Aequitas opera en dos nodos en entornos cloud distribuidos.',
-  'node1':'Nodo 1 — Railway (Primario)','node1-desc':'Servidor API primario · Productor de bloques · P2P bootstrap · PostgreSQL · RPC para MetaMask',
-  'node2':'Nodo 2 — Render (Secundario)','node2-desc':'Servidor API secundario · Productor de bloques · Par P2P · Sincronización HTTP · PostgreSQL compartido',
-  'bootstrap-title':'Nodo Bootstrap','bootstrap-desc':'Para ejecutar tu propio nodo Aequitas, conéctate al nodo bootstrap usando la multidirección libp2p.',
+  'gini':'Coeficiente Gini','gini-desc':'0 = igual · 1 = desigual',
+  'supply-desc':'Siempre = Humanos × 1,000 AEQ',
+  'phase':'Fase del Protocolo','phase-desc':'Avanza automáticamente por recuento humano',
+  'humans-desc':'Humanos únicos verificados biométricamente',
+  'pools-title':'Pools de Redistribución',
+  'pools-desc':'Cada tarifa de swap, cargo de demurrage y desbordamiento del límite de riqueza se divide automáticamente entre cuatro pools. Sin intervención manual. Todos los pools pagan diariamente.',
+  'vel-pool':'Pool Validadores','vel-pool-desc':'40% de todas las tarifas → operadores de nodos que aseguran la red',
+  'liq-pool':'Pool Liquidez','liq-pool-desc':'30% de todas las tarifas → proveedores de liquidez, proporcional a participaciones LP',
+  'ubi-pool':'Pool UBI','ubi-pool-desc':'20% de todas las tarifas → todos los humanos verificados por igual, cada 24 horas',
+  'treasury':'Tesorería','treasury-desc':'10% de todas las tarifas → desarrollo y mantenimiento del protocolo',
+  'phases-title':'Fases del Protocolo',
+  'phases-desc':'Las transiciones de fase se activan automáticamente por el número de humanos — sin votación, sin gobernanza, sin claves de administrador.',
+  'p0':'Bootstrap · &lt;100 humanos · Límite de riqueza: 50× saldo promedio · Actualmente activo',
+  'p1':'Crecimiento · 100–10,000 humanos · Límite de riqueza: 20× saldo promedio',
+  'p2':'Estabilidad · 10,000–1M humanos · Límite de riqueza: 10× saldo promedio',
+  'p3':'Madurez · 1M+ humanos · Límite de riqueza: 3× saldo promedio · Redistribución máxima',
+  'wealth-cap-explain':'El Límite de Riqueza se establece como múltiplo del saldo promedio actual de todos los humanos verificados. Se ajusta automáticamente a medida que crece la red.',
+  'demurrage-title':'Demurrage — Incentivo para Circular',
+  'demurrage-desc':'Aequitas implementa un mecanismo de demurrage inspirado en monedas complementarias históricas. Los saldos AEQ inactivos pierden valor lentamente para desalentar el acaparamiento.',
+  'dem-rate-k':'Tasa de Decaimiento','dem-rate-v':'0.5% por mes (continuo, no escalonado)',
+  'dem-grace-k':'Período de Gracia','dem-grace-v':'3 meses de inactividad antes de que comience el decaimiento',
+  'dem-reset-k':'Reinicio del Reloj','dem-reset-v':'Cualquier transferencia, swap o acción de liquidez reinicia el temporizador',
+  'dem-dest-k':'AEQ decaído va a','dem-dest-v':'Pools de redistribución (división 40/30/20/10)',
+  'dem-warn-k':'Sistema de Advertencia','dem-warn-v':'Aviso de 14 días (una vez) + recordatorio de 7 días repetido en cada inicio',
+  'story-title':'La Historia de Aequitas','story-text':'<p>El año es 2009. Satoshi Nakamoto lanza Bitcoin. Por primera vez el valor puede transferirse sin bancos. Una revolución genuina. Pero casi de inmediato algo sale mal.</p><p>Los primeros mineros acumulan millones de monedas a costo casi cero. Para 2021, el 1% superior controla más del 90% de todo el Bitcoin. El coeficiente Gini estimado de Bitcoin supera 0.85 — más alto que cualquier país en la Tierra.</p><p><span style="color:var(--gold)">Aequitas</span> fue creado para responder: <em style="color:var(--gold)">"¿Cómo sería una criptomoneda diseñada para ser justa con todo ser humano?"</em></p><p>La respuesta: <strong style="color:var(--text)">El dinero existe porque las personas existen. Por lo tanto, cada persona debería tener una parte igual del dinero por el simple hecho de ser humana.</strong></p><p><em style="color:var(--gold)">"El dinero existe porque las personas existen. Nada más, nada menos."</em></p>',
+  'nodes-title':'Nodos Activos','nodes-desc':'La red Aequitas opera en dos nodos distribuidos geográficamente.',
+  'node1':'Nodo 1 — Railway (Primario)','node1-desc':'API primario · Productor de bloques · Distribución UBI · Bootstrap P2P · PostgreSQL · RPC para MetaMask',
+  'node2':'Nodo 2 — Render (Secundario)','node2-desc':'API secundario · Productor de bloques · Par P2P · Sincronización HTTP · Estado PostgreSQL compartido',
+  'bootstrap-title':'Ejecutar Tu Propio Nodo','bootstrap-desc':'Cualquiera puede unirse a la red Aequitas ejecutando un nodo. Descarga la guía de nodos para instrucciones paso a paso.',
   'tech-title':'Especificaciones Técnicas','mm-config':'Configuración MetaMask',
-  'k-lang':'Lenguaje','k-src':'Código Fuente','evm-yes':'Sí — JSON-RPC /rpc · MetaMask',
-  'proto-label':'Protocolo Aequitas V6 — Documentación Técnica',
-  'ca-title':'Direcciones de Contratos','ca-text':'Cadena: Aequitas Chain (Chain ID: 1926)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
-  'poa-title':'1. PRUEBA DE VIDA','poa-text':'<p>En Aequitas, si alguien desaparece, su AEQ eventualmente regresa a la comunidad.</p>',
-  'poa-box':'Año 0-2: Uso normal<br>Año 2: Advertencia 1<br>Año 2+180d: AEQ a depósito personal<br>Año 4: Si inactivo — Pool UBI',
-  'guard-title':'2. SISTEMA GUARDIAN','guard-text':'<p>Un Guardian de confianza puede confirmar que alguien está vivo — sin derechos de transacción.</p>',
-  'guard-box':'1 Guardian por humano · Solo confirmAlive() · Sin derechos de transacción<br>Máx 3 pupilos · Bloqueo 7 días · Sin relaciones circulares',
-  'dem-title':'3. DEMURRAGE','dem-box':'1% anual sobre saldo POR ENCIMA de fairShare va al Pool UBI',
-  'dem-text':'<p>Precedente: Wörgl, Austria (1932) — redujo el desempleo 25% en un año.</p>',
-  'cap-title':'4. LÍMITE DE RIQUEZA','cap-box':'Fase 0: 50x · Fase 1: 20x · Fase 2: 10x · Fase 3: 5x · Fase 4: 3x fairShare',
-  'ubi-title':'5. INGRESO BÁSICO UNIVERSAL','ubi-box':'Fuentes: Comisiones (20%) · Desbordamiento de límite · Demurrage · Custodia inactiva<br><br>Diariamente: Pool UBI dividido igualmente entre todos los humanos registrados.',
-  'inf-title':'6. SIN INFLACIÓN ALGORÍTMICA','inf-box':'El ÚNICO evento que crea AEQ: un nuevo humano verificado se registra'
+  'k-lang':'Idioma','k-src':'Código Fuente','evm-yes':'Sí — JSON-RPC /rpc · Compatible con MetaMask',
+  'proto-label':'Protocolo Aequitas V7 — Documentación Técnica',
+  'ca-title':'Direcciones de Contrato','ca-text':'Cadena: Aequitas Chain (ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Principal): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
+  'poa-title':'1. PRUEBA DE VIDA','poa-text':'<p>¿Qué pasa con AEQ cuando las personas mueren o desaparecen? En Bitcoin, millones de BTC se pierden permanentemente. En Aequitas, el AEQ de una persona inactiva eventualmente regresa a la comunidad a través del pool UBI.</p>',
+  'poa-box':'Año 0-2: Uso normal<br>Año 2: Advertencia 1 — Guardian puede responder<br>Año 2+60d: Advertencia 2<br>Año 2+120d: Advertencia 3<br>Año 2+180d: AEQ va a CUSTODIA PERSONAL<br>Año 4: Si aún inactivo — regresa al Pool UBI',
+  'guard-title':'2. SISTEMA GUARDIAN','guard-text':'<p>¿Y si alguien no puede acceder a su dispositivo por meses? Un Guardian de confianza puede confirmar que siguen vivos, sin derechos de transacción.</p>',
+  'guard-box':'1 Guardian por humano (debe ser otro humano verificado)<br>Guardian SOLO puede llamar confirmAlive() — cero derechos de transacción<br>Max 3 tutelados · Bloqueo de 7 días · Sin relaciones circulares',
+  'dem-title':'3. DEMURRAGE — Mecanismo Anti-Acaparamiento',
+  'dem-box':'Tasa: 0.5%/mes después de 3 meses de gracia<br>El reloj se reinicia con cualquier transferencia, swap o acción de liquidez<br>AEQ decaído redistribuido a pools (no destruido)',
+  'dem-text':'<p>Precedente histórico: El experimento de Wörgl (Austria, 1932) usó una moneda con demurrage y redujo el desempleo un 25% en un año.</p>',
+  'cap-title':'4. LÍMITE DE RIQUEZA — Justicia Matemática','cap-box':'Límite = 25× saldo promedio actual de todos los humanos verificados<br>Se ajusta automáticamente a medida que crece la red<br>El AEQ excedente se redistribuye instantáneamente a los pools',
+  'ubi-title':'5. RENTA BÁSICA UNIVERSAL','ubi-box':'Fuentes: Tarifas de swap (20%) · Desbordamiento del límite · Demurrage · Custodia inactiva<br><br>Diariamente: Pool UBI dividido igualmente entre todos los humanos registrados.',
+  'inf-title':'6. SIN INFLACIÓN ALGORÍTMICA','inf-box':'El ÚNICO evento que crea nuevo AEQ: un nuevo humano verificado se registra<br><br>Suministro Total = Humanos Verificados × 1,000 AEQ — siempre, exactamente.'
 },
 ru:{
-  'logo-sub':'ДОКАЗАТЕЛЬСТВО ЧЕЛОВЕЧНОСТИ','live':'В ЭФИРЕ',
-  'tab-register':'🔐 Регистрация','tab-explorer':'🔍 Проводник','tab-humans':'👥 Люди','tab-index':'📊 Индекс','tab-network':'🌐 Сеть','tab-protocol':'📜 Протокол V7',
+  'logo-sub':'ДОКАЗАТЕЛЬСТВО ЧЕЛОВЕЧНОСТИ','live':'ОНЛАЙН',
+  'tab-register':'🔐 Регистрация','tab-explorer':'🔍 Проводник','tab-humans':'👥 Люди','tab-index':'📊 Индекс','tab-network':'🌐 Сеть','tab-protocol':'📜 Протокол V7','tab-swap':'🔄 Обмен',
   'reg-title':'🔐 Зарегистрируйтесь как Верифицированный Человек',
-  'reg-sub':'Присоединитесь к сети Aequitas и получите 1 000 AEQ. Одноразово, постоянно, бесплатно. Никаких личных данных.',
+  'reg-sub':'Присоединитесь к сети Aequitas и получите 1 000 AEQ в качестве Универсального Базового Дохода. Однократно, постоянно и полностью бесплатно. Никакие личные данные никогда не сохраняются.',
   'app-title':'РЕГИСТРАЦИЯ ТОЛЬКО ЧЕРЕЗ ANDROID-ПРИЛОЖЕНИЕ',
-  'app-text':'Доказательство человечности требует биометрической верификации на вашем устройстве. Ваш отпечаток обрабатывается Hardware Secure Element — сырые данные никогда не покидают ваш телефон. Скачайте приложение, отсканируйте отпечаток, подключите кошелёк, и ваши <strong style="color:var(--gold)">1 000 AEQ будут начислены автоматически</strong>.',
-  's1t':'Биометрический Скан','s1d':'Открыть приложение · сканировать отпечаток · HSE обрабатывает · данные не покидают устройство',
-  's2t':'Генерация ZKP','s2d':'Сгенерировано доказательство Groth16 · уникальность верифицирована · хэш не раскрывается',
-  's3t':'Подключить Кошелёк','s3d':'Приложение открывает MetaMask · подключить кошелёк · адрес получает 1 000 AEQ',
-  's4t':'1 000 AEQ','s4d':'Зарегистрировано на V6 · подтверждено в следующем блоке · приложение уведомляет автоматически',
-  'priv-bar':'🔒 Hardware Secure Element · ZKP Groth16 · Данные не покидают устройство · Без комиссий',
+  'app-text':'Доказательство Человечности требует биометрической верификации на вашем устройстве. Ваш отпечаток пальца или распознавание лица обрабатывается исключительно аппаратным защищённым элементом — биометрические данные никогда не покидают ваше устройство. Приложение создаёт Доказательство с Нулевым Разглашением, которое математически подтверждает вашу уникальность без раскрытия личной информации. Скачайте AequitasBio, отсканируйте биометрию, подключите MetaMask, и ваши <strong style="color:var(--gold)">1 000 AEQ будут зачислены автоматически</strong>.',
+  's1t':'Биометрическое Сканирование','s1d':'Открыть AequitasBio · сканировать отпечаток или лицо · аппаратный элемент обрабатывает локально · биометрия никогда не покидает устройство',
+  's2t':'Создание ZK-Доказательства','s2d':'Доказательство Groth16 создаётся на сервере · уникальность верифицируется криптографически · личность никогда не раскрывается',
+  's3t':'Подключение Кошелька','s3d':'Приложение открывает MetaMask на этой странице · подключите кошелёк Ethereum · доказательство криптографически привязано к вашему адресу',
+  's4t':'1 000 AEQ Зачислены','s4d':'Регистрация подтверждена на BlockDAG Aequitas за 6 секунд · 1 000 AEQ зачислены мгновенно · личность навсегда записана как верифицированный человек',
+  'priv-bar':'🔒 Аппаратный Защищённый Элемент · Доказательство Groth16 с Нулевым Разглашением · Биометрия никогда не покидает устройство · Без комиссий · Одна регистрация на человека · Постоянно и неизменно',
   'conn-wallet':'ПОДКЛЮЧЁННЫЙ КОШЕЛЁК','proof-recv':'⚡ ZK-ДОКАЗАТЕЛЬСТВО ПОЛУЧЕНО','proof-hint':'Подключите кошелёк для регистрации',
-  'btn-conn':'🦊 ПОДКЛЮЧИТЬ METAMASK','btn-reg':'🔐 ЗАРЕГИСТРИРОВАТЬСЯ ON-CHAIN',
-  'reg-log-hint':'// Откройте приложение Aequitas для генерации доказательства, затем вернитесь...',
-  'reg-details':'Детали Регистрации','k-network':'Сеть','k-chainid':'ID Цепочки','k-grant':'Грант',
-  'k-fee':'Комиссия','free':'БЕСПЛАТНО','k-limit':'Регистрации','k-limit-v':'Один раз · постоянно · неизменно',
-  'k-bio':'Биометрические Данные','never-stored':'Никогда не хранятся','k-conf':'Подтверждение','k-conf-v':'В течение 6 секунд',
-  'live-stats':'Статистика в реальном времени',
-  's-height':'Высота Блока','s-height-sub':'Новый блок каждые 6 сек · BlockDAG · Два узла параллельно',
-  's-humans':'Верифицированных Людей','s-humans-sub':'Биометрический ZKP · Один человек, один кошелёк, навсегда',
-  's-supply':'Общее Предложение','s-supply-sub':'Циркулирует по всем счетам',
-  's-index':'Индекс Aequitas','s-index-sub':'0 = полное равенство · 100 = максимальное неравенство',
+  'btn-conn':'🦊 ПОДКЛЮЧИТЬ METAMASK','btn-reg':'🔐 ЗАРЕГИСТРИРОВАТЬ ОН-ЧЕЙН',
+  'reg-log-hint':'// Откройте Android-приложение Aequitas для создания доказательства, затем вернитесь сюда...',
+  'reg-details':'Детали Регистрации','k-network':'Сеть','k-chainid':'ID Цепи','k-grant':'Субсидия UBI',
+  'k-fee':'Комиссия Gas','free':'БЕСПЛАТНО — полностью без комиссий','k-limit':'Регистрации','k-limit-v':'Один раз · постоянно · неизменно',
+  'k-bio':'Биометрические Данные','never-stored':'Никогда не сохраняются — остаются на устройстве',
+  'k-proof':'Система Доказательств','k-conf':'Подтверждение','k-conf-v':'В течение 6 секунд (1 блок)',
+  'k-sybil':'Защита от Сибилл','k-sybil-v':'Одна идентичность на биометрию · постоянная блокировка',
+  'live-stats':'Статистика Цепи в Реальном Времени',
+  's-height':'Высота Блока','s-height-sub':'Новый блок каждые ~6с · BlockDAG · Параллельное производство',
+  's-humans':'Верифицированные Люди','s-humans-sub':'Биометрический ZKP · Один человек, один кошелёк, навсегда',
+  's-supply':'Общий Объём','s-supply-sub':'Всегда = Люди × 1 000 AEQ',
+  's-index':'Индекс Aequitas','s-index-sub':'0 = идеальное равенство · 100 = максимальное неравенство',
   's-uptime':'Время Работы','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
-  'ib-poh':'Доказательство Человечности','ib-poh-t':'Каждый владелец AEQ должен доказать что он уникальный живой человек. Никаких ботов, корпораций, ИИ. Только настоящие люди.',
-  'ib-fair':'Радикально Справедливое Распределение','ib-fair-t':'Каждый верифицированный человек получает ровно 1 000 AEQ. Общее предложение всегда = люди x 1 000.',
-  'ib-dag':'Архитектура BlockDAG','ib-dag-t':'Несколько блоков могут производиться одновременно и объединяться. Более высокая пропускная способность.',
-  'ib-gas':'По-Настоящему Бесплатно','ib-gas-t':'Регистрация не стоит ничего. Не нужен ETH, BNB или MATIC. Не нужен банковский счёт.',
-  'recent-blocks':'Последние Блоки','blocks-desc':'MERGE = несколько родителей (BlockDAG). TX = транзакция регистрации. Время блока: ~6 секунд.',
-  'loading':'Загрузка блоков...','net-info':'Информация о Сети','k-chain':'Название Сети','k-symbol':'Символ','k-btime':'Время Блока',
-  'k-cons':'Консенсус','k-nodes':'Активные Узлы','k-storage':'Хранение','add-mm':'🦊 ДОБАВИТЬ В METAMASK','k-dec':'Знаков',
+  'ib-poh':'Доказательство Человечности','ib-poh-t':'Каждый владелец AEQ должен криптографически доказать что является уникальным живым человеком. Никаких ботов, корпораций, ИИ. Биометрические данные никогда не покидают устройство.',
+  'ib-fair':'Радикально Справедливое Распределение','ib-fair-t':'Каждый верифицированный человек получает ровно 1 000 AEQ при регистрации. Никакого предварительного майнинга, никаких аллокаций основателям. Общий объём всегда равен верифицированные люди × 1 000.',
+  'ib-dag':'Архитектура BlockDAG','ib-dag-t':'Несколько блоков могут производиться одновременно и объединяться. Более высокая пропускная способность, меньшая задержка.',
+  'ib-gas':'Действительно Без Комиссий','ib-gas-t':'Регистрация и переводы AEQ не стоят ничего. ETH, BNB или MATIC не требуются. Банковский счёт и кредитная карта не нужны.',
+  'recent-blocks':'Последние Блоки','blocks-desc':'MERGE = объединение нескольких родителей (BlockDAG). TX = транзакция регистрации. Время блока: ~6 секунд.',
+  'loading':'Загрузка блоков...','net-info':'Информация о Сети','k-chain':'Имя Цепи','k-symbol':'Символ','k-btime':'Время Блока',
+  'k-cons':'Консенсус','k-nodes':'Активные Ноды','k-storage':'Хранилище','add-mm':'🦊 ДОБАВИТЬ В METAMASK','k-dec':'Десятичные',
   'btn-add-mm':'+ ДОБАВИТЬ СЕТЬ AEQUITAS',
-  'phil':'"Деньги существуют потому что существуют люди.<br>Ничего больше, ничего меньше."','phil-sub':'— ПРИНЦИП AEQUITAS —',
-  'humans-title':'Верифицированные Люди на Aequitas Chain',
-  'h-what':'Что такое Верифицированный Человек?','h-what-t':'Верифицированный Человек — это адрес кошелька, доказанно принадлежащий уникальному живому человеку.',
-  'h-zkp':'Система ZKP','h-zkp-t':'Aequitas использует Groth16 над BN128. Размер доказательства: ~200 байт. Верификация: ~10мс.',
-  'h-sybil':'Защита от Атак Сивиллы','h-sybil-t':'Каждый биометрический хэш хранится постоянно. Двойная регистрация немедленно отклоняется. ⚠ Тестовая фаза: текущая верификация привязана к устройству. Планируется физиологический сенсор (MAX30102) для независимой идентификации.',
-  'h-global':'Глобальное Включение','h-global-t':'Не нужен банковский счёт, кредитная карта или криптовалюта. Только Android-смартфон с сенсором отпечатка.',
-  'reg-humans':'Зарегистрированных Людей','h-desc':'Каждый адрес верифицирован через биометрический ZKP. Каждый получил 1 000 AEQ. Постоянно, неизменно.',
-  'no-humans':'Людей ещё нет.\n\nСкачай приложение Aequitas Android и стань первым!',
+  'phil':'"Деньги существуют потому что существуют люди.<br>Ничего более, ничего менее."','phil-sub':'— ПРИНЦИП AEQUITAS —',
+  'humans-title':'Верифицированные Люди в Aequitas Chain',
+  'h-what':'Что такое Верифицированный Человек?','h-what-t':'Верифицированный Человек — адрес кошелька, криптографически доказанный принадлежащим уникальному живому человеку через биометрическое Доказательство с Нулевым Разглашением.',
+  'h-zkp':'Система ZK-Доказательств','h-zkp-t':'Aequitas использует Groth16 на BN128. Размер доказательства: ~200 байт. Время верификации: ~10мс.',
+  'h-sybil':'Защита от Атак Сибиллы','h-sybil-t':'Каждый биометрический хэш хранится постоянно с keccak256. Двойная регистрация немедленно отклоняется. ⚠ Тестовая фаза: верификация привязана к устройству. Планируется сенсор MAX30102 PPG.',
+  'h-global':'Глобальная Финансовая Инклюзия','h-global-t':'Банковский счёт, кредитная карта или криптовалюта не требуются. Только Android-смартфон с биометрическим датчиком.',
+  'reg-humans':'Зарегистрированные Люди','h-desc':'Каждый адрес верифицирован как уникальный человек через биометрический ZKP. Каждый получил ровно 1 000 AEQ. Постоянно, неизменно, он-чейн.',
+  'no-humans':'Люди ещё не зарегистрированы.\n\nСкачайте Android-приложение Aequitas и будьте первым!',
   'reg-stats':'Статистика Реестра','total-humans':'Всего Людей',
   'idx-title':'Индекс Aequitas — Оценка Экономического Равенства в Реальном Времени',
-  'idx-desc':'Рассчитывается из распределения балансов on-chain. 0 = полное равенство. 100 = максимальное неравенство.',
-  'curr-idx':'Текущий Индекс','bar-0':'0 — Полное Равенство','bar-100':'100 — Макс. Неравенство',
-  'gini':'Коэффициент Джини','phase':'Фаза Протокола',
-  'pools-title':'Пулы Перераспределения','pools-desc':'Когда пороги неравенства превышены, AEQ автоматически перенаправляется.',
-  'vel-pool':'Пул Скорости','liq-pool':'Пул Ликвидности','ubi-pool':'Пул UBI','treasury':'Казначейство',
-  'phases-title':'Фазы Протокола','phases-desc':'Переходы происходят автоматически — голосование не требуется.',
-  'p0':'Загрузка · &lt;100 людей · Cap: 50x','p1':'Рост · 100-10 000 · Cap: 20x',
-  'p2':'Стабильность · 10k-1M · Cap: 10x','p3':'Зрелость · 1M+ · Cap: 3x',
-  'story-title':'История Aequitas — Почему Это Существует',
-  'story-text':'<p>2009 год. Сатоши Накамото выпускает Биткоин. Впервые ценность можно передавать без банков. Революция. Но почти сразу что-то идёт не так.</p><p>Ранние майнеры накапливают миллионы монет почти бесплатно. К 2021 году верхний 1% адресов контролирует более 90% всех Биткоинов.</p><p><span style="color:var(--gold)">Aequitas</span> был создан чтобы ответить: <em style="color:var(--gold)">"Как выглядела бы криптовалюта, разработанная для справедливости к каждому человеку?"</em></p><p>Ответ: <strong>Деньги существуют потому что существуют люди. Поэтому каждый человек должен иметь равную долю денег просто будучи человеком.</strong></p><p><em style="color:var(--gold)">"Деньги существуют потому что существуют люди. Ничего больше, ничего меньше."</em></p>',
-  'nodes-title':'Активные Узлы','nodes-desc':'Сеть Aequitas работает на двух узлах в географически распределённых облачных средах.',
-  'node1':'Узел 1 — Railway (Основной)','node1-desc':'Основной API · Производитель блоков · P2P-bootstrap · PostgreSQL · RPC для MetaMask',
-  'node2':'Узел 2 — Render (Вторичный)','node2-desc':'Вторичный API · Производитель блоков · P2P-пир · HTTP-синхронизация · Общий PostgreSQL',
-  'bootstrap-title':'Bootstrap-Узел','bootstrap-desc':'Для запуска собственного узла подключитесь через libp2p мультиадрес.',
-  'tech-title':'Технические Характеристики','mm-config':'Настройка MetaMask',
-  'k-lang':'Язык','k-src':'Исходный Код','evm-yes':'Да — JSON-RPC /rpc · MetaMask',
-  'proto-label':'Протокол Aequitas V6 — Техническая Документация',
-  'ca-title':'Адреса Контрактов','ca-text':'Цепочка: Aequitas Chain (Chain ID: 1926)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
-  'poa-title':'1. ДОКАЗАТЕЛЬСТВО ЖИЗНИ','poa-text':'<p>В Aequitas если кто-то исчезает, его AEQ в конечном итоге возвращается сообществу.</p>',
-  'poa-box':'Год 0-2: Нормальное использование<br>Год 2: Предупреждение 1<br>Год 2+180д: AEQ на персональный эскроу<br>Год 4: При инактивности — Пул UBI',
-  'guard-title':'2. СИСТЕМА GUARDIAN','guard-text':'<p>Доверенный Guardian может подтвердить что человек жив — без прав на транзакции.</p>',
-  'guard-box':'1 Guardian на человека · Только confirmAlive() · Без прав транзакций<br>Макс 3 подопечных · Блокировка 7 дней · Без круговых отношений',
-  'dem-title':'3. ДЕМУРРЕДЖ','dem-box':'1% годовых на баланс ВЫШЕ fairShare идёт в Пул UBI',
-  'dem-text':'<p>Исторический прецедент: Вёргль, Австрия (1932) — сократил безработицу на 25% за год.</p>',
-  'cap-title':'4. ОГРАНИЧЕНИЕ БОГАТСТВА','cap-box':'Фаза 0: 50x · Фаза 1: 20x · Фаза 2: 10x · Фаза 3: 5x · Фаза 4: 3x fairShare',
-  'ubi-title':'5. БАЗОВЫЙ ДОХОД','ubi-box':'Источники: Комиссии (20%) · Переполнение лимита · Демурредж · Неактивный эскроу<br><br>Ежедневно: Пул UBI делится поровну между всеми зарегистрированными людьми.',
-  'inf-title':'6. БЕЗ АЛГОРИТМИЧЕСКОЙ ИНФЛЯЦИИ','inf-box':'Единственное событие создающее AEQ: регистрация нового верифицированного человека'
+  'idx-desc':'Индекс Aequitas измеряет экономическое неравенство всех верифицированных людей в реальном времени. Рассчитывается из коэффициента Джини распределения балансов он-чейн. 0 = идеальное равенство. 100 = максимальное неравенство.',
+  'curr-idx':'Текущий Индекс','bar-0':'0 — Идеальное Равенство','bar-100':'100 — Макс. Неравенство',
+  'gini':'Коэффициент Джини','gini-desc':'0 = равно · 1 = неравно',
+  'supply-desc':'Всегда = Люди × 1 000 AEQ',
+  'phase':'Фаза Протокола','phase-desc':'Автоматически по количеству людей',
+  'humans-desc':'Биометрически верифицированные уникальные люди',
+  'pools-title':'Пулы Перераспределения',
+  'pools-desc':'Каждая комиссия свопа, плата за демередж и превышение лимита богатства автоматически делится между четырьмя пулами. Все пулы выплачивают ежедневно.',
+  'vel-pool':'Пул Валидаторов','vel-pool-desc':'40% всех комиссий → операторы нод, обеспечивающие сеть',
+  'liq-pool':'Пул Ликвидности','liq-pool-desc':'30% всех комиссий → поставщики ликвидности, пропорционально LP-долям',
+  'ubi-pool':'Пул UBI','ubi-pool-desc':'20% всех комиссий → все верифицированные люди поровну, каждые 24 часа',
+  'treasury':'Казначейство','treasury-desc':'10% всех комиссий → разработка и обслуживание протокола',
+  'phases-title':'Фазы Протокола',
+  'phases-desc':'Переходы фаз запускаются автоматически по количеству людей — без голосования, без управления, без административных ключей.',
+  'p0':'Начальный этап · &lt;100 людей · Лимит богатства: 50× средний баланс · Сейчас активен',
+  'p1':'Рост · 100–10 000 людей · Лимит богатства: 20× средний баланс',
+  'p2':'Стабильность · 10 000–1М людей · Лимит богатства: 10× средний баланс',
+  'p3':'Зрелость · 1М+ людей · Лимит богатства: 3× средний баланс · Максимальное перераспределение',
+  'wealth-cap-explain':'Лимит Богатства устанавливается как кратное текущего среднего баланса всех верифицированных людей. Автоматически корректируется по мере роста сети.',
+  'demurrage-title':'Демередж — Стимул к Обращению',
+  'demurrage-desc':'Aequitas реализует механизм демереджа, вдохновлённый историческими дополнительными валютами. Бездействующие балансы AEQ постепенно теряют стоимость для предотвращения накопления.',
+  'dem-rate-k':'Скорость Распада','dem-rate-v':'0,5% в месяц (непрерывно)',
+  'dem-grace-k':'Льготный Период','dem-grace-v':'3 месяца бездействия до начала распада',
+  'dem-reset-k':'Сброс Таймера','dem-reset-v':'Любой перевод, своп или операция с ликвидностью сбрасывает таймер',
+  'dem-dest-k':'Распавшийся AEQ идёт в','dem-dest-v':'Пулы перераспределения (40/30/20/10)',
+  'dem-warn-k':'Система Предупреждений','dem-warn-v':'14-дневное уведомление (один раз) + 7-дневное повторение при каждом входе',
+  'story-title':'История Aequitas — Почему это существует',
+  'story-text':'<p>Год 2009. Сатоши Накамото выпускает Bitcoin. Впервые ценность может передаваться между людьми без банка. Настоящая революция. Но почти сразу что-то идёт не так.</p><p>Ранние майнеры накапливают миллионы монет почти бесплатно. К 2021 году топ 1% адресов Bitcoin контролирует более 90% всех Bitcoin. Коэффициент Джини Bitcoin превышает 0,85 — выше чем в любой стране мира.</p><p><span style="color:var(--gold)">Aequitas</span> был создан чтобы ответить на один вопрос: <em style="color:var(--gold)">"Как выглядела бы криптовалюта, спроектированная с нуля чтобы быть справедливой для каждого человека?"</em></p><p>Ответ прост: <strong style="color:var(--text)">Деньги существуют потому что существуют люди. Поэтому каждый человек должен иметь равную долю денег просто потому что он человек.</strong></p><p><em style="color:var(--gold)">"Деньги существуют потому что существуют люди. Ничего более, ничего менее."</em></p>',
+  'nodes-title':'Активные Ноды','nodes-desc':'Сеть Aequitas работает на двух географически распределённых нодах.',
+  'node1':'Нода 1 — Railway (Основная)','node1-desc':'Основной API · Производитель блоков · Распределение UBI · P2P-бутстрап · PostgreSQL · RPC для MetaMask',
+  'node2':'Нода 2 — Render (Вторичная)','node2-desc':'Вторичный API · Производитель блоков · P2P-пир · HTTP-синхронизация · Общий статус PostgreSQL',
+  'bootstrap-title':'Запустить Свою Ноду','bootstrap-desc':'Любой может присоединиться к сети Aequitas запустив ноду. Скачайте руководство по ноде для пошаговых инструкций.',
+  'tech-title':'Технические Характеристики','mm-config':'Конфигурация MetaMask',
+  'k-lang':'Язык','k-src':'Исходный Код','evm-yes':'Да — JSON-RPC /rpc · Совместимо с MetaMask',
+  'proto-label':'Протокол Aequitas V7 — Техническая Документация',
+  'ca-title':'Адреса Контрактов','ca-text':'Цепь: Aequitas Chain (ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7: 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
+  'poa-title':'1. ДОКАЗАТЕЛЬСТВО ЖИЗНИ','poa-text':'<p>Что происходит с AEQ когда люди умирают или исчезают? В Bitcoin миллионы BTC потеряны навсегда. В Aequitas AEQ неактивного человека в конечном итоге возвращается сообществу через пул UBI.</p>',
+  'poa-box':'Годы 0-2: Нормальное использование<br>Год 2: Предупреждение 1 — Guardian может ответить<br>Год 2+60д: Предупреждение 2<br>Год 2+120д: Предупреждение 3<br>Год 2+180д: AEQ в ЛИЧНОЕ ЭСКРОУ<br>Год 4: При дальнейшей неактивности — возврат в Пул UBI',
+  'guard-title':'2. СИСТЕМА GUARDIAN','guard-text':'<p>Что если кто-то не может получить доступ к устройству месяцами? Доверенный Guardian — другой верифицированный человек — может подтвердить что они живы, без прав транзакций.</p>',
+  'guard-box':'1 Guardian на человека · Только confirmAlive() · Ноль прав транзакций<br>Макс 3 подопечных · Блокировка 7 дней · Без круговых отношений',
+  'dem-title':'3. ДЕМЕРЕДЖ — Механизм Против Накопления',
+  'dem-box':'Ставка: 0,5%/месяц после 3 месяцев льготного периода<br>Таймер сбрасывается при любом переводе, свопе или операции с ликвидностью',
+  'dem-text':'<p>Исторический прецедент: эксперимент в Вёргле (Австрия, 1932) использовал валюту с демереджем и сократил безработицу на 25% за год.</p>',
+  'cap-title':'4. ЛИМИТ БОГАТСТВА — Математическая Справедливость','cap-box':'Лимит = 25× текущий средний баланс всех верифицированных людей<br>Автоматически корректируется по мере роста сети<br>Избыточный AEQ мгновенно перенаправляется в пулы',
+  'ubi-title':'5. УНИВЕРСАЛЬНЫЙ БАЗОВЫЙ ДОХОД','ubi-box':'Источники: Комиссии свопов (20%) · Превышение лимита · Демередж · Неактивное эскроу<br><br>Ежедневно: Пул UBI делится поровну между всеми зарегистрированными людьми.',
+  'inf-title':'6. НИКАКОЙ АЛГОРИТМИЧЕСКОЙ ИНФЛЯЦИИ','inf-box':'ЕДИНСТВЕННОЕ событие создающее новый AEQ: регистрируется новый верифицированный человек<br><br>Общий Объём = Верифицированные Люди × 1 000 AEQ — всегда, точно.'
 },
 zh:{
-  'logo-sub':'人类证明','live':'直播',
-  'tab-register':'🔐 注册','tab-explorer':'🔍 浏览器','tab-humans':'👥 人类','tab-index':'📊 指数','tab-network':'🌐 网络','tab-protocol':'📜 协议 V7',
-  'reg-title':'🔐 注册为已验证人类',
-  'reg-sub':'加入Aequitas网络并接收1,000 AEQ。一次性、永久、无Gas费。不存储个人数据。',
-  'app-title':'仅通过ANDROID应用注册',
-  'app-text':'人类证明需要在您的个人设备上进行生物特征验证。您的指纹由硬件安全元件处理——原始数据永远不会离开您的手机。下载应用，扫描指纹，连接钱包，您的<strong style="color:var(--gold)">1,000 AEQ将自动发放</strong>。',
-  's1t':'生物特征扫描','s1d':'打开应用 · 扫描指纹 · HSE处理 · 数据永不离开设备',
-  's2t':'ZKP生成','s2d':'生成Groth16证明 · 验证唯一性 · 哈希从不泄露',
-  's3t':'连接钱包','s3d':'应用打开MetaMask · 连接钱包 · 地址接收1,000 AEQ',
-  's4t':'1,000 AEQ','s4d':'在V6上注册 · 下一个区块内确认 · 应用自动通知',
-  'priv-bar':'🔒 硬件安全元件 · Groth16 ZKP · 数据永不离开设备 · 无Gas费',
+  'logo-sub':'人类证明','live':'实时',
+  'tab-register':'🔐 注册','tab-explorer':'🔍 浏览器','tab-humans':'👥 人类','tab-index':'📊 指数','tab-network':'🌐 网络','tab-protocol':'📜 协议 V7','tab-swap':'🔄 兑换',
+  'reg-title':'🔐 注册成为经过验证的人类',
+  'reg-sub':'加入Aequitas网络并获得1,000 AEQ的普遍基本收入补贴。一次性、永久性且完全免费。永远不会存储任何个人数据。',
+  'app-title':'仅通过安卓应用注册',
+  'app-text':'人类证明需要在您的设备上进行生物特征验证。指纹或面部识别由手机内的硬件安全元件独立处理——原始生物特征数据永远不会离开您的设备。应用程序生成零知识证明，在不透露个人信息的情况下数学证明您的唯一性。下载AequitasBio，扫描您的生物特征，连接MetaMask，您的<strong style="color:var(--gold)">1,000 AEQ将自动记入</strong>。',
+  's1t':'生物特征扫描','s1d':'打开AequitasBio · 扫描指纹或面部 · 硬件安全元件本地处理 · 生物特征数据永不离开设备',
+  's2t':'ZK证明生成','s2d':'在证明服务器上生成Groth16零知识证明 · 唯一性得到密码学验证 · 身份永不泄露',
+  's3t':'连接钱包','s3d':'应用在此页面打开MetaMask · 连接您的以太坊钱包 · 证明与您的地址密码绑定',
+  's4t':'获得1,000 AEQ','s4d':'在6秒内在Aequitas BlockDAG上确认注册 · 立即记入1,000 AEQ · 身份永久记录为经过验证的人类',
+  'priv-bar':'🔒 硬件安全元件 · Groth16零知识证明 · 生物特征数据永不离开设备 · 无Gas费 · 每人一次注册 · 永久不可更改',
   'conn-wallet':'已连接钱包','proof-recv':'⚡ 已收到ZK证明','proof-hint':'连接钱包以注册',
-  'btn-conn':'🦊 连接METAMASK','btn-reg':'🔐 链上注册',
-  'reg-log-hint':'// 打开Aequitas Android应用生成您的证明，然后返回此处...',
-  'reg-details':'注册详情','k-network':'网络','k-chainid':'链ID','k-grant':'补助金',
-  'k-fee':'Gas费','free':'免费','k-limit':'注册次数','k-limit-v':'每人一次 · 永久 · 不可变',
-  'k-bio':'生物特征数据','never-stored':'从不存储','k-conf':'确认','k-conf-v':'6秒内',
-  'live-stats':'链上实时统计',
-  's-height':'区块高度','s-height-sub':'每6秒新区块 · BlockDAG · 两个节点并行',
+  'btn-conn':'🦊 连接 METAMASK','btn-reg':'🔐 链上注册',
+  'reg-log-hint':'// 打开Aequitas安卓应用生成您的证明，然后返回此处...',
+  'reg-details':'注册详情','k-network':'网络','k-chainid':'链ID','k-grant':'UBI补贴',
+  'k-fee':'Gas费','free':'免费——完全无Gas','k-limit':'注册','k-limit-v':'每人一次 · 永久 · 不可更改',
+  'k-bio':'生物特征数据','never-stored':'从不存储——保留在您的设备上',
+  'k-proof':'证明系统','k-conf':'确认','k-conf-v':'6秒内（1个区块）',
+  'k-sybil':'女巫攻击防护','k-sybil-v':'每个生物特征一个身份 · 永久锁定',
+  'live-stats':'实时链统计',
+  's-height':'区块高度','s-height-sub':'每约6秒新区块 · BlockDAG · 并行生产',
   's-humans':'已验证人类','s-humans-sub':'生物特征ZKP · 一人一钱包，永久',
-  's-supply':'总供应量','s-supply-sub':'在所有账户中流通',
+  's-supply':'总供应量','s-supply-sub':'始终 = 人类 × 1,000 AEQ',
   's-index':'Aequitas指数','s-index-sub':'0 = 完全平等 · 100 = 最大不平等',
-  's-uptime':'运行时间','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
-  'ib-poh':'人类证明','ib-poh-t':'每个AEQ持有者必须证明自己是唯一的活人。没有机器人、公司或AI。只有真实的人类。',
-  'ib-fair':'根本公平的分配','ib-fair-t':'每个经过验证的人类获得恰好1,000 AEQ。总供应量始终等于已验证人类 x 1,000。',
-  'ib-dag':'BlockDAG架构','ib-dag-t':'多个区块可以同时产生并合并。更高吞吐量，更低延迟。',
-  'ib-gas':'真正无Gas费','ib-gas-t':'注册绝对免费。不需要ETH、BNB或MATIC。不需要银行账户。',
-  'recent-blocks':'最近区块','blocks-desc':'MERGE = 多个父区块（BlockDAG）。TX = 注册交易。区块时间：约6秒。',
-  'loading':'加载区块中...','net-info':'网络信息','k-chain':'网络名称','k-symbol':'符号','k-btime':'出块时间',
+  's-uptime':'运行时间','s-uptime-sub':'节点 v0.3.0 · Railway + Render · PostgreSQL',
+  'ib-poh':'人类证明','ib-poh-t':'每个AEQ持有者必须密码学证明其是独特的活人。没有机器人、公司、人工智能。生物特征数据永不离开设备。',
+  'ib-fair':'彻底公平的分配','ib-fair-t':'每个经过验证的人类注册时恰好获得1,000 AEQ。没有预挖矿，没有创始人分配。总供应量始终等于已验证人类 × 1,000。',
+  'ib-dag':'BlockDAG架构','ib-dag-t':'多个区块可以同时生产并合并。比线性区块链更高吞吐量、更低延迟。',
+  'ib-gas':'真正无Gas','ib-gas-t':'注册和AEQ转账完全免费。不需要ETH、BNB或MATIC。无需银行账户或信用卡。',
+  'recent-blocks':'最近区块','blocks-desc':'MERGE = 多个父区块合并（BlockDAG）。TX = 注册交易。区块时间：约6秒。',
+  'loading':'加载区块中...','net-info':'网络信息','k-chain':'链名称','k-symbol':'符号','k-btime':'区块时间',
   'k-cons':'共识','k-nodes':'活跃节点','k-storage':'存储','add-mm':'🦊 添加到METAMASK','k-dec':'小数位',
   'btn-add-mm':'+ 添加AEQUITAS网络',
-  'phil':'"货币存在是因为人类存在。<br>仅此而已，不多也不少。"','phil-sub':'— AEQUITAS原则 —',
-  'humans-title':'Aequitas Chain上的已验证人类',
-  'h-what':'已验证人类是什么？','h-what-t':'已验证人类是一个加密证明属于独特活人的钱包地址。生物特征数据从不传输或存储。',
-  'h-zkp':'零知识证明系统','h-zkp-t':'Aequitas使用BN128上的Groth16。证明大小：~200字节。验证：~10ms。',
-  'h-sybil':'女巫攻击防护','h-sybil-t':'每个生物特征哈希永久存储。尝试用同一指纹注册两次立即被拒绝。⚠ 测试阶段：当前验证与设备绑定。计划使用生理传感器（MAX30102）实现独立于设备的身份识别。',
-  'h-global':'全球包容','h-global-t':'不需要银行账户、信用卡或加密货币。只需Android智能手机。',
-  'reg-humans':'已注册人类','h-desc':'每个地址通过生物特征ZKP验证为唯一人类。每人获得1,000 AEQ。永久，不可变。',
-  'no-humans':'还没有人类注册。\n\n下载Aequitas Android应用成为第一个！',
-  'reg-stats':'注册统计','total-humans':'总人类数',
-  'idx-title':'Aequitas指数 — 实时经济平等分数',
-  'idx-desc':'从所有已验证人类的链上余额分布计算。0 = 完全平等。100 = 最大不平等。',
+  'phil':'"货币存在是因为人类存在。<br>仅此而已，别无其他。"','phil-sub':'— AEQUITAS原则 —',
+  'humans-title':'Aequitas链上的已验证人类',
+  'h-what':'什么是已验证人类？','h-what-t':'已验证人类是通过生物特征零知识证明，密码学证明属于独特活人的钱包地址。生物特征数据从不传输或存储。',
+  'h-zkp':'零知识证明系统','h-zkp-t':'Aequitas在BN128上使用Groth16。证明大小：约200字节。验证时间：约10毫秒。',
+  'h-sybil':'女巫攻击防护','h-sybil-t':'每个生物特征哈希使用keccak256永久存储。尝试两次注册立即被拒绝。⚠ 测试阶段：当前验证与设备绑定。计划使用MAX30102 PPG传感器实现独立于设备的识别。',
+  'h-global':'全球金融包容','h-global-t':'无需银行账户、信用卡或加密货币。只需一台带生物特征传感器的安卓手机。',
+  'reg-humans':'已注册人类','h-desc':'每个地址通过生物特征ZKP验证为独特人类。每人恰好获得1,000 AEQ。永久、不可更改、链上。',
+  'no-humans':'尚未注册人类。\n\n下载Aequitas安卓应用，成为链上第一个人类！',
+  'reg-stats':'注册统计','total-humans':'总人数',
+  'idx-title':'Aequitas指数——实时经济平等评分',
+  'idx-desc':'Aequitas指数实时衡量所有经过验证的人类的经济不平等。从链上余额分布的基尼系数导出。0 = 完全平等。100 = 最大不平等。',
   'curr-idx':'当前指数','bar-0':'0 — 完全平等','bar-100':'100 — 最大不平等',
-  'gini':'基尼系数','phase':'协议阶段',
-  'pools-title':'再分配池','pools-desc':'当不平等阈值被超过时，AEQ自动重定向。',
-  'vel-pool':'速度池','liq-pool':'流动性池','ubi-pool':'UBI池','treasury':'国库',
-  'phases-title':'协议阶段','phases-desc':'过渡自动发生 — 不需要投票。',
-  'p0':'引导期 · &lt;100人 · Cap: 50x','p1':'增长期 · 100-10,000 · Cap: 20x',
-  'p2':'稳定期 · 10k-1M · Cap: 10x','p3':'成熟期 · 1M+ · Cap: 3x',
-  'story-title':'Aequitas的故事','story-text':'<p>2009年。中本聪发布比特币。有史以来第一次无需银行即可传递价值。真正的革命。但几乎立即就出现了问题。</p><p>早期矿工以几乎为零的成本积累了数百万枚比特币。到2021年，前1%控制了超过90%的所有比特币。</p><p><span style="color:var(--gold)">Aequitas</span>被创建来回答：<em style="color:var(--gold)">"如果一种加密货币从第一原则出发设计，对每个人都公平，它会是什么样子？"</em></p><p>答案：<strong>货币存在是因为人类存在。因此，每个人仅凭其是人类这一事实，就应该拥有等额的货币。</strong></p><p><em style="color:var(--gold)">"货币存在是因为人类存在。仅此而已，不多也不少。"</em></p>',
-  'nodes-title':'活跃节点','nodes-desc':'Aequitas网络在地理分布的云环境中运行两个节点。',
-  'node1':'节点1 — Railway（主要）','node1-desc':'主要API服务器 · 区块生产者 · P2P引导 · PostgreSQL · MetaMask的RPC',
-  'node2':'节点2 — Render（次要）','node2-desc':'次要API服务器 · 区块生产者 · P2P对等节点 · HTTP同步 · 共享PostgreSQL',
-  'bootstrap-title':'引导节点','bootstrap-desc':'要运行您自己的Aequitas节点，请使用libp2p多地址连接到引导节点。',
+  'gini':'基尼系数','gini-desc':'0 = 平等 · 1 = 不平等',
+  'supply-desc':'始终 = 人类 × 1,000 AEQ',
+  'phase':'协议阶段','phase-desc':'按人类数量自动推进',
+  'humans-desc':'经过生物特征验证的独特人类',
+  'pools-title':'再分配池',
+  'pools-desc':'每笔兑换费用、滞期费和财富上限溢出自动在四个池之间分配。无需人工干预。所有池每日分配。',
+  'vel-pool':'验证者池','vel-pool-desc':'所有费用的40% → 保障网络安全的节点运营商',
+  'liq-pool':'流动性池','liq-pool-desc':'所有费用的30% → 流动性提供者，按LP份额比例',
+  'ubi-pool':'UBI池','ubi-pool-desc':'所有费用的20% → 所有经过验证的人类均等，每24小时',
+  'treasury':'国库','treasury-desc':'所有费用的10% → 协议开发和维护',
+  'phases-title':'协议阶段',
+  'phases-desc':'阶段转换由人类数量自动触发——无需投票、治理或管理员密钥。',
+  'p0':'启动 · &lt;100人类 · 财富上限：50×平均余额 · 当前活跃',
+  'p1':'增长 · 100–10,000人类 · 财富上限：20×平均余额',
+  'p2':'稳定 · 10,000–100万人类 · 财富上限：10×平均余额',
+  'p3':'成熟 · 100万+人类 · 财富上限：3×平均余额 · 最大再分配',
+  'wealth-cap-explain':'财富上限设定为所有经过验证的人类当前平均余额的倍数——而非固定数字。随着网络增长自动调整。',
+  'demurrage-title':'滞期费——流通激励',
+  'demurrage-desc':'Aequitas实施受历史互补货币启发的滞期费机制。闲置AEQ余额缓慢贬值以阻止囤积。',
+  'dem-rate-k':'衰减率','dem-rate-v':'每月0.5%（连续，非阶梯式）',
+  'dem-grace-k':'宽限期','dem-grace-v':'衰减开始前3个月不活动',
+  'dem-reset-k':'计时器重置','dem-reset-v':'任何转账、兑换或流动性操作重置计时器',
+  'dem-dest-k':'衰减的AEQ去往','dem-dest-v':'再分配池（40/30/20/10分配）',
+  'dem-warn-k':'警告系统','dem-warn-v':'14天通知（一次）+ 每次登录7天重复提醒',
+  'story-title':'Aequitas的故事——为何而生',
+  'story-text':'<p>2009年。中本聪发布比特币。有史以来第一次，价值可以在不经过银行的情况下在两人之间转移。一场真正的革命。但几乎立刻出现了问题。</p><p>早期矿工以接近零的成本积累了数百万枚代币。到2021年，比特币地址中的前1%控制了90%以上的比特币。比特币的基尼系数超过0.85——高于地球上任何国家。</p><p><span style="color:var(--gold)">Aequitas</span>——拉丁语"公平"和"平等"——的创建是为了回答一个问题：<em style="color:var(--gold)">"如果从第一原则设计一种对每个人都公平的加密货币会是什么样？"</em></p><p>答案很简单：<strong style="color:var(--text)">货币存在是因为人类存在。因此，每个人仅凭成为人类就应该拥有等份的货币。</strong></p><p><em style="color:var(--gold)">"货币存在是因为人类存在。仅此而已，别无其他。"</em></p>',
+  'nodes-title':'活跃节点','nodes-desc':'Aequitas网络在两个地理分布的节点上运行。',
+  'node1':'节点1 — Railway（主要）','node1-desc':'主要API · 区块生产者 · UBI分配 · P2P引导 · PostgreSQL · MetaMask的RPC',
+  'node2':'节点2 — Render（次要）','node2-desc':'次要API · 区块生产者 · P2P对等 · HTTP同步 · 共享PostgreSQL状态',
+  'bootstrap-title':'运行自己的节点','bootstrap-desc':'任何人都可以通过运行节点加入Aequitas网络。下载节点指南获取分步说明。',
   'tech-title':'技术规格','mm-config':'MetaMask配置',
-  'k-lang':'语言','k-src':'源代码','evm-yes':'是 — JSON-RPC /rpc · MetaMask',
-  'proto-label':'Aequitas V6协议 — 技术文档',
-  'ca-title':'合约地址','ca-text':'链：Aequitas Chain（Chain ID: 1926）<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
-  'poa-title':'1. 生命证明','poa-text':'<p>在Aequitas中，如果有人消失，他们的AEQ最终会返回社区。</p>',
-  'poa-box':'第0-2年：正常使用<br>第2年：警告1<br>第2年+180天：AEQ进入个人托管<br>第4年：如果仍不活跃 — UBI池',
-  'guard-title':'2. 监护人系统','guard-text':'<p>受信任的监护人可以确认某人仍然活着 — 没有任何交易权限。</p>',
-  'guard-box':'每人1个监护人 · 仅限confirmAlive() · 无交易权限<br>最多3个被监护人 · 7天时间锁 · 无循环关系',
-  'dem-title':'3. 滞留费','dem-box':'超出fairShare部分的余额每年1%费用进入UBI池',
-  'dem-text':'<p>历史先例：奥地利沃尔格尔（1932年）— 一年内将失业率降低了25%。</p>',
-  'cap-title':'4. 财富上限','cap-box':'第0阶段：50x · 第1阶段：20x · 第2阶段：10x · 第3阶段：5x · 第4阶段：3x fairShare',
-  'ubi-title':'5. 全民基本收入','ubi-box':'来源：交易费用（20%）· 财富上限溢出 · 滞留费 · 非活跃托管<br><br>每日：UBI池平均分配给所有已注册的人。',
-  'inf-title':'6. 无算法通胀','inf-box':'创造新AEQ的唯一事件：新验证人类注册'
+  'k-lang':'语言','k-src':'源代码','evm-yes':'是 — JSON-RPC /rpc · MetaMask兼容',
+  'proto-label':'Aequitas V7协议——技术文档',
+  'ca-title':'合约地址','ca-text':'链：Aequitas Chain（链ID：1926 · 0x786）<br>RPC：https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier：0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7：0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
+  'poa-title':'1. 生存证明','poa-text':'<p>当人们死亡或消失时AEQ会怎样？在比特币中，数百万BTC永久丢失。在Aequitas中，不活跃者的AEQ最终通过UBI池返回社区。</p>',
+  'poa-box':'第0-2年：正常使用<br>第2年：警告1——Guardian可回应<br>第2+60天：警告2<br>第2+120天：警告3<br>第2+180天：AEQ进入个人托管<br>第4年：若仍不活跃——返回UBI池',
+  'guard-title':'2. 监护人系统','guard-text':'<p>如果有人几个月无法访问其设备怎么办？受信任的监护人——另一个经过验证的人类——可以确认他们仍然活着，没有交易权限。</p>',
+  'guard-box':'每人1名监护人（必须是另一个经过验证的人类）<br>监护人只能调用confirmAlive()——零交易权限<br>最多3名被监护人 · 7天时间锁 · 不允许循环关系',
+  'dem-title':'3. 滞期费——防囤积机制',
+  'dem-box':'费率：宽限期3个月后每月0.5%<br>任何转账、兑换或流动性操作重置计时器<br>衰减的AEQ重新分配到池中（不销毁）',
+  'dem-text':'<p>历史先例：沃格尔实验（奥地利，1932年）使用滞期费货币，一年内失业率降低了25%。</p>',
+  'cap-title':'4. 财富上限——数学公平','cap-box':'上限 = 所有验证人类当前平均余额的25倍<br>随网络增长自动调整<br>超额AEQ立即重定向到再分配池',
+  'ubi-title':'5. 普遍基本收入','ubi-box':'来源：兑换费用（20%）· 财富上限溢出 · 滞期费 · 闲置托管<br><br>每日：UBI池在所有注册人类中平均分配。',
+  'inf-title':'6. 无算法通胀','inf-box':'创建新AEQ的唯一事件：新的经过验证的人类注册<br><br>总供应量 = 经过验证的人类 × 1,000 AEQ——始终，精确。'
 },
 id:{
-  'logo-sub':'BUKTI KEMANUSIAAN','live':'SIARAN LANGSUNG',
-  'tab-register':'🔐 Daftar','tab-explorer':'🔍 Penjelajah','tab-humans':'👥 Manusia','tab-index':'📊 Indeks','tab-network':'🌐 Jaringan','tab-protocol':'📜 Protokol V7',
+  'logo-sub':'BUKTI KEMANUSIAAN','live':'LANGSUNG',
+  'tab-register':'🔐 Daftar','tab-explorer':'🔍 Penjelajah','tab-humans':'👥 Manusia','tab-index':'📊 Indeks','tab-network':'🌐 Jaringan','tab-protocol':'📜 Protokol V7','tab-swap':'🔄 Tukar',
   'reg-title':'🔐 Daftar sebagai Manusia Terverifikasi',
-  'reg-sub':'Bergabunglah dengan jaringan Aequitas dan terima 1.000 AEQ. Sekali, permanen, tanpa gas. Tidak ada data pribadi.',
+  'reg-sub':'Bergabunglah dengan jaringan Aequitas dan terima hibah Pendapatan Dasar Universal sebesar 1.000 AEQ. Satu kali, permanen, dan sepenuhnya gratis. Tidak ada data pribadi yang pernah disimpan.',
   'app-title':'PENDAFTARAN HANYA MELALUI APLIKASI ANDROID',
-  'app-text':'Bukti Kemanusiaan memerlukan verifikasi biometrik di perangkat Anda. Sidik jari Anda diproses oleh Hardware Secure Element — data mentah tidak pernah meninggalkan ponsel Anda. Unduh aplikasinya, pindai sidik jari, hubungkan wallet, dan <strong style="color:var(--gold)">1.000 AEQ Anda akan diberikan otomatis</strong>.',
-  's1t':'Pemindaian Biometrik','s1d':'Buka aplikasi · pindai sidik jari · HSE memproses · data tidak pernah meninggalkan perangkat',
-  's2t':'Pembuatan ZKP','s2d':'Bukti Groth16 dihasilkan · keunikan diverifikasi · hash tidak pernah terungkap',
-  's3t':'Hubungkan Wallet','s3d':'Aplikasi membuka MetaMask · hubungkan wallet · alamat menerima 1.000 AEQ',
-  's4t':'1.000 AEQ','s4d':'Terdaftar di V6 · dikonfirmasi di blok berikutnya · aplikasi memberi tahu otomatis',
-  'priv-bar':'🔒 Hardware Secure Element · ZKP Groth16 · Data tidak pernah meninggalkan perangkat · Tanpa biaya gas',
-  'conn-wallet':'DOMPET TERHUBUNG','proof-recv':'⚡ BUKTI ZK DITERIMA','proof-hint':'Hubungkan wallet untuk mendaftar',
+  'app-text':'Bukti Kemanusiaan memerlukan verifikasi biometrik pada perangkat Anda. Sidik jari atau pengenalan wajah diproses secara eksklusif oleh Elemen Aman Perangkat Keras — data biometrik mentah tidak pernah meninggalkan perangkat Anda. Aplikasi menghasilkan Bukti Pengetahuan Nol yang membuktikan keunikan Anda secara matematis tanpa mengungkapkan informasi pribadi. Unduh AequitasBio, pindai biometrik Anda, hubungkan MetaMask, dan <strong style="color:var(--gold)">1.000 AEQ Anda akan dikreditkan secara otomatis</strong>.',
+  's1t':'Pemindaian Biometrik','s1d':'Buka AequitasBio · pindai sidik jari atau wajah · Elemen Aman Perangkat Keras memproses secara lokal · data biometrik tidak pernah meninggalkan perangkat',
+  's2t':'Pembuatan Bukti ZK','s2d':'Bukti Groth16 Pengetahuan Nol dibuat di server · keunikan diverifikasi secara kriptografis · identitas tidak pernah terungkap',
+  's3t':'Hubungkan Dompet','s3d':'Aplikasi membuka MetaMask di halaman ini · hubungkan dompet Ethereum Anda · bukti terikat secara kriptografis ke alamat Anda',
+  's4t':'1.000 AEQ Dikreditkan','s4d':'Pendaftaran dikonfirmasi di BlockDAG Aequitas dalam 6 detik · 1.000 AEQ dikreditkan seketika · identitas Anda dicatat permanen sebagai manusia terverifikasi',
+  'priv-bar':'🔒 Elemen Aman Perangkat Keras · Bukti ZK Groth16 · Data biometrik tidak pernah meninggalkan perangkat · Tanpa biaya gas · Satu pendaftaran per manusia · Permanen &amp; tidak dapat diubah',
+  'conn-wallet':'DOMPET TERHUBUNG','proof-recv':'⚡ BUKTI ZK DITERIMA','proof-hint':'Hubungkan dompet untuk mendaftar',
   'btn-conn':'🦊 HUBUNGKAN METAMASK','btn-reg':'🔐 DAFTAR ON-CHAIN',
-  'reg-log-hint':'// Buka Aplikasi Android Aequitas untuk menghasilkan bukti Anda, lalu kembali ke sini...',
-  'reg-details':'Detail Pendaftaran','k-network':'Jaringan','k-chainid':'ID Rantai','k-grant':'Hibah',
-  'k-fee':'Biaya Gas','free':'GRATIS','k-limit':'Pendaftaran','k-limit-v':'Sekali per manusia · permanen · tidak dapat diubah',
-  'k-bio':'Data Biometrik','never-stored':'Tidak pernah disimpan','k-conf':'Konfirmasi','k-conf-v':'Dalam 6 detik',
+  'reg-log-hint':'// Buka Aplikasi Android Aequitas untuk membuat bukti Anda, lalu kembali ke sini...',
+  'reg-details':'Detail Pendaftaran','k-network':'Jaringan','k-chainid':'ID Rantai','k-grant':'Hibah UBI',
+  'k-fee':'Biaya Gas','free':'GRATIS — sepenuhnya tanpa gas','k-limit':'Pendaftaran','k-limit-v':'Satu kali · permanen · tidak dapat diubah',
+  'k-bio':'Data Biometrik','never-stored':'Tidak pernah disimpan — tetap di perangkat Anda',
+  'k-proof':'Sistem Bukti','k-conf':'Konfirmasi','k-conf-v':'Dalam 6 detik (1 blok)',
+  'k-sybil':'Perlindungan Sybil','k-sybil-v':'Satu identitas per biometrik · kunci permanen',
   'live-stats':'Statistik Rantai Langsung',
-  's-height':'Tinggi Blok','s-height-sub':'Blok baru setiap 6 detik · BlockDAG · Dua node paralel',
-  's-humans':'Manusia Terverifikasi','s-humans-sub':'ZKP biometrik · Satu orang, satu wallet, selamanya',
-  's-supply':'Total Pasokan','s-supply-sub':'Beredar di semua akun',
+  's-height':'Tinggi Blok','s-height-sub':'Blok baru setiap ~6d · BlockDAG · Produksi paralel',
+  's-humans':'Manusia Terverifikasi','s-humans-sub':'ZKP biometrik · Satu orang, satu dompet, selamanya',
+  's-supply':'Total Pasokan','s-supply-sub':'Selalu = Manusia × 1.000 AEQ',
   's-index':'Indeks Aequitas','s-index-sub':'0 = kesetaraan sempurna · 100 = ketidaksetaraan maksimum',
   's-uptime':'Waktu Aktif','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
-  'ib-poh':'Bukti Kemanusiaan','ib-poh-t':'Setiap pemegang AEQ harus membuktikan bahwa mereka adalah manusia unik yang hidup. Tidak ada bot, korporasi, atau AI. Hanya manusia nyata.',
-  'ib-fair':'Distribusi yang Benar-Benar Adil','ib-fair-t':'Setiap manusia terverifikasi menerima tepat 1.000 AEQ. Total pasokan selalu sama dengan manusia x 1.000.',
+  'ib-poh':'Bukti Kemanusiaan','ib-poh-t':'Setiap pemegang AEQ harus membuktikan secara kriptografis bahwa mereka adalah manusia hidup yang unik. Tidak ada bot, korporasi, AI. Data biometrik tidak pernah meninggalkan perangkat.',
+  'ib-fair':'Distribusi yang Benar-benar Adil','ib-fair-t':'Setiap manusia terverifikasi menerima tepat 1.000 AEQ saat pendaftaran. Tanpa pre-mining, tanpa alokasi pendiri. Total pasokan selalu sama dengan manusia terverifikasi × 1.000.',
   'ib-dag':'Arsitektur BlockDAG','ib-dag-t':'Beberapa blok dapat diproduksi secara bersamaan dan digabungkan. Throughput lebih tinggi, latensi lebih rendah.',
-  'ib-gas':'Benar-Benar Tanpa Gas','ib-gas-t':'Pendaftaran tidak memerlukan biaya sama sekali. Tidak perlu ETH, BNB, atau MATIC. Tidak perlu rekening bank.',
-  'recent-blocks':'Blok Terbaru','blocks-desc':'MERGE = beberapa induk (BlockDAG). TX = transaksi registrasi. Waktu blok: ~6 detik.',
-  'loading':'Memuat blok...','net-info':'Informasi Jaringan','k-chain':'Nama Jaringan','k-symbol':'Simbol','k-btime':'Waktu Blok',
+  'ib-gas':'Benar-benar Tanpa Gas','ib-gas-t':'Pendaftaran dan transfer AEQ tidak memerlukan biaya. Tidak perlu ETH, BNB, atau MATIC. Tidak perlu rekening bank atau kartu kredit.',
+  'recent-blocks':'Blok Terbaru','blocks-desc':'MERGE = beberapa induk digabung (BlockDAG). TX = transaksi pendaftaran. Waktu blok: ~6 detik.',
+  'loading':'Memuat blok...','net-info':'Informasi Jaringan','k-chain':'Nama Rantai','k-symbol':'Simbol','k-btime':'Waktu Blok',
   'k-cons':'Konsensus','k-nodes':'Node Aktif','k-storage':'Penyimpanan','add-mm':'🦊 TAMBAHKAN KE METAMASK','k-dec':'Desimal',
   'btn-add-mm':'+ TAMBAHKAN JARINGAN AEQUITAS',
   'phil':'"Uang ada karena manusia ada.<br>Tidak lebih, tidak kurang."','phil-sub':'— PRINSIP AEQUITAS —',
   'humans-title':'Manusia Terverifikasi di Aequitas Chain',
-  'h-what':'Apa itu Manusia Terverifikasi?','h-what-t':'Manusia Terverifikasi adalah alamat wallet yang terbukti secara kriptografis milik manusia unik yang hidup.',
-  'h-zkp':'Sistem Bukti Zero-Knowledge','h-zkp-t':'Aequitas menggunakan Groth16 atas BN128. Ukuran bukti: ~200 byte. Verifikasi: ~10ms.',
-  'h-sybil':'Pencegahan Serangan Sybil','h-sybil-t':'Setiap hash biometrik disimpan secara permanen. Mencoba mendaftar dua kali langsung ditolak. ⚠ Fase uji coba: verifikasi saat ini terikat perangkat. Sensor fisiologis (MAX30102 PPG) direncanakan untuk identifikasi independen perangkat.',
-  'h-global':'Inklusi Global','h-global-t':'Tidak perlu rekening bank, kartu kredit, atau cryptocurrency. Hanya smartphone Android.',
-  'reg-humans':'Manusia Terdaftar','h-desc':'Setiap alamat diverifikasi sebagai manusia unik melalui ZKP biometrik. Masing-masing menerima 1.000 AEQ. Permanen.',
+  'h-what':'Apa itu Manusia Terverifikasi?','h-what-t':'Manusia Terverifikasi adalah alamat dompet yang terbukti secara kriptografis milik manusia hidup yang unik melalui Bukti Pengetahuan Nol biometrik. Data biometrik tidak pernah ditransmisikan atau disimpan.',
+  'h-zkp':'Sistem Bukti ZK','h-zkp-t':'Aequitas menggunakan Groth16 pada BN128. Ukuran bukti: ~200 byte. Waktu verifikasi: ~10ms.',
+  'h-sybil':'Pencegahan Serangan Sybil','h-sybil-t':'Setiap hash biometrik disimpan permanen dengan keccak256. Mencoba mendaftar dua kali langsung ditolak. ⚠ Fase uji coba: verifikasi terikat perangkat. Sensor fisiologis MAX30102 PPG direncanakan.',
+  'h-global':'Inklusi Keuangan Global','h-global-t':'Tidak perlu rekening bank, kartu kredit, atau cryptocurrency sebelumnya. Hanya smartphone Android dengan sensor biometrik.',
+  'reg-humans':'Manusia Terdaftar','h-desc':'Setiap alamat diverifikasi sebagai manusia unik melalui ZKP biometrik. Masing-masing menerima tepat 1.000 AEQ. Permanen, tidak dapat diubah, on-chain.',
   'no-humans':'Belum ada manusia terdaftar.\n\nUnduh Aplikasi Android Aequitas dan jadilah yang pertama!',
   'reg-stats':'Statistik Registri','total-humans':'Total Manusia',
   'idx-title':'Indeks Aequitas — Skor Kesetaraan Ekonomi Real-Time',
-  'idx-desc':'Dihitung dari distribusi saldo on-chain semua manusia terverifikasi. 0 = kesetaraan sempurna. 100 = ketidaksetaraan maksimum.',
-  'curr-idx':'Indeks Saat Ini','bar-0':'0 — Kesetaraan Sempurna','bar-100':'100 — Ketidaksetaraan Maks.',
-  'gini':'Koefisien Gini','phase':'Fase Protokol',
-  'pools-title':'Pool Redistribusi','pools-desc':'Ketika ambang ketidaksetaraan terlampaui, AEQ secara otomatis diarahkan.',
-  'vel-pool':'Pool Kecepatan','liq-pool':'Pool Likuiditas','ubi-pool':'Pool UBI','treasury':'Perbendaharaan',
-  'phases-title':'Fase Protokol','phases-desc':'Transisi terjadi secara otomatis — tidak diperlukan pemungutan suara.',
-  'p0':'Bootstrap · &lt;100 manusia · Cap: 50x','p1':'Pertumbuhan · 100-10.000 · Cap: 20x',
-  'p2':'Stabilitas · 10k-1M · Cap: 10x','p3':'Kedewasaan · 1M+ · Cap: 3x',
-  'story-title':'Kisah Aequitas','story-text':'<p>Tahun 2009. Satoshi Nakamoto merilis Bitcoin. Untuk pertama kalinya nilai dapat ditransfer tanpa bank. Sebuah revolusi sejati. Tetapi sesuatu segera berjalan salah.</p><p>Penambang awal mengumpulkan jutaan koin dengan biaya hampir nol. Pada 2021, 1% teratas mengendalikan lebih dari 90% semua Bitcoin.</p><p><span style="color:var(--gold)">Aequitas</span> diciptakan untuk menjawab: <em style="color:var(--gold)">"Seperti apa cryptocurrency jika dirancang untuk adil bagi setiap manusia?"</em></p><p>Jawabannya: <strong>Uang ada karena manusia ada. Oleh karena itu, setiap orang harus memiliki bagian yang sama dari uang.</strong></p><p><em style="color:var(--gold)">"Uang ada karena manusia ada. Tidak lebih, tidak kurang."</em></p>',
-  'nodes-title':'Node Aktif','nodes-desc':'Jaringan Aequitas beroperasi pada dua node di lingkungan cloud yang didistribusikan secara geografis.',
-  'node1':'Node 1 — Railway (Utama)','node1-desc':'Server API utama · Produsen blok · P2P bootstrap · PostgreSQL · RPC untuk MetaMask',
-  'node2':'Node 2 — Render (Sekunder)','node2-desc':'Server API sekunder · Produsen blok · P2P peer · Sinkronisasi HTTP · PostgreSQL bersama',
-  'bootstrap-title':'Node Bootstrap','bootstrap-desc':'Untuk menjalankan node Aequitas Anda sendiri, hubungkan ke node bootstrap menggunakan alamat libp2p.',
+  'idx-desc':'Indeks Aequitas mengukur ketidaksetaraan ekonomi semua manusia terverifikasi secara real-time. Diturunkan dari koefisien Gini distribusi saldo on-chain. 0 = kesetaraan sempurna. 100 = ketidaksetaraan maksimum.',
+  'curr-idx':'Indeks Saat Ini','bar-0':'0 — Kesetaraan Sempurna','bar-100':'100 — Maks. Ketidaksetaraan',
+  'gini':'Koefisien Gini','gini-desc':'0 = setara · 1 = tidak setara',
+  'supply-desc':'Selalu = Manusia × 1.000 AEQ',
+  'phase':'Fase Protokol','phase-desc':'Otomatis berdasarkan jumlah manusia',
+  'humans-desc':'Manusia unik yang terverifikasi secara biometrik',
+  'pools-title':'Pool Redistribusi',
+  'pools-desc':'Setiap biaya swap, biaya demurrage, dan kelebihan batas kekayaan secara otomatis dibagi ke empat pool. Tanpa intervensi manual. Semua pool membayar setiap hari.',
+  'vel-pool':'Pool Validator','vel-pool-desc':'40% semua biaya → operator node yang mengamankan jaringan',
+  'liq-pool':'Pool Likuiditas','liq-pool-desc':'30% semua biaya → penyedia likuiditas, proporsional dengan saham LP',
+  'ubi-pool':'Pool UBI','ubi-pool-desc':'20% semua biaya → semua manusia terverifikasi secara merata, setiap 24 jam',
+  'treasury':'Perbendaharaan','treasury-desc':'10% semua biaya → pengembangan dan pemeliharaan protokol',
+  'phases-title':'Fase Protokol',
+  'phases-desc':'Transisi fase dipicu secara otomatis oleh jumlah manusia — tanpa pemungutan suara, tata kelola, atau kunci admin.',
+  'p0':'Bootstrap · &lt;100 manusia · Batas kekayaan: 50× saldo rata-rata · Aktif saat ini',
+  'p1':'Pertumbuhan · 100–10.000 manusia · Batas kekayaan: 20× saldo rata-rata',
+  'p2':'Stabilitas · 10.000–1J manusia · Batas kekayaan: 10× saldo rata-rata',
+  'p3':'Kematangan · 1J+ manusia · Batas kekayaan: 3× saldo rata-rata · Redistribusi maksimum',
+  'wealth-cap-explain':'Batas Kekayaan ditetapkan sebagai kelipatan saldo rata-rata semua manusia terverifikasi saat ini — bukan angka tetap. Secara otomatis menyesuaikan seiring pertumbuhan jaringan.',
+  'demurrage-title':'Demurrage — Insentif untuk Bersirkulasi',
+  'demurrage-desc':'Aequitas mengimplementasikan mekanisme demurrage yang terinspirasi dari mata uang komplementer historis. Saldo AEQ yang tidak aktif perlahan kehilangan nilai untuk mencegah penimbunan.',
+  'dem-rate-k':'Tingkat Peluruhan','dem-rate-v':'0,5% per bulan (berkelanjutan, tidak bertahap)',
+  'dem-grace-k':'Masa Tenggang','dem-grace-v':'3 bulan tidak aktif sebelum peluruhan dimulai',
+  'dem-reset-k':'Reset Timer','dem-reset-v':'Setiap transfer, swap, atau tindakan likuiditas mereset timer',
+  'dem-dest-k':'AEQ yang meluruh pergi ke','dem-dest-v':'Pool redistribusi (pembagian 40/30/20/10)',
+  'dem-warn-k':'Sistem Peringatan','dem-warn-v':'Pemberitahuan 14 hari (sekali) + pengingat 7 hari berulang setiap login',
+  'story-title':'Kisah Aequitas — Mengapa Ini Ada',
+  'story-text':'<p>Tahun 2009. Satoshi Nakamoto merilis Bitcoin. Untuk pertama kalinya, nilai dapat ditransfer antara dua orang tanpa bank. Sebuah revolusi sejati. Tetapi hampir segera sesuatu yang salah terjadi.</p><p>Para penambang awal mengumpulkan jutaan koin dengan biaya hampir nol. Pada 2021, 1% teratas alamat Bitcoin menguasai lebih dari 90% semua Bitcoin. Koefisien Gini Bitcoin melebihi 0,85 — lebih tinggi dari negara mana pun di Bumi.</p><p><span style="color:var(--gold)">Aequitas</span> — Latin untuk "keadilan" dan "kesetaraan" — diciptakan untuk menjawab: <em style="color:var(--gold)">"Seperti apa cryptocurrency yang dirancang dari prinsip pertama untuk adil bagi setiap manusia?"</em></p><p>Jawabannya sederhana: <strong style="color:var(--text)">Uang ada karena manusia ada. Oleh karena itu, setiap orang harus memiliki bagian yang sama dari uang hanya karena menjadi manusia.</strong></p><p><em style="color:var(--gold)">"Uang ada karena manusia ada. Tidak lebih, tidak kurang."</em></p>',
+  'nodes-title':'Node Aktif','nodes-desc':'Jaringan Aequitas beroperasi pada dua node yang terdistribusi secara geografis.',
+  'node1':'Node 1 — Railway (Utama)','node1-desc':'API utama · Produsen blok · Distribusi UBI · Bootstrap P2P · PostgreSQL · RPC untuk MetaMask',
+  'node2':'Node 2 — Render (Sekunder)','node2-desc':'API sekunder · Produsen blok · Peer P2P · Sinkronisasi HTTP · Status PostgreSQL bersama',
+  'bootstrap-title':'Jalankan Node Anda Sendiri','bootstrap-desc':'Siapa pun dapat bergabung dengan jaringan Aequitas dengan menjalankan node. Unduh panduan node untuk instruksi langkah demi langkah.',
   'tech-title':'Spesifikasi Teknis','mm-config':'Konfigurasi MetaMask',
-  'k-lang':'Bahasa','k-src':'Kode Sumber','evm-yes':'Ya — JSON-RPC /rpc · MetaMask',
-  'proto-label':'Protokol Aequitas V6 — Dokumentasi Teknis',
-  'ca-title':'Alamat Kontrak','ca-text':'Rantai: Aequitas Chain (Chain ID: 1926)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Main): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
-  'poa-title':'1. BUKTI HIDUP','poa-text':'<p>Di Aequitas, jika seseorang menghilang, AEQ mereka akhirnya kembali ke komunitas.</p>',
-  'poa-box':'Tahun 0-2: Penggunaan normal<br>Tahun 2: Peringatan 1<br>Tahun 2+180h: AEQ ke escrow pribadi<br>Tahun 4: Jika masih tidak aktif — Pool UBI',
-  'guard-title':'2. SISTEM GUARDIAN','guard-text':'<p>Guardian tepercaya dapat mengkonfirmasi seseorang masih hidup — tanpa hak transaksi.</p>',
-  'guard-box':'1 Guardian per manusia · Hanya confirmAlive() · Tanpa hak transaksi<br>Maks 3 wali · Kunci 7 hari · Tanpa hubungan melingkar',
-  'dem-title':'3. DEMURRAGE','dem-box':'1% biaya tahunan atas saldo DI ATAS fairShare ke Pool UBI',
-  'dem-text':'<p>Preseden: Worgl, Austria (1932) — mengurangi pengangguran 25% dalam satu tahun.</p>',
-  'cap-title':'4. BATAS KEKAYAAN','cap-box':'Fase 0: 50x · Fase 1: 20x · Fase 2: 10x · Fase 3: 5x · Fase 4: 3x fairShare',
-  'ubi-title':'5. PENDAPATAN DASAR UNIVERSAL','ubi-box':'Sumber: Biaya transaksi (20%) · Kelebihan batas kekayaan · Demurrage · Escrow tidak aktif<br><br>Harian: Pool UBI dibagi rata di antara semua manusia terdaftar.',
-  'inf-title':'6. TANPA INFLASI ALGORITMIK','inf-box':'Satu-satunya peristiwa yang menciptakan AEQ baru: manusia terverifikasi baru mendaftar'
+  'k-lang':'Bahasa','k-src':'Kode Sumber','evm-yes':'Ya — JSON-RPC /rpc · Kompatibel MetaMask',
+  'proto-label':'Protokol Aequitas V7 — Dokumentasi Teknis',
+  'ca-title':'Alamat Kontrak','ca-text':'Rantai: Aequitas Chain (ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7: 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
+  'poa-title':'1. BUKTI KEHIDUPAN','poa-text':'<p>Apa yang terjadi dengan AEQ ketika orang meninggal atau menghilang? Di Bitcoin, jutaan BTC hilang selamanya. Di Aequitas, AEQ orang yang tidak aktif akhirnya kembali ke komunitas melalui pool UBI.</p>',
+  'poa-box':'Tahun 0-2: Penggunaan normal<br>Tahun 2: Peringatan 1 — Guardian dapat merespons<br>Tahun 2+60h: Peringatan 2<br>Tahun 2+120h: Peringatan 3<br>Tahun 2+180h: AEQ ke ESCROW PRIBADI<br>Tahun 4: Jika masih tidak aktif — kembali ke Pool UBI',
+  'guard-title':'2. SISTEM GUARDIAN','guard-text':'<p>Bagaimana jika seseorang tidak dapat mengakses perangkat mereka selama berbulan-bulan? Guardian terpercaya dapat mengonfirmasi mereka masih hidup, tanpa hak transaksi.</p>',
+  'guard-box':'1 Guardian per manusia (harus manusia terverifikasi lain)<br>Guardian HANYA dapat memanggil confirmAlive() — nol hak transaksi<br>Maks 3 wali · Kunci 7 hari · Tidak ada hubungan melingkar',
+  'dem-title':'3. DEMURRAGE — Mekanisme Anti-Penimbunan',
+  'dem-box':'Tingkat: 0,5%/bulan setelah masa tenggang 3 bulan<br>Timer direset dengan setiap transfer, swap, atau tindakan likuiditas',
+  'dem-text':'<p>Preseden historis: Eksperimen Wörgl (Austria, 1932) menggunakan mata uang demurrage dan mengurangi pengangguran 25% dalam satu tahun.</p>',
+  'cap-title':'4. BATAS KEKAYAAN — Keadilan Matematis','cap-box':'Batas = 25× saldo rata-rata semua manusia terverifikasi saat ini<br>Otomatis menyesuaikan seiring pertumbuhan jaringan<br>Kelebihan AEQ langsung diarahkan ulang ke pool redistribusi',
+  'ubi-title':'5. PENDAPATAN DASAR UNIVERSAL','ubi-box':'Sumber: Biaya swap (20%) · Kelebihan batas kekayaan · Demurrage · Escrow tidak aktif<br><br>Harian: Pool UBI dibagi rata di antara semua manusia terdaftar.',
+  'inf-title':'6. TANPA INFLASI ALGORITMIK','inf-box':'SATU-SATUNYA peristiwa yang menciptakan AEQ baru: manusia terverifikasi baru mendaftar<br><br>Total Pasokan = Manusia Terverifikasi × 1.000 AEQ — selalu, tepat.'
+},
+it:{
+  'logo-sub':'PROVA DI UMANITÀ','live':'LIVE',
+  'tab-register':'🔐 Registrati','tab-explorer':'🔍 Explorer','tab-humans':'👥 Umani','tab-index':'📊 Indice','tab-network':'🌐 Rete','tab-protocol':'📜 Protocollo V7','tab-swap':'🔄 Scambia',
+  'reg-title':'🔐 Registrati come Umano Verificato',
+  'reg-sub':'Unisciti alla rete Aequitas e ricevi il tuo sussidio di Reddito Universale di Base di 1.000 AEQ. Una tantum, permanente e completamente gratuito. Nessun dato personale viene mai memorizzato.',
+  'app-title':'REGISTRAZIONE SOLO VIA APP ANDROID',
+  'app-text':'La Prova di Umanità richiede la verifica biometrica sul tuo dispositivo personale. La tua impronta digitale o il riconoscimento facciale viene elaborato esclusivamente dall\'Elemento Sicuro Hardware del tuo telefono — i dati biometrici grezzi non lasciano mai il tuo dispositivo. L\'app genera una Prova a Conoscenza Zero che dimostra matematicamente la tua unicità senza rivelare informazioni personali. Scarica AequitasBio, scansiona la tua biometria, connetti MetaMask, e i tuoi <strong style="color:var(--gold)">1.000 AEQ saranno accreditati automaticamente</strong>.',
+  's1t':'Scansione Biometrica','s1d':'Apri AequitasBio · scansiona impronta o volto · l\'Elemento Sicuro Hardware elabora localmente · i dati biometrici non lasciano mai il dispositivo',
+  's2t':'Generazione Prova ZK','s2d':'La Prova Groth16 a Conoscenza Zero viene generata sul server · l\'unicità viene verificata crittograficamente · la tua identità non viene mai rivelata',
+  's3t':'Connetti Wallet','s3d':'L\'app apre MetaMask su questa pagina · connetti il tuo wallet Ethereum · la prova è crittograficamente legata al tuo indirizzo',
+  's4t':'1.000 AEQ Accreditati','s4d':'Registrazione confermata su Aequitas BlockDAG entro 6 secondi · 1.000 AEQ accreditati istantaneamente · la tua identità è registrata permanentemente come umano verificato',
+  'priv-bar':'🔒 Elemento Sicuro Hardware · Prova Groth16 a Conoscenza Zero · Dati biometrici non lasciano il dispositivo · Nessuna commissione gas · Una registrazione per umano · Permanente e immutabile',
+  'conn-wallet':'WALLET CONNESSO','proof-recv':'⚡ PROVA ZK RICEVUTA','proof-hint':'Connetti wallet per registrarti',
+  'btn-conn':'🦊 CONNETTI METAMASK','btn-reg':'🔐 REGISTRA ON-CHAIN',
+  'reg-log-hint':'// Apri l\'App Android Aequitas per generare la tua prova, poi torna qui...',
+  'reg-details':'Dettagli Registrazione','k-network':'Rete','k-chainid':'ID Catena','k-grant':'Sussidio UBI',
+  'k-fee':'Commissione Gas','free':'GRATUITO — completamente senza gas','k-limit':'Registrazioni','k-limit-v':'Una volta · permanente · immutabile',
+  'k-bio':'Dati Biometrici','never-stored':'Mai memorizzati — rimangono sul tuo dispositivo',
+  'k-proof':'Sistema di Prova','k-conf':'Conferma','k-conf-v':'Entro 6 secondi (1 blocco)',
+  'k-sybil':'Protezione Sybil','k-sybil-v':'Una identità per biometrica · blocco permanente',
+  'live-stats':'Statistiche Chain in Tempo Reale',
+  's-height':'Altezza Blocco','s-height-sub':'Nuovo blocco ogni ~6s · BlockDAG · Produzione parallela',
+  's-humans':'Umani Verificati','s-humans-sub':'ZKP biometrico · Una persona, un wallet, per sempre',
+  's-supply':'Offerta Totale','s-supply-sub':'Sempre = Umani × 1.000 AEQ',
+  's-index':'Indice Aequitas','s-index-sub':'0 = perfetta uguaglianza · 100 = massima disuguaglianza',
+  's-uptime':'Uptime','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
+  'ib-poh':'Prova di Umanità','ib-poh-t':'Ogni detentore di AEQ deve dimostrare crittograficamente di essere un essere umano unico e vivente. Nessun bot, nessuna azienda, nessuna IA. I dati biometrici non lasciano mai il tuo dispositivo.',
+  'ib-fair':'Distribuzione Radicalmente Equa','ib-fair-t':'Ogni umano verificato riceve esattamente 1.000 AEQ alla registrazione. Nessun pre-mining, nessuna allocazione ai fondatori. L\'offerta totale è sempre uguale a umani verificati × 1.000.',
+  'ib-dag':'Architettura BlockDAG','ib-dag-t':'Più blocchi possono essere prodotti simultaneamente e uniti. Throughput più alto, latenza più bassa rispetto alle blockchain lineari tradizionali.',
+  'ib-gas':'Veramente Senza Gas','ib-gas-t':'La registrazione e i trasferimenti AEQ non costano assolutamente nulla. Non servono ETH, BNB o MATIC. Nessun conto bancario, nessuna carta di credito.',
+  'recent-blocks':'Blocchi Recenti','blocks-desc':'MERGE = più genitori uniti (BlockDAG). TX = transazione di registrazione. Tempo blocco: ~6 secondi.',
+  'loading':'Caricamento blocchi...','net-info':'Info Rete','k-chain':'Nome Catena','k-symbol':'Simbolo','k-btime':'Tempo Blocco',
+  'k-cons':'Consenso','k-nodes':'Node Attivi','k-storage':'Archiviazione','add-mm':'🦊 AGGIUNGI A METAMASK','k-dec':'Decimali',
+  'btn-add-mm':'+ AGGIUNGI RETE AEQUITAS',
+  'phil':'"Il denaro esiste perché le persone esistono.<br>Niente di più, niente di meno."','phil-sub':'— IL PRINCIPIO AEQUITAS —',
+  'humans-title':'Umani Verificati su Aequitas Chain',
+  'h-what':'Cos\'è un Umano Verificato?','h-what-t':'Un Umano Verificato è un indirizzo wallet dimostrato crittograficamente appartenere a un essere umano unico e vivente tramite Prova a Conoscenza Zero biometrica. I dati biometrici non vengono mai trasmessi o memorizzati.',
+  'h-zkp':'Sistema di Prova a Conoscenza Zero','h-zkp-t':'Aequitas usa il sistema di prova Groth16 sulla curva ellittica BN128. Dimensione prova: ~200 byte. Tempo di verifica: ~10ms. La prova dimostra matematicamente l\'unicità senza rivelare alcuna informazione identificativa.',
+  'h-sybil':'Prevenzione Attacchi Sybil','h-sybil-t':'Ogni hash biometrico viene memorizzato permanentemente con keccak256. Tentare di registrarsi due volte viene immediatamente rifiutato. Un umano, un wallet, per sempre. ⚠ Fase di test: la verifica è attualmente legata al dispositivo. È previsto un sensore fisiologico (MAX30102 PPG) per la verifica indipendente dal dispositivo.',
+  'h-global':'Inclusione Finanziaria Globale','h-global-t':'Nessun conto bancario, nessuna carta di credito, nessuna criptovaluta precedente necessaria. Solo uno smartphone Android con sensore biometrico. Aequitas è progettato per essere accessibile a ogni essere umano sulla Terra.',
+  'reg-humans':'Umani Registrati','h-desc':'Ogni indirizzo è stato verificato come umano unico tramite ZKP biometrico. Ognuno ha ricevuto esattamente 1.000 AEQ. Il registro è permanente, immutabile e on-chain.',
+  'no-humans':'Nessun umano registrato ancora.\n\nScarica l\'App Android Aequitas e sii il primo umano sulla chain!',
+  'reg-stats':'Statistiche Registro','total-humans':'Totale Umani',
+  'idx-title':'Indice Aequitas — Punteggio di Uguaglianza Economica in Tempo Reale',
+  'idx-desc':'L\'Indice Aequitas misura la disuguaglianza economica tra tutti gli umani verificati in tempo reale. È derivato dal coefficiente Gini della distribuzione dei saldi on-chain. 0 = perfetta uguaglianza. 100 = massima disuguaglianza. Il protocollo attiva automaticamente i meccanismi di redistribuzione quando l\'indice sale.',
+  'curr-idx':'Indice Attuale','bar-0':'0 — Perfetta Uguaglianza','bar-100':'100 — Massima Disuguaglianza',
+  'gini':'Coefficiente Gini','gini-desc':'0 = uguale · 1 = disuguale',
+  'supply-desc':'Sempre = Umani × 1.000 AEQ',
+  'phase':'Fase Protocollo','phase-desc':'Avanza automaticamente per numero di umani',
+  'humans-desc':'Umani unici verificati biometricamente',
+  'pools-title':'Pool di Redistribuzione',
+  'pools-desc':'Ogni commissione di swap, addebito di demurrage e overflow del limite di ricchezza viene automaticamente suddiviso tra quattro pool. Nessun intervento manuale — il protocollo gestisce tutta la redistribuzione solo attraverso il codice. Tutti i pool pagano quotidianamente.',
+  'vel-pool':'Pool Validatori','vel-pool-desc':'40% di tutte le commissioni → operatori node che proteggono la rete',
+  'liq-pool':'Pool Liquidità','liq-pool-desc':'30% di tutte le commissioni → fornitori di liquidità, proporzionale alle quote LP',
+  'ubi-pool':'Pool UBI','ubi-pool-desc':'20% di tutte le commissioni → tutti gli umani verificati equamente, ogni 24 ore',
+  'treasury':'Tesoreria','treasury-desc':'10% di tutte le commissioni → sviluppo e manutenzione del protocollo',
+  'phases-title':'Fasi del Protocollo',
+  'phases-desc':'Le transizioni di fase vengono attivate automaticamente dal numero di umani — nessun voto, nessuna governance, nessuna chiave admin necessaria.',
+  'p0':'Bootstrap · &lt;100 umani · Limite ricchezza: 50× saldo medio · Attualmente attivo',
+  'p1':'Crescita · 100–10.000 umani · Limite ricchezza: 20× saldo medio',
+  'p2':'Stabilità · 10.000–1M umani · Limite ricchezza: 10× saldo medio',
+  'p3':'Maturità · 1M+ umani · Limite ricchezza: 3× saldo medio · Massima redistribuzione',
+  'wealth-cap-explain':'Il Limite di Ricchezza è impostato come multiplo del saldo medio attuale di tutti gli umani verificati — non un numero fisso. Si adatta automaticamente man mano che la rete cresce, mantenendo sempre l\'equità relativa.',
+  'demurrage-title':'Demurrage — Incentivo a Circolare',
+  'demurrage-desc':'Aequitas implementa un meccanismo di demurrage ispirato alle valute complementari storiche. I saldi AEQ inattivi perdono lentamente valore per scoraggiare l\'accumulo e incentivare la partecipazione economica.',
+  'dem-rate-k':'Tasso di Decadimento','dem-rate-v':'0,5% al mese (continuo, non a gradini)',
+  'dem-grace-k':'Periodo di Grazia','dem-grace-v':'3 mesi di inattività prima che inizi il decadimento',
+  'dem-reset-k':'Reset Timer','dem-reset-v':'Qualsiasi trasferimento, swap o azione di liquidità azzera il timer',
+  'dem-dest-k':'AEQ decaduto va a','dem-dest-v':'Pool di redistribuzione (suddivisione 40/30/20/10)',
+  'dem-warn-k':'Sistema di Avviso','dem-warn-v':'Avviso di 14 giorni (una volta) + promemoria di 7 giorni ripetuto ad ogni accesso',
+  'story-title':'La Storia di Aequitas — Perché Esiste',
+  'story-text':'<p>L\'anno è 2009. Satoshi Nakamoto rilascia Bitcoin. Per la prima volta, il valore può trasferirsi tra due persone senza una banca. Una vera rivoluzione. Ma quasi immediatamente qualcosa va storto.</p><p>I primi miner accumulano milioni di monete a costo quasi zero. Entro il 2021, l\'1% superiore degli indirizzi Bitcoin controlla oltre il 90% di tutti i Bitcoin. Il coefficiente Gini stimato di Bitcoin supera 0,85 — più alto di qualsiasi paese sulla Terra. La criptovaluta che avrebbe dovuto democratizzare la finanza ha creato la più estrema concentrazione di ricchezza nella storia umana.</p><p><span style="color:var(--gold)">Aequitas</span> — Latino per "equità" e "uguaglianza" — è stato creato per rispondere a una singola domanda: <em style="color:var(--gold)">"Come sarebbe una criptovaluta progettata dai principi fondamentali per essere equa per ogni essere umano?"</em></p><p>La risposta è semplice: <strong style="color:var(--text)">Il denaro esiste perché le persone esistono. Quindi ogni persona dovrebbe avere una quota uguale di denaro semplicemente in virtù di essere umana.</strong></p><p>Aequitas implementa questo matematicamente. Ogni umano verificato riceve 1.000 AEQ. Nessun mining, nessuno staking, nessun vantaggio per i primi adottanti. Il protocollo si adatta automaticamente man mano che la rete cresce.</p><p><em style="color:var(--gold)">"Il denaro esiste perché le persone esistono. Niente di più, niente di meno."</em></p>',
+  'nodes-title':'Node Attivi — Topologia della Rete Attuale',
+  'nodes-desc':'La rete Aequitas opera su due node distribuiti geograficamente. Entrambi partecipano alla produzione di blocchi, alla sincronizzazione dello stato e alla fornitura di API.',
+  'node1':'Node 1 — Railway (Primario)','node1-desc':'API primario · Produttore blocchi · Distribuzione UBI · Bootstrap P2P · PostgreSQL · RPC per MetaMask',
+  'node2':'Node 2 — Render (Secondario)','node2-desc':'API secondario · Produttore blocchi · Peer P2P · Sincronizzazione HTTP · Stato PostgreSQL condiviso',
+  'bootstrap-title':'Esegui il Tuo Nodo','bootstrap-desc':'Chiunque può unirsi alla rete Aequitas eseguendo un nodo. Scarica la guida al nodo per le istruzioni passo passo.',
+  'tech-title':'Specifiche Tecniche','mm-config':'Configurazione MetaMask',
+  'k-lang':'Lingua','k-src':'Codice Sorgente','evm-yes':'Sì — JSON-RPC /rpc · Compatibile MetaMask',
+  'proto-label':'Protocollo Aequitas V7 — Documentazione Tecnica',
+  'ca-title':'Indirizzi Contratto','ca-text':'Chain: Aequitas Chain (ID: 1926 · 0x786)<br>RPC: https://aequitas-production-9fba.up.railway.app/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Principale): 0xE832Ac8Fa64F1AE2c6a5fE5d7DFbF0f9475ec0ae',
+  'poa-title':'1. PROVA DI VITA','poa-text':'<p>Cosa succede all\'AEQ quando le persone muoiono o scompaiono? In Bitcoin, milioni di BTC sono persi permanentemente. In Aequitas, l\'AEQ di una persona inattiva alla fine ritorna alla comunità attraverso il pool UBI.</p>',
+  'poa-box':'Anno 0-2: Uso normale<br>Anno 2: Avviso 1 — il Guardian può rispondere<br>Anno 2+60g: Avviso 2<br>Anno 2+120g: Avviso 3<br>Anno 2+180g: AEQ va in ESCROW PERSONALE<br>Anno 4: Se ancora inattivo — torna al Pool UBI',
+  'guard-title':'2. SISTEMA GUARDIAN','guard-text':'<p>E se qualcuno non può accedere al proprio dispositivo per mesi? Un Guardian di fiducia — un altro umano verificato — può confermare che sono ancora vivi, senza diritti di transazione.</p>',
+  'guard-box':'1 Guardian per umano (deve essere un altro umano verificato)<br>Il Guardian può SOLO chiamare confirmAlive() — zero diritti di transazione<br>Il Guardian NON PUÒ spostare fondi o trasferire AEQ<br>Max 3 tutelati · Blocco di 7 giorni · Nessuna relazione circolare',
+  'dem-title':'3. DEMURRAGE — Meccanismo Anti-Accumulo',
+  'dem-box':'Tasso: 0,5%/mese dopo 3 mesi di grazia<br>Il timer si azzera con qualsiasi trasferimento, swap o azione di liquidità<br>AEQ decaduto redistribuito ai pool (non bruciato)',
+  'dem-text':'<p>Precedente storico: L\'esperimento di Wörgl (Austria, 1932) usò una valuta con demurrage e ridusse la disoccupazione del 25% in un anno. Il Chiemgauer (Germania, 2003) opera con successo da oltre 20 anni.</p>',
+  'cap-title':'4. LIMITE DI RICCHEZZA — Equità Matematica','cap-box':'Limite = 25× saldo medio attuale di tutti gli umani verificati<br>Si adatta automaticamente man mano che la rete cresce<br>L\'eccesso di AEQ viene immediatamente reindirizzato ai pool di redistribuzione',
+  'ubi-title':'5. REDDITO UNIVERSALE DI BASE','ubi-box':'Fonti: Commissioni swap (20%) · Overflow limite ricchezza · Demurrage · Escrow inattivo<br><br>Giornalmente: Pool UBI diviso equamente tra tutti gli umani registrati. Il pool si azzera dopo ogni distribuzione e si riempie continuamente.',
+  'inf-title':'6. NESSUNA INFLAZIONE ALGORITMICA','inf-box':'L\'UNICO evento che crea nuovo AEQ: un nuovo umano verificato si registra<br><br>Offerta Totale = Umani Verificati × 1.000 AEQ — sempre, esattamente.'
 }
 };
 
