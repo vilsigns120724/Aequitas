@@ -196,8 +196,12 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <option value="en">🌐 EN</option>
     <option value="de">🌐 DE</option>
     <option value="es">🌐 ES</option>
+    <option value="fr">🌐 FR</option>
+    <option value="pt">🌐 PT</option>
     <option value="ru">🌐 RU</option>
     <option value="zh">🌐 ZH</option>
+    <option value="ar">🌐 AR</option>
+    <option value="hi">🌐 HI</option>
     <option value="id">🌐 ID</option>
     <option value="it">🌐 IT</option>
   </select>
@@ -222,6 +226,10 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="rhero">
     <div class="rhero-title" data-i18n="reg-title">🔐 Register as a Verified Human</div>
     <div class="rhero-sub" data-i18n="reg-sub">Join the Aequitas network and receive your 1,000 AEQ Universal Basic Income grant. Registration is one-time, permanent, and completely gasless. No personal data is ever stored — only a cryptographic proof that you are a unique human being.</div>
+    <a href="#" style="display:inline-flex;align-items:center;gap:10px;margin-top:18px;background:var(--grad);color:#fff;padding:13px 28px;border-radius:10px;font-size:0.75rem;font-weight:700;text-decoration:none;letter-spacing:0.5px;box-shadow:var(--glow-purple);transition:all 0.2s" onmouseover="this.style.opacity='0.87';this.style.transform='translateY(-2px)'" onmouseout="this.style.opacity='1';this.style.transform='translateY(0)'">
+      <span style="font-size:1.1rem">📱</span>
+      <span data-i18n="btn-download-app">DOWNLOAD AEQUITASBIO APP</span>
+    </a>
   </div>
   <div class="aonly">
     <div class="aonly-icon">📱</div>
@@ -483,7 +491,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div class="is">
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title" data-i18n="idx-title">Aequitas Index — Real-Time Economic Equality Score</div>
-    <div class="idx-desc" data-i18n="idx-desc">The Aequitas Index measures economic inequality across all verified humans on the network in real time. It is calculated from the Gini coefficient of on-chain balance distribution. <strong style="color:var(--text)">0 = perfect equality</strong> (everyone holds the same amount). <strong style="color:var(--red)">100 = maximum inequality</strong> (one person holds everything). The protocol automatically triggers redistribution mechanisms when the index rises above phase thresholds — no human governance required.</div>
+    <div class="idx-desc" data-i18n="idx-desc">The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. Unlike a simple richest-vs-poorest ratio, the Gini coefficient captures the <em style="color:var(--text)">entire distribution</em> across every verified human simultaneously, in a single number. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds exactly the same AEQ). <strong style="color:var(--red)">100 = total concentration</strong> (one wallet holds all AEQ in existence). For context: Bitcoin Gini ≈ 0.85 (Index 85) · most unequal country on Earth (South Africa) ≈ 0.63 · Scandinavia ≈ 0.25. Aequitas is mathematically engineered to stay below 20 — enforced automatically, no governance vote, no admin key required.</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;margin-top:12px">
       <div><div class="idx-big" id="idx-score">—</div><div class="idx-lbl" data-i18n="curr-idx">Current Index</div></div>
       <div>
@@ -513,6 +521,43 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div class="mlbl" data-i18n="s-humans">Verified Humans</div>
         <div style="font-size:0.55rem;color:var(--muted);margin-top:4px" data-i18n="humans-desc">Biometrically verified unique humans</div>
       </div>
+    </div>
+    <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div style="background:var(--card2);border:1px solid rgba(6,182,212,0.2);border-radius:var(--radius-sm);padding:16px">
+        <div style="font-size:0.6rem;color:var(--teal);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-what-title">What is the Gini Coefficient?</div>
+        <div style="font-size:0.64rem;color:var(--muted);line-height:1.9" data-i18n="gini-what-text">Developed by Italian statistician Corrado Gini (1912). It measures wealth distribution by comparing the actual balance distribution against a hypothetical perfectly equal baseline — visualized as the Lorenz curve. The coefficient equals the ratio of the area between the Lorenz curve and the diagonal of equality to the total area below that diagonal. Scale: 0 means every person holds identical wealth. 1 means one person holds all wealth in existence. Used by the World Bank, OECD, and UN to compare countries. Reference values: Bitcoin ≈ 0.85 · South Africa (world record) ≈ 0.63 · Brazil ≈ 0.53 · USA ≈ 0.41 · Germany ≈ 0.31 · Sweden ≈ 0.27 · Aequitas target: below 0.20.</div>
+      </div>
+      <div style="background:var(--card2);border:1px solid rgba(139,92,246,0.2);border-radius:var(--radius-sm);padding:16px">
+        <div style="font-size:0.6rem;color:var(--purple);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-calc-title">How is the Aequitas Index calculated?</div>
+        <div style="font-size:0.62rem;color:var(--purple);font-family:var(--font-mono);text-align:center;margin:8px 0;padding:10px;background:rgba(139,92,246,0.08);border-radius:6px;border:1px solid rgba(139,92,246,0.15)">G = Σ|xi − xj| / (2 × n² × x̄)<br><span style="color:var(--muted);font-size:0.58rem">Aequitas Index = G × 100</span></div>
+        <div style="font-size:0.64rem;color:var(--muted);line-height:1.9;margin-top:8px" data-i18n="gini-calc-text">All AEQ balances of verified humans are collected (x₁ through xₙ). The formula computes the mean absolute difference between every possible pair of balances, normalized by the number of people squared (n²) and the mean balance (x̄). The result ranges 0–1 and is multiplied by 100 to produce the Aequitas Index. Updated on-chain after every registration, every monthly demurrage run, every pool payout, and every wealth cap enforcement event — via the keeper calling updateGini().</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+      <div style="background:rgba(0,255,209,0.06);border:1px solid rgba(0,255,209,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
+        <div style="font-size:1.05rem;font-weight:700;color:var(--neon);font-family:var(--font-display)">0 – 20</div>
+        <div style="font-size:0.6rem;color:var(--neon);margin-top:5px;font-weight:700;letter-spacing:0.5px">IDEAL</div>
+        <div style="font-size:0.56rem;color:var(--muted);margin-top:5px;line-height:1.7">Near-perfect equality. Better than any country on Earth. Wealth cap and demurrage passively maintaining balance. No additional protocol action.</div>
+      </div>
+      <div style="background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
+        <div style="font-size:1.05rem;font-weight:700;color:var(--blue);font-family:var(--font-display)">20 – 40</div>
+        <div style="font-size:0.6rem;color:var(--blue);margin-top:5px;font-weight:700;letter-spacing:0.5px">GOOD</div>
+        <div style="font-size:0.56rem;color:var(--muted);margin-top:5px;line-height:1.7">Mild inequality — comparable to Scandinavia. Redistribution mechanisms actively flattening the distribution. Demurrage and wealth cap intensifying.</div>
+      </div>
+      <div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
+        <div style="font-size:1.05rem;font-weight:700;color:var(--gold);font-family:var(--font-display)">40 – 65</div>
+        <div style="font-size:0.6rem;color:var(--gold);margin-top:5px;font-weight:700;letter-spacing:0.5px">WARNING</div>
+        <div style="font-size:0.56rem;color:var(--muted);margin-top:5px;line-height:1.7">Noticeable concentration — comparable to developing countries. Protocol phase advancing. Redistribution pressure at maximum for current phase.</div>
+      </div>
+      <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.25);border-radius:var(--radius-sm);padding:14px;text-align:center">
+        <div style="font-size:1.05rem;font-weight:700;color:var(--red);font-family:var(--font-display)">65 – 100</div>
+        <div style="font-size:0.6rem;color:var(--red);margin-top:5px;font-weight:700;letter-spacing:0.5px">CRITICAL</div>
+        <div style="font-size:0.56rem;color:var(--muted);margin-top:5px;line-height:1.7">Worse than Bitcoin (85) or any nation on Earth (max 63). Protocol at maximum intervention. Phase 3 forced. Wealth cap at 3× mean.</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;background:rgba(245,166,35,0.04);border:1px solid rgba(245,166,35,0.15);border-radius:var(--radius-sm);padding:16px">
+      <div style="font-size:0.6rem;color:var(--gold);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-why-title">Why the Gini coefficient — and not a simpler metric?</div>
+      <div style="font-size:0.63rem;color:var(--muted);line-height:1.9" data-i18n="gini-why-text">A simple "richest vs. poorest" ratio is easy to game and misses what happens in the middle: a network could have 10,000 people, a low min/max spread, yet 90% of all AEQ concentrated in 100 wallets. The Gini coefficient detects this — a ratio does not. It captures the complete distribution across all verified humans in a single auditable number. Because Aequitas publishes this number on-chain (via updateGini), it is transparent, tamper-evident, and globally verifiable. The protocol uses it as the primary input signal for automatic phase transitions, wealth cap multiplier selection, and redistribution intensity — creating a self-correcting economic system governed entirely by mathematics. No human, no committee, no foundation can override the index reading or the mechanisms it triggers.</div>
     </div>
   </div>
   <div class="idx">
@@ -736,7 +781,13 @@ en:{
   'no-humans':'No humans registered yet.\n\nDownload the Aequitas Android App and be the first human on the chain!',
   'reg-stats':'Registry Stats','total-humans':'Total Humans',
   'idx-title':'Aequitas Index — Real-Time Economic Equality Score',
-  'idx-desc':'The Aequitas Index measures economic inequality across all verified humans in real time. It is derived from the Gini coefficient of on-chain balance distribution. 0 = perfect equality (everyone holds the same). 100 = maximum inequality (one person holds everything). The protocol automatically triggers redistribution when the index rises.',
+  'idx-desc':'The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. It captures the complete balance distribution across every verified human simultaneously. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds the same AEQ). <strong style="color:var(--red)">100 = total concentration</strong> (one wallet holds all AEQ). Bitcoin Gini ≈ 0.85 (Index 85) · South Africa (world record) ≈ 0.63 · Scandinavia ≈ 0.27 · Aequitas target: below 0.20 — enforced automatically, no governance required.',
+  'gini-what-title':'What is the Gini Coefficient?',
+  'gini-what-text':'Developed by Italian statistician Corrado Gini (1912). Measures wealth distribution by comparing actual balances against a hypothetical perfectly equal baseline — visualized as the Lorenz curve. Scale: 0 (everyone holds the same) to 1 (one person holds everything). Used by World Bank, OECD, UN to compare countries. Reference values: Bitcoin ≈ 0.85 · South Africa (world record) ≈ 0.63 · USA ≈ 0.41 · Germany ≈ 0.31 · Sweden ≈ 0.27 · Aequitas target: below 0.20.',
+  'gini-calc-title':'How is the Aequitas Index calculated?',
+  'gini-calc-text':'All AEQ balances of verified humans are collected. The formula computes the mean absolute difference between every possible pair of balances, normalized by population squared (n²) and the mean balance (x̄). Result 0–1 multiplied by 100 = Aequitas Index. Updated on-chain after every registration, monthly demurrage run, pool payout, and wealth cap event — via keeper calling updateGini().',
+  'gini-why-title':'Why Gini — and not a simpler metric?',
+  'gini-why-text':'A simple richest-vs-poorest ratio is easy to game: 10,000 wallets could show a low spread but 90% of AEQ concentrated in 100 hands — Gini detects this, a ratio does not. The coefficient captures the complete distribution across all verified humans in one auditable number. Aequitas publishes this on-chain — transparent, tamper-evident, globally verifiable. It is the primary signal for automatic phase transitions, wealth cap calibration, and redistribution intensity. No human can override the index reading or the mechanisms it triggers.',
   'curr-idx':'Current Index','bar-0':'0 — Perfect Equality','bar-100':'100 — Max Inequality',
   'gini':'Gini Coefficient','gini-desc':'0 = equal · 1 = unequal',
   'supply-desc':'Always = Humans × 1,000 AEQ',
@@ -831,7 +882,13 @@ de:{
   'no-humans':'Noch keine Menschen registriert.\n\nLade die Aequitas Android App herunter und sei der erste Mensch auf der Chain!',
   'reg-stats':'Registrierungsstatistiken','total-humans':'Gesamtmenschen',
   'idx-title':'Aequitas-Index — Echtzeit-Wirtschaftsgleichheits-Score',
-  'idx-desc':'Der Aequitas-Index misst die wirtschaftliche Ungleichheit aller verifizierten Menschen in Echtzeit. Er wird aus dem Gini-Koeffizienten der On-Chain-Bilanzverteilung abgeleitet. 0 = perfekte Gleichheit. 100 = maximale Ungleichheit. Das Protokoll löst automatisch Umverteilung aus wenn der Index steigt.',
+  'idx-desc':'Der Aequitas-Index wird aus dem <strong style="color:var(--teal)">Gini-Koeffizienten</strong> abgeleitet — dem internationalen Standard zur Messung wirtschaftlicher Ungleichheit, genutzt von Weltbank, OECD und UN. Er erfasst die vollständige Bilanzverteilung aller verifizierten Menschen gleichzeitig. <strong style="color:var(--neon)">0 = perfekte Gleichheit</strong> (jede Wallet hält gleich viel AEQ). <strong style="color:var(--red)">100 = totale Konzentration</strong> (eine Wallet hält alles). Bitcoin-Gini ≈ 0,85 (Index 85) · Südafrika (Weltrekord) ≈ 0,63 · Skandinavien ≈ 0,27 · Aequitas-Ziel: unter 0,20 — automatisch durchgesetzt, keine Governance nötig.',
+  'gini-what-title':'Was ist der Gini-Koeffizient?',
+  'gini-what-text':'Entwickelt vom italienischen Statistiker Corrado Gini (1912). Misst die Vermögensverteilung durch Vergleich mit einer perfekt gleichen Verteilung — visualisiert als Lorenz-Kurve. Skala: 0 (alle halten gleich viel) bis 1 (eine Person hält alles). Genutzt von Weltbank, OECD, UN. Referenzwerte: Bitcoin ≈ 0,85 · Südafrika (Weltrekord) ≈ 0,63 · USA ≈ 0,41 · Deutschland ≈ 0,31 · Schweden ≈ 0,27 · Aequitas-Ziel: unter 0,20.',
+  'gini-calc-title':'Wie wird der Aequitas-Index berechnet?',
+  'gini-calc-text':'Alle AEQ-Salden verifizierter Menschen werden erfasst. Die Formel berechnet die mittlere absolute Differenz zwischen allen Saldo-Paaren, normiert durch Bevölkerungsgröße im Quadrat (n²) und Durchschnittssaldo (x̄). Ergebnis 0–1 multipliziert mit 100 = Aequitas-Index. Aktualisiert On-Chain nach jeder Registrierung, jedem monatlichen Demurrage-Lauf, jeder Pool-Ausschüttung und jedem Vermögensobergrenze-Ereignis — via Keeper-Aufruf updateGini().',
+  'gini-why-title':'Warum Gini — und nicht eine einfachere Kennzahl?',
+  'gini-why-text':'Ein "Reich-Arm-Verhältnis" ist leicht manipulierbar: 10.000 Wallets könnten eine geringe Spanne zeigen, aber 90% des AEQ in 100 Händen halten — Gini erkennt das, ein Verhältnis nicht. Der Koeffizient erfasst die vollständige Verteilung aller verifizierten Menschen in einer einzigen prüfbaren Zahl. Aequitas veröffentlicht diese On-Chain — transparent, manipulationssicher, weltweit verifizierbar. Sie ist das Hauptsignal für automatische Phasenübergänge, Vermögensobergrenze-Kalibrierung und Umverteilungsintensität. Kein Mensch kann den Index-Wert oder die von ihm ausgelösten Mechanismen überschreiben.',
   'curr-idx':'Aktueller Index','bar-0':'0 — Perfekte Gleichheit','bar-100':'100 — Max. Ungleichheit',
   'gini':'Gini-Koeffizient','gini-desc':'0 = gleich · 1 = ungleich',
   'supply-desc':'Immer = Menschen × 1.000 AEQ',
@@ -1378,6 +1435,8 @@ function showTab(name, el) {
 function setLang(lang) {
   curLang = lang;
   document.getElementById('lang-sel').value = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  document.documentElement.lang = lang;
   const t = T[lang];
   if (!t) return;
   document.querySelectorAll('[data-i18n]').forEach(el => {
