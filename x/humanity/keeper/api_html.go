@@ -3167,15 +3167,26 @@ async function doRemoveLiquidity() {
 }
 
 function activateTabFromPath(path) {
-  const tabNames = ['register','explorer','humans','index','network','protocol','swap'];
+  const tabNames = ['register','explorer','index','network','swap'];
   const name = (path || '').replace(/^\//, '').split('/')[0];
   if (!name || !tabNames.includes(name)) return;
   const tabEl = document.querySelector('.tab[onclick*="showTab(\'' + name + '\'"]');
   if (!tabEl) return;
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
+  const tabContent = document.getElementById('tab-' + name);
+  if (!tabContent) return;
+  tabContent.classList.add('active');
   tabEl.classList.add('active');
+  // Restore the first stab-panel within this tab so direct URL navigation works
+  const panels = tabContent.querySelectorAll('.stab-panel');
+  const stabs = tabContent.querySelectorAll('.stab');
+  if (panels.length) {
+    panels.forEach(p => p.classList.remove('active'));
+    stabs.forEach(s => s.classList.remove('active'));
+    panels[0].classList.add('active');
+    if (stabs[0]) stabs[0].classList.add('active');
+  }
   if (name === 'swap') loadPoolStatus();
 }
 
