@@ -716,6 +716,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="stab active" onclick="showStab('tab-index','eqi-score',this)">📊 Score</div>
   <div class="stab" onclick="showStab('tab-index','eqi-economy',this)">💸 Economy</div>
   <div class="stab" onclick="showStab('tab-index','eqi-charts',this)">📈 Charts</div>
+  <div class="stab" onclick="showStab('tab-index','eqi-story',this)">📖 Story</div>
 </nav>
 <div id="eqi-score" class="stab-panel active">
 <div class="is">
@@ -800,6 +801,17 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div style="font-size:0.6rem;color:var(--gold);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-why-title">Why the Gini coefficient — and not a simpler metric?</div>
       <div style="font-size:0.63rem;color:var(--muted);line-height:1.9" data-i18n="gini-why-text">A simple "richest vs. poorest" ratio is easy to game and misses what happens in the middle: a network could have 10,000 people, a low min/max spread, yet 90% of all AEQ concentrated in 100 wallets. The Gini coefficient detects this — a ratio does not. It captures the complete distribution across all verified humans in a single auditable number. Because Aequitas publishes this number on-chain (via updateGini), it is transparent, tamper-evident, and globally verifiable. The protocol uses it as the primary input signal for automatic phase transitions, wealth cap multiplier selection, and redistribution intensity — creating a self-correcting economic system governed entirely by mathematics. No human, no committee, no foundation can override the index reading or the mechanisms it triggers.</div>
     </div>
+  </div>
+  <div class="idx" style="grid-column:1/-1">
+    <div class="idx-title">Gini Index History</div>
+    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Recorded after each UBI distribution. Shows how equality evolves as the network grows. Lower is better — target is below 35.</div>
+    <canvas id="gini-history-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
+    <div id="gini-history-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No snapshots yet — first one saved after the next UBI distribution.</div>
+  </div>
+  <div class="idx" style="grid-column:1/-1">
+    <div class="idx-title">Lorenz Curve — Wealth Distribution Across Humans</div>
+    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Each point = cumulative % of AEQ held by the poorest X% of humans. The diagonal = perfect equality. The further the curve bows below the diagonal, the higher the Gini.</div>
+    <canvas id="lorenz-chart" height="270" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
   </div>
 </div>
 </div>
@@ -903,6 +915,11 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <tr><td data-i18n="dem-warn-k">Warning System</td><td data-i18n="dem-warn-v">14-day notice (once) + 7-day repeated reminder at login</td></tr>
     </table>
   </div>
+  <div class="idx" style="grid-column:1/-1">
+    <div class="idx-title">Wealth Cap Multiplier — Bootstrap Slider</div>
+    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Formula: <code style="color:var(--teal)">max(5, min(N, 25))×</code> average AEQ balance. Each new human slides the cap up by 1×, until the 25th human locks it at 25× permanently.</div>
+    <canvas id="wcap-slide-chart" height="120" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
+  </div>
 </div>
 </div>
 <div id="eqi-charts" class="stab-panel">
@@ -913,22 +930,10 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <canvas id="price-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
     <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No pool data yet — add liquidity to see the price chart.</div>
   </div>
-<div class="idx" style="grid-column:1/-1">
-    <div class="idx-title">Gini Index History</div>
-    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Recorded after each UBI distribution. Shows how equality evolves as the network grows.</div>
-    <canvas id="gini-history-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
-    <div id="gini-history-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No snapshots yet — first one saved after the next UBI distribution.</div>
-  </div>
-  <div class="idx" style="grid-column:1/-1">
-    <div class="idx-title">Lorenz Curve — Wealth Distribution Across Humans</div>
-    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Each point = cumulative % of AEQ held by the poorest X% of humans. The diagonal = perfect equality. The further the curve bows below the diagonal, the higher the Gini.</div>
-    <canvas id="lorenz-chart" height="270" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
-  </div>
-  <div class="idx" style="grid-column:1/-1">
-    <div class="idx-title">Wealth Cap Multiplier — Bootstrap Slider</div>
-    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Formula: <code style="color:var(--teal)">max(5, min(N, 25))×</code> average AEQ balance. Each new human slides the cap up by 1×, until the 25th human locks it at 25× permanently.</div>
-    <canvas id="wcap-slide-chart" height="120" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
-  </div>
+</div>
+</div>
+<div id="eqi-story" class="stab-panel">
+<div class="is">
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title" data-i18n="story-title">The Story of Aequitas — Why This Exists</div>
     <div class="story" data-i18n="story-text"><p>The year is 2009. Satoshi Nakamoto releases Bitcoin. For the first time, value can transfer between any two people without a bank. A genuine revolution. But something goes wrong almost immediately.</p><p>Early miners accumulate millions of coins at almost zero cost. By 2021, the top 1% of Bitcoin addresses control over 90% of all Bitcoin. Bitcoin's estimated Gini coefficient exceeds 0.85 — higher than any country on Earth. The cryptocurrency that was supposed to democratize finance created the most extreme wealth concentration in human history.</p><p><span style="color:var(--gold)">Aequitas</span> — Latin for "fairness" and "equality" — was created to answer a single question: <em style="color:var(--gold)">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em></p><p>The answer is simple: <strong style="color:var(--text)">Money exists because people exist. Therefore, every person should have an equal share of money simply by virtue of being human.</strong></p><p>Aequitas implements this principle mathematically. Every verified human receives 1,000 AEQ. No mining, no staking, no early-adopter advantage. The wealth cap, demurrage, and redistribution pools ensure that inequality cannot accumulate indefinitely. The Gini coefficient and Aequitas Index are calculated on-chain in real time, and the protocol adjusts automatically.</p><p>The Aequitas network launched in June 2026. Currently in Phase 0 (Bootstrap). The goal: demonstrate that money can be distributed fairly, Gini coefficient held below 0.35 (comparable to the most equal developed nations), and financial inclusion achieved at global scale — without any central authority.</p><p><em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p></div>
@@ -3285,7 +3290,7 @@ async function drawGiniHistoryChart() {
     ctx.fillStyle='rgba(0,255,209,0.85)'; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='right';
     ctx.fillText('TARGET 35', W-pad.r-2, targetY-5);
     // bezier path helper
-    function pathBez(pts) {
+    var pathBez = function(pts) {
       ctx.moveTo(toX(0), toY(pts[0].idx));
       if (pts.length<3) { for(var k=1;k<pts.length;k++) ctx.lineTo(toX(k),toY(pts[k].idx)); return; }
       for (var k=1;k<pts.length-1;k++) {
@@ -3293,7 +3298,7 @@ async function drawGiniHistoryChart() {
         ctx.quadraticCurveTo(toX(k),toY(pts[k].idx),mx,my);
       }
       ctx.lineTo(toX(pts.length-1), toY(pts[pts.length-1].idx));
-    }
+    };
     // gradient fill
     var fg=ctx.createLinearGradient(0,pad.t,0,H-pad.b);
     fg.addColorStop(0,'rgba(200,168,76,0.28)'); fg.addColorStop(0.7,'rgba(200,168,76,0.07)'); fg.addColorStop(1,'rgba(200,168,76,0.01)');
