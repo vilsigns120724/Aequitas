@@ -241,6 +241,12 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 .pool4-amount{font-size:1.05rem;font-weight:700;font-family:var(--font-display);margin-bottom:3px}
 .pool4-timer{font-size:0.59rem;font-weight:600;margin-bottom:7px}
 .pool4-desc{font-size:0.57rem;color:var(--muted);line-height:1.75}
+/* ── EXPLORE CARDS ───────────────────────────────────────────── */
+.expl-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;cursor:pointer;transition:all 0.2s}
+.expl-card:hover{border-color:rgba(139,92,246,0.4);background:rgba(139,92,246,0.06);transform:translateY(-2px);box-shadow:var(--glow-purple)}
+.expl-icon{font-size:1.1rem;margin-bottom:6px}
+.expl-name{font-size:0.63rem;font-weight:700;color:var(--text);margin-bottom:4px}
+.expl-desc{font-size:0.57rem;color:var(--muted);line-height:1.7}
 /* ── SUB-TAB NAVIGATION ─────────────────────────────────────── */
 .stabs{display:flex;gap:2px;padding:8px 20px 0;overflow-x:auto;background:rgba(8,0,16,0.5);border-bottom:1px solid rgba(139,92,246,0.1);-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .stabs::-webkit-scrollbar{display:none}
@@ -357,6 +363,43 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="ic-row"><span class="ic-key" data-i18n="k-proof">Proof System</span><span class="ic-val p">Groth16 ZKP (Zero-Knowledge)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-conf">Confirmation</span><span class="ic-val" data-i18n="k-conf-v">Within 6 seconds (1 block)</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="k-sybil">Sybil Protection</span><span class="ic-val g" data-i18n="k-sybil-v">One identity per biometric · permanent lock</span></div>
+  </div>
+
+  <!-- EXPLORE SECTION -->
+  <div style="margin-top:20px;background:linear-gradient(135deg,rgba(139,92,246,0.07),rgba(6,182,212,0.03));border:1px solid rgba(139,92,246,0.2);border-radius:var(--radius);padding:20px">
+    <div style="font-size:0.57rem;color:var(--purple);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:14px" data-i18n="explore-title">Explore Aequitas</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
+      <div class="expl-card" onclick="goTab('index','eqi-score')">
+        <div class="expl-icon">⚖️</div>
+        <div class="expl-name" data-i18n="expl-score">Equality Score</div>
+        <div class="expl-desc" data-i18n="expl-score-d">Live Gini coefficient · Aequitas Index · wealth distribution in real time</div>
+      </div>
+      <div class="expl-card" onclick="goTab('index','eqi-economy')">
+        <div class="expl-icon">💸</div>
+        <div class="expl-name" data-i18n="expl-economy">UBI &amp; Redistribution Pools</div>
+        <div class="expl-desc" data-i18n="expl-economy-d">Daily UBI countdown · 4 on-chain pools · demurrage · Protocol Phases</div>
+      </div>
+      <div class="expl-card" onclick="goTab('index','eqi-charts')">
+        <div class="expl-icon">📈</div>
+        <div class="expl-name" data-i18n="expl-charts">Charts &amp; History</div>
+        <div class="expl-desc" data-i18n="expl-charts-d">Gini history · Lorenz curve · Wealth Cap bootstrap slider · The story of Aequitas</div>
+      </div>
+      <div class="expl-card" onclick="goTab('network','net-protocol')">
+        <div class="expl-icon">📜</div>
+        <div class="expl-name" data-i18n="expl-v7">Protocol V7 Docs</div>
+        <div class="expl-desc" data-i18n="expl-v7-d">AequitasV7 contract · 6 mechanisms · ZK proof · wealth cap · demurrage · immutable code</div>
+      </div>
+      <div class="expl-card" onclick="goTab('explorer','sep-blocks')">
+        <div class="expl-icon">🔍</div>
+        <div class="expl-name" data-i18n="expl-explorer">Block Explorer</div>
+        <div class="expl-desc" data-i18n="expl-explorer-d">Live BlockDAG · click any block to see validator, hash, transactions, parent hashes</div>
+      </div>
+      <div class="expl-card" onclick="goTab('network','net-overview')">
+        <div class="expl-icon">🌐</div>
+        <div class="expl-name" data-i18n="expl-network">Network &amp; Nodes</div>
+        <div class="expl-desc" data-i18n="expl-network-d">Node topology · run your own node · technical specs · Chain ID 1926</div>
+      </div>
+    </div>
   </div>
 </div>
 </div>
@@ -1349,7 +1392,14 @@ en:{
   'dem-text':'<p>Historical precedent: The Wörgl experiment (Austria, 1932) used a demurrage currency and reduced unemployment by 25% in one year. The Chiemgauer (Germany, 2003) has operated successfully for over 20 years using a similar mechanism.</p>',
   'cap-title':'4. WEALTH CAP — Mathematical Fairness','cap-box':'Bootstrap cap: max(5,min(N,25))× current average AEQ balance<br>1–4 humans: 5× · +1× per human · 25+: 25× permanently<br>Excess AEQ instantly redistributed · No manual intervention',
   'ubi-title':'5. UNIVERSAL BASIC INCOME','ubi-box':'Sources: Swap fees (20%) · Wealth cap overflow · Demurrage · Inactive escrow<br><br>Daily: UBI Pool divided equally among all registered humans. Pool resets to zero after each distribution and refills continuously.',
-  'inf-title':'6. NO ALGORITHMIC INFLATION','inf-box':'The ONLY event that creates new AEQ: a new verified human registers<br><br>Total Supply = Verified Humans × 1,000 AEQ — always, exactly.'
+  'inf-title':'6. NO ALGORITHMIC INFLATION','inf-box':'The ONLY event that creates new AEQ: a new verified human registers<br><br>Total Supply = Verified Humans × 1,000 AEQ — always, exactly.',
+  'explore-title':'Explore Aequitas',
+  'expl-score':'Equality Score','expl-score-d':'Live Gini coefficient · Aequitas Index · wealth distribution in real time',
+  'expl-economy':'UBI &amp; Redistribution Pools','expl-economy-d':'Daily UBI countdown · 4 on-chain pools · demurrage · Protocol Phases',
+  'expl-charts':'Charts &amp; History','expl-charts-d':'Gini history · Lorenz curve · Wealth Cap bootstrap slider · The story of Aequitas',
+  'expl-v7':'Protocol V7 Docs','expl-v7-d':'AequitasV7 contract · 6 mechanisms · ZK proof · wealth cap · demurrage · immutable code',
+  'expl-explorer':'Block Explorer','expl-explorer-d':'Live BlockDAG · click any block to see validator, hash, transactions, parent hashes',
+  'expl-network':'Network &amp; Nodes','expl-network-d':'Node topology · run your own node · technical specs · Chain ID 1926'
 },
 de:{
   'logo-sub':'MENSCHLICHKEITSNACHWEIS','live':'LIVE',
@@ -1506,7 +1556,14 @@ de:{
   'usp-c3-title':'Nur ein Smartphone nötig','usp-c3-desc':'Kein Computer, kein Bankkonto, kein Personalausweis. Ein Android-Gerät mit Fingerabdrucksensor reicht aus um dem Netzwerk beizutreten.',
   'usp-c4-title':'Täglich UBI empfangen','usp-c4-desc':'Nach der Registrierung erhältst du automatisch täglich einen Anteil der UBI-Ausschüttung — jeden Tag, ohne Aktion, solange du AEQ hältst.',
   'v7-intro-title':'Was ist AequitasV7?',
-  'v7-intro-text':'AequitasV7 ist der zentrale Smart Contract des Aequitas-Protokolls. "V7" steht für die 7. Hauptversion des Fairness-Contracts — das Ergebnis iterativer Designverbesserung. Er ist unveränderlich auf der Aequitas Chain (Chain ID 1926) deployed und regelt jeden Aspekt des Protokolls: Menschenregistrierung, ZK-Beweisverifizierung, Guthabenverwaltung, Vermögensobergrenze, UBI-Ausschüttung, Swap-Gebühren und alle Governance-Parameter. Kein Admin kann den Contract upgraden oder ersetzen — er ist das unveränderliche Gesetz der Aequitas-Wirtschaft.'
+  'v7-intro-text':'AequitasV7 ist der zentrale Smart Contract des Aequitas-Protokolls. "V7" steht für die 7. Hauptversion des Fairness-Contracts — das Ergebnis iterativer Designverbesserung. Er ist unveränderlich auf der Aequitas Chain (Chain ID 1926) deployed und regelt jeden Aspekt des Protokolls: Menschenregistrierung, ZK-Beweisverifizierung, Guthabenverwaltung, Vermögensobergrenze, UBI-Ausschüttung, Swap-Gebühren und alle Governance-Parameter. Kein Admin kann den Contract upgraden oder ersetzen — er ist das unveränderliche Gesetz der Aequitas-Wirtschaft.',
+  'explore-title':'Aequitas entdecken',
+  'expl-score':'Gleichheits-Score','expl-score-d':'Live-Gini-Koeffizient · Aequitas-Index · Vermögensverteilung in Echtzeit',
+  'expl-economy':'UBI &amp; Umverteilungspools','expl-economy-d':'Täglicher UBI-Countdown · 4 On-Chain-Pools · Demurrage · Protokollphasen',
+  'expl-charts':'Diagramme &amp; Verlauf','expl-charts-d':'Gini-Verlauf · Lorenz-Kurve · Vermögensobergrenze-Bootstrap-Slider · Die Geschichte von Aequitas',
+  'expl-v7':'Protokoll V7 Dokumentation','expl-v7-d':'AequitasV7-Contract · 6 Mechanismen · ZK-Beweis · Vermögensobergrenze · Demurrage · unveränderlicher Code',
+  'expl-explorer':'Block-Explorer','expl-explorer-d':'Live-BlockDAG · Block anklicken um Validator, Hash, Transaktionen, Eltern-Hashes zu sehen',
+  'expl-network':'Netzwerk &amp; Nodes','expl-network-d':'Node-Topologie · eigenen Node betreiben · technische Spezifikationen · Chain-ID 1926'
 },
 es:{
   'logo-sub':'PRUEBA DE HUMANIDAD','live':'EN VIVO',
@@ -1646,7 +1703,14 @@ es:{
   'dem-text':'<p>El demurrage es un costo de tenencia sobre el dinero — una tasa de interés negativa que hace costoso acumular y atractivo circular. El experimento de Wörgl (Austria, 1932) usó una moneda con demurrage y redujo el desempleo local un 25% en un año. El Banco Central de Austria lo cerró precisamente porque funcionó demasiado bien. El Chiemgauer (Alemania, 2003) opera según el mismo principio con éxito desde hace más de 20 años.</p>',
   'cap-title':'4. LÍMITE DE RIQUEZA — Aplicación de Justicia Matemática','cap-box':'Límite bootstrap: max(5,min(N,25))× saldo promedio actual<br>1–4 humanos: 5× · +1× por humano · 25+: 25× permanente<br>Se aplica a TODAS las direcciones excepto las 4 pools del protocolo<br>Exceso AEQ redistribuido instantáneamente · Sin intervención manual',
   'ubi-title':'5. RENTA BÁSICA UNIVERSAL — Redistribución Diaria','ubi-box':'Fuentes de ingresos del Pool UBI:<br>· 20% de todas las comisiones de swap del pool AMM AEQ↔tUSD<br>· Desbordamiento de la aplicación del límite de riqueza<br>· Cargos de demurrage de cuentas inactivas<br>· Custodia inactiva liberada después de 4 años<br><br>Distribución: Cada 24 horas, todo el saldo del pool UBI se divide igualmente entre todos los humanos verificados registrados. El pool se reinicia a cero y comienza a llenarse inmediatamente de la actividad continua del protocolo.',
-  'inf-title':'6. SIN INFLACIÓN ALGORÍTMICA — Fórmula de Suministro Fijo','inf-box':'El ÚNICO evento que crea nuevo AEQ: un nuevo humano verificado se registra.<br><br>Suministro Total = Humanos Verificados × 1.000 AEQ<br><br>Esto no es una política — es aplicado por el protocolo. Ningún administrador puede acuñar AEQ adicional, ningún voto de gobernanza puede cambiar la emisión. AEQ es la única criptomoneda donde el suministro total está determinado únicamente por el número de humanos vivos verificados.'
+  'inf-title':'6. SIN INFLACIÓN ALGORÍTMICA — Fórmula de Suministro Fijo','inf-box':'El ÚNICO evento que crea nuevo AEQ: un nuevo humano verificado se registra.<br><br>Suministro Total = Humanos Verificados × 1.000 AEQ<br><br>Esto no es una política — es aplicado por el protocolo. Ningún administrador puede acuñar AEQ adicional, ningún voto de gobernanza puede cambiar la emisión. AEQ es la única criptomoneda donde el suministro total está determinado únicamente por el número de humanos vivos verificados.',
+  'explore-title':'Explorar Aequitas',
+  'expl-score':'Puntuación de Igualdad','expl-score-d':'Coeficiente Gini en vivo · Índice Aequitas · distribución de riqueza en tiempo real',
+  'expl-economy':'UBI y Pools de Redistribución','expl-economy-d':'Cuenta regresiva UBI diaria · 4 pools on-chain · demurrage · Fases del Protocolo',
+  'expl-charts':'Gráficos e Historial','expl-charts-d':'Historial Gini · curva de Lorenz · slider bootstrap del límite de riqueza · La historia de Aequitas',
+  'expl-v7':'Documentación Protocolo V7','expl-v7-d':'Contrato AequitasV7 · 6 mecanismos · prueba ZK · límite de riqueza · demurrage · código inmutable',
+  'expl-explorer':'Explorador de Bloques','expl-explorer-d':'BlockDAG en vivo · haz clic en cualquier bloque para ver validador, hash, transacciones, hashes padres',
+  'expl-network':'Red y Nodos','expl-network-d':'Topología de nodos · ejecutar tu propio nodo · especificaciones técnicas · Chain ID 1926'
 },
 ru:{
   'logo-sub':'ДОКАЗАТЕЛЬСТВО ЧЕЛОВЕЧНОСТИ','live':'ОНЛАЙН',
@@ -1785,6 +1849,13 @@ ru:{
   'usp-c4-title':'Ежедневный UBI навсегда','usp-c4-desc':'После регистрации вы автоматически получаете ежедневную долю выплат UBI — каждый день, без каких-либо действий.',
   'v7-intro-title':'Что такое AequitasV7?',
   'v7-intro-text':'AequitasV7 — центральный смарт-контракт протокола Aequitas. "V7" — 7-я основная версия контракта справедливости. Развёрнут неизменяемым образом в Aequitas Chain (ID 1926) и управляет всем: регистрация людей, верификация ZK, управление балансами, лимит богатства, распределение UBI, комиссии свопов. Ни один администратор не может обновить его. Шесть механизмов образуют самоусиливающуюся систему.',
+  'explore-title':'Исследовать Aequitas',
+  'expl-score':'Индекс равенства','expl-score-d':'Коэффициент Джини · Индекс Aequitas · распределение богатства в реальном времени',
+  'expl-economy':'UBI и пулы перераспределения','expl-economy-d':'Ежедневный обратный отсчёт UBI · 4 on-chain пула · демерредж · Фазы протокола',
+  'expl-charts':'Графики и история','expl-charts-d':'История Джини · кривая Лоренца · ползунок начального загрузчика богатства · История Aequitas',
+  'expl-v7':'Документация Протокола V7','expl-v7-d':'Контракт AequitasV7 · 6 механизмов · ZK-доказательство · лимит богатства · демерредж · неизменяемый код',
+  'expl-explorer':'Обозреватель блоков','expl-explorer-d':'Живой BlockDAG · нажмите на блок чтобы увидеть валидатора, хэш, транзакции, родительские хэши',
+  'expl-network':'Сеть и узлы','expl-network-d':'Топология узлов · запустить собственный узел · технические характеристики · Chain ID 1926'
 },
 zh:{
   'logo-sub':'人类证明','live':'实时',
@@ -1925,6 +1996,13 @@ zh:{
   'usp-c4-title':'永久每日UBI','usp-c4-desc':'注册后，您每天自动获得UBI支付份额——每天，无需任何操作。',
   'v7-intro-title':'什么是 AequitasV7？',
   'v7-intro-text':'AequitasV7是Aequitas协议的核心智能合约。"V7"指公平合约的第7个主要版本。它不可更改地部署在Aequitas Chain（链ID 1926）上，处理所有方面：人类注册、ZK证明验证、余额管理、财富上限、UBI分配、兑换手续费。没有管理员可以升级它。六个机制形成自我强化系统。',
+  'explore-title':'探索 Aequitas',
+  'expl-score':'平等指数','expl-score-d':'实时基尼系数 · Aequitas指数 · 实时财富分配',
+  'expl-economy':'UBI与再分配池','expl-economy-d':'每日UBI倒计时 · 4个链上池 · 货币持有税 · 协议阶段',
+  'expl-charts':'图表与历史','expl-charts-d':'基尼历史 · 洛伦兹曲线 · 财富上限启动滑块 · Aequitas的故事',
+  'expl-v7':'协议V7文档','expl-v7-d':'AequitasV7合约 · 6个机制 · ZK证明 · 财富上限 · 货币持有税 · 不可更改代码',
+  'expl-explorer':'区块浏览器','expl-explorer-d':'实时BlockDAG · 点击任意区块查看验证者、哈希、交易、父哈希',
+  'expl-network':'网络与节点','expl-network-d':'节点拓扑 · 运行自己的节点 · 技术规格 · Chain ID 1926'
 },
 id:{
   'logo-sub':'BUKTI KEMANUSIAAN','live':'LANGSUNG',
@@ -2057,6 +2135,13 @@ id:{
   'usp-c4-title':'UBI harian selamanya','usp-c4-desc':'Setelah terdaftar, Anda secara otomatis menerima bagian harian dari pembayaran UBI — setiap hari, tanpa tindakan apa pun.',
   'v7-intro-title':'Apa itu AequitasV7?',
   'v7-intro-text':'AequitasV7 adalah kontrak pintar inti dari protokol Aequitas. "V7" mengacu pada versi utama ke-7 dari kontrak keadilan. Dikerahkan secara tidak dapat diubah di Aequitas Chain (ID 1926) dan menangani setiap aspek: pendaftaran manusia, verifikasi ZK, manajemen saldo, batas kekayaan, distribusi UBI, biaya swap. Tidak ada admin yang dapat memperbaruinya. Keenam mekanisme membentuk sistem yang saling memperkuat.',
+  'explore-title':'Jelajahi Aequitas',
+  'expl-score':'Skor Kesetaraan','expl-score-d':'Koefisien Gini langsung · Indeks Aequitas · distribusi kekayaan secara real time',
+  'expl-economy':'UBI &amp; Pool Redistribusi','expl-economy-d':'Hitung mundur UBI harian · 4 pool on-chain · demurrage · Fase Protokol',
+  'expl-charts':'Grafik &amp; Riwayat','expl-charts-d':'Riwayat Gini · kurva Lorenz · slider bootstrap batas kekayaan · Kisah Aequitas',
+  'expl-v7':'Dokumentasi Protokol V7','expl-v7-d':'Kontrak AequitasV7 · 6 mekanisme · bukti ZK · batas kekayaan · demurrage · kode tak berubah',
+  'expl-explorer':'Block Explorer','expl-explorer-d':'BlockDAG langsung · klik blok apapun untuk melihat validator, hash, transaksi, hash induk',
+  'expl-network':'Jaringan &amp; Node','expl-network-d':'Topologi node · jalankan node sendiri · spesifikasi teknis · Chain ID 1926'
 },
 it:{
   'logo-sub':'PROVA DI UMANITÀ','live':'LIVE',
@@ -2189,7 +2274,14 @@ it:{
   'usp-c3-title':'Solo uno smartphone','usp-c3-desc':'Senza computer, senza conto bancario, senza documento d\'identità. Un telefono Android con sensore di impronte digitali è tutto ciò che serve.',
   'usp-c4-title':'UBI quotidiano per sempre','usp-c4-desc':'Una volta registrato, ricevi automaticamente una quota giornaliera dei pagamenti UBI — ogni giorno, senza alcuna azione richiesta.',
   'v7-intro-title':'Cos\'è AequitasV7?',
-  'v7-intro-text':'AequitasV7 è il contratto intelligente centrale del protocollo Aequitas. "V7" si riferisce alla 7ª versione principale del contratto di equità. È distribuito immutabilmente su Aequitas Chain (ID 1926) e gestisce ogni aspetto: registrazione umana, verifica ZK, gestione saldi, limite di ricchezza, distribuzione UBI, commissioni swap. Nessun amministratore può aggiornarlo. I sei meccanismi formano un sistema auto-rinforzante.'
+  'v7-intro-text':'AequitasV7 è il contratto intelligente centrale del protocollo Aequitas. "V7" si riferisce alla 7ª versione principale del contratto di equità. È distribuito immutabilmente su Aequitas Chain (ID 1926) e gestisce ogni aspetto: registrazione umana, verifica ZK, gestione saldi, limite di ricchezza, distribuzione UBI, commissioni swap. Nessun amministratore può aggiornarlo. I sei meccanismi formano un sistema auto-rinforzante.',
+  'explore-title':'Esplora Aequitas',
+  'expl-score':'Punteggio Uguaglianza','expl-score-d':'Coefficiente Gini live · Indice Aequitas · distribuzione ricchezza in tempo reale',
+  'expl-economy':'UBI e Pool di Redistribuzione','expl-economy-d':'Conto alla rovescia UBI giornaliero · 4 pool on-chain · demurrage · Fasi del Protocollo',
+  'expl-charts':'Grafici e Storia','expl-charts-d':'Storia Gini · curva di Lorenz · slider bootstrap limite ricchezza · La storia di Aequitas',
+  'expl-v7':'Documentazione Protocollo V7','expl-v7-d':'Contratto AequitasV7 · 6 meccanismi · prova ZK · limite ricchezza · demurrage · codice immutabile',
+  'expl-explorer':'Block Explorer','expl-explorer-d':'BlockDAG live · clicca qualsiasi blocco per vedere validatore, hash, transazioni, hash genitori',
+  'expl-network':'Rete e Nodi','expl-network-d':'Topologia nodi · esegui il tuo nodo · specifiche tecniche · Chain ID 1926'
 },
 tr:{
   'logo-sub':'İNSANLIK KANITI','live':'CANLI',
@@ -2329,7 +2421,14 @@ tr:{
   'usp-c3-title':'Yalnızca bir akıllı telefon','usp-c3-desc':'Bilgisayar yok, banka hesabı yok, kimlik belgesi yok. Parmak izi sensörlü bir Android telefon yeterli.',
   'usp-c4-title':'Sonsuza kadar günlük UBI','usp-c4-desc':'Kaydolduktan sonra, her gün otomatik olarak UBI ödemelerinden pay alırsın — her gün, hiçbir işlem gerektirmez.',
   'v7-intro-title':'AequitasV7 Nedir?',
-  'v7-intro-text':'AequitasV7, Aequitas protokolünün merkezi akıllı sözleşmesidir. "V7", adalet sözleşmesinin 7. ana sürümüdür. Aequitas Chain\'de (Zincir ID 1926) değiştirilemez şekilde dağıtılmıştır ve her şeyi yönetir: insan kaydı, ZK doğrulaması, bakiye yönetimi, servet tavanı, UBI dağıtımı, takas ücretleri. Hiçbir yönetici onu güncelleyemez. Altı mekanizma kendi kendini güçlendiren bir sistem oluşturur.'
+  'v7-intro-text':'AequitasV7, Aequitas protokolünün merkezi akıllı sözleşmesidir. "V7", adalet sözleşmesinin 7. ana sürümüdür. Aequitas Chain\'de (Zincir ID 1926) değiştirilemez şekilde dağıtılmıştır ve her şeyi yönetir: insan kaydı, ZK doğrulaması, bakiye yönetimi, servet tavanı, UBI dağıtımı, takas ücretleri. Hiçbir yönetici onu güncelleyemez. Altı mekanizma kendi kendini güçlendiren bir sistem oluşturur.',
+  'explore-title':'Aequitas\'ı Keşfet',
+  'expl-score':'Eşitlik Skoru','expl-score-d':'Canlı Gini katsayısı · Aequitas Endeksi · gerçek zamanlı servet dağılımı',
+  'expl-economy':'UBI ve Yeniden Dağıtım Havuzları','expl-economy-d':'Günlük UBI geri sayımı · 4 on-chain havuz · demurrage · Protokol Aşamaları',
+  'expl-charts':'Grafikler ve Tarih','expl-charts-d':'Gini geçmişi · Lorenz eğrisi · servet tavanı bootstrap kaydırıcısı · Aequitas\'ın hikayesi',
+  'expl-v7':'Protokol V7 Dokümantasyonu','expl-v7-d':'AequitasV7 sözleşmesi · 6 mekanizma · ZK kanıtı · servet tavanı · demurrage · değiştirilemez kod',
+  'expl-explorer':'Blok Gezgini','expl-explorer-d':'Canlı BlockDAG · doğrulayıcıyı, hash\'i, işlemleri, üst hash\'leri görmek için herhangi bir bloğa tıklayın',
+  'expl-network':'Ağ ve Düğümler','expl-network-d':'Düğüm topolojisi · kendi düğümünü çalıştır · teknik özellikler · Zincir ID 1926'
 }
 };
 
@@ -2349,6 +2448,15 @@ function showTab(name, el) {
   el.classList.add('active');
   if (name === 'swap') loadPoolStatus();
   history.pushState(null, '', '/' + name);
+}
+
+function goTab(name, stabId) {
+  const el = document.querySelector('.tab[onclick*="showTab(\'' + name + '\'"]');
+  if (el) showTab(name, el);
+  if (stabId) {
+    const stabEl = document.querySelector('#tab-' + name + ' .stab[onclick*="\'' + stabId + '\'"]');
+    if (stabEl) showStab('tab-' + name, stabId, stabEl);
+  }
 }
 
 function setLang(lang) {
