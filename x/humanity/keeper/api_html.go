@@ -562,19 +562,41 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="ic-row" style="margin:8px 0"><span class="ic-key" data-i18n="swap-your-aeq">Your AEQ</span><span class="ic-val go" id="swap-bal-aeq">—</span></div>
     <div class="ic-row" style="margin-bottom:16px"><span class="ic-key" data-i18n="swap-your-tusd">Your tUSD</span><span class="ic-val go" id="swap-bal-tusd">—</span></div>
 
-    <div style="margin-bottom:8px">
-      <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px" data-i18n="swap-sell-label">Sell</div>
-      <div style="display:flex;gap:6px">
-        <button class="rbtn" id="swap-dir-a2t" onclick="setSwapDirection('aeq_to_tusd')" style="flex:1">AEQ</button>
-        <button class="rbtn" id="swap-dir-t2a" onclick="setSwapDirection('tusd_to_aeq')" style="flex:1">tUSD</button>
+    <!-- DEX-style Sell panel -->
+    <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:2px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:0.54rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px" data-i18n="swap-sell-label">Sell</div>
+        <div style="font-size:0.58rem;color:var(--muted)">Bal: <span id="swap-from-bal" style="color:var(--neon)">—</span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="swap-from-btn" onclick="reverseSwapDir()" style="display:flex;align-items:center;gap:5px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.3);border-radius:8px;padding:8px 12px;cursor:pointer;min-width:86px;font-size:0.68rem;font-weight:700;color:var(--text);white-space:nowrap">
+          <span id="swap-from-icon">🔶</span><span id="swap-from-sym">AEQ</span><span style="color:var(--muted);font-size:0.55rem;margin-left:auto">⇄</span>
+        </button>
+        <input type="number" id="swap-amount" placeholder="0.00" oninput="updateFeeEstimate()" style="flex:1;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:16px;min-width:0;box-sizing:border-box">
+      </div>
+      <div style="display:flex;gap:5px;margin-top:8px">
+        <button class="rbtn pctbtn" onclick="setSwapPct(0.25)" style="flex:1;padding:6px;font-size:11px">25%</button>
+        <button class="rbtn pctbtn" onclick="setSwapPct(0.5)" style="flex:1;padding:6px;font-size:11px">50%</button>
+        <button class="rbtn pctbtn" onclick="setSwapPct(0.75)" style="flex:1;padding:6px;font-size:11px">75%</button>
+        <button class="rbtn pctbtn" onclick="setSwapPct(1)" style="flex:1;padding:6px;font-size:11px">MAX</button>
       </div>
     </div>
-    <input type="number" id="swap-amount" placeholder="Amount" oninput="updateFeeEstimate()" style="width:100%;padding:14px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:16px;margin-bottom:4px;box-sizing:border-box">
-    <div class="pct-row" style="display:flex;gap:6px;margin-bottom:8px">
-      <button class="rbtn pctbtn" onclick="setSwapPct(0.25)" style="flex:1;padding:8px;font-size:12px">25%</button>
-      <button class="rbtn pctbtn" onclick="setSwapPct(0.5)" style="flex:1;padding:8px;font-size:12px">50%</button>
-      <button class="rbtn pctbtn" onclick="setSwapPct(0.75)" style="flex:1;padding:8px;font-size:12px">75%</button>
-      <button class="rbtn pctbtn" onclick="setSwapPct(1)" style="flex:1;padding:8px;font-size:12px">MAX</button>
+    <!-- Reverse direction arrow -->
+    <div style="display:flex;justify-content:center;margin:4px 0">
+      <button onclick="reverseSwapDir()" style="background:var(--card2);border:1px solid var(--border);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1rem;color:var(--muted)" title="Reverse direction">⇅</button>
+    </div>
+    <!-- DEX-style Receive panel -->
+    <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:0.54rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px" data-i18n="swap-receive-label">Receive</div>
+        <div style="font-size:0.58rem;color:var(--muted)">Bal: <span id="swap-to-bal" style="color:var(--neon)">—</span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;align-items:center;gap:5px;background:rgba(6,182,212,0.08);border:1px solid rgba(6,182,212,0.2);border-radius:8px;padding:8px 12px;min-width:86px;font-size:0.68rem;font-weight:700;color:var(--text)">
+          <span id="swap-to-icon">💵</span><span id="swap-to-sym">tUSD</span>
+        </div>
+        <div id="swap-out-est-dex" style="flex:1;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);background:rgba(0,0,0,0.15);color:var(--neon);font-size:16px;font-family:monospace;min-width:0">—</div>
+      </div>
     </div>
     <div id="swap-details-panel" class="sd-panel" style="display:none">
       <div class="sd-header" data-i18n="swap-details-hdr">Swap Details</div>
@@ -866,6 +888,12 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 </div>
 <div id="eqi-charts" class="stab-panel">
 <div class="is">
+<div class="idx" style="grid-column:1/-1">
+    <div class="idx-title">AEQ / tUSD — Live Price</div>
+    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Real-time price derived from the pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives. Accumulates up to 60 data points.</div>
+    <canvas id="price-chart" height="110" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
+    <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No pool data yet — add liquidity to see the price chart.</div>
+  </div>
 <div class="idx" style="grid-column:1/-1">
     <div class="idx-title">Gini Index History</div>
     <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Recorded after each UBI distribution. Shows how equality evolves as the network grows.</div>
@@ -2438,7 +2466,7 @@ function showStab(parentId, stabId, el) {
   parent.querySelectorAll('.stab').forEach(s => s.classList.remove('active'));
   document.getElementById(stabId).classList.add('active');
   el.classList.add('active');
-  if (stabId === 'eqi-charts') { drawGiniHistoryChart(); drawLorenzCurve(); drawWcapSlideChart(); }
+  if (stabId === 'eqi-charts') { drawGiniHistoryChart(); drawLorenzCurve(); drawWcapSlideChart(); drawPriceChart(); }
 }
 
 function showTab(name, el) {
@@ -2721,6 +2749,57 @@ function drawWcapSlideChart() {
   ctx.setLineDash([]);
 }
 
+function drawPriceChart() {
+  const canvas = document.getElementById('price-chart');
+  if (!canvas || !priceHistory.length) return;
+  canvas.width = canvas.offsetWidth;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const pad = {l:52, r:16, t:14, b:24};
+  const pts = priceHistory;
+  const prices = pts.map(p => p.p);
+  const minP = Math.min(...prices), maxP = Math.max(...prices);
+  const range = maxP - minP || minP * 0.01 || 0.0001;
+  const toX = i => pad.l + (W - pad.l - pad.r) * i / Math.max(pts.length - 1, 1);
+  const toY = p => pad.t + (H - pad.t - pad.b) * (1 - (p - minP) / range);
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (H - pad.t - pad.b) * i / 4;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    const v = maxP - (range * i / 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(v.toFixed(4), pad.l - 3, y + 3);
+  }
+  // Fill under line
+  ctx.beginPath();
+  pts.forEach((p, i) => { const x = toX(i), y = toY(p.p); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+  ctx.lineTo(toX(pts.length - 1), H - pad.b);
+  ctx.lineTo(toX(0), H - pad.b);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
+  grad.addColorStop(0, 'rgba(139,92,246,0.3)'); grad.addColorStop(1, 'rgba(139,92,246,0.02)');
+  ctx.fillStyle = grad; ctx.fill();
+  // Line
+  ctx.beginPath(); ctx.strokeStyle = '#8B5CF6'; ctx.lineWidth = 2;
+  pts.forEach((p, i) => { const x = toX(i), y = toY(p.p); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+  ctx.stroke();
+  // Last price dot
+  const lx = toX(pts.length - 1), ly = toY(prices[prices.length - 1]);
+  ctx.beginPath(); ctx.arc(lx, ly, 4, 0, 2 * Math.PI);
+  ctx.fillStyle = '#8B5CF6'; ctx.fill();
+  ctx.fillStyle = 'rgba(139,92,246,0.9)'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'left';
+  ctx.fillText(prices[prices.length - 1].toFixed(4) + ' tUSD', lx + 7, ly + 4);
+  // X-axis: time labels
+  ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '8px monospace'; ctx.textAlign = 'center';
+  [0, Math.floor(pts.length / 2), pts.length - 1].forEach(i => {
+    if (i < 0 || i >= pts.length) return;
+    const d = new Date(pts[i].t);
+    ctx.fillText(d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0') + ':' + d.getSeconds().toString().padStart(2,'0'), toX(i), H - 6);
+  });
+}
+
 let allBlocks = [];
 
 async function loadBlocks() {
@@ -2741,7 +2820,7 @@ async function loadBlocks() {
           (hasTx ? ' <span class="bt">TX</span>' : '') +
           '</div>' +
           '<div class="block-parents">' + (b.parent_hashes ? b.parent_hashes.length + ' parent(s)' : '') +
-          ' · validator: <span style="color:var(--teal)">' + validator + '</span></div>' +
+          ' · node: <span style="color:var(--teal)">' + validator + '</span></div>' +
         '</div>' +
         '<div class="block-right"><div class="block-humans">' + (b.humans || 0) + ' humans</div>' +
         '<div class="block-time">' + timeAgo(b.timestamp) + '</div></div>' +
@@ -2761,7 +2840,8 @@ function openBlock(hash) {
   html += '<div class="bdc-row"><div class="bdc-k">Height</div><div class="bdc-v">#' + b.height + (b.is_genesis ? ' <span class="bm">GENESIS</span>' : '') + '</div></div>';
   html += '<div class="bdc-row"><div class="bdc-k">Full Hash</div><div class="bdc-v" style="font-size:0.55rem">' + b.hash + '</div></div>';
   html += '<div class="bdc-row"><div class="bdc-k">Timestamp</div><div class="bdc-v">' + ts.toUTCString() + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Validator</div><div class="bdc-v" style="color:var(--teal)">' + (b.proposer || '—') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Node P2P ID</div><div class="bdc-v" style="color:var(--teal);word-break:break-all;font-size:0.54rem">' + (b.proposer || '—') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k" style="color:var(--muted);font-size:0.54rem">ℹ</div><div class="bdc-v" style="color:var(--muted);font-size:0.52rem">libp2p peer identity of the block producer — not an ETH wallet address</div></div>';
   html += '<div class="bdc-row"><div class="bdc-k">Humans</div><div class="bdc-v">' + (b.humans || 0) + '</div></div>';
   html += '<div class="bdc-row"><div class="bdc-k">Type</div><div class="bdc-v">' + (isMerge ? '<span class="bm">MERGE BLOCK</span> — ' + b.parent_hashes.length + ' parents merged' : 'Standard block — 1 parent') + '</div></div>';
   html += '<div class="bdc-row"><div class="bdc-k">Parent(s)</div><div class="bdc-v" style="font-size:0.55rem">' + parentList + '</div></div>';
@@ -2810,6 +2890,7 @@ let currentPoolAEQ = 0;
 let currentPoolTUSD = 0;
 let myAEQBalance = 0;
 let myTUSDBalance = 0;
+let priceHistory = [];
 
 function swapLog(msg, type) {
   const el = document.getElementById('swap-log');
@@ -2849,21 +2930,39 @@ async function loadPoolStatus() {
         ? ('Pool ratio: 1 AEQ ≈ ' + d.price_aeq_in_tusd.toFixed(4) + ' tUSD — match this ratio when depositing')
         : 'Be the first to deposit — your ratio sets the starting price.';
     }
+    if (d.reserve_aeq > 0 && d.price_aeq_in_tusd > 0) {
+      priceHistory.push({ t: Date.now(), p: d.price_aeq_in_tusd });
+      if (priceHistory.length > 60) priceHistory.shift();
+      drawPriceChart();
+    }
     updateFeeEstimate();
   } catch (e) {}
 }
 
 function setSwapDirection(dir) {
   swapDirection = dir;
-  const a2t = document.getElementById('swap-dir-a2t');
-  const t2a = document.getElementById('swap-dir-t2a');
+  const fromIcon = document.getElementById('swap-from-icon');
+  const fromSym = document.getElementById('swap-from-sym');
+  const toIcon = document.getElementById('swap-to-icon');
+  const toSym = document.getElementById('swap-to-sym');
   if (dir === 'aeq_to_tusd') {
-    a2t.style.background = 'var(--gold)'; a2t.style.color = '#050A14';
-    t2a.style.background = ''; t2a.style.color = '';
+    if (fromIcon) fromIcon.textContent = '🔶'; if (fromSym) fromSym.textContent = 'AEQ';
+    if (toIcon) toIcon.textContent = '💵'; if (toSym) toSym.textContent = 'tUSD';
   } else {
-    t2a.style.background = 'var(--gold)'; t2a.style.color = '#050A14';
-    a2t.style.background = ''; a2t.style.color = '';
+    if (fromIcon) fromIcon.textContent = '💵'; if (fromSym) fromSym.textContent = 'tUSD';
+    if (toIcon) toIcon.textContent = '🔶'; if (toSym) toSym.textContent = 'AEQ';
   }
+  // Sync balance labels in the from/to panels
+  const fromBal = document.getElementById('swap-from-bal');
+  const toBal = document.getElementById('swap-to-bal');
+  if (fromBal) fromBal.textContent = dir === 'aeq_to_tusd' ? (fmt(myAEQBalance) + ' AEQ') : (fmt(myTUSDBalance) + ' tUSD');
+  if (toBal) toBal.textContent = dir === 'aeq_to_tusd' ? (fmt(myTUSDBalance) + ' tUSD') : (fmt(myAEQBalance) + ' AEQ');
+  updateFeeEstimate();
+}
+
+function reverseSwapDir() {
+  setSwapDirection(swapDirection === 'aeq_to_tusd' ? 'tusd_to_aeq' : 'aeq_to_tusd');
+  document.getElementById('swap-amount').value = '';
   updateFeeEstimate();
 }
 
@@ -2903,6 +3002,7 @@ function updateFeeEstimate() {
   if (amt <= 0) {
     if (panel) panel.style.display = 'none';
     warnEl.style.display = 'none';
+    const od = document.getElementById('swap-out-est-dex'); if (od) od.textContent = '—';
     if (swapWaddr) goBtn.disabled = false;
     return;
   }
@@ -2935,7 +3035,10 @@ function updateFeeEstimate() {
     if (panel) {
       panel.style.display = 'block';
       const outEl = document.getElementById('swap-out-est');
-      if (outEl) outEl.textContent = est.amountOut.toFixed(6) + ' ' + outUnit;
+      const outDex = document.getElementById('swap-out-est-dex');
+      const outStr = est.amountOut.toFixed(6) + ' ' + outUnit;
+      if (outEl) outEl.textContent = outStr;
+      if (outDex) outDex.textContent = outStr;
       // Price impact = how far execution price deviates from spot price
       const spotPrice = aeqToTusd ? (currentPoolTUSD / currentPoolAEQ) : (currentPoolAEQ / currentPoolTUSD);
       const amtAfterFee = amt - est.fee;
@@ -3013,6 +3116,11 @@ async function refreshSwapBalances() {
     myTUSDBalance = bd.tusd_balance || 0;
     document.getElementById('swap-bal-aeq').textContent = fmt(bd.balance) + ' AEQ';
     document.getElementById('swap-bal-tusd').textContent = fmt(bd.tusd_balance) + ' tUSD';
+    // Update DEX from/to panel balance labels
+    const fromBal = document.getElementById('swap-from-bal');
+    const toBal = document.getElementById('swap-to-bal');
+    if (fromBal) fromBal.textContent = swapDirection === 'aeq_to_tusd' ? (fmt(myAEQBalance) + ' AEQ') : (fmt(myTUSDBalance) + ' tUSD');
+    if (toBal) toBal.textContent = swapDirection === 'aeq_to_tusd' ? (fmt(myTUSDBalance) + ' tUSD') : (fmt(myAEQBalance) + ' AEQ');
     showDemurrageNotice(bd);
   } catch (e) {}
 }
@@ -3655,6 +3763,15 @@ async function restoreWalletFromStorage() {
       if (swapAdr) { swapAdr.textContent = accounts[0]; swapAdr.title = accounts[0]; }
       if (swapConn) { swapConn.textContent = accounts[0].slice(0,10)+'...'+accounts[0].slice(-4); swapConn.style.background='var(--green)'; swapConn.style.color='#050A14'; }
       if (swapDBtn) swapDBtn.style.display = 'block';
+      const goBtn = document.getElementById('swap-btn-go');
+      const faucetBtn = document.getElementById('swap-btn-faucet');
+      const addliqBtn = document.getElementById('swap-btn-addliq');
+      if (goBtn) goBtn.disabled = false;
+      if (faucetBtn) faucetBtn.disabled = false;
+      if (addliqBtn) addliqBtn.disabled = false;
+      setSwapDirection('aeq_to_tusd');
+      refreshSwapBalances();
+      loadLPPosition();
       // Check registration status silently — no popup
       try {
         const br = await fetch('/api/balance?wallet=' + accounts[0]);
