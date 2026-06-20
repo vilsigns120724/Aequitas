@@ -127,8 +127,10 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .hbdg{font-size:0.56rem;padding:3px 8px;border-radius:10px;flex-shrink:0;background:rgba(0,255,209,0.08);color:var(--neon);border:1px solid rgba(0,255,209,0.2);font-weight:600}
 .is{padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px;position:relative;z-index:1}
 @media(max-width:700px){.is{grid-template-columns:1fr}}
-.idx{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--glow-purple)}
-.idx-title{font-size:0.6rem;color:var(--purple);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;font-weight:600}
+.idx{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--glow-purple);transition:border-color 0.25s,box-shadow 0.25s}
+.idx:hover{border-color:rgba(139,92,246,0.32);box-shadow:0 0 30px rgba(139,92,246,0.18)}
+.idx-title{font-size:0.6rem;color:var(--purple);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;font-weight:700;display:flex;align-items:center;gap:8px}
+.idx-title::before{content:'';display:inline-block;width:3px;height:12px;background:linear-gradient(180deg,var(--purple),var(--teal));border-radius:2px;flex-shrink:0}
 .idx-desc{font-size:0.67rem;color:var(--muted);line-height:1.8;margin-bottom:16px}
 .idx-big{font-size:2.8rem;font-weight:900;line-height:1;font-family:var(--font-display);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .idx-lbl{font-size:0.6rem;color:var(--muted);margin-top:4px}
@@ -145,18 +147,21 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .hlbox{background:rgba(139,92,246,0.05);border-left:3px solid var(--purple);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:14px 18px;margin:16px 0;font-size:0.67rem;color:var(--text);line-height:1.9}
 .ns{padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px;position:relative;z-index:1}
 @media(max-width:700px){.ns{grid-template-columns:1fr}}
-.nc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--glow-purple)}
-.nc-title{font-size:0.6rem;color:var(--purple);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;font-weight:600}
+.nc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--glow-purple);transition:border-color 0.25s,box-shadow 0.25s}
+.nc:hover{border-color:rgba(139,92,246,0.32);box-shadow:0 0 30px rgba(139,92,246,0.18)}
+.nc-title{font-size:0.6rem;color:var(--purple);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+.nc-title::before{content:'';display:inline-block;width:3px;height:12px;background:linear-gradient(180deg,var(--purple),var(--teal));border-radius:2px;flex-shrink:0}
 .nbox{background:var(--card2);border-radius:var(--radius-sm);padding:14px;border:1px solid var(--border);margin-bottom:10px}
 .nstat{display:flex;align-items:center;gap:6px;font-size:0.67rem;color:var(--neon);margin-bottom:5px;font-weight:600}
 .ndot{width:7px;height:7px;border-radius:50%;background:var(--neon);box-shadow:0 0 8px var(--neon)}
 .nurl{font-size:0.58rem;color:var(--muted);word-break:break-all;margin-bottom:3px;font-family:var(--font-mono)}
 .ndesc{font-size:0.58rem;color:rgba(139,92,246,0.4)}
 .spect{width:100%;border-collapse:collapse}
-.spect td{padding:8px 0;border-bottom:1px solid rgba(139,92,246,0.08);font-size:0.63rem}
+.spect td{padding:9px 4px;border-bottom:1px solid rgba(139,92,246,0.08);font-size:0.63rem;transition:background 0.15s}
+.spect tr:hover td{background:rgba(139,92,246,0.05)}
 .spect tr:last-child td{border-bottom:none}
-.spect td:first-child{color:var(--muted);width:45%}
-.spect td:last-child{text-align:right;font-family:var(--font-mono);font-size:0.6rem;color:var(--purple)}
+.spect td:first-child{color:var(--muted);width:45%;padding-left:2px}
+.spect td:last-child{text-align:right;font-family:var(--font-mono);font-size:0.6rem;color:var(--purple);padding-right:2px}
 .bsbox{background:var(--card2);border-radius:var(--radius-sm);padding:12px;font-size:0.58rem;color:var(--purple);word-break:break-all;line-height:1.7;border:1px solid var(--border);font-family:var(--font-mono)}
 .rs{padding:20px;max-width:600px;margin:0 auto;position:relative;z-index:1}
 .rhero{background:linear-gradient(135deg,rgba(139,92,246,0.1),rgba(6,182,212,0.05));border:1px solid rgba(139,92,246,0.25);border-radius:var(--radius);padding:24px;margin-bottom:16px;text-align:center;box-shadow:var(--glow-purple)}
@@ -250,9 +255,10 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 /* ── SUB-TAB NAVIGATION ─────────────────────────────────────── */
 .stabs{display:flex;gap:2px;padding:8px 20px 0;overflow-x:auto;background:rgba(8,0,16,0.5);border-bottom:1px solid rgba(139,92,246,0.1);-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .stabs::-webkit-scrollbar{display:none}
-.stab{padding:7px 15px;font-size:0.6rem;color:var(--muted);cursor:pointer;border-radius:20px 20px 0 0;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;border:1px solid transparent;border-bottom:none;flex-shrink:0}
-.stab:hover{color:var(--text);background:rgba(139,92,246,0.08)}
-.stab.active{color:var(--purple);background:rgba(139,92,246,0.12);border-color:rgba(139,92,246,0.2)}
+.stab{padding:7px 15px;font-size:0.6rem;color:var(--muted);cursor:pointer;border-radius:6px 6px 0 0;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;border:1px solid transparent;border-bottom:none;flex-shrink:0;position:relative}
+.stab:hover{color:var(--text);background:rgba(139,92,246,0.1)}
+.stab.active{color:var(--purple);background:rgba(139,92,246,0.14);border-color:rgba(139,92,246,0.22)}
+.stab.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--purple),var(--teal));border-radius:2px 2px 0 0}
 .stab-panel{display:none}
 .stab-panel.active{display:block}
 </style>
@@ -287,8 +293,8 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="tab active" onclick="showTab('register',this)">🔐 Register</div>
   <div class="tab" onclick="showTab('explorer',this)">🔍 Explorer</div>
   <div class="tab" onclick="showTab('index',this)">⚖️ Equality</div>
-  <div class="tab" onclick="showTab('exchange',this)">🔄 Exchange</div>
   <div class="tab" onclick="showTab('network',this)">🌐 Network</div>
+  <div class="tab" onclick="showTab('exchange',this)">🔄 Exchange</div>
 </div>
 
 <!-- REGISTER -->
@@ -622,6 +628,15 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div class="ic-row"><span class="ic-key" data-i18n="swap-faucet-desc">Registered humans can claim test-tUSD once</span></div>
       <button class="rbtn" id="swap-btn-faucet" onclick="claimFaucet()" disabled data-i18n="swap-btn-faucet" style="margin-top:8px">💧 CLAIM TEST-tUSD</button>
     </div>
+</div>
+</div>
+</div>
+<div id="exch-liquidity" class="stab-panel">
+<div class="rs">
+  <div class="rhero">
+    <div class="rhero-title">💧 Liquidity</div>
+    <div class="rhero-sub">Provide AEQ / tUSD liquidity to earn 30% of all swap fees, distributed daily.</div>
+  </div>
 
 <div class="ic">
     <div class="ic-title" data-i18n="swap-pool-title">AEQ / tUSD — Pool Status</div>
@@ -653,14 +668,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="ic-row"><span class="ic-key" data-i18n="swap-ubi">UBI Pool (20%)</span><span class="ic-val p" style="font-size:11px">0x4A9b...054A</span></div>
     <div class="ic-row"><span class="ic-key" data-i18n="swap-treasury">Treasury (10%)</span><span class="ic-val p" style="font-size:11px">0x2273...3eb15</span></div>
   </div>
-</div>
-</div>
-<div id="exch-liquidity" class="stab-panel">
-<div class="rs">
-  <div class="rhero">
-    <div class="rhero-title">💧 Liquidity</div>
-    <div class="rhero-sub">Provide AEQ / tUSD liquidity to earn 30% of all swap fees, distributed daily.</div>
-  </div>
+
 <div class="ic" style="margin-top:20px">
       <div class="ic-title" data-i18n="swap-addliq-title">Provide Liquidity</div>
       <div class="ic-row"><span class="ic-key" id="swap-addliq-desc" data-i18n="swap-addliq-desc">Be the first to deposit — your ratio sets the starting price.</span></div>
@@ -699,7 +707,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <button class="rbtn br" id="swap-btn-removeliq" onclick="doRemoveLiquidity()" data-i18n="swap-btn-removeliq">🔥 REMOVE LIQUIDITY</button>
     </div>
   </div>
-</div>
 </div>
 </div>
 
@@ -794,6 +801,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div style="font-size:0.63rem;color:var(--muted);line-height:1.9" data-i18n="gini-why-text">A simple "richest vs. poorest" ratio is easy to game and misses what happens in the middle: a network could have 10,000 people, a low min/max spread, yet 90% of all AEQ concentrated in 100 wallets. The Gini coefficient detects this — a ratio does not. It captures the complete distribution across all verified humans in a single auditable number. Because Aequitas publishes this number on-chain (via updateGini), it is transparent, tamper-evident, and globally verifiable. The protocol uses it as the primary input signal for automatic phase transitions, wealth cap multiplier selection, and redistribution intensity — creating a self-correcting economic system governed entirely by mathematics. No human, no committee, no foundation can override the index reading or the mechanisms it triggers.</div>
     </div>
   </div>
+</div>
 </div>
 <div id="eqi-economy" class="stab-panel">
 <div class="is">
@@ -902,24 +910,24 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div class="idx" style="grid-column:1/-1">
     <div class="idx-title">AEQ / tUSD — Live Price</div>
     <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Real-time price derived from the pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives. Accumulates up to 60 data points.</div>
-    <canvas id="price-chart" height="110" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
+    <canvas id="price-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
     <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No pool data yet — add liquidity to see the price chart.</div>
   </div>
 <div class="idx" style="grid-column:1/-1">
     <div class="idx-title">Gini Index History</div>
     <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Recorded after each UBI distribution. Shows how equality evolves as the network grows.</div>
-    <canvas id="gini-history-chart" height="120" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
+    <canvas id="gini-history-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
     <div id="gini-history-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No snapshots yet — first one saved after the next UBI distribution.</div>
   </div>
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title">Lorenz Curve — Wealth Distribution Across Humans</div>
     <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Each point = cumulative % of AEQ held by the poorest X% of humans. The diagonal = perfect equality. The further the curve bows below the diagonal, the higher the Gini.</div>
-    <canvas id="lorenz-chart" height="220" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
+    <canvas id="lorenz-chart" height="270" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
   </div>
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title">Wealth Cap Multiplier — Bootstrap Slider</div>
     <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Formula: <code style="color:var(--teal)">max(5, min(N, 25))×</code> average AEQ balance. Each new human slides the cap up by 1×, until the 25th human locks it at 25× permanently.</div>
-    <canvas id="wcap-slide-chart" height="90" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
+    <canvas id="wcap-slide-chart" height="120" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
   </div>
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title" data-i18n="story-title">The Story of Aequitas — Why This Exists</div>
@@ -992,6 +1000,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     </table>
     <button class="mm-btn" onclick="addToMetaMask()" style="margin-top:12px" data-i18n="btn-add-mm">+ ADD TO METAMASK</button>
     <div style="font-size:0.58rem;color:var(--muted);margin-top:8px;line-height:1.6">📱 MetaMask Mobile: if AEQ shows 0 after adding, delete the network and re-add it using the button above.</div>
+</div>
 </div>
 </div>
 <div id="net-runnode" class="stab-panel">
@@ -1240,7 +1249,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div style="font-size:0.62rem;color:var(--muted);line-height:1.9">Open an issue on <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--purple)">GitHub</a> or reach the Aequitas team via the repository. BETA feedback on node setup, performance, and documentation gaps is especially welcome. Download this guide as a PDF in your selected language using the button above.</div>
     </div>
   </div>
-</div>
 </div>
 </div>
 <div id="net-protocol" class="stab-panel">
@@ -3251,26 +3259,66 @@ async function drawGiniHistoryChart() {
       if (emptyEl) { emptyEl.style.display = 'block'; canvas.style.display = 'none'; } return;
     }
     if (emptyEl) { emptyEl.style.display = 'none'; canvas.style.display = 'block'; }
-    const pad = {l:36,r:16,t:14,b:8};
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-      const y = pad.t + (H-pad.t-pad.b)*(1-i/4);
+    const pad = {l:48,r:24,t:36,b:32};
+    const cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
+    const toX = (i) => pad.l + cW*i/Math.max(history.length-1,1);
+    const toY = (v) => pad.t + cH*(1-v/100);
+    // danger zone (>70) subtle red tint
+    const dg = ctx.createLinearGradient(0,toY(100),0,toY(70));
+    dg.addColorStop(0,'rgba(248,113,113,0.06)'); dg.addColorStop(1,'rgba(248,113,113,0)');
+    ctx.fillStyle=dg; ctx.fillRect(pad.l,toY(100),cW,toY(70)-toY(100));
+    // grid lines
+    for (let i=0;i<=4;i++) {
+      const v=i*25, y=toY(v);
+      ctx.strokeStyle = v===0?'rgba(139,92,246,0.2)':'rgba(139,92,246,0.08)';
+      ctx.lineWidth = v===0?1.5:1;
       ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
-      ctx.fillText((i*25)+'', pad.l-3, y+3);
+      ctx.fillStyle='rgba(200,168,76,0.75)'; ctx.font='10px JetBrains Mono,monospace'; ctx.textAlign='right';
+      ctx.fillText(v+'', pad.l-6, y+4);
     }
-    const targetY = pad.t + (H-pad.t-pad.b)*(1-35/100);
-    ctx.strokeStyle = 'rgba(0,255,209,0.3)'; ctx.setLineDash([4,4]);
+    // target 35 line
+    const targetY = toY(35);
+    ctx.save(); ctx.shadowColor='rgba(0,255,209,0.7)'; ctx.shadowBlur=5;
+    ctx.strokeStyle='rgba(0,255,209,0.55)'; ctx.lineWidth=1.5; ctx.setLineDash([6,5]);
     ctx.beginPath(); ctx.moveTo(pad.l,targetY); ctx.lineTo(W-pad.r,targetY); ctx.stroke();
-    ctx.setLineDash([]); ctx.fillStyle = 'rgba(0,255,209,0.6)'; ctx.font = '8px monospace'; ctx.textAlign = 'left';
-    ctx.fillText('Target 35', W-pad.r-48, targetY-3);
-    const xs = (W-pad.l-pad.r)/Math.max(history.length-1,1);
-    ctx.strokeStyle = '#C9A84C'; ctx.lineWidth = 2;
-    ctx.beginPath();
-    history.forEach((pt,i)=>{ const x=pad.l+i*xs, y=pad.t+(H-pad.t-pad.b)*(1-pt.idx/100); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); });
-    ctx.stroke();
-    ctx.fillStyle = '#C9A84C';
-    history.forEach((pt,i)=>{ const x=pad.l+i*xs, y=pad.t+(H-pad.t-pad.b)*(1-pt.idx/100); ctx.beginPath(); ctx.arc(x,y,3,0,2*Math.PI); ctx.fill(); });
+    ctx.setLineDash([]); ctx.restore();
+    ctx.fillStyle='rgba(0,255,209,0.85)'; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='right';
+    ctx.fillText('TARGET 35', W-pad.r-2, targetY-5);
+    // bezier path helper
+    function pathBez(pts) {
+      ctx.moveTo(toX(0), toY(pts[0].idx));
+      if (pts.length<3) { for(var k=1;k<pts.length;k++) ctx.lineTo(toX(k),toY(pts[k].idx)); return; }
+      for (var k=1;k<pts.length-1;k++) {
+        var mx=(toX(k)+toX(k+1))/2, my=(toY(pts[k].idx)+toY(pts[k+1].idx))/2;
+        ctx.quadraticCurveTo(toX(k),toY(pts[k].idx),mx,my);
+      }
+      ctx.lineTo(toX(pts.length-1), toY(pts[pts.length-1].idx));
+    }
+    // gradient fill
+    var fg=ctx.createLinearGradient(0,pad.t,0,H-pad.b);
+    fg.addColorStop(0,'rgba(200,168,76,0.28)'); fg.addColorStop(0.7,'rgba(200,168,76,0.07)'); fg.addColorStop(1,'rgba(200,168,76,0.01)');
+    ctx.beginPath(); pathBez(history);
+    ctx.lineTo(toX(history.length-1),H-pad.b); ctx.lineTo(toX(0),H-pad.b); ctx.closePath();
+    ctx.fillStyle=fg; ctx.fill();
+    // glowing line
+    ctx.save(); ctx.shadowColor='rgba(200,168,76,0.6)'; ctx.shadowBlur=10;
+    ctx.strokeStyle='#C9A84C'; ctx.lineWidth=2.5;
+    ctx.beginPath(); pathBez(history); ctx.stroke(); ctx.restore();
+    // dots
+    history.forEach(function(pt,i){
+      var x=toX(i), y=toY(pt.idx);
+      ctx.save(); ctx.shadowColor='rgba(200,168,76,0.9)'; ctx.shadowBlur=12;
+      ctx.beginPath(); ctx.arc(x,y,4.5,0,2*Math.PI); ctx.fillStyle='#C9A84C'; ctx.fill(); ctx.restore();
+      ctx.beginPath(); ctx.arc(x,y,2,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
+    });
+    // latest value label
+    var lpt=history[history.length-1], lx=toX(history.length-1), ly=toY(lpt.idx);
+    ctx.fillStyle='rgba(200,168,76,0.95)'; ctx.font='bold 11px JetBrains Mono,monospace';
+    ctx.textAlign = lx>W*0.7?'right':'left';
+    ctx.fillText('Gini: '+lpt.idx.toFixed(3), lx+(lx>W*0.7?-8:8), ly-9);
+    // title
+    ctx.fillStyle='rgba(200,168,76,0.38)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='left';
+    ctx.fillText('GINI INDEX HISTORY  —  0 = perfect equality  ·  100 = max inequality', pad.l, 20);
   } catch(e) {}
 }
 
@@ -3281,35 +3329,73 @@ async function drawLorenzCurve() {
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0,0,W,H);
-  const pad = {l:36,r:16,t:14,b:28};
+  const pad = {l:48,r:24,t:36,b:44};
+  const cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
   try {
     const d = await (await fetch('/api/humans')).json();
     const humans = d.humans || [];
     if (humans.length < 2) {
-      ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
-      ctx.fillText('Not enough humans registered yet', W/2, H/2); return;
+      ctx.fillStyle='rgba(139,92,246,0.5)'; ctx.font='12px Inter,sans-serif'; ctx.textAlign='center';
+      ctx.fillText('Awaiting more registered humans...', W/2, H/2); return;
     }
-    const bals = humans.map(h=>h.balance||0).sort((a,b)=>a-b);
-    const total = bals.reduce((s,b)=>s+b,0);
+    const bals = humans.map(function(h){return h.balance||0;}).sort(function(a,b){return a-b;});
+    const total = bals.reduce(function(s,b){return s+b;},0);
     const n = bals.length;
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.setLineDash([4,4]); ctx.lineWidth = 1;
+    // grid
+    for (var i=0;i<=4;i++) {
+      var gx=pad.l+cW*i/4, gy=pad.t+cH*(1-i/4);
+      ctx.strokeStyle='rgba(139,92,246,0.08)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(gx,pad.t); ctx.lineTo(gx,H-pad.b); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pad.l,gy); ctx.lineTo(W-pad.r,gy); ctx.stroke();
+      ctx.fillStyle='rgba(200,168,76,0.6)'; ctx.font='10px JetBrains Mono,monospace'; ctx.textAlign='center';
+      ctx.fillText((i*25)+'%', gx, H-pad.b+16);
+      ctx.textAlign='right';
+      ctx.fillText((i*25)+'%', pad.l-6, H-pad.b-cH*i/4+4);
+    }
+    // axis labels
+    ctx.save(); ctx.translate(13,pad.t+cH/2); ctx.rotate(-Math.PI/2);
+    ctx.fillStyle='rgba(139,92,246,0.55)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('% of AEQ held (cumulative)', 0, 0); ctx.restore();
+    ctx.fillStyle='rgba(139,92,246,0.55)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('% of Population (poorest → richest)', pad.l+cW/2, H-2);
+    // equality diagonal (gradient)
+    var dg=ctx.createLinearGradient(pad.l,H-pad.b,W-pad.r,pad.t);
+    dg.addColorStop(0,'rgba(139,92,246,0.4)'); dg.addColorStop(1,'rgba(6,182,212,0.4)');
+    ctx.strokeStyle=dg; ctx.lineWidth=1.5; ctx.setLineDash([6,5]);
     ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b); ctx.lineTo(W-pad.r,pad.t); ctx.stroke();
     ctx.setLineDash([]);
-    for (let i=0;i<=4;i++) {
-      const x=pad.l+(W-pad.l-pad.r)*i/4, y=pad.t+(H-pad.t-pad.b)*(1-i/4);
-      ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,H-pad.b); ctx.stroke();
-      ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.font='9px monospace'; ctx.textAlign='center'; ctx.fillText((i*25)+'%',x,H-4);
-    }
-    ctx.strokeStyle='#C9A84C'; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b);
-    let cum=0;
-    bals.forEach((b,i)=>{ cum+=b; const x=pad.l+(W-pad.l-pad.r)*(i+1)/n, y=(H-pad.b)-(H-pad.t-pad.b)*(cum/total); ctx.lineTo(x,y); });
-    ctx.stroke();
-    ctx.fillStyle='rgba(200,168,76,0.12)'; ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b);
-    cum=0; bals.forEach((b,i)=>{ cum+=b; const x=pad.l+(W-pad.l-pad.r)*(i+1)/n, y=(H-pad.b)-(H-pad.t-pad.b)*(cum/total); ctx.lineTo(x,y); });
-    ctx.lineTo(W-pad.r,H-pad.b); ctx.closePath(); ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.font='9px monospace'; ctx.textAlign='center';
-    ctx.fillText('% of AEQ (cumulative)', pad.l-30, H/2);
+    ctx.fillStyle='rgba(139,92,246,0.5)'; ctx.font='9px Inter,sans-serif'; ctx.textAlign='right';
+    ctx.fillText('Perfect Equality', W-pad.r-3, pad.t+13);
+    // Lorenz points
+    var pts=[{x:pad.l,y:H-pad.b}]; var cum=0;
+    bals.forEach(function(b,i){
+      cum+=b; pts.push({x:pad.l+cW*(i+1)/n, y:(H-pad.b)-cH*(cum/total)});
+    });
+    // inequality fill
+    var fg=ctx.createLinearGradient(0,pad.t,0,H-pad.b);
+    fg.addColorStop(0,'rgba(200,168,76,0.2)'); fg.addColorStop(1,'rgba(200,168,76,0.04)');
+    ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y);
+    pts.forEach(function(p){ctx.lineTo(p.x,p.y);});
+    ctx.lineTo(W-pad.r,H-pad.b); ctx.closePath(); ctx.fillStyle=fg; ctx.fill();
+    // Lorenz line with glow
+    ctx.save(); ctx.shadowColor='rgba(200,168,76,0.6)'; ctx.shadowBlur=12;
+    ctx.strokeStyle='#C9A84C'; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y);
+    pts.forEach(function(p){ctx.lineTo(p.x,p.y);}); ctx.stroke(); ctx.restore();
+    // endpoint dot
+    var ep=pts[pts.length-1];
+    ctx.save(); ctx.shadowColor='rgba(200,168,76,0.9)'; ctx.shadowBlur=14;
+    ctx.beginPath(); ctx.arc(ep.x,ep.y,5,0,2*Math.PI); ctx.fillStyle='#C9A84C'; ctx.fill(); ctx.restore();
+    ctx.beginPath(); ctx.arc(ep.x,ep.y,2.5,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
+    // Gini annotation (trapezoidal)
+    var lorenzArea=0; cum=0;
+    bals.forEach(function(b){cum+=b; lorenzArea+=(cum/total)*(1/n);});
+    var gini=1-2*lorenzArea;
+    ctx.fillStyle='rgba(200,168,76,0.95)'; ctx.font='bold 12px JetBrains Mono,monospace'; ctx.textAlign='left';
+    ctx.fillText('Gini: '+(gini*100).toFixed(1), pad.l+8, pad.t+24);
+    // title
+    ctx.fillStyle='rgba(200,168,76,0.35)'; ctx.font='10px Inter,sans-serif';
+    ctx.fillText('LORENZ CURVE  —  WEALTH DISTRIBUTION', pad.l, 20);
   } catch(e) {}
 }
 
@@ -3320,26 +3406,57 @@ function drawWcapSlideChart() {
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0,0,W,H);
-  const pad = {l:36,r:16,t:8,b:24};
+  const pad = {l:44,r:20,t:36,b:32};
+  const cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
   const maxN = 28;
-  const bw = (W-pad.l-pad.r)/maxN;
-  for (let n=1; n<=maxN; n++) {
-    const mult = Math.max(5,Math.min(n,25));
-    const bh = (H-pad.t-pad.b)*(mult/25);
-    const x = pad.l+(n-1)*bw, y = H-pad.b-bh;
-    ctx.fillStyle = n<=25 ? (n===25?'rgba(0,255,209,0.55)':'rgba(200,168,76,0.55)') : 'rgba(255,255,255,0.1)';
-    ctx.fillRect(x+1,y,bw-2,bh);
+  const bw = cW/maxN;
+  // horizontal reference lines
+  [5,10,15,20,25].forEach(function(v){
+    var y=H-pad.b-cH*(v/25);
+    ctx.strokeStyle=v===25?'rgba(0,255,209,0.2)':'rgba(139,92,246,0.08)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+    ctx.fillStyle='rgba(200,168,76,0.7)'; ctx.font='10px JetBrains Mono,monospace'; ctx.textAlign='right';
+    ctx.fillText(v+'x', pad.l-5, y+4);
+  });
+  // bars
+  for (var n=1;n<=maxN;n++) {
+    var mult=Math.max(5,Math.min(n,25));
+    var bh=cH*(mult/25), bx=pad.l+(n-1)*bw+1, bw2=bw-2;
+    var y=H-pad.b-bh, r=Math.min(3,bw2/2);
+    var barGrad;
+    if (n>25) { barGrad='rgba(255,255,255,0.06)'; }
+    else if (n===25) { var g=ctx.createLinearGradient(0,y,0,H-pad.b); g.addColorStop(0,'rgba(0,255,209,0.8)'); g.addColorStop(1,'rgba(0,255,209,0.25)'); barGrad=g; }
+    else if (n>=20) { var g2=ctx.createLinearGradient(0,y,0,H-pad.b); g2.addColorStop(0,'rgba(200,168,76,0.85)'); g2.addColorStop(1,'rgba(200,168,76,0.28)'); barGrad=g2; }
+    else { var g3=ctx.createLinearGradient(0,y,0,H-pad.b); g3.addColorStop(0,'rgba(200,168,76,0.6)'); g3.addColorStop(1,'rgba(200,168,76,0.18)'); barGrad=g3; }
+    // rounded top bar
+    ctx.beginPath();
+    ctx.moveTo(bx+r,y); ctx.lineTo(bx+bw2-r,y);
+    ctx.arcTo(bx+bw2,y,bx+bw2,y+r,r);
+    ctx.lineTo(bx+bw2,H-pad.b); ctx.lineTo(bx,H-pad.b); ctx.lineTo(bx,y+r);
+    ctx.arcTo(bx,y,bx+r,y,r); ctx.closePath();
+    if (n===25){ctx.save();ctx.shadowColor='rgba(0,255,209,0.55)';ctx.shadowBlur=8;}
+    ctx.fillStyle=barGrad; ctx.fill();
+    if (n===25) ctx.restore();
+    // labels at key N values
     if (n===1||n===5||n===10||n===15||n===20||n===25) {
-      ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='8px monospace'; ctx.textAlign='center';
-      ctx.fillText(mult+'×',x+bw/2,y-1);
-      ctx.fillStyle='rgba(255,255,255,0.3)';
-      ctx.fillText('N='+n,x+bw/2,H-2);
+      ctx.fillStyle=n===25?'rgba(0,255,209,0.9)':'rgba(200,168,76,0.85)';
+      ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='center';
+      ctx.fillText(mult+'x', bx+bw2/2, y-4);
+      ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='8px JetBrains Mono,monospace';
+      ctx.fillText('N='+n, bx+bw2/2, H-pad.b+13);
     }
   }
-  ctx.strokeStyle='rgba(0,255,209,0.3)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
-  const lockY = H-pad.b-(H-pad.t-pad.b);
+  // lock line at N=25
+  var lockY=H-pad.b-cH;
+  ctx.save(); ctx.shadowColor='rgba(0,255,209,0.5)'; ctx.shadowBlur=5;
+  ctx.strokeStyle='rgba(0,255,209,0.55)'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
   ctx.beginPath(); ctx.moveTo(pad.l+(25-1)*bw,lockY); ctx.lineTo(W-pad.r,lockY); ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.setLineDash([]); ctx.restore();
+  ctx.fillStyle='rgba(0,255,209,0.8)'; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='left';
+  ctx.fillText('LOCKED AT 25x', pad.l+25*bw+4, lockY-4);
+  // title
+  ctx.fillStyle='rgba(200,168,76,0.35)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='left';
+  ctx.fillText('WEALTH CAP  —  BOOTSTRAP MULTIPLIER  ·  max(5, min(N, 25))×', pad.l, 20);
 }
 
 function drawPriceChart() {
@@ -3349,48 +3466,66 @@ function drawPriceChart() {
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
-  const pad = {l:52, r:16, t:14, b:24};
+  const pad = {l:58, r:24, t:36, b:36};
   const pts = priceHistory;
-  const prices = pts.map(p => p.p);
-  const minP = Math.min(...prices), maxP = Math.max(...prices);
+  const prices = pts.map(function(p){return p.p;});
+  const minP = Math.min.apply(null,prices), maxP = Math.max.apply(null,prices);
   const range = maxP - minP || minP * 0.01 || 0.0001;
-  const toX = i => pad.l + (W - pad.l - pad.r) * i / Math.max(pts.length - 1, 1);
-  const toY = p => pad.t + (H - pad.t - pad.b) * (1 - (p - minP) / range);
-  // Grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const y = pad.t + (H - pad.t - pad.b) * i / 4;
-    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
-    const v = maxP - (range * i / 4);
-    ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
-    ctx.fillText(v.toFixed(4), pad.l - 3, y + 3);
+  const padR = range * 0.1;
+  const lo = minP - padR, hi = maxP + padR;
+  const cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
+  const toX = function(i){return pad.l + cW * i / Math.max(pts.length - 1, 1);};
+  const toY = function(p){return pad.t + cH * (1 - (p - lo) / (hi - lo));};
+  // grid
+  for (var gi=0;gi<=4;gi++) {
+    var gy = pad.t + cH*gi/4;
+    ctx.strokeStyle = gi===4?'rgba(139,92,246,0.2)':'rgba(139,92,246,0.08)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.l,gy); ctx.lineTo(W-pad.r,gy); ctx.stroke();
+    var gv = hi - (hi-lo)*gi/4;
+    ctx.fillStyle='rgba(139,92,246,0.75)'; ctx.font='10px JetBrains Mono,monospace'; ctx.textAlign='right';
+    ctx.fillText(gv.toFixed(4), pad.l-5, gy+4);
   }
-  // Fill under line
-  ctx.beginPath();
-  pts.forEach((p, i) => { const x = toX(i), y = toY(p.p); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
-  ctx.lineTo(toX(pts.length - 1), H - pad.b);
-  ctx.lineTo(toX(0), H - pad.b);
-  ctx.closePath();
-  const grad = ctx.createLinearGradient(0, pad.t, 0, H - pad.b);
-  grad.addColorStop(0, 'rgba(139,92,246,0.3)'); grad.addColorStop(1, 'rgba(139,92,246,0.02)');
-  ctx.fillStyle = grad; ctx.fill();
-  // Line
-  ctx.beginPath(); ctx.strokeStyle = '#8B5CF6'; ctx.lineWidth = 2;
-  pts.forEach((p, i) => { const x = toX(i), y = toY(p.p); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
-  ctx.stroke();
-  // Last price dot
-  const lx = toX(pts.length - 1), ly = toY(prices[prices.length - 1]);
-  ctx.beginPath(); ctx.arc(lx, ly, 4, 0, 2 * Math.PI);
-  ctx.fillStyle = '#8B5CF6'; ctx.fill();
-  ctx.fillStyle = 'rgba(139,92,246,0.9)'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'left';
-  ctx.fillText(prices[prices.length - 1].toFixed(4) + ' tUSD', lx + 7, ly + 4);
-  // X-axis: time labels
-  ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.font = '8px monospace'; ctx.textAlign = 'center';
-  [0, Math.floor(pts.length / 2), pts.length - 1].forEach(i => {
-    if (i < 0 || i >= pts.length) return;
-    const d = new Date(pts[i].t);
-    ctx.fillText(d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0') + ':' + d.getSeconds().toString().padStart(2,'0'), toX(i), H - 6);
+  // bezier fill
+  ctx.beginPath(); ctx.moveTo(toX(0),toY(pts[0].p));
+  for (var bi=1;bi<pts.length-1;bi++) {
+    var mx=(toX(bi)+toX(bi+1))/2, my=(toY(pts[bi].p)+toY(pts[bi+1].p))/2;
+    ctx.quadraticCurveTo(toX(bi),toY(pts[bi].p),mx,my);
+  }
+  if (pts.length>1) ctx.lineTo(toX(pts.length-1),toY(pts[pts.length-1].p));
+  ctx.lineTo(toX(pts.length-1),H-pad.b); ctx.lineTo(toX(0),H-pad.b); ctx.closePath();
+  var grad=ctx.createLinearGradient(0,pad.t,0,H-pad.b);
+  grad.addColorStop(0,'rgba(139,92,246,0.38)'); grad.addColorStop(0.65,'rgba(139,92,246,0.1)'); grad.addColorStop(1,'rgba(139,92,246,0.01)');
+  ctx.fillStyle=grad; ctx.fill();
+  // glowing bezier line
+  ctx.save(); ctx.shadowColor='rgba(139,92,246,0.7)'; ctx.shadowBlur=12;
+  ctx.strokeStyle='#8B5CF6'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(toX(0),toY(pts[0].p));
+  for (var li=1;li<pts.length-1;li++) {
+    var mx2=(toX(li)+toX(li+1))/2, my2=(toY(pts[li].p)+toY(pts[li+1].p))/2;
+    ctx.quadraticCurveTo(toX(li),toY(pts[li].p),mx2,my2);
+  }
+  if (pts.length>1) ctx.lineTo(toX(pts.length-1),toY(pts[pts.length-1].p));
+  ctx.stroke(); ctx.restore();
+  // last price dot
+  var lx=toX(pts.length-1), ly=toY(prices[prices.length-1]);
+  ctx.save(); ctx.shadowColor='rgba(139,92,246,0.9)'; ctx.shadowBlur=16;
+  ctx.beginPath(); ctx.arc(lx,ly,5,0,2*Math.PI); ctx.fillStyle='#8B5CF6'; ctx.fill(); ctx.restore();
+  ctx.beginPath(); ctx.arc(lx,ly,2.5,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
+  var pLabel=prices[prices.length-1].toFixed(6)+' tUSD';
+  ctx.fillStyle='rgba(139,92,246,0.95)'; ctx.font='bold 11px JetBrains Mono,monospace';
+  ctx.textAlign = lx>W*0.75?'right':'left';
+  ctx.fillText(pLabel, lx+(lx>W*0.75?-8:8), ly-9);
+  // x-axis time labels
+  ctx.fillStyle='rgba(139,92,246,0.5)'; ctx.font='9px JetBrains Mono,monospace'; ctx.textAlign='center';
+  [0, Math.floor(pts.length/2), pts.length-1].forEach(function(i){
+    if (i<0||i>=pts.length) return;
+    var dd=new Date(pts[i].t);
+    var ts=dd.getHours().toString().padStart(2,'0')+':'+dd.getMinutes().toString().padStart(2,'0')+':'+dd.getSeconds().toString().padStart(2,'0');
+    ctx.fillText(ts, toX(i), H-pad.b+16);
   });
+  // title
+  ctx.fillStyle='rgba(139,92,246,0.38)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='left';
+  ctx.fillText('AEQ / tUSD  —  LIVE PRICE  (x·y = k  AMM)', pad.l, 20);
 }
 
 let allBlocks = [];
@@ -4416,10 +4551,11 @@ setInterval(loadPoolStatus, 8000);
 
 function generateNodeGuidePDF() {
   var lang = curLang || 'en';
-  if (window.jspdf) { _buildNodeGuidePDF(lang); return; }
+  if (window.jspdf) { try { _buildNodeGuidePDF(lang); } catch(e) { alert('PDF-Fehler: ' + e.message); } return; }
   var s = document.createElement('script');
   s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-  s.onload = function() { _buildNodeGuidePDF(lang); };
+  s.onload = function() { try { _buildNodeGuidePDF(lang); } catch(e) { alert('PDF-Fehler: ' + e.message); } };
+  s.onerror = function() { alert('PDF-Bibliothek konnte nicht geladen werden. Bitte Internetverbindung prüfen.'); };
   document.head.appendChild(s);
 }
 
@@ -4463,45 +4599,6 @@ function _buildNodeGuidePDF(lang) {
       s9:'9. Fehlerbehebung',th:['Symptom','Wahrscheinliche Ursache','Lösung'],tr:[['Höhe bleibt bei 0 nach Start','PEER_NODES nicht gesetzt oder nicht erreichbar','PEER_NODES=https://aequitas.digital setzen und neu deployen'],['"no code at address" in Logs','V7-Contract nicht im EVM deployed','RELAYER_ADDRESS prüfen; Node deployed V7 automatisch beim Start wenn fehlend'],['"NODE_OPERATOR_WALLET not set" in Logs','Fehlende Umgebungsvariable','NODE_OPERATOR_WALLET auf registrierte Mensch-Wallet-Adresse setzen'],['DATABASE_URL-Fehler beim Start','Falscher Verbindungsstring oder DB nicht erreichbar','Format prüfen: postgres://user:pass@host:5432/dbname und PostgreSQL-Erreichbarkeit'],['Port 8080 nicht erreichbar','Firewall oder Cloud-Provider-Konfiguration','TCP 8080 eingehend öffnen; Railway/Render/VPS-Port-Einstellungen prüfen'],['Docker-Build mit Go-Modul-Fehler','Kein Internetzugang beim Build','Build-Umgebung muss ausgehenden Internetzugang haben; Railway handhabt dies automatisch']],
       s10:'10. MetaMask-Konfiguration',m10:'Um deinen eigenen Node als RPC-Endpunkt in MetaMask oder einer anderen EVM-kompatiblen Wallet zu verwenden:',mh:['Feld','Wert'],mr:[['Netzwerkname','Aequitas Chain'],['RPC-URL','https://DEINE-NODE-URL/rpc'],['Chain-ID','1926  (hex: 0x786)'],['Währungssymbol','AEQ'],['Dezimalstellen','18'],['Block-Explorer','https://aequitas.digital']],
       foot:'Open Source · Erlaubnisfrei · Keine Admin-Schlüssel · Aequitas Chain V7 · Chain ID 1926',link:'github.com/hanoi96international-gif/Aequitas'},
-    es:{title:'Guia del Operador de Nodos Aequitas',sub:'Guia completa paso a paso · Aequitas Chain (Chain ID 1926)',badge:'BETA v0.1 · Codigo Abierto · Sin permisos · Sin stake requerido',
-      s1:'1. Vision General',what:'Que hace un nodo',wtxt:'Un nodo Aequitas participa plenamente en la red: produce bloques en el consenso BlockDAG, valida pruebas biometricas Groth16 de conocimiento cero para nuevos registros humanos, aplica limites de riqueza y demurrage a nivel de protocolo, sincroniza el estado con pares via libp2p + HTTP y ejecuta distribuciones diarias de pools. Cada nodo ejecuta la cadena completa: no hay clientes ligeros.',
-      earn:'Que ganas',etxt:'Establece NODE_OPERATOR_WALLET en una billetera humana registrada. El Pool de Validadores acumula el 40% de todas las tarifas del protocolo. Cada 24 h el nodo primario distribuye el saldo proporcionalmente entre todos los operadores registrados. No se requiere stake.',
-      s2:'2. Requisitos',rh:['Componente','Minimo','Recomendado'],rr:[['SO','Linux / host con Docker','Ubuntu 22.04 LTS'],['RAM','512 MB','1 GB'],['CPU','1 vCPU','2 vCPU'],['Almacenamiento','2 GB','10 GB SSD'],['Base de datos','PostgreSQL 14+','Railway o Supabase'],['Red','IP publica / reenvio de puerto','TCP 8080 abierto']],
-      s3:'3. Variables de Entorno',e3:'Configura estas variables antes de iniciar el nodo. Las marcadas SI son obligatorias.',eh:['Variable','Proposito','Requerida?'],er:[['DATABASE_URL','Cadena de conexion PostgreSQL: postgres://user:pass@host:5432/aequitas','SI'],['RELAYER_PRIVATE_KEY','Clave privada (0x...) del EOA que firma registros on-chain','SI'],['NODE_OPERATOR_WALLET','Billetera humana registrada que recibe recompensas diarias del pool','Para recomp.'],['RELAYER_ADDRESS','Direccion EOA. Tiene fallback pero configurar explicitamente.','Recomendado'],['PORT','Puerto HTTP. Por defecto: 8080','NO'],['PEER_NODES','URLs de bootstrap (separadas por coma). Usar URL del nodo primario.','Recomendado'],['NODE_KEY','Hex 32 bytes para identidad P2P estable. Se genera automaticamente si no se establece.','NO'],['IS_PRIMARY_NODE','"true" solo en el nodo primario designado. Activa distribuciones diarias.','NO'],['RESET_STATE','"true" borra la BD al iniciar. DESTRUCTIVO.','NO']],
-      s4:'4. Inicio Rapido — Railway (Recomendado)',r4:'Railway es la forma mas rapida de comenzar. El nivel gratuito cubre los requisitos minimos para BETA. Tiempo estimado: 10-15 minutos.',rs:['Haz un fork del repo: https://github.com/hanoi96international-gif/Aequitas','Crea una cuenta en railway.app e inicia un nuevo proyecto','Haz clic en "Deploy from GitHub Repo" y selecciona tu fork','En el proyecto: + New → Database → Add PostgreSQL','Ve a tu servicio → Variables y agrega las variables de la Seccion 3','Establece PEER_NODES=https://aequitas-production-9fba.up.railway.app','Establece NODE_OPERATOR_WALLET=<tu billetera humana AEQ>','Establece RELAYER_PRIVATE_KEY=<tu clave privada EOA>','Haz clic en "Deploy" — el Dockerfile gestiona la compilacion (~3 min)','En los logs busca: "Aequitas Node Running" y "[NODE] Registered node operator wallet"','Abre TU-URL/api/status para confirmar que el nodo esta activo','Agrega el RPC a MetaMask: Chain ID 1926, Simbolo AEQ, URL https://TU-URL/rpc'],rn:'Railway asigna un subdominio aleatorio; los dominios personalizados se configuran en ajustes del proyecto.',
-      s5:'5. Inicio Rapido — Docker',d5:'Para VPS, VM en la nube o servidor local. Requiere Docker y PostgreSQL disponibles.',dc:'git clone https://github.com/hanoi96international-gif/Aequitas\ncd Aequitas\n\n# Construir imagen (~3 min)\ndocker build -t aequitas-node .\n\n# Ejecutar nodo\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n  -e RELAYER_PRIVATE_KEY="0xTU_CLAVE_PRIVADA" \\\n  -e RELAYER_ADDRESS="0xTU_DIRECCION" \\\n  -e NODE_OPERATOR_WALLET="0xTU_BILLETERA_HUMANA" \\\n  -e PEER_NODES="https://aequitas-production-9fba.up.railway.app" \\\n  -p 8080:8080 aequitas-node\n\ndocker logs -f aequitas-node',dn:'El contenedor expone el puerto 8080. Abre TCP 8080 entrante en tu firewall.',
-      s6:'6. Verificar el Nodo',v6:'Una vez en ejecucion, comprueba estos endpoints:',vc:'curl https://TU-NODO-URL/api/status\n# Esperado: {"height": N, "total_humans": N}\n\ncurl -X POST https://TU-NODO-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'',
-      s7:'7. Red P2P y Sincronizacion',p7:'Establece PEER_NODES en al menos una URL de bootstrap. El nodo sincroniza la cadena automaticamente. Multidireccion libp2p del nodo primario:',pa:'/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R',pn:'La URL HTTP en PEER_NODES es mas estable para bootstrap. La multidireccion puede cambiar si el nodo primario se reimplementa.',
-      s8:'8. Ganar Recompensas de Validador',w8:'Las recompensas provienen del Pool de Validadores (40% de todas las tarifas del protocolo). Pasos:',b8:['Registrate como humano en Aequitas: instala la app Android y completa el registro biometrico','Establece NODE_OPERATOR_WALLET en esa direccion de billetera registrada','Reinicia tu nodo y confirma en logs: "[NODE] Registered node operator wallet: 0x..."','El nodo primario distribuye recompensas cada 24 h a todos los operadores registrados','Los nodos secundarios NO necesitan activar la distribucion — solo manten tu nodo en ejecucion'],
-      s9:'9. Solucion de Problemas',th:['Sintoma','Causa probable','Solucion'],tr:[['Altura permanece en 0','PEER_NODES no configurado','Establece PEER_NODES=https://aequitas-production-9fba.up.railway.app y redespliega'],['"no code at address" en logs','Contrato V7 no desplegado aun','Normal en el primer inicio — el nodo despliega V7 automaticamente'],['Error DATABASE_URL','Cadena de conexion incorrecta','Verifica el formato: postgres://usuario:clave@host:5432/dbname'],['Puerto 8080 no accesible','Firewall o configuracion del proveedor','Abre TCP 8080 entrante en tu firewall']],
-      s10:'10. Configuracion de MetaMask',m10:'Para usar tu nodo como endpoint RPC en MetaMask:',mh:['Campo','Valor'],mr:[['Nombre de red','Aequitas Chain'],['URL RPC','https://TU-NODO-URL/rpc'],['Chain ID','1926  (hex: 0x786)'],['Simbolo','AEQ'],['Decimales','18'],['Explorador','https://aequitas-production-9fba.up.railway.app']],
-      foot:'Codigo abierto · Sin permisos · Sin claves de administrador · Aequitas Chain V7 · Chain ID 1926',link:'github.com/hanoi96international-gif/Aequitas'},
-    it:{title:'Guida per Operatori di Nodi Aequitas',sub:'Guida completa passo dopo passo · Aequitas Chain (Chain ID 1926)',badge:'BETA v0.1 · Open Source · Senza permessi · Nessuno stake richiesto',
-      s1:'1. Panoramica',what:'Cosa fa un nodo',wtxt:'Un nodo Aequitas partecipa pienamente alla rete: produce blocchi nel consenso BlockDAG, valida prove biometriche Groth16 a conoscenza zero per le nuove registrazioni umane, applica limiti di ricchezza e demurrage a livello di protocollo, sincronizza lo stato con i peer via libp2p + HTTP ed esegue distribuzioni giornaliere dei pool. Ogni nodo esegue la catena completa: non esistono client leggeri.',
-      earn:'Cosa guadagni',etxt:'Imposta NODE_OPERATOR_WALLET su un indirizzo wallet registrato come umano. Il Pool Validatori accumula il 40% di tutte le commissioni di protocollo. Ogni 24 h il nodo primario distribuisce il saldo del pool proporzionalmente tra tutti i wallet degli operatori registrati. Nessuno stake richiesto.',
-      s2:'2. Requisiti',rh:['Componente','Minimo','Consigliato'],rr:[['SO','Linux / host con Docker','Ubuntu 22.04 LTS'],['RAM','512 MB','1 GB'],['CPU','1 vCPU','2 vCPU'],['Archiviazione','2 GB','10 GB SSD'],['Database','PostgreSQL 14+','Railway o Supabase'],['Rete','IP pubblica / port forward','TCP 8080 aperto']],
-      s3:'3. Variabili di Ambiente',e3:'Configura queste variabili prima di avviare il nodo. Quelle contrassegnate con SI sono obbligatorie.',eh:['Variabile','Scopo','Richiesta?'],er:[['DATABASE_URL','Stringa di connessione PostgreSQL: postgres://user:pass@host:5432/aequitas','SI'],['RELAYER_PRIVATE_KEY','Chiave privata (0x...) dell\'EOA che firma le registrazioni on-chain','SI'],['NODE_OPERATOR_WALLET','Wallet umano registrato che riceve le ricompense giornaliere del pool','Per ricomp.'],['RELAYER_ADDRESS','Indirizzo EOA corrispondente a RELAYER_PRIVATE_KEY. Ha un fallback ma impostalo esplicitamente.','Consigliato'],['PORT','Porta HTTP per API + JSON-RPC. Default: 8080','NO'],['PEER_NODES','URL dei peer bootstrap (separati da virgola). Usa l\'URL del nodo primario.','Consigliato'],['NODE_KEY','Hex 32 byte per identita P2P stabile. Auto-generato se omesso.','NO'],['IS_PRIMARY_NODE','"true" solo sul nodo primario designato. Abilita distribuzioni giornaliere.','NO'],['RESET_STATE','"true" cancella il DB all\'avvio. DISTRUTTIVO.','NO']],
-      s4:'4. Avvio Rapido — Railway (Consigliato)',r4:'Railway e il modo piu veloce per iniziare. Il livello gratuito soddisfa i requisiti minimi per la BETA. Tempo stimato: 10-15 minuti.',rs:['Fai un fork del repo: https://github.com/hanoi96international-gif/Aequitas','Crea un account su railway.app e avvia un nuovo progetto','Clicca "Deploy from GitHub Repo" e seleziona il tuo fork','Nel progetto: + New → Database → Add PostgreSQL','Vai al tuo servizio → Variables e aggiungi le variabili della Sezione 3','Imposta PEER_NODES=https://aequitas-production-9fba.up.railway.app','Imposta NODE_OPERATOR_WALLET=<il tuo wallet umano AEQ>','Imposta RELAYER_PRIVATE_KEY=<la tua chiave privata EOA>','Clicca "Deploy" — il Dockerfile gestisce la compilazione (~3 min)','Nei log cerca: "Aequitas Node Running" e "[NODE] Registered node operator wallet"','Apri TUO-URL/api/status per confermare che il nodo e attivo','Aggiungi il tuo RPC a MetaMask: Chain ID 1926, Simbolo AEQ, URL https://TUO-URL/rpc'],rn:'Railway assegna un sottodominio casuale; i domini personalizzati si configurano nelle impostazioni del progetto.',
-      s5:'5. Avvio Rapido — Docker',d5:'Per VPS, VM cloud o server locale. Prerequisiti: Docker installato e PostgreSQL disponibile.',dc:'git clone https://github.com/hanoi96international-gif/Aequitas\ncd Aequitas\n\n# Crea immagine (~3 min)\ndocker build -t aequitas-node .\n\n# Avvia nodo\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n  -e RELAYER_PRIVATE_KEY="0xLA_TUA_CHIAVE_PRIVATA" \\\n  -e RELAYER_ADDRESS="0xIL_TUO_INDIRIZZO" \\\n  -e NODE_OPERATOR_WALLET="0xIL_TUO_WALLET_UMANO" \\\n  -e PEER_NODES="https://aequitas-production-9fba.up.railway.app" \\\n  -p 8080:8080 aequitas-node\n\ndocker logs -f aequitas-node',dn:'Il container espone la porta 8080. Apri TCP 8080 in entrata nel firewall o nel gruppo di sicurezza cloud.',
-      s6:'6. Verifica il Nodo',v6:'Una volta avviato, controlla questi endpoint per confermare che il nodo e sincronizzato.',vc:'curl https://TUO-NODO-URL/api/status\n# Atteso: {"height": N, "total_humans": N}\n\ncurl -X POST https://TUO-NODO-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'',
-      s7:'7. Rete P2P e Sincronizzazione',p7:'Imposta PEER_NODES su almeno un URL di bootstrap noto. Il nodo si connette e sincronizza la catena automaticamente. Multiindirizzo libp2p del nodo primario:',pa:'/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R',pn:'L\'URL HTTP in PEER_NODES e piu stabile per il bootstrap. Il multiindirizzo puo cambiare se il nodo primario viene ridistribuito su Railway.',
-      s8:'8. Guadagnare Ricompense da Validatore',w8:'Le ricompense provengono dal Pool Validatori (40% di tutte le commissioni di protocollo). Passaggi:',b8:['Prima registrati come umano su Aequitas: installa l\'app Android e completa la registrazione biometrica','Imposta NODE_OPERATOR_WALLET su quell\'indirizzo wallet registrato','Riavvia il nodo e conferma nei log: "[NODE] Registered node operator wallet: 0x..."','Il nodo primario distribuisce le ricompense ogni 24 h a tutti i wallet degli operatori registrati','I nodi secondari NON devono attivare la distribuzione — tieni solo il nodo in esecuzione'],
-      s9:'9. Risoluzione dei Problemi',th:['Sintomo','Causa probabile','Soluzione'],tr:[['L\'altezza rimane a 0','PEER_NODES non impostato','Imposta PEER_NODES=https://aequitas-production-9fba.up.railway.app e ridistribuisci'],['"no code at address" nei log','Contratto V7 non ancora distribuito','Normale al primo avvio — il nodo distribuisce V7 automaticamente'],['Errore DATABASE_URL','Stringa di connessione errata','Verifica il formato: postgres://utente:password@host:5432/dbname'],['Porta 8080 non raggiungibile','Firewall o configurazione del provider','Apri TCP 8080 in entrata nel tuo firewall']],
-      s10:'10. Configurazione MetaMask',m10:'Per usare il tuo nodo come endpoint RPC in MetaMask:',mh:['Campo','Valore'],mr:[['Nome rete','Aequitas Chain'],['URL RPC','https://TUO-NODO-URL/rpc'],['Chain ID','1926  (hex: 0x786)'],['Simbolo','AEQ'],['Decimali','18'],['Block Explorer','https://aequitas-production-9fba.up.railway.app']],
-      foot:'Open source · Senza permessi · Senza chiavi admin · Aequitas Chain V7 · Chain ID 1926',link:'github.com/hanoi96international-gif/Aequitas'},
-    id:{title:'Panduan Operator Node Aequitas',sub:'Panduan lengkap langkah demi langkah · Aequitas Chain (Chain ID 1926)',badge:'BETA v0.1 · Open Source · Tanpa Izin · Tidak perlu stake',
-      s1:'1. Gambaran Umum',what:'Apa yang dilakukan node',wtxt:'Node Aequitas berpartisipasi penuh dalam jaringan: memproduksi blok dalam konsensus BlockDAG, memvalidasi bukti biometrik Groth16 zero-knowledge untuk pendaftaran manusia baru, menerapkan batas kekayaan dan demurrage di tingkat protokol, menyinkronkan status dengan peer via libp2p + HTTP, dan menjalankan distribusi pool harian. Setiap node menjalankan rantai penuh — tidak ada klien ringan.',
-      earn:'Apa yang kamu dapatkan',etxt:'Atur NODE_OPERATOR_WALLET ke alamat wallet manusia terdaftar. Pool Validator mengumpulkan 40% dari semua biaya protokol. Setiap 24 jam, node primer mendistribusikan saldo pool secara proporsional ke semua wallet operator node terdaftar. Tidak perlu stake.',
-      s2:'2. Persyaratan',rh:['Komponen','Minimum','Direkomendasikan'],rr:[['OS','Linux / host berkemampuan Docker','Ubuntu 22.04 LTS'],['RAM','512 MB','1 GB'],['CPU','1 vCPU','2 vCPU'],['Penyimpanan','2 GB','10 GB SSD'],['Database','PostgreSQL 14+','Railway atau Supabase'],['Jaringan','IP publik / port forward','TCP 8080 terbuka']],
-      s3:'3. Variabel Lingkungan',e3:'Atur variabel ini sebelum memulai node. Yang ditandai YA wajib diisi.',eh:['Variabel','Tujuan','Wajib?'],er:[['DATABASE_URL','String koneksi PostgreSQL: postgres://user:pass@host:5432/aequitas','YA'],['RELAYER_PRIVATE_KEY','Kunci privat (0x...) EOA yang menandatangani pendaftaran on-chain','YA'],['NODE_OPERATOR_WALLET','Wallet manusia terdaftar yang menerima hadiah validator harian','Untuk hadiah'],['RELAYER_ADDRESS','Alamat EOA yang cocok dengan RELAYER_PRIVATE_KEY. Ada fallback tapi atur secara eksplisit.','Direkomendasikan'],['PORT','Port HTTP untuk API + JSON-RPC. Default: 8080','TIDAK'],['PEER_NODES','URL peer bootstrap (dipisah koma). Gunakan URL node primer.','Direkomendasikan'],['NODE_KEY','Hex 32 byte untuk identitas P2P stabil. Dibuat otomatis jika tidak diatur.','TIDAK'],['IS_PRIMARY_NODE','"true" hanya pada node primer yang ditunjuk. Mengaktifkan distribusi harian.','TIDAK'],['RESET_STATE','"true" menghapus database saat startup. DESTRUKTIF.','TIDAK']],
-      s4:'4. Mulai Cepat — Railway (Direkomendasikan)',r4:'Railway adalah cara tercepat untuk memulai. Tingkat gratis memenuhi persyaratan minimum untuk BETA. Perkiraan waktu: 10-15 menit.',rs:['Fork repo: https://github.com/hanoi96international-gif/Aequitas','Buat akun di railway.app dan mulai proyek baru','Klik "Deploy from GitHub Repo" dan pilih fork kamu','Di proyek: + New → Database → Add PostgreSQL','Buka layanan kamu → Variables dan tambahkan variabel dari Bagian 3','Atur PEER_NODES=https://aequitas-production-9fba.up.railway.app','Atur NODE_OPERATOR_WALLET=<wallet manusia AEQ kamu>','Atur RELAYER_PRIVATE_KEY=<kunci privat EOA kamu>','Klik "Deploy" — Dockerfile mengelola kompilasi (~3 menit)','Di log cari: "Aequitas Node Running" dan "[NODE] Registered node operator wallet"','Buka URL-KAMU/api/status untuk memastikan node aktif','Tambahkan RPC ke MetaMask: Chain ID 1926, Simbol AEQ, URL https://URL-KAMU/rpc'],rn:'Railway menetapkan subdomain acak; domain kustom dapat diatur di pengaturan proyek.',
-      s5:'5. Mulai Cepat — Docker',d5:'Untuk VPS, VM cloud, atau server lokal. Prasyarat: Docker terinstal, PostgreSQL tersedia.',dc:'git clone https://github.com/hanoi96international-gif/Aequitas\ncd Aequitas\n\n# Buat image (~3 menit)\ndocker build -t aequitas-node .\n\n# Jalankan node\ndocker run -d --name aequitas-node --restart unless-stopped \\\n  -e DATABASE_URL="postgres://user:pass@host:5432/aequitas" \\\n  -e RELAYER_PRIVATE_KEY="0xKUNCI_PRIVAT_KAMU" \\\n  -e RELAYER_ADDRESS="0xALAMAT_KAMU" \\\n  -e NODE_OPERATOR_WALLET="0xWALLET_MANUSIA_KAMU" \\\n  -e PEER_NODES="https://aequitas-production-9fba.up.railway.app" \\\n  -p 8080:8080 aequitas-node\n\ndocker logs -f aequitas-node',dn:'Container mengekspos port 8080. Buka TCP 8080 inbound di firewall atau security group cloud kamu.',
-      s6:'6. Verifikasi Node',v6:'Setelah berjalan, periksa endpoint ini untuk memastikan node tersinkronisasi.',vc:'curl https://URL-NODE-KAMU/api/status\n# Diharapkan: {"height": N, "total_humans": N}\n\ncurl -X POST https://URL-NODE-KAMU/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'',
-      s7:'7. Jaringan P2P dan Sinkronisasi',p7:'Atur PEER_NODES ke setidaknya satu URL bootstrap yang diketahui. Node terhubung dan menyinkronkan rantai penuh secara otomatis. Multialamat libp2p node primer:',pa:'/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R',pn:'URL HTTP di PEER_NODES lebih stabil untuk bootstrap. Multialamat libp2p dapat berubah jika node primer di-redeploy di Railway.',
-      s8:'8. Mendapatkan Hadiah Validator',w8:'Hadiah berasal dari Pool Validator (40% dari semua biaya protokol). Langkah-langkah:',b8:['Pertama daftar sebagai manusia di Aequitas: instal aplikasi Android dan selesaikan pendaftaran biometrik','Atur NODE_OPERATOR_WALLET ke alamat wallet terdaftar tersebut','Mulai ulang node kamu dan konfirmasi di log: "[NODE] Registered node operator wallet: 0x..."','Node primer mendistribusikan hadiah setiap 24 jam ke semua wallet operator terdaftar','Node sekunder TIDAK perlu memicu distribusi — cukup jalankan node kamu'],
-      s9:'9. Pemecahan Masalah',th:['Gejala','Kemungkinan Penyebab','Solusi'],tr:[['Tinggi tetap di 0','PEER_NODES tidak diatur','Atur PEER_NODES=https://aequitas-production-9fba.up.railway.app dan deploy ulang'],['"no code at address" di log','Kontrak V7 belum di-deploy','Normal saat pertama kali — node men-deploy V7 secara otomatis'],['Error DATABASE_URL','String koneksi salah','Periksa format: postgres://user:pass@host:5432/dbname'],['Port 8080 tidak dapat diakses','Firewall atau konfigurasi provider','Buka TCP 8080 inbound di firewall kamu']],
-      s10:'10. Konfigurasi MetaMask',m10:'Untuk menggunakan node kamu sebagai endpoint RPC di MetaMask:',mh:['Kolom','Nilai'],mr:[['Nama Jaringan','Aequitas Chain'],['URL RPC','https://URL-NODE-KAMU/rpc'],['Chain ID','1926  (hex: 0x786)'],['Simbol','AEQ'],['Desimal','18'],['Block Explorer','https://aequitas-production-9fba.up.railway.app']],
-      foot:'Open source · Tanpa izin · Tanpa kunci admin · Aequitas Chain V7 · Chain ID 1926',link:'github.com/hanoi96international-gif/Aequitas'},
     es:{title:'Guia del Operador de Nodos Aequitas',sub:'Guia completa paso a paso · Aequitas Chain (Chain ID 1926)',badge:'BETA v0.1 · Codigo Abierto · Sin permisos · Sin stake requerido',
       s1:'1. Vision General',what:'Que hace un nodo',wtxt:'Un nodo Aequitas participa plenamente en la red: produce bloques en el consenso BlockDAG, valida pruebas biometricas Groth16 de conocimiento cero para nuevos registros humanos, aplica limites de riqueza y demurrage a nivel de protocolo, sincroniza el estado con pares via libp2p + HTTP y ejecuta distribuciones diarias de pools. Cada nodo ejecuta la cadena completa: no hay clientes ligeros.',
       earn:'Que ganas',etxt:'Establece NODE_OPERATOR_WALLET en una billetera humana registrada. El Pool de Validadores acumula el 40% de todas las tarifas del protocolo. Cada 24 h el nodo primario distribuye el saldo proporcionalmente entre todos los operadores registrados. No se requiere stake.',
