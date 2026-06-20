@@ -481,11 +481,20 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="ic-row" style="margin:8px 0"><span class="ic-key" data-i18n="swap-your-aeq">Your AEQ</span><span class="ic-val go" id="swap-bal-aeq">—</span></div>
     <div class="ic-row" style="margin-bottom:16px"><span class="ic-key" data-i18n="swap-your-tusd">Your tUSD</span><span class="ic-val go" id="swap-bal-tusd">—</span></div>
 
-    <div class="swap-dir" id="swap-dir-box" style="display:flex;gap:8px;margin-bottom:12px">
-      <button class="rbtn" id="swap-dir-a2t" onclick="setSwapDirection('aeq_to_tusd')" data-i18n="swap-aeq-to-tusd" style="flex:1">AEQ → tUSD</button>
-      <button class="rbtn" id="swap-dir-t2a" onclick="setSwapDirection('tusd_to_aeq')" data-i18n="swap-tusd-to-aeq" style="flex:1">tUSD → AEQ</button>
+    <div style="margin-bottom:8px">
+      <div style="font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px" data-i18n="swap-sell-label">Sell</div>
+      <div style="display:flex;gap:6px">
+        <button class="rbtn" id="swap-dir-a2t" onclick="setSwapDirection('aeq_to_tusd')" style="flex:1">AEQ</button>
+        <button class="rbtn" id="swap-dir-t2a" onclick="setSwapDirection('tusd_to_aeq')" style="flex:1">tUSD</button>
+      </div>
     </div>
-    <input type="number" id="swap-amount" placeholder="Amount" oninput="updateFeeEstimate()" style="width:100%;padding:14px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:16px;margin-bottom:8px;box-sizing:border-box">
+    <input type="number" id="swap-amount" placeholder="Amount" oninput="updateFeeEstimate()" style="width:100%;padding:14px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:16px;margin-bottom:4px;box-sizing:border-box">
+    <div class="pct-row" style="display:flex;gap:6px;margin-bottom:8px">
+      <button class="rbtn pctbtn" onclick="setSwapPct(0.25)" style="flex:1;padding:8px;font-size:12px">25%</button>
+      <button class="rbtn pctbtn" onclick="setSwapPct(0.5)" style="flex:1;padding:8px;font-size:12px">50%</button>
+      <button class="rbtn pctbtn" onclick="setSwapPct(0.75)" style="flex:1;padding:8px;font-size:12px">75%</button>
+      <button class="rbtn pctbtn" onclick="setSwapPct(1)" style="flex:1;padding:8px;font-size:12px">MAX</button>
+    </div>
     <div id="swap-details-panel" class="sd-panel" style="display:none">
       <div class="sd-header" data-i18n="swap-details-hdr">Swap Details</div>
       <div class="sd-row"><span class="sd-key" data-i18n="swap-out-lbl">You receive (est.)</span><span class="sd-val" id="swap-out-est" style="color:var(--neon)">—</span></div>
@@ -582,7 +591,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div class="is">
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title" data-i18n="idx-title">Aequitas Index — Real-Time Economic Equality Score</div>
-    <div class="idx-desc" data-i18n="idx-desc">The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. Unlike a simple richest-vs-poorest ratio, the Gini coefficient captures the <em style="color:var(--text)">entire distribution</em> across every verified human simultaneously, in a single number. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds exactly the same AEQ). <strong style="color:var(--red)">100 = total concentration</strong> (one wallet holds all AEQ in existence). For context: Bitcoin Gini ≈ 0.85 (Index 85) · most unequal country on Earth (South Africa) ≈ 0.63 · Scandinavia ≈ 0.25. Aequitas is mathematically engineered to stay below 20 — enforced automatically, no governance vote, no admin key required.</div>
+    <div class="idx-desc" data-i18n="idx-desc">The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. Unlike a simple richest-vs-poorest ratio, the Gini coefficient captures the <em style="color:var(--text)">entire distribution</em> across every verified human simultaneously, in a single number. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds exactly the same AEQ). <strong style="color:var(--red)">100 = total concentration</strong> (one wallet holds all AEQ in existence). For context: Bitcoin Gini ≈ 0.85 (Index 85) · most unequal country on Earth (South Africa) ≈ 0.63 · Scandinavia ≈ 0.25. Aequitas targets Gini below 0.20 (Index below 20) at scale — enforced automatically by the wealth cap and redistribution pools, no governance vote required.</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;margin-top:12px">
       <div><div class="idx-big" id="idx-score">—</div><div class="idx-lbl" data-i18n="curr-idx">Current Index</div></div>
       <div>
@@ -616,7 +625,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div style="background:var(--card2);border:1px solid rgba(6,182,212,0.2);border-radius:var(--radius-sm);padding:16px">
         <div style="font-size:0.6rem;color:var(--teal);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-what-title">What is the Gini Coefficient?</div>
-        <div style="font-size:0.64rem;color:var(--muted);line-height:1.9" data-i18n="gini-what-text">Developed by Italian statistician Corrado Gini (1912). It measures wealth distribution by comparing the actual balance distribution against a hypothetical perfectly equal baseline — visualized as the Lorenz curve. The coefficient equals the ratio of the area between the Lorenz curve and the diagonal of equality to the total area below that diagonal. Scale: 0 means every person holds identical wealth. 1 means one person holds all wealth in existence. Used by the World Bank, OECD, and UN to compare countries. Reference values: Bitcoin ≈ 0.85 · South Africa (world record) ≈ 0.63 · Brazil ≈ 0.53 · USA ≈ 0.41 · Germany ≈ 0.31 · Sweden ≈ 0.27 · Aequitas target: below 0.20.</div>
+        <div style="font-size:0.64rem;color:var(--muted);line-height:1.9" data-i18n="gini-what-text">Developed by Italian statistician Corrado Gini (1912). It measures wealth distribution by comparing the actual balance distribution against a hypothetical perfectly equal baseline — visualized as the Lorenz curve. The coefficient equals the ratio of the area between the Lorenz curve and the diagonal of equality to the total area below that diagonal. Scale: 0 means every person holds identical wealth. 1 means one person holds all wealth in existence. Used by the World Bank, OECD, and UN to compare countries. Reference values: Bitcoin ≈ 0.85 · South Africa (world record) ≈ 0.63 · Brazil ≈ 0.53 · USA ≈ 0.41 · Germany ≈ 0.31 · Sweden ≈ 0.27 · Aequitas long-term target: Gini below 0.20 — enforced by the wealth cap at scale (bootstrap: sliding cap 5×→25× per human).</div>
       </div>
       <div style="background:var(--card2);border:1px solid rgba(139,92,246,0.2);border-radius:var(--radius-sm);padding:16px">
         <div style="font-size:0.6rem;color:var(--purple);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;font-weight:600" data-i18n="gini-calc-title">How is the Aequitas Index calculated?</div>
@@ -729,14 +738,14 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   </div>
   <div class="idx">
     <div class="idx-title" data-i18n="phases-title">Protocol Phases</div>
-    <div class="idx-desc" data-i18n="phases-desc">Phase boundaries define network growth milestones. The wealth cap multiplier is currently fixed at 25× (matching the live Go code constant <em>wealthCapMultiplier = 25.0</em>) — phase-based automatic tightening is a planned future protocol upgrade.</div>
+    <div class="idx-desc" data-i18n="phases-desc">The wealth cap uses a bootstrap multiplier during Phase 0: max(5, min(N, 25))× average balance. With 1–4 humans: 5× average. Each new human adds 1×. At 25+ humans: locks permanently at 25×. Phase 1+ maintains 25× fixed. All transitions trigger automatically by human count — no governance vote, no admin key required.</div>
     <table class="spect">
-      <tr><td><strong style="color:var(--neon)">Phase 0</strong></td><td style="color:var(--neon)" data-i18n="p0">Bootstrap · &lt;100 humans · Wealth Cap: 25× average balance · Currently active</td></tr>
-      <tr><td><strong style="color:var(--blue)">Phase 1</strong></td><td style="color:var(--blue)" data-i18n="p1">Growth · 100–10,000 humans · Wealth Cap: 25× (planned tightening: 20×)</td></tr>
-      <tr><td><strong style="color:var(--gold)">Phase 2</strong></td><td style="color:var(--gold)" data-i18n="p2">Stability · 10,000–1M humans · Wealth Cap: 25× (planned tightening: 10×)</td></tr>
-      <tr><td><strong style="color:var(--purple)">Phase 3</strong></td><td style="color:var(--purple)" data-i18n="p3">Maturity · 1M+ humans · Wealth Cap: 25× (planned tightening: 5×)</td></tr>
+      <tr><td><strong style="color:var(--neon)">Phase 0</strong></td><td style="color:var(--neon)" data-i18n="p0">Bootstrap · &lt;100 humans · Wealth Cap: max(5,min(N,25))× average · Slides 5×→25× until 25th human · Currently active</td></tr>
+      <tr><td><strong style="color:var(--blue)">Phase 1</strong></td><td style="color:var(--blue)" data-i18n="p1">Growth · 100–10,000 humans · Wealth Cap: 25× average balance</td></tr>
+      <tr><td><strong style="color:var(--gold)">Phase 2</strong></td><td style="color:var(--gold)" data-i18n="p2">Stability · 10,000–1M humans · Wealth Cap: 25× average balance</td></tr>
+      <tr><td><strong style="color:var(--purple)">Phase 3</strong></td><td style="color:var(--purple)" data-i18n="p3">Maturity · 1M+ humans · Wealth Cap: 25× average balance</td></tr>
     </table>
-    <div class="hlbox" data-i18n="wealth-cap-explain">The <strong>Wealth Cap</strong> is currently set to <strong>25× the average AEQ balance</strong> across all verified humans. This is a fixed constant in the live Go protocol code. The cap is always relative to the live average balance — so it automatically scales as the network grows without needing manual adjustment.</div>
+    <div class="hlbox" data-i18n="wealth-cap-explain">The <strong>Wealth Cap</strong> during Phase 0 (Bootstrap) uses the formula <strong>max(5, min(N, 25))× average AEQ balance</strong>, where N = registered humans. With 1–4 humans: cap = 5× average. Each new human adds 1×. At 25+ humans: the multiplier locks permanently at 25×. The cap always scales with the live average balance — automatically adjusting as the network grows.</div>
   </div>
   <div class="idx">
     <div class="idx-title" data-i18n="demurrage-title">Demurrage — Incentive to Circulate</div>
@@ -1174,9 +1183,9 @@ en:{
   'no-humans':'No humans registered yet.\n\nDownload the Aequitas Android App and be the first human on the chain!',
   'reg-stats':'Registry Stats','total-humans':'Total Humans',
   'idx-title':'Aequitas Index — Real-Time Economic Equality Score',
-  'idx-desc':'The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. It captures the complete balance distribution across every verified human simultaneously. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds the same AEQ). <strong style="color:var(--red)">100 = total concentration</strong> (one wallet holds all AEQ). Bitcoin Gini ≈ 0.85 (Index 85) · South Africa (world record) ≈ 0.63 · Scandinavia ≈ 0.27 · Aequitas target: below 0.20 — enforced automatically, no governance required.',
+  'idx-desc':'The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. It captures the complete balance distribution across every verified human simultaneously. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds the same AEQ). <strong style="color:var(--red)">100 = total concentration</strong> (one wallet holds all AEQ). Bitcoin Gini ≈ 0.85 (Index 85) · South Africa (world record) ≈ 0.63 · Scandinavia ≈ 0.27 · Aequitas long-term target: Gini below 0.20 (Index below 20) — enforced by the wealth cap and redistribution pools.',
   'gini-what-title':'What is the Gini Coefficient?',
-  'gini-what-text':'Developed by Italian statistician Corrado Gini (1912). Measures wealth distribution by comparing actual balances against a hypothetical perfectly equal baseline — visualized as the Lorenz curve. Scale: 0 (everyone holds the same) to 1 (one person holds everything). Used by World Bank, OECD, UN to compare countries. Reference values: Bitcoin ≈ 0.85 · South Africa (world record) ≈ 0.63 · USA ≈ 0.41 · Germany ≈ 0.31 · Sweden ≈ 0.27 · Aequitas target: below 0.20.',
+  'gini-what-text':'Developed by Italian statistician Corrado Gini (1912). Measures wealth distribution by comparing actual balances against a hypothetical perfectly equal baseline — visualized as the Lorenz curve. Scale: 0 (everyone holds the same) to 1 (one person holds everything). Used by World Bank, OECD, UN to compare countries. Reference values: Bitcoin ≈ 0.85 · South Africa (world record) ≈ 0.63 · USA ≈ 0.41 · Germany ≈ 0.31 · Sweden ≈ 0.27 · Aequitas long-term target: Gini below 0.20 — enforced by the wealth cap at scale (bootstrap: sliding cap 5×→25× per human).',
   'gini-calc-title':'How is the Aequitas Index calculated?',
   'gini-calc-text':'All AEQ balances of verified humans are collected. The formula computes the mean absolute difference between every possible pair of balances, normalized by population squared (n²) and the mean balance (x̄). Result 0–1 multiplied by 100 = Aequitas Index. Updated on-chain after every registration, monthly demurrage run, pool payout, and wealth cap event — via keeper calling updateGini().',
   'gini-why-title':'Why Gini — and not a simpler metric?',
@@ -1193,12 +1202,12 @@ en:{
   'ubi-pool':'UBI Pool','ubi-pool-desc':'20% of all fees → all verified humans equally, every 24 hours',
   'treasury':'Treasury','treasury-desc':'10% of all fees → protocol development and maintenance',
   'phases-title':'Protocol Phases',
-  'phases-desc':'Phase boundaries define network growth milestones. The wealth cap multiplier is currently fixed at 25× (matching the live Go code constant wealthCapMultiplier = 25.0) — phase-based automatic tightening is a planned future protocol upgrade.',
-  'p0':'Bootstrap · &lt;100 humans · Wealth Cap: 25× average balance · Currently active',
-  'p1':'Growth · 100–10,000 humans · Wealth Cap: 25× (planned tightening: 20×)',
-  'p2':'Stability · 10,000–1M humans · Wealth Cap: 25× (planned tightening: 10×)',
-  'p3':'Maturity · 1M+ humans · Wealth Cap: 25× (planned tightening: 5×)',
-  'wealth-cap-explain':'The Wealth Cap is currently set to 25× the average AEQ balance across all verified humans. This is a fixed constant in the live Go protocol code. The cap is always relative to the live average balance — so it automatically scales as the network grows.',
+  'phases-desc':'The wealth cap uses a bootstrap multiplier during Phase 0: max(5, min(N, 25))× average balance. With 1–4 humans: 5× average. Each new human adds 1×. At 25+ humans: locks permanently at 25×. Phase 1+ maintains 25× fixed. All transitions trigger automatically by human count — no governance, no admin key.',
+  'p0':'Bootstrap · &lt;100 humans · Wealth Cap: max(5,min(N,25))× average · Slides 5×→25× until 25th human · Currently active',
+  'p1':'Growth · 100–10,000 humans · Wealth Cap: 25× average balance',
+  'p2':'Stability · 10,000–1M humans · Wealth Cap: 25× average balance',
+  'p3':'Maturity · 1M+ humans · Wealth Cap: 25× average balance',
+  'wealth-cap-explain':'The Wealth Cap in Phase 0 (Bootstrap) uses max(5, min(N, 25))× average AEQ balance, where N = registered humans. 1–4 humans: cap = 5× average. Each new human adds 1×. 25+ humans: locked permanently at 25×. The cap always scales with the live average balance.',
   'demurrage-title':'Demurrage — Incentive to Circulate',
   'demurrage-desc':'Aequitas implements a demurrage mechanism inspired by historical complementary currencies. Idle AEQ balances slowly lose value to discourage hoarding and incentivize economic participation.',
   'dem-rate-k':'Decay Rate','dem-rate-v':'0.5% per month (continuous, not stepped)',
@@ -1278,9 +1287,9 @@ de:{
   'no-humans':'Noch keine Menschen registriert.\n\nLade die Aequitas Android App herunter und sei der erste Mensch auf der Chain!',
   'reg-stats':'Registrierungsstatistiken','total-humans':'Gesamtmenschen',
   'idx-title':'Aequitas-Index — Echtzeit-Wirtschaftsgleichheits-Score',
-  'idx-desc':'Der Aequitas-Index wird aus dem <strong style="color:var(--teal)">Gini-Koeffizienten</strong> abgeleitet — dem internationalen Standard zur Messung wirtschaftlicher Ungleichheit, genutzt von Weltbank, OECD und UN. Er erfasst die vollständige Bilanzverteilung aller verifizierten Menschen gleichzeitig. <strong style="color:var(--neon)">0 = perfekte Gleichheit</strong> (jede Wallet hält gleich viel AEQ). <strong style="color:var(--red)">100 = totale Konzentration</strong> (eine Wallet hält alles). Bitcoin-Gini ≈ 0,85 (Index 85) · Südafrika (Weltrekord) ≈ 0,63 · Skandinavien ≈ 0,27 · Aequitas-Ziel: unter 0,20 — automatisch durchgesetzt, keine Governance nötig.',
+  'idx-desc':'Der Aequitas-Index wird aus dem <strong style="color:var(--teal)">Gini-Koeffizienten</strong> abgeleitet — dem internationalen Standard zur Messung wirtschaftlicher Ungleichheit, genutzt von Weltbank, OECD und UN. Er erfasst die vollständige Bilanzverteilung aller verifizierten Menschen gleichzeitig. <strong style="color:var(--neon)">0 = perfekte Gleichheit</strong> (jede Wallet hält gleich viel AEQ). <strong style="color:var(--red)">100 = totale Konzentration</strong> (eine Wallet hält alles). Bitcoin-Gini ≈ 0,85 (Index 85) · Südafrika (Weltrekord) ≈ 0,63 · Skandinavien ≈ 0,27 · Aequitas-Langzeitziel: Gini unter 0,20 (Index unter 20) — automatisch durchgesetzt durch den Vermögensobergrenze-Mechanismus.',
   'gini-what-title':'Was ist der Gini-Koeffizient?',
-  'gini-what-text':'Entwickelt vom italienischen Statistiker Corrado Gini (1912). Misst die Vermögensverteilung durch Vergleich mit einer perfekt gleichen Verteilung — visualisiert als Lorenz-Kurve. Skala: 0 (alle halten gleich viel) bis 1 (eine Person hält alles). Genutzt von Weltbank, OECD, UN. Referenzwerte: Bitcoin ≈ 0,85 · Südafrika (Weltrekord) ≈ 0,63 · USA ≈ 0,41 · Deutschland ≈ 0,31 · Schweden ≈ 0,27 · Aequitas-Ziel: unter 0,20.',
+  'gini-what-text':'Entwickelt vom italienischen Statistiker Corrado Gini (1912). Misst die Vermögensverteilung durch Vergleich mit einer perfekt gleichen Verteilung — visualisiert als Lorenz-Kurve. Skala: 0 (alle halten gleich viel) bis 1 (eine Person hält alles). Genutzt von Weltbank, OECD, UN. Referenzwerte: Bitcoin ≈ 0,85 · Südafrika (Weltrekord) ≈ 0,63 · USA ≈ 0,41 · Deutschland ≈ 0,31 · Schweden ≈ 0,27 · Aequitas-Langzeitziel: Gini unter 0,20 — durchgesetzt durch den Vermögensdeckel bei Skalierung (Bootstrap: gleitender Deckel 5×→25× pro Mensch).',
   'gini-calc-title':'Wie wird der Aequitas-Index berechnet?',
   'gini-calc-text':'Alle AEQ-Salden verifizierter Menschen werden erfasst. Die Formel berechnet die mittlere absolute Differenz zwischen allen Saldo-Paaren, normiert durch Bevölkerungsgröße im Quadrat (n²) und Durchschnittssaldo (x̄). Ergebnis 0–1 multipliziert mit 100 = Aequitas-Index. Aktualisiert On-Chain nach jeder Registrierung, jedem monatlichen Demurrage-Lauf, jeder Pool-Ausschüttung und jedem Vermögensobergrenze-Ereignis — via Keeper-Aufruf updateGini().',
   'gini-why-title':'Warum Gini — und nicht eine einfachere Kennzahl?',
@@ -1297,12 +1306,12 @@ de:{
   'ubi-pool':'UBI-Pool','ubi-pool-desc':'20% aller Gebühren → alle verifizierten Menschen gleichmäßig, alle 24 Stunden',
   'treasury':'Schatzkammer','treasury-desc':'10% aller Gebühren → Protokollentwicklung und -wartung',
   'phases-title':'Protokollphasen',
-  'phases-desc':'Phasengrenzen definieren Netzwerk-Wachstums-Meilensteine. Der Multiplikator ist derzeit fest auf 25× eingestellt (entspricht der Go-Code-Konstante wealthCapMultiplier = 25.0) — phasenbasierte Anpassung ist für ein zukünftiges Protokoll-Upgrade geplant.',
-  'p0':'Bootstrap · &lt;100 Menschen · Vermögensobergrenze: 25× Durchschnittsguthaben · Derzeit aktiv',
-  'p1':'Wachstum · 100–10.000 Menschen · Vermögensobergrenze: 25× (geplante Absenkung: 20×)',
-  'p2':'Stabilität · 10.000–1M Menschen · Vermögensobergrenze: 25× (geplante Absenkung: 10×)',
-  'p3':'Reife · 1M+ Menschen · Vermögensobergrenze: 25× (geplante Absenkung: 5×)',
-  'wealth-cap-explain':'Die Vermögensobergrenze ist derzeit auf 25× des Durchschnittsguthabens aller verifizierten Menschen festgelegt. Dies ist eine feste Konstante im Live-Go-Code. Da der Wert immer relativ zum Live-Durchschnitt gilt, skaliert die Obergrenze automatisch mit dem Netzwerkwachstum.',
+  'phases-desc':'In Phase 0 verwendet die Vermögensobergrenze einen Bootstrap-Multiplikator: max(5, min(N, 25))× Durchschnittsguthaben. Mit 1–4 Menschen: 5× Durchschnitt. Jeder neue Mensch erhöht um 1×. Ab 25+ Menschen: dauerhaft auf 25× fixiert. Phase 1+ behält 25× fest. Alle Übergänge erfolgen automatisch — kein Governance-Vote, kein Admin-Key.',
+  'p0':'Bootstrap · &lt;100 Menschen · Vermögensobergrenze: max(5,min(N,25))× Durchschnitt · Gleitet 5×→25× bis zum 25. Menschen · Derzeit aktiv',
+  'p1':'Wachstum · 100–10.000 Menschen · Vermögensobergrenze: 25× Durchschnittsguthaben',
+  'p2':'Stabilität · 10.000–1M Menschen · Vermögensobergrenze: 25× Durchschnittsguthaben',
+  'p3':'Reife · 1M+ Menschen · Vermögensobergrenze: 25× Durchschnittsguthaben',
+  'wealth-cap-explain':'Die Vermögensobergrenze in Phase 0 (Bootstrap) verwendet max(5, min(N, 25))× Durchschnittsguthaben, wobei N = registrierte Menschen. 1–4 Menschen: 5× Durchschnitt. Jeder neue Mensch erhöht um 1×. Ab 25+ Menschen: dauerhaft 25×. Die Obergrenze skaliert stets mit dem Live-Durchschnittsguthaben.',
   'demurrage-title':'Demurrage — Anreiz zum Zirkulieren',
   'demurrage-desc':'Aequitas implementiert einen Demurrage-Mechanismus inspiriert von historischen Komplementärwährungen. Inaktive AEQ-Guthaben verlieren langsam an Wert um Hortung zu entmutigen.',
   'dem-rate-k':'Verfallsrate','dem-rate-v':'0,5% pro Monat (kontinuierlich, nicht gestuft)',
@@ -1448,12 +1457,12 @@ es:{
   'ubi-pool':'Pool UBI','ubi-pool-desc':'20% de todas las tarifas → todos los humanos verificados por igual, cada 24 horas',
   'treasury':'Tesorería','treasury-desc':'10% de todas las tarifas → desarrollo y mantenimiento del protocolo',
   'phases-title':'Fases del Protocolo',
-  'phases-desc':'Los hitos de fase definen etapas de crecimiento. El multiplicador del límite de riqueza está actualmente fijo en 25× (constante de código Go: wealthCapMultiplier = 25.0) — el ajuste automático por fases es una mejora futura planificada.',
-  'p0':'Bootstrap · &lt;100 humanos · Límite de riqueza: 25× saldo promedio · Actualmente activo',
-  'p1':'Crecimiento · 100–10,000 humanos · Límite de riqueza: 25× (reducción planificada: 20×)',
-  'p2':'Estabilidad · 10,000–1M humanos · Límite de riqueza: 25× (reducción planificada: 10×)',
-  'p3':'Madurez · 1M+ humanos · Límite de riqueza: 25× (reducción planificada: 5×)',
-  'wealth-cap-explain':'El Límite de Riqueza está actualmente fijado en 25× el saldo promedio de todos los humanos verificados. Es una constante fija en el código Go en vivo. Al ser relativo al promedio actual, se escala automáticamente con el crecimiento de la red.',
+  'phases-desc':'En Fase 0, el límite de riqueza usa un multiplicador de arranque: max(5, min(N, 25))× saldo promedio. Con 1–4 humanos: 5× promedio. Cada nuevo humano añade 1×. A 25+ humanos: fijado permanentemente en 25×. Fase 1+ mantiene 25× fijo. Todas las transiciones son automáticas — sin voto de gobernanza, sin clave de administrador.',
+  'p0':'Bootstrap · &lt;100 humanos · Límite de Riqueza: max(5,min(N,25))× promedio · Deslizamiento 5×→25× hasta el 25.º humano · Actualmente activo',
+  'p1':'Crecimiento · 100–10,000 humanos · Límite de Riqueza: 25× saldo promedio',
+  'p2':'Estabilidad · 10,000–1M humanos · Límite de Riqueza: 25× saldo promedio',
+  'p3':'Madurez · 1M+ humanos · Límite de Riqueza: 25× saldo promedio',
+  'wealth-cap-explain':'El Límite de Riqueza en Fase 0 (Bootstrap) usa max(5, min(N, 25))× saldo promedio, donde N = humanos registrados. 1–4 humanos: 5× promedio. Cada nuevo humano añade 1×. 25+ humanos: bloqueado en 25× permanentemente. El límite siempre se escala con el saldo promedio actual.',
   'btn-download-app':'DESCARGAR APP AEQUITASBIO',
   'swap-title':'🔄 Intercambiar AEQ ↔ tUSD','swap-sub':'Intercambia AEQ por tUSD (un dólar de prueba simulado) a través del pool de liquidez nativo. Se aplica una comisión del 0,1% solo a los intercambios — las transferencias ordinarias de AEQ entre personas permanecen completamente gratuitas.',
   'swap-priv-bar':'🔒 Solo 0,1% de comisión de swap · Transferencias AEQ a AEQ gratuitas · tUSD es una moneda de prueba sin valor real',
@@ -1588,12 +1597,12 @@ ru:{
   'ubi-pool':'Пул UBI','ubi-pool-desc':'20% всех комиссий → все верифицированные люди поровну, каждые 24 часа',
   'treasury':'Казначейство','treasury-desc':'10% всех комиссий → разработка и обслуживание протокола',
   'phases-title':'Фазы Протокола',
-  'phases-desc':'Переходы фаз запускаются автоматически по количеству людей — без голосования, без управления, без административных ключей.',
-  'p0':'Начальный этап · &lt;100 людей · Лимит богатства: 50× средний баланс · Сейчас активен',
-  'p1':'Рост · 100–10 000 людей · Лимит богатства: 20× средний баланс',
-  'p2':'Стабильность · 10 000–1М людей · Лимит богатства: 10× средний баланс',
-  'p3':'Зрелость · 1М+ людей · Лимит богатства: 3× средний баланс · Максимальное перераспределение',
-  'wealth-cap-explain':'Лимит Богатства устанавливается как кратное текущего среднего баланса всех верифицированных людей. Автоматически корректируется по мере роста сети.',
+  'phases-desc':'В Фазе 0 (Bootstrap) применяется скользящий множитель: max(5, min(N, 25))× средний баланс. При 1–4 людях: 5× средний. Каждый новый человек прибавляет 1×. При 25+ людях: фиксируется навсегда на 25×. Фаза 1+ сохраняет 25× фиксированным. Переходы автоматические — без голосования, без административных ключей.',
+  'p0':'Bootstrap · &lt;100 людей · Лимит богатства: max(5,min(N,25))× средний · Скользит 5×→25× до 25-го человека · Сейчас активен',
+  'p1':'Рост · 100–10 000 людей · Лимит богатства: 25× средний баланс',
+  'p2':'Стабильность · 10 000–1М людей · Лимит богатства: 25× средний баланс',
+  'p3':'Зрелость · 1М+ людей · Лимит богатства: 25× средний баланс',
+  'wealth-cap-explain':'В Фазе 0 (Bootstrap) Лимит Богатства = max(5, min(N, 25))× средний баланс AEQ, где N = количество зарегистрированных людей. 1–4 человека: 5× средний. Каждый новый человек прибавляет 1×. 25+ людей: фиксируется навсегда на 25×. Лимит всегда привязан к актуальному среднему балансу.',
   'demurrage-title':'Демередж — Стимул к Обращению',
   'demurrage-desc':'Aequitas реализует механизм демереджа, вдохновлённый историческими дополнительными валютами. Бездействующие балансы AEQ постепенно теряют стоимость для предотвращения накопления.',
   'dem-rate-k':'Скорость Распада','dem-rate-v':'0,5% в месяц (непрерывно)',
@@ -1766,9 +1775,9 @@ zh:{
   'inf-title':'6. 无算法通胀 — 固定供应公式','inf-box':'创建新AEQ的唯一事件：新的经过验证的人类注册。<br><br>总供应量 = 经过验证的人类 × 1,000 AEQ<br><br>这不是政策——它由协议执行。没有管理员可以铸造额外的AEQ，没有治理投票可以改变发行，没有预挖矿的创始人分配。AEQ是唯一一种总供应量完全由经过验证的活人数量决定的加密货币。',
   'phases-desc':'阶段边界定义网络增长里程碑。启动阶段（&lt;25名注册人类）财富上限使用滑动乘数：max(5,min(N,25))×平均余额 — 1–4人时为5×，每增加1人加1×，25+人时达到完整25×。防止早期参与者在真正参与形成前集中财富。',
   'p0':'引导期 · 不足100人 · 上限：max(5,min(N,25))×平均 · 滑动5×→25×直至25人 · 当前激活',
-  'p1':'增长期 · 100–10,000人 · 财富上限：25×（计划收紧至：20×）',
-  'p2':'稳定期 · 10,000–1M人 · 财富上限：25×（计划收紧至：10×）',
-  'p3':'成熟期 · 1M+人 · 财富上限：25×（计划收紧至：5×）',
+  'p1':'增长期 · 100–10,000人 · 财富上限：25×平均余额',
+  'p2':'稳定期 · 10,000–1M人 · 财富上限：25×平均余额',
+  'p3':'成熟期 · 1M+人 · 财富上限：25×平均余额',
   'wealth-cap-explain':'财富上限在启动阶段动态调整：max(5, min(N, 25)) × 平均余额，N为已注册人类数。1–4人时：5×（5,000 AEQ）。每新增1人多1×。25+人时：永久25×（25,000 AEQ）。防止早期采用者在真实参与形成前过度积累。始终相对于当前平均余额。',
   'btn-download-app':'下载 AEQUITASBIO 应用',
   'swap-title':'🔄 兑换 AEQ ↔ tUSD','swap-sub':'通过原生流动性池将AEQ兑换为tUSD（模拟测试美元）。0.1%手续费仅适用于兑换 — 人与人之间的普通AEQ转账完全免费。',
@@ -1902,12 +1911,12 @@ id:{
   'cap-title':'4. BATAS KEKAYAAN — Penerapan Keadilan Matematis','cap-box':'Batas = 25× saldo AEQ rata-rata semua manusia terverifikasi saat ini<br>Otomatis menyesuaikan seiring pertumbuhan jaringan dan perubahan saldo<br>Berlaku untuk SEMUA alamat kecuali 4 alamat pool protokol<br>Kelebihan AEQ langsung didistribusikan ulang ke 4 pool redistribusi<br>Tanpa intervensi manual — diterapkan di tingkat protokol pada setiap transfer masuk',
   'ubi-title':'5. PENDAPATAN DASAR UNIVERSAL — Redistribusi Harian','ubi-box':'Sumber pendapatan Pool UBI:<br>· 20% semua biaya swap dari pool AMM AEQ↔tUSD<br>· Overflow dari penerapan batas kekayaan<br>· Biaya demurrage dari akun tidak aktif<br>· Escrow tidak aktif dirilis setelah 4 tahun<br><br>Distribusi: Setiap 24 jam, seluruh saldo pool UBI dibagi rata di antara semua manusia terverifikasi yang terdaftar. Pool direset ke nol dan segera mulai diisi ulang dari aktivitas protokol yang berkelanjutan.',
   'inf-title':'6. TANPA INFLASI ALGORITMIK — Formula Pasokan Tetap','inf-box':'SATU-SATUNYA peristiwa yang menciptakan AEQ baru: manusia terverifikasi baru mendaftar.<br><br>Total Pasokan = Manusia Terverifikasi × 1.000 AEQ<br><br>Ini bukan kebijakan — ini diterapkan oleh protokol. Tidak ada admin yang dapat mencetak AEQ tambahan, tidak ada suara tata kelola yang dapat mengubah penerbitan. AEQ adalah satu-satunya cryptocurrency di mana total pasokan ditentukan semata-mata oleh jumlah manusia hidup yang terverifikasi.',
-  'phases-desc':'Batas fase mendefinisikan tonggak pertumbuhan jaringan. Pengganda batas kekayaan saat ini ditetapkan pada 25× (konstanta kode Go: wealthCapMultiplier = 25.0) — penyesuaian otomatis berbasis fase direncanakan untuk peningkatan protokol mendatang.',
-  'p0':'Bootstrap · &lt;100 manusia · Batas Kekayaan: 25× saldo rata-rata · Saat ini aktif',
-  'p1':'Pertumbuhan · 100–10.000 manusia · Batas Kekayaan: 25× (penurunan terencana: 20×)',
-  'p2':'Stabilitas · 10.000–1M manusia · Batas Kekayaan: 25× (penurunan terencana: 10×)',
-  'p3':'Kematangan · 1M+ manusia · Batas Kekayaan: 25× (penurunan terencana: 5×)',
-  'wealth-cap-explain':'Batas Kekayaan saat ini ditetapkan pada 25× saldo AEQ rata-rata semua manusia terverifikasi. Ini adalah konstanta tetap dalam kode Go langsung. Karena selalu relatif terhadap rata-rata saat ini, batas secara otomatis diskalakan seiring pertumbuhan jaringan.',
+  'phases-desc':'Pada Fase 0, batas kekayaan menggunakan pengganda bootstrap: max(5, min(N, 25))× saldo rata-rata. Dengan 1–4 manusia: 5× rata-rata. Setiap manusia baru menambah 1×. Pada 25+ manusia: terkunci permanen di 25×. Fase 1+ mempertahankan 25× tetap. Semua transisi otomatis — tanpa pemungutan suara, tanpa kunci admin.',
+  'p0':'Bootstrap · &lt;100 manusia · Batas Kekayaan: max(5,min(N,25))× rata-rata · Meluncur 5×→25× hingga manusia ke-25 · Saat ini aktif',
+  'p1':'Pertumbuhan · 100–10.000 manusia · Batas Kekayaan: 25× saldo rata-rata',
+  'p2':'Stabilitas · 10.000–1M manusia · Batas Kekayaan: 25× saldo rata-rata',
+  'p3':'Kematangan · 1M+ manusia · Batas Kekayaan: 25× saldo rata-rata',
+  'wealth-cap-explain':'Batas Kekayaan pada Fase 0 (Bootstrap) menggunakan max(5, min(N, 25))× saldo AEQ rata-rata, di mana N = manusia terdaftar. 1–4 manusia: 5× rata-rata. Setiap manusia baru menambah 1×. 25+ manusia: terkunci permanen di 25×. Batas selalu mengikuti saldo rata-rata saat ini.',
   'btn-download-app':'UNDUH APLIKASI AEQUITASBIO',
   'swap-title':'🔄 Tukar AEQ ↔ tUSD','swap-sub':'Tukarkan AEQ dengan tUSD (dolar uji simulasi) melalui pool likuiditas asli. Biaya 0,1% hanya berlaku untuk pertukaran — transfer AEQ biasa antar orang tetap sepenuhnya gratis.',
   'swap-priv-bar':'🔒 Hanya 0,1% biaya swap · Transfer AEQ-ke-AEQ gratis · tUSD adalah mata uang uji tanpa nilai nyata',
@@ -2041,12 +2050,12 @@ it:{
   'cap-title':'4. LIMITE DI RICCHEZZA — Applicazione dell\'Equità Matematica','cap-box':'Bootstrap: max(5,min(N,25))× saldo AEQ medio<br>1–4 umani: 5× (5.000 AEQ) · Cresce 1× per umano · 25+: 25× (25.000 AEQ) permanente<br>Si applica a TUTTI gli indirizzi tranne i 4 pool del protocollo<br>L\'eccesso di AEQ viene immediatamente ridistribuito · Nessun intervento manuale',
   'ubi-title':'5. REDDITO UNIVERSALE DI BASE — Ridistribuzione Giornaliera','ubi-box':'Fonti di reddito del Pool UBI:<br>· 20% di tutte le commissioni di swap del pool AMM AEQ↔tUSD<br>· Overflow dall\'applicazione del limite di ricchezza<br>· Addebiti di demurrage da account inattivi<br>· Escrow inattivo rilasciato dopo 4 anni<br><br>Distribuzione: Ogni 24 ore, l\'intero saldo del pool UBI viene diviso equamente tra tutti gli umani verificati registrati. Il pool si azzera e inizia immediatamente a riempirsi di nuovo dall\'attività continua del protocollo.',
   'inf-title':'6. NESSUNA INFLAZIONE ALGORITMICA — Formula di Fornitura Fissa','inf-box':'L\'UNICO evento che crea nuovo AEQ: un nuovo umano verificato si registra.<br><br>Offerta Totale = Umani Verificati × 1.000 AEQ<br><br>Questo non è una politica — è applicato dal protocollo. Nessun amministratore può coniare AEQ aggiuntivo, nessun voto di governance può modificare l\'emissione. AEQ è l\'unica criptovaluta in cui l\'offerta totale è determinata esclusivamente dal numero di esseri umani vivi verificati.',
-  'phases-desc':'I confini di fase definiscono le tappe di crescita della rete. Durante il bootstrap (&lt;25 umani registrati) il limite usa un moltiplicatore scorrevole: max(5,min(N,25))× media — 5× con 1–4 umani, cresce di 1× per ogni nuovo umano, raggiunge il pieno 25× a 25+ umani. Previene la concentrazione iniziale prima che esista una reale partecipazione.',
-  'p0':'Bootstrap · &lt;100 umani · Limite di Ricchezza: 25× saldo medio · Attualmente attivo',
-  'p1':'Crescita · 100–10.000 umani · Limite di Ricchezza: 25× (riduzione pianificata: 20×)',
-  'p2':'Stabilità · 10.000–1M umani · Limite di Ricchezza: 25× (riduzione pianificata: 10×)',
-  'p3':'Maturità · 1M+ umani · Limite di Ricchezza: 25× (riduzione pianificata: 5×)',
-  'wealth-cap-explain':'Il Limite di Ricchezza è attualmente impostato a 25× il saldo AEQ medio di tutti gli umani verificati. Questa è una costante fissa nel codice Go in produzione. Poiché è sempre relativo alla media corrente, il limite si adatta automaticamente alla crescita della rete.',
+  'phases-desc':'In Fase 0 (Bootstrap) il limite di ricchezza usa un moltiplicatore scorrevole: max(5, min(N, 25))× saldo medio. Con 1–4 umani: 5× media. Ogni nuovo umano aggiunge 1×. A 25+ umani: bloccato permanentemente a 25×. Fase 1+ mantiene 25× fisso. Tutte le transizioni sono automatiche — nessun voto, nessuna chiave admin.',
+  'p0':'Bootstrap · &lt;100 umani · Limite di Ricchezza: max(5,min(N,25))× media · Scorre 5×→25× fino al 25° umano · Attualmente attivo',
+  'p1':'Crescita · 100–10.000 umani · Limite di Ricchezza: 25× saldo medio',
+  'p2':'Stabilità · 10.000–1M umani · Limite di Ricchezza: 25× saldo medio',
+  'p3':'Maturità · 1M+ umani · Limite di Ricchezza: 25× saldo medio',
+  'wealth-cap-explain':'Il Limite di Ricchezza in Fase 0 (Bootstrap) usa max(5, min(N, 25))× saldo AEQ medio, dove N = umani registrati. 1–4 umani: 5× media. Ogni nuovo umano aggiunge 1×. 25+ umani: bloccato permanentemente a 25×. Il limite si adatta sempre al saldo medio corrente.',
   'btn-download-app':'SCARICA L\'APP AEQUITASBIO',
   'swap-title':'🔄 Scambia AEQ ↔ tUSD','swap-sub':'Scambia AEQ con tUSD (un dollaro di test simulato) attraverso il pool di liquidità nativo. Una commissione dello 0,1% si applica solo agli scambi — i normali trasferimenti AEQ tra persone rimangono completamente gratuiti.',
   'swap-priv-bar':'🔒 Solo 0,1% commissione swap · Trasferimenti AEQ-AEQ gratuiti · tUSD è una valuta di test senza valore reale',
@@ -2233,7 +2242,7 @@ async function loadStatus() {
 
     if (d.index !== undefined) {
       document.getElementById('idx-bar').style.width = Math.min(d.index, 100) + '%';
-      const phases = ['Phase 0: Bootstrap — building the network', 'Phase 1: Growth — expanding human registry', 'Phase 2: Stability — redistribution active', 'Phase 3: Maturity — full decentralization'];
+      const phases = ['Phase 0: Bootstrap — sliding wealth cap 5×→25× (active)', 'Phase 1: Growth — expanding human registry (cap: 25×)', 'Phase 2: Stability — redistribution active (cap: 25×)', 'Phase 3: Maturity — full decentralization (cap: 25×)'];
       document.getElementById('idx-phase-desc').textContent = phases[d.phase || 0] || 'Phase ' + (d.phase || 0);
     }
   } catch (e) {}
@@ -2500,6 +2509,13 @@ function setPctAmount(side, pct) {
     document.getElementById('addliq-tusd').value = amt > 0 ? amt.toFixed(6) : '';
     updateLiquidityRatio('tusd');
   }
+}
+
+function setSwapPct(pct) {
+  const bal = swapDirection === 'aeq_to_tusd' ? myAEQBalance : myTUSDBalance;
+  const amt = bal * pct;
+  document.getElementById('swap-amount').value = amt > 0 ? amt.toFixed(6) : '';
+  updateFeeEstimate();
 }
 
 // Signs a fixed, human-readable message describing exactly what's being
