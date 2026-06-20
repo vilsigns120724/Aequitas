@@ -251,3 +251,66 @@ func (cs *ChainState) SaveBioHash(bioHash, walletAddress string) {
 		fmt.Printf("[REGISTER] Warning: could not sync bio_hashes: %v\n", err)
 	}
 }
+
+// ─── NULLIFIERS ───────────────────────────────────────────────────────────────
+//
+// A nullifier is a one-way derivation of the biometric secret:
+//   nullifier = SHA256(bioHash + ":aequitas-ubi-v1")
+//
+// It is computed by the client and stored on-chain after a successful
+// registration. Because the same biometric always produces the same bioHash
+// (on the same device), it always produces the same nullifier — so a second
+// registration attempt reveals an already-used nullifier and is rejected,
+// even if the user switches wallets. The server never sees the raw bioHash
+// in this step, only its SHA256 derivative. In a future ZK upgrade the
+// nullifier will be generated inside the Groth16 circuit itself (Semaphore
+// style), removing even the SHA256 link.
+
+func (cs *ChainState) IsNullifierUsed(nullifier string) bool {
+	cs.mu.RLock()
+	_, inMem := cs.nullifiers[nullifier]
+	cs.mu.RUnlock()
+	if inMem {
+		return true
+	}
+	if cs.db == nil {
+		return false
+	}
+	var wallet string
+	err := cs.db.QueryRow(`SELECT wallet_address FROM nullifiers WHERE nullifier = $1`, nullifier).Scan(&wallet)
+	return err == nil && wallet != ""
+}
+
+func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) {
+	if nullifier == "" {
+		return
+	}
+	walletAddress = strings.ToLower(walletAddress)
+	cs.mu.Lock()
+	cs.nullifiers[nullifier] = walletAddress
+	cs.mu.Unlock()
+	if cs.db == nil {
+		return
+	}
+	if _, err := cs.db.Exec(
+		`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT (nullifier) DO NOTHING`,
+		nullifier, walletAddress,
+	); err != nil {
+		fmt.Printf("[NULLIFIER] Warning: could not persist nullifier: %v\n", err)
+	}
+}
+
+func (cs *ChainState) GetWalletByNullifier(nullifier string) string {
+	cs.mu.RLock()
+	w, ok := cs.nullifiers[nullifier]
+	cs.mu.RUnlock()
+	if ok {
+		return w
+	}
+	if cs.db == nil {
+		return ""
+	}
+	var wallet string
+	cs.db.QueryRow(`SELECT wallet_address FROM nullifiers WHERE nullifier = $1`, nullifier).Scan(&wallet)
+	return wallet
+}

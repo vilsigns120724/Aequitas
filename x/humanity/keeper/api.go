@@ -61,6 +61,7 @@ mux.HandleFunc("/api/register", a.handleRegister)
 mux.HandleFunc("/api/balance", a.handleBalance)
 mux.HandleFunc("/api/check-registration", a.handleCheckRegistration)
 mux.HandleFunc("/api/check-registration-by-biohash", a.handleCheckRegistrationByBioHash)
+mux.HandleFunc("/api/check-nullifier", a.handleCheckNullifier)
 mux.HandleFunc("/api/swap", a.handleSwap)
 mux.HandleFunc("/api/add-liquidity", a.handleAddLiquidity)
 mux.HandleFunc("/api/remove-liquidity", a.handleRemoveLiquidity)
@@ -299,6 +300,23 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "wallet":     wallet,
 "balance":    balance,
 "is_human":   isHuman,
+})
+}
+
+// handleCheckNullifier lets the client ask "has this nullifier been used?"
+// before submitting a registration. GET /api/check-nullifier?n=<hex>
+func (a *APIServer) handleCheckNullifier(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+nullifier := r.URL.Query().Get("n")
+if nullifier == "" {
+json.NewEncoder(w).Encode(map[string]interface{}{"used": false})
+return
+}
+wallet := a.state.GetWalletByNullifier(nullifier)
+json.NewEncoder(w).Encode(map[string]interface{}{
+"used":   wallet != "",
+"wallet": wallet,
 })
 }
 

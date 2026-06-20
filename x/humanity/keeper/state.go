@@ -79,16 +79,18 @@ TotalLPShares float64 `json:"total_lp_shares"`
 }
 
 type ChainState struct {
-mu       sync.RWMutex
-accounts map[string]*AccountState
-pool     *PoolState
-db       *sql.DB
-useDB    bool
+mu        sync.RWMutex
+accounts  map[string]*AccountState
+pool      *PoolState
+db        *sql.DB
+useDB     bool
+nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
 }
 
 func NewChainState(dataFile string) *ChainState {
 cs := &ChainState{
-accounts: make(map[string]*AccountState),
+accounts:  make(map[string]*AccountState),
+nullifiers: make(map[string]string),
 }
 
 // Try PostgreSQL first
@@ -184,6 +186,14 @@ reserve_tusd FLOAT NOT NULL DEFAULT 0,
 total_lp_shares FLOAT NOT NULL DEFAULT 0
 )`)
 cs.db.Exec(`ALTER TABLE liquidity_pool ADD COLUMN IF NOT EXISTS total_lp_shares FLOAT NOT NULL DEFAULT 0`)
+// nullifiers stores the one-way SHA256 derivative of each identity's bioHash.
+// Checked at registration time to prevent the same biometric from registering
+// with a second wallet. The nullifier itself never reveals the bioHash.
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS nullifiers (
+nullifier TEXT PRIMARY KEY,
+wallet_address TEXT NOT NULL,
+registered_at TIMESTAMP DEFAULT NOW()
+)`)
 }
 
 func (cs *ChainState) loadFromDB() {
@@ -247,6 +257,17 @@ if mergedCount > 0 {
 fmt.Printf(" (%d mixed-case duplicates merged)", mergedCount)
 }
 fmt.Println()
+
+// Load nullifiers into memory so IsNullifierUsed is O(1) without a DB hit.
+if nrows, nerr := cs.db.Query("SELECT nullifier, wallet_address FROM nullifiers"); nerr == nil {
+defer nrows.Close()
+for nrows.Next() {
+var nul, wal string
+nrows.Scan(&nul, &wal)
+cs.nullifiers[nul] = wal
+}
+fmt.Printf("✓ Loaded %d nullifiers from PostgreSQL\n", len(cs.nullifiers))
+}
 
 cs.loadOrInitPool()
 }

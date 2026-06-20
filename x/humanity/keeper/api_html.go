@@ -2943,6 +2943,16 @@ async function doRegister() {
       params: [messageHash, waddr]
     });
 
+    // Compute nullifier = SHA256(bioHash + ":aequitas-ubi-v1")
+    // Stored on-chain to prevent the same biometric registering a second wallet.
+    let nullifier = '';
+    const bioHashForNullifier = pendingBioHash || proofData.bioHashKey || '';
+    if (bioHashForNullifier) {
+      const enc = new TextEncoder();
+      const buf = await crypto.subtle.digest('SHA-256', enc.encode(bioHashForNullifier + ':aequitas-ubi-v1'));
+      nullifier = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
     addLog('Registering on Aequitas V7...', 'info');
     const r = await fetch('/api/register', {
       method: 'POST',
@@ -2952,7 +2962,8 @@ async function doRegister() {
         pA: proofData.pA, pB: proofData.pB, pC: proofData.pC, pubSignals: proofData.pubSignals,
         signature: signature,
         bioHash: pendingBioHash || '',
-        bioHashKey: proofData.bioHashKey || ''
+        bioHashKey: proofData.bioHashKey || '',
+        nullifier: nullifier
       })
     });
     const d = await r.json();

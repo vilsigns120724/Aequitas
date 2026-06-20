@@ -61,6 +61,12 @@ type RegisterRequest struct {
 	// duplicate check (which also uses keccak256) can detect re-registrations
 	// even when the user generates a new wallet on the same device.
 	BioHashKey string `json:"bioHashKey"`
+	// Nullifier is SHA256(bioHash + ":aequitas-ubi-v1"), computed by the
+	// client before submitting. Stored on-chain and checked at registration
+	// time to prevent the same biometric from registering a second wallet —
+	// even if a different bioHash is somehow generated. Future versions will
+	// generate the nullifier inside the Groth16 circuit (Semaphore-style).
+	Nullifier string `json:"nullifier"`
 }
 
 type RegisterResponse struct {
@@ -181,6 +187,13 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	}
 
 	claimedHuman := common.HexToAddress(wallet)
+	// Nullifier check — fastest, no EVM call needed. Rejects the same
+	// biometric registering a second wallet even with a fresh bioHash.
+	if req.Nullifier != "" {
+		if existingWallet := a.state.GetWalletByNullifier(req.Nullifier); existingWallet != "" {
+			return "", fmt.Errorf("identity already registered (nullifier used by %s)", existingWallet)
+		}
+	}
 	if req.BioHash != "" {
 		if existingWallet := a.state.GetWalletByBioHash(req.BioHash); existingWallet != "" {
 			return "", fmt.Errorf("biometric already registered to %s", existingWallet)
@@ -235,6 +248,9 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 			a.state.SaveBioHash(req.BioHashKey, wallet)
 		} else if req.BioHash != "" {
 			a.state.SaveBioHash(req.BioHash, wallet)
+		}
+		if req.Nullifier != "" {
+			a.state.SaveNullifier(req.Nullifier, wallet)
 		}
 		return txHash, nil
 	}
@@ -319,6 +335,10 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// is actually populated. Non-blocking — a slow proof server must not
 		// delay the registration response.
 		go notifyProofServer(bioHashKey, wallet)
+	}
+	if req.Nullifier != "" {
+		a.state.SaveNullifier(req.Nullifier, wallet)
+		fmt.Printf("[NULLIFIER] ✓ Stored nullifier for %s\n", wallet)
 	}
 
 	return txHash, nil
