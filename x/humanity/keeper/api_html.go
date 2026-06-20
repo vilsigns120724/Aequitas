@@ -230,6 +230,14 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 .pool4-amount{font-size:1.05rem;font-weight:700;font-family:var(--font-display);margin-bottom:3px}
 .pool4-timer{font-size:0.59rem;font-weight:600;margin-bottom:7px}
 .pool4-desc{font-size:0.57rem;color:var(--muted);line-height:1.75}
+/* ── SUB-TAB NAVIGATION ─────────────────────────────────────── */
+.stabs{display:flex;gap:2px;padding:8px 20px 0;overflow-x:auto;background:rgba(8,0,16,0.5);border-bottom:1px solid rgba(139,92,246,0.1);-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.stabs::-webkit-scrollbar{display:none}
+.stab{padding:7px 15px;font-size:0.6rem;color:var(--muted);cursor:pointer;border-radius:20px 20px 0 0;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;border:1px solid transparent;border-bottom:none;flex-shrink:0}
+.stab:hover{color:var(--text);background:rgba(139,92,246,0.08)}
+.stab.active{color:var(--purple);background:rgba(139,92,246,0.12);border-color:rgba(139,92,246,0.2)}
+.stab-panel{display:none}
+.stab-panel.active{display:block}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.0/ethers.umd.min.js"></script>
 </head>
@@ -258,13 +266,11 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   </div>
 </header>
 <div class="tabs">
-  <div class="tab active" onclick="showTab('register',this)" data-i18n="tab-register">🔐 Register</div>
-  <div class="tab" onclick="showTab('explorer',this)" data-i18n="tab-explorer">🔍 Explorer</div>
-  <div class="tab" onclick="showTab('humans',this)" data-i18n="tab-humans">👥 Humans</div>
-  <div class="tab" onclick="showTab('index',this)" data-i18n="tab-index">📊 Index</div>
-  <div class="tab" onclick="showTab('network',this)" data-i18n="tab-network">🌐 Network</div>
-  <div class="tab" onclick="showTab('protocol',this)" data-i18n="tab-protocol">📜 Protocol V7</div>
-  <div class="tab" onclick="showTab('swap',this)" data-i18n="tab-swap">🔄 Swap</div>
+  <div class="tab active" onclick="showTab('register',this)">🔐 Register</div>
+  <div class="tab" onclick="showTab('explorer',this)">🔍 Explorer</div>
+  <div class="tab" onclick="showTab('index',this)">⚖️ Equality</div>
+  <div class="tab" onclick="showTab('swap',this)">🔄 Swap</div>
+  <div class="tab" onclick="showTab('network',this)">🌐 Network</div>
 </div>
 
 <!-- REGISTER -->
@@ -343,8 +349,13 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 </div>
 </div>
 
-<!-- EXPLORER -->
+<!-- EXPLORER + HUMANS -->
 <div id="tab-explorer" class="tab-content">
+<nav class="stabs">
+  <div class="stab active" onclick="showStab('tab-explorer','sep-blocks',this)">📦 Blocks</div>
+  <div class="stab" onclick="showStab('tab-explorer','sep-humans',this)">👥 Humans</div>
+</nav>
+<div id="sep-blocks" class="stab-panel active">
 <div class="hero">
   <div class="section-label" data-i18n="live-stats">Live Chain Statistics</div>
   <div class="stats-grid">
@@ -414,9 +425,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   </div>
 </div>
 </div>
-
-<!-- HUMANS -->
-<div id="tab-humans" class="tab-content">
+<div id="sep-humans" class="stab-panel">
 <div class="hero">
   <div class="section-label" data-i18n="humans-title">Verified Humans on Aequitas Chain</div>
   <div class="info-banner">
@@ -470,6 +479,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;line-height:1.7">Your AEQ remains in your wallet — it is tied to your private key, not your phone. You can still access your wallet via MetaMask with your seed phrase. Wallet recovery is independent of the biometric registration.</div>
     </div>
   </div>
+</div>
 </div>
 </div>
 
@@ -593,8 +603,15 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 </div>
 </div>
 
-<!-- INDEX -->
+<!-- INDEX (Equality) -->
 <div id="tab-index" class="tab-content">
+<nav class="stabs">
+  <div class="stab active" onclick="showStab('tab-index','eqi-score',this)">📊 Score</div>
+  <div class="stab" onclick="showStab('tab-index','eqi-economy',this)">💸 Economy</div>
+  <div class="stab" onclick="showStab('tab-index','eqi-charts',this)">📈 Charts</div>
+</nav>
+<div id="eqi-score" class="stab-panel active">
+<div class="is">
 <div class="is">
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title" data-i18n="idx-title">Aequitas Index — Real-Time Economic Equality Score</div>
@@ -678,7 +695,11 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div style="font-size:0.63rem;color:var(--muted);line-height:1.9" data-i18n="gini-why-text">A simple "richest vs. poorest" ratio is easy to game and misses what happens in the middle: a network could have 10,000 people, a low min/max spread, yet 90% of all AEQ concentrated in 100 wallets. The Gini coefficient detects this — a ratio does not. It captures the complete distribution across all verified humans in a single auditable number. Because Aequitas publishes this number on-chain (via updateGini), it is transparent, tamper-evident, and globally verifiable. The protocol uses it as the primary input signal for automatic phase transitions, wealth cap multiplier selection, and redistribution intensity — creating a self-correcting economic system governed entirely by mathematics. No human, no committee, no foundation can override the index reading or the mechanisms it triggers.</div>
     </div>
   </div>
-  <div class="idx" style="grid-column:1/-1">
+</div>
+</div>
+<div id="eqi-economy" class="stab-panel">
+<div class="is">
+<div class="idx" style="grid-column:1/-1">
     <div class="idx-title" data-i18n="pools-title">Redistribution Pools — Daily Economic Rebalancing</div>
     <div class="idx-desc" data-i18n="pools-desc">Every swap fee, demurrage charge, and wealth cap overflow flows automatically into four on-chain pools. No manual intervention, no admin key, no governance vote — the protocol distributes everything through code. Each pool pays out once per 24 hours.</div>
 
@@ -776,7 +797,11 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <tr><td data-i18n="dem-warn-k">Warning System</td><td data-i18n="dem-warn-v">14-day notice (once) + 7-day repeated reminder at login</td></tr>
     </table>
   </div>
-  <div class="idx" style="grid-column:1/-1">
+</div>
+</div>
+<div id="eqi-charts" class="stab-panel">
+<div class="is">
+<div class="idx" style="grid-column:1/-1">
     <div class="idx-title">Gini Index History</div>
     <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Recorded after each UBI distribution. Shows how equality evolves as the network grows.</div>
     <canvas id="gini-history-chart" height="120" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
@@ -798,11 +823,76 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   </div>
 </div>
 </div>
+</div>
 
-<!-- NETWORK -->
+<!-- NETWORK (merged) -->
 <div id="tab-network" class="tab-content">
+<nav class="stabs">
+  <div class="stab active" onclick="showStab('tab-network','net-overview',this)">🌐 Overview</div>
+  <div class="stab" onclick="showStab('tab-network','net-runnode',this)">⚙️ Run a Node</div>
+  <div class="stab" onclick="showStab('tab-network','net-protocol',this)">📜 Protocol V7</div>
+</nav>
+<div id="net-overview" class="stab-panel active">
 <div class="ns">
-  <div class="nc" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(245,166,35,0.06),rgba(13,8,32,0.9));border-color:rgba(245,166,35,0.2)">
+<div class="nc" style="grid-column:1/-1">
+    <div class="nc-title" data-i18n="nodes-title">Active Nodes — Current Network Topology</div>
+    <div style="font-size:0.65rem;color:var(--muted);line-height:1.8;margin-bottom:12px" data-i18n="nodes-desc">The Aequitas network currently operates on two geographically distributed nodes. Both participate in block production, state synchronization, and API serving. They communicate peer-to-peer via libp2p and synchronize block state via HTTP. Both share access to the same PostgreSQL database for persistent state. The network is designed to support additional nodes — any third-party operator can join by setting the bootstrap peer address.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="nbox">
+        <div class="nstat"><span class="ndot"></span><span data-i18n="node1">Node 1 — Railway (Primary)</span></div>
+        <div class="nurl">aequitas-production-9fba.up.railway.app</div>
+        <div class="ndesc" data-i18n="node1-desc">Primary API · Block producer · UBI distribution · P2P bootstrap · PostgreSQL · RPC for MetaMask</div>
+        <div style="margin-top:6px;font-size:0.57rem;color:rgba(0,255,209,0.5)">IS_PRIMARY_NODE=true · Daily pool distributions</div>
+      </div>
+      <div class="nbox">
+        <div class="nstat"><span class="ndot"></span><span data-i18n="node2">Node 2 — Render (Secondary)</span></div>
+        <div class="nurl">aequitas-node-2.onrender.com</div>
+        <div class="ndesc" data-i18n="node2-desc">Secondary API · Block producer · P2P peer · HTTP sync · Shared PostgreSQL state</div>
+        <div style="margin-top:6px;font-size:0.57rem;color:rgba(139,92,246,0.5)">Redundancy · Geographic distribution</div>
+      </div>
+    </div>
+  </div>
+  <div class="nc">
+    <div class="nc-title" data-i18n="bootstrap-title">Connect a New Node</div>
+    <div style="font-size:0.63rem;color:var(--muted);line-height:1.8;margin-bottom:10px" data-i18n="bootstrap-desc">To run your own Aequitas node, set the PEER_NODES environment variable to the bootstrap node address below. Your node will automatically sync the full chain state and begin participating in block production.</div>
+    <div style="font-size:0.6rem;color:var(--muted);margin-bottom:6px;letter-spacing:1px">LIBP2P MULTIADDRESS</div>
+    <div class="bsbox">/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R</div>
+    <div style="font-size:0.6rem;color:var(--muted);margin-top:10px;line-height:1.7">Set in your environment: <span style="color:var(--purple);font-family:var(--font-mono)">PEER_NODES=https://aequitas.digital</span></div>
+  </div>
+  <div class="nc">
+    <div class="nc-title" data-i18n="tech-title">Technical Specifications</div>
+    <table class="spect">
+      <tr><td data-i18n="k-chainid">Chain ID</td><td>1926 (0x786)</td></tr>
+      <tr><td>Architecture</td><td style="color:var(--purple)">BlockDAG (Directed Acyclic Graph)</td></tr>
+      <tr><td>EVM Compatible</td><td style="color:var(--green)" data-i18n="evm-yes">Yes — JSON-RPC /rpc · MetaMask</td></tr>
+      <tr><td data-i18n="k-btime">Block Time</td><td>~6 seconds average</td></tr>
+      <tr><td data-i18n="k-cons">Consensus</td><td style="color:var(--purple)">BlockDAG + Proof of Humanity</td></tr>
+      <tr><td>P2P Protocol</td><td>libp2p (Go implementation)</td></tr>
+      <tr><td>ZKP System</td><td>Groth16 / snarkjs / circom</td></tr>
+      <tr><td>Elliptic Curve</td><td>BN128 (alt-bn128)</td></tr>
+      <tr><td>Bio Hash</td><td style="color:var(--teal)">keccak256 (post-quantum safe)</td></tr>
+      <tr><td data-i18n="k-storage">Storage</td><td style="color:var(--green)">PostgreSQL (persistent)</td></tr>
+      <tr><td data-i18n="k-lang">Language</td><td>Go 1.24 (chain) · Node.js (proof server)</td></tr>
+      <tr><td data-i18n="k-src">Source Code</td><td><a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--blue)">GitHub — Open Source</a></td></tr>
+    </table>
+  </div>
+  <div class="nc">
+    <div class="nc-title" data-i18n="mm-config">MetaMask Configuration</div>
+    <div style="font-size:0.62rem;color:var(--muted);line-height:1.7;margin-bottom:12px">Add Aequitas Chain to MetaMask to view your AEQ balance, send transactions, and interact with the V7 contract directly from your browser or mobile wallet.</div>
+    <table class="spect">
+      <tr><td data-i18n="k-chain">Network Name</td><td style="color:var(--gold)">Aequitas Chain</td></tr>
+      <tr><td>RPC URL</td><td style="color:var(--blue);font-size:0.52rem">https://aequitas.digital/rpc</td></tr>
+      <tr><td data-i18n="k-chainid">Chain ID</td><td style="color:var(--gold)">1926</td></tr>
+      <tr><td data-i18n="k-symbol">Currency Symbol</td><td style="color:var(--gold)">AEQ</td></tr>
+      <tr><td data-i18n="k-dec">Decimals</td><td>18</td></tr>
+    </table>
+    <button class="mm-btn" onclick="addToMetaMask()" style="margin-top:12px" data-i18n="btn-add-mm">+ ADD TO METAMASK</button>
+    <div style="font-size:0.58rem;color:var(--muted);margin-top:8px;line-height:1.6">📱 MetaMask Mobile: if AEQ shows 0 after adding, delete the network and re-add it using the button above.</div>
+</div>
+</div>
+<div id="net-runnode" class="stab-panel">
+<div class="ns" style="grid-template-columns:1fr">
+<div class="nc" style="grid-column:1/-1;background:linear-gradient(135deg,rgba(245,166,35,0.06),rgba(13,8,32,0.9));border-color:rgba(245,166,35,0.2)">
     <div class="nc-title" style="color:var(--gold)" data-i18n="run-node-title">Run Your Own Node — Help Secure the Network</div>
     <div style="font-size:0.67rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Anyone can run an Aequitas node — no permission, no stake, no application required. Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all swap fees, distributed daily). The more nodes that run, the more decentralized and resilient the network becomes.</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
@@ -1046,66 +1136,10 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div style="font-size:0.62rem;color:var(--muted);line-height:1.9">Open an issue on <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--purple)">GitHub</a> or reach the Aequitas team via the repository. BETA feedback on node setup, performance, and documentation gaps is especially welcome. Download this guide as a PDF in your selected language using the button above.</div>
     </div>
   </div>
-  <div class="nc" style="grid-column:1/-1">
-    <div class="nc-title" data-i18n="nodes-title">Active Nodes — Current Network Topology</div>
-    <div style="font-size:0.65rem;color:var(--muted);line-height:1.8;margin-bottom:12px" data-i18n="nodes-desc">The Aequitas network currently operates on two geographically distributed nodes. Both participate in block production, state synchronization, and API serving. They communicate peer-to-peer via libp2p and synchronize block state via HTTP. Both share access to the same PostgreSQL database for persistent state. The network is designed to support additional nodes — any third-party operator can join by setting the bootstrap peer address.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="nbox">
-        <div class="nstat"><span class="ndot"></span><span data-i18n="node1">Node 1 — Railway (Primary)</span></div>
-        <div class="nurl">aequitas-production-9fba.up.railway.app</div>
-        <div class="ndesc" data-i18n="node1-desc">Primary API · Block producer · UBI distribution · P2P bootstrap · PostgreSQL · RPC for MetaMask</div>
-        <div style="margin-top:6px;font-size:0.57rem;color:rgba(0,255,209,0.5)">IS_PRIMARY_NODE=true · Daily pool distributions</div>
-      </div>
-      <div class="nbox">
-        <div class="nstat"><span class="ndot"></span><span data-i18n="node2">Node 2 — Render (Secondary)</span></div>
-        <div class="nurl">aequitas-node-2.onrender.com</div>
-        <div class="ndesc" data-i18n="node2-desc">Secondary API · Block producer · P2P peer · HTTP sync · Shared PostgreSQL state</div>
-        <div style="margin-top:6px;font-size:0.57rem;color:rgba(139,92,246,0.5)">Redundancy · Geographic distribution</div>
-      </div>
-    </div>
-  </div>
-  <div class="nc">
-    <div class="nc-title" data-i18n="bootstrap-title">Connect a New Node</div>
-    <div style="font-size:0.63rem;color:var(--muted);line-height:1.8;margin-bottom:10px" data-i18n="bootstrap-desc">To run your own Aequitas node, set the PEER_NODES environment variable to the bootstrap node address below. Your node will automatically sync the full chain state and begin participating in block production.</div>
-    <div style="font-size:0.6rem;color:var(--muted);margin-bottom:6px;letter-spacing:1px">LIBP2P MULTIADDRESS</div>
-    <div class="bsbox">/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R</div>
-    <div style="font-size:0.6rem;color:var(--muted);margin-top:10px;line-height:1.7">Set in your environment: <span style="color:var(--purple);font-family:var(--font-mono)">PEER_NODES=https://aequitas.digital</span></div>
-  </div>
-  <div class="nc">
-    <div class="nc-title" data-i18n="tech-title">Technical Specifications</div>
-    <table class="spect">
-      <tr><td data-i18n="k-chainid">Chain ID</td><td>1926 (0x786)</td></tr>
-      <tr><td>Architecture</td><td style="color:var(--purple)">BlockDAG (Directed Acyclic Graph)</td></tr>
-      <tr><td>EVM Compatible</td><td style="color:var(--green)" data-i18n="evm-yes">Yes — JSON-RPC /rpc · MetaMask</td></tr>
-      <tr><td data-i18n="k-btime">Block Time</td><td>~6 seconds average</td></tr>
-      <tr><td data-i18n="k-cons">Consensus</td><td style="color:var(--purple)">BlockDAG + Proof of Humanity</td></tr>
-      <tr><td>P2P Protocol</td><td>libp2p (Go implementation)</td></tr>
-      <tr><td>ZKP System</td><td>Groth16 / snarkjs / circom</td></tr>
-      <tr><td>Elliptic Curve</td><td>BN128 (alt-bn128)</td></tr>
-      <tr><td>Bio Hash</td><td style="color:var(--teal)">keccak256 (post-quantum safe)</td></tr>
-      <tr><td data-i18n="k-storage">Storage</td><td style="color:var(--green)">PostgreSQL (persistent)</td></tr>
-      <tr><td data-i18n="k-lang">Language</td><td>Go 1.24 (chain) · Node.js (proof server)</td></tr>
-      <tr><td data-i18n="k-src">Source Code</td><td><a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="color:var(--blue)">GitHub — Open Source</a></td></tr>
-    </table>
-  </div>
-  <div class="nc">
-    <div class="nc-title" data-i18n="mm-config">MetaMask Configuration</div>
-    <div style="font-size:0.62rem;color:var(--muted);line-height:1.7;margin-bottom:12px">Add Aequitas Chain to MetaMask to view your AEQ balance, send transactions, and interact with the V7 contract directly from your browser or mobile wallet.</div>
-    <table class="spect">
-      <tr><td data-i18n="k-chain">Network Name</td><td style="color:var(--gold)">Aequitas Chain</td></tr>
-      <tr><td>RPC URL</td><td style="color:var(--blue);font-size:0.52rem">https://aequitas.digital/rpc</td></tr>
-      <tr><td data-i18n="k-chainid">Chain ID</td><td style="color:var(--gold)">1926</td></tr>
-      <tr><td data-i18n="k-symbol">Currency Symbol</td><td style="color:var(--gold)">AEQ</td></tr>
-      <tr><td data-i18n="k-dec">Decimals</td><td>18</td></tr>
-    </table>
-    <button class="mm-btn" onclick="addToMetaMask()" style="margin-top:12px" data-i18n="btn-add-mm">+ ADD TO METAMASK</button>
-    <div style="font-size:0.58rem;color:var(--muted);margin-top:8px;line-height:1.6">📱 MetaMask Mobile: if AEQ shows 0 after adding, delete the network and re-add it using the button above.</div>
-  </div>
 </div>
 </div>
-
-<!-- PROTOCOL V7 -->
-<div id="tab-protocol" class="tab-content">
+</div>
+<div id="net-protocol" class="stab-panel">
 <div class="ps">
   <div class="section-label" data-i18n="proto-label">Aequitas V7 Protocol — Technical Documentation</div>
 
@@ -1180,6 +1214,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <span style="color:var(--purple)">Phase 3 (10,000+ humans):</span> Fully decentralized BlockDAG. No single operator can censor or halt the chain.<br><br>
     The node operator guide (PDF) is available on the Network tab. Each new node operator earns from the 40% validator pool — the more nodes, the more resilient the network.</div>
   </div>
+</div>
 </div>
 </div>
 
@@ -2136,13 +2171,21 @@ it:{
 }
 };
 
+function showStab(parentId, stabId, el) {
+  const parent = document.getElementById(parentId);
+  parent.querySelectorAll('.stab-panel').forEach(p => p.classList.remove('active'));
+  parent.querySelectorAll('.stab').forEach(s => s.classList.remove('active'));
+  document.getElementById(stabId).classList.add('active');
+  el.classList.add('active');
+  if (stabId === 'eqi-charts') { drawGiniHistoryChart(); drawLorenzCurve(); drawWcapSlideChart(); }
+}
+
 function showTab(name, el) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   el.classList.add('active');
   if (name === 'swap') loadPoolStatus();
-  if (name === 'index') { drawGiniHistoryChart(); drawLorenzCurve(); drawWcapSlideChart(); }
   history.pushState(null, '', '/' + name);
 }
 
@@ -3108,7 +3151,9 @@ function copyAddr(id, btn) {
 
 function addLog(msg, type) {
   const el = document.getElementById('rlog');
-  el.innerHTML += '<div><span class="' + type + '">' + msg + '</span></div>';
+  if (!el) return;
+  el.innerHTML += '<div><span class="' + (type||'info') + '">' + msg + '</span></div>';
+  el.scrollTop = el.scrollHeight;
 }
 
 async function registerViaBrowser() {
@@ -3435,6 +3480,13 @@ function _buildNodeGuidePDF(lang) {
   for(var pi=2;pi<=pc;pi++){doc.setPage(pi);doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(160,160,160);doc.text((pi-1)+' / '+(pc-1),W-MG,290,{align:'right'});}
   doc.save(fn);
 }
+window.addEventListener('resize', () => {
+  const gd = document.getElementById('gini-history-chart');
+  if (gd && gd._data) drawGiniHistoryChart(gd._data);
+  const n = parseInt(document.getElementById('idx-humans2')?.textContent || '0');
+  if (n > 0) drawWcapSlideChart(n);
+});
+
 </script>
 </body>
 </html>`
