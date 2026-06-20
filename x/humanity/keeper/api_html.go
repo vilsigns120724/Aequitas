@@ -2711,18 +2711,29 @@ async function doRemoveLiquidity() {
   document.getElementById('swap-btn-removeliq').disabled = false;
 }
 
+function activateTabFromPath(path) {
+  const tabNames = ['register','explorer','humans','index','network','protocol','swap'];
+  const name = (path || '').replace(/^\//, '').split('/')[0];
+  if (!name || !tabNames.includes(name)) return;
+  const tabEl = document.querySelector('.tab[onclick*="showTab(\'' + name + '\'"]');
+  if (!tabEl) return;
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  tabEl.classList.add('active');
+  if (name === 'swap') loadPoolStatus();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const amtInput = document.getElementById('swap-amount');
   if (amtInput) amtInput.addEventListener('input', updateFeeEstimate);
 
-  // URL-based tab routing: /register, /explorer, /humans, /index, /network, /protocol, /swap
-  const tabNames = ['register','explorer','humans','index','network','protocol','swap'];
-  const path = window.location.pathname.replace(/^\//, '').split('/')[0];
-  if (path && tabNames.includes(path)) {
-    const tabEl = document.querySelector('.tab[onclick*="showTab(\'' + path + '\'"]');
-    if (tabEl) { tabEl.click(); history.replaceState(null, '', '/' + path); }
-  }
+  // Activate correct tab on initial load based on URL path
+  activateTabFromPath(window.location.pathname);
 });
+
+// Back/forward navigation: restore the tab that matches the URL
+window.addEventListener('popstate', () => activateTabFromPath(window.location.pathname));
 
 function checkProofParams() {
   const p = new URLSearchParams(window.location.search);
