@@ -6,6 +6,11 @@ const explorerHTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Aequitas — Proof of Humanity Chain</title>
+<meta name="description" content="Aequitas Chain — a Proof of Humanity blockchain with built-in Universal Basic Income, demurrage, and wealth cap. Chain ID 1926.">
+<meta name="theme-color" content="#080010">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Aequitas">
 <link rel="preconnect" href="https://fonts.bunny.net">
 <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,900|dm-serif-display:400|jetbrains-mono:400,600&display=swap" rel="stylesheet">
 <style>
@@ -313,14 +318,14 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="pbar" data-i18n="priv-bar">🔒 Hardware Secure Element · Groth16 Zero-Knowledge Proof · Biometric data never leaves your device · No gas fees · One registration per human · Permanent &amp; immutable</div>
   <div class="pbar" style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold)">📱 MetaMask Mobile: if AEQ balance shows 0 after registration, go to Settings → Networks → delete Aequitas Chain → re-add via this website</div>
   <div class="rcard">
-    <div class="wbox" id="wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="wadr">—</div></div>
+    <div class="wbox" id="wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="wadr" title="">—</div><button onclick="copyAddr('wadr',this)" style="margin-top:4px;padding:3px 10px;font-size:0.56rem;background:rgba(0,255,209,0.08);border:1px solid rgba(0,255,209,0.2);color:var(--neon);border-radius:4px;cursor:pointer">📋 Copy</button></div>
     <div id="demurrage-notice" style="display:none"></div>
     <div class="pbox" id="pbox"><div class="plbl" data-i18n="proof-recv">⚡ ZK PROOF RECEIVED</div><div class="pval" id="pval" data-i18n="proof-hint">Connect wallet to register</div></div>
     <button class="rbtn bc" id="btn-conn" onclick="connectWallet()" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
     <button id="btn-disconnect" onclick="disconnectWallet()" style="display:none;margin-top:6px;padding:8px 16px;font-size:0.6rem;letter-spacing:1px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:var(--red);border-radius:6px;cursor:pointer;width:100%">⊘ DISCONNECT WALLET</button>
     <button class="rbtn br" id="btn-reg" onclick="doRegister()" disabled data-i18n="btn-reg">🔐 REGISTER ON-CHAIN</button>
     <button class="rbtn" id="btn-web-reg" onclick="registerViaBrowser()" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;margin-top:8px" data-i18n="btn-web-reg">🌐 REGISTER VIA BROWSER (WebAuthn)</button>
-    <div id="web-reg-warn" style="display:none;font-size:0.62rem;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 10px;margin-top:6px" data-i18n="web-reg-warn">⚠ Device-bound: This identity is tied to this device and browser. You cannot transfer it to another device. For permanent multi-device identity, use the Aequitas Android App instead.</div>
+    <div id="web-reg-warn" style="display:none;font-size:0.62rem;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 10px;margin-top:6px" data-i18n="web-reg-warn">⚠ Device-bound: This identity is tied to this device and browser. You cannot transfer it to another device. For permanent multi-device identity, use the Aequitas Android App instead.<br><br>⚠ <strong>Important:</strong> WebAuthn proves device possession — NOT biological uniqueness. A person with two devices could theoretically register twice. If uniqueness is critical to you, use the Android App with biometric verification instead.</div>
     <div class="rlog" id="rlog"><span class="info" data-i18n="reg-log-hint">// Open Aequitas Android App to generate your proof, then return here...</span></div>
   </div>
   <div class="ic">
@@ -477,7 +482,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   </div>
   <div class="pbar" data-i18n="swap-priv-bar">🔒 0.1% swap fee only · AEQ-to-AEQ transfers stay free · tUSD is a test currency with no real-world value</div>
   <div class="rcard">
-    <div class="wbox" id="swap-wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="swap-wadr">—</div></div>
+    <div class="wbox" id="swap-wbox"><div class="wlbl" data-i18n="conn-wallet">CONNECTED WALLET</div><div class="wadr" id="swap-wadr" title="">—</div><button onclick="copyAddr('swap-wadr',this)" style="margin-top:4px;padding:3px 10px;font-size:0.56rem;background:rgba(0,255,209,0.08);border:1px solid rgba(0,255,209,0.2);color:var(--neon);border-radius:4px;cursor:pointer">📋 Copy</button></div>
     <div id="demurrage-notice" style="display:none;font-size:13px;padding:10px 12px;border-radius:8px;background:rgba(255,179,0,0.1);border:1px solid rgba(255,179,0,0.3);color:var(--gold);margin:10px 0"></div>
     <div class="ic-row" style="margin:8px 0"><span class="ic-key" data-i18n="swap-your-aeq">Your AEQ</span><span class="ic-val go" id="swap-bal-aeq">—</span></div>
     <div class="ic-row" style="margin-bottom:16px"><span class="ic-key" data-i18n="swap-your-tusd">Your tUSD</span><span class="ic-val go" id="swap-bal-tusd">—</span></div>
@@ -607,6 +612,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div class="mval" id="idx-gini">—</div>
         <div class="mlbl" data-i18n="gini">Gini Coefficient</div>
         <div style="font-size:0.55rem;color:var(--muted);margin-top:4px" data-i18n="gini-desc">0 = equal · 1 = unequal</div>
+        <div id="gini-n-warn" style="display:none;font-size:0.5rem;color:var(--gold);margin-top:2px">⚠ N&lt;10: not yet significant</div>
       </div>
       <div class="mbox">
         <div class="mval" id="idx-supply2">—</div>
@@ -769,6 +775,22 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <tr><td data-i18n="dem-dest-k">Decayed AEQ goes to</td><td data-i18n="dem-dest-v">Redistribution pools (same 40/30/20/10 split)</td></tr>
       <tr><td data-i18n="dem-warn-k">Warning System</td><td data-i18n="dem-warn-v">14-day notice (once) + 7-day repeated reminder at login</td></tr>
     </table>
+  </div>
+  <div class="idx" style="grid-column:1/-1">
+    <div class="idx-title">Gini Index History</div>
+    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Recorded after each UBI distribution. Shows how equality evolves as the network grows.</div>
+    <canvas id="gini-history-chart" height="120" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
+    <div id="gini-history-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No snapshots yet — first one saved after the next UBI distribution.</div>
+  </div>
+  <div class="idx" style="grid-column:1/-1">
+    <div class="idx-title">Lorenz Curve — Wealth Distribution Across Humans</div>
+    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Each point = cumulative % of AEQ held by the poorest X% of humans. The diagonal = perfect equality. The further the curve bows below the diagonal, the higher the Gini.</div>
+    <canvas id="lorenz-chart" height="220" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
+  </div>
+  <div class="idx" style="grid-column:1/-1">
+    <div class="idx-title">Wealth Cap Multiplier — Bootstrap Slider</div>
+    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Formula: <code style="color:var(--teal)">max(5, min(N, 25))×</code> average AEQ balance. Each new human slides the cap up by 1×, until the 25th human locks it at 25× permanently.</div>
+    <canvas id="wcap-slide-chart" height="90" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
   </div>
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title" data-i18n="story-title">The Story of Aequitas — Why This Exists</div>
@@ -1138,6 +1160,25 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="idx" style="margin-bottom:12px">
     <div class="idx-title" data-i18n="inf-title">6. NO ALGORITHMIC INFLATION — Fixed Supply Formula</div>
     <div class="hlbox" data-i18n="inf-box">The ONLY event that creates new AEQ: a new verified human registers.<br><br>Total Supply = Verified Humans × 1,000 AEQ<br><br>This is not a policy — it is enforced by the protocol. No admin can mint additional AEQ, no governance vote can change the issuance, no founder allocation was pre-mined. AEQ is the only cryptocurrency where the total supply is determined solely by the number of verified living humans.</div>
+  </div>
+  <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(6,182,212,0.06),rgba(13,8,32,0.9));border-color:rgba(6,182,212,0.2)">
+    <div class="idx-title" style="color:var(--teal)">Open Source Chain Logic</div>
+    <div style="font-size:0.63rem;color:var(--muted);line-height:1.9">The Aequitas chain core — consensus engine, state machine, redistribution logic, wealth cap formula, and ZK proof verification — is written in Go. The redistribution algorithms (CalcGini, enforceWealthCap, DistributeUBIPool, settleDemurrage) are open for review.<br><br>Smart contract source code for AequitasV7 and BioVerifier is embedded in the chain binary and verifiable via the contract addresses above. Chain ID 1926, RPC: <span style="color:var(--teal);font-family:var(--font-mono)">https://aequitas.digital/rpc</span></div>
+    <div style="margin-top:12px;padding:10px 14px;background:rgba(6,182,212,0.06);border:1px solid rgba(6,182,212,0.15);border-radius:6px;font-size:0.6rem;color:var(--teal);font-family:var(--font-mono)">
+      /metrics — Prometheus endpoint (gini, humans, pools, block height)<br>
+      /api/gini/history — Gini snapshots after each UBI distribution<br>
+      /api/humans — All verified human balances (Lorenz curve source)<br>
+      /api/wealth-cap — Live cap, multiplier, average balance
+    </div>
+  </div>
+  <div class="idx" style="margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,0.06),rgba(13,8,32,0.9));border-color:rgba(139,92,246,0.2)">
+    <div class="idx-title" style="color:var(--purple)">Node Decentralization Roadmap</div>
+    <div style="font-size:0.63rem;color:var(--muted);line-height:1.9">Currently the network runs on 1–2 nodes (Railway + experimental). Decentralization is a staged process:<br><br>
+    <span style="color:var(--neon)">Phase 0 (now):</span> Single-operator bootstrapping. Trust is established through code transparency, not node count.<br>
+    <span style="color:var(--blue)">Phase 1 (100+ humans):</span> Open node join — anyone can run a full node and earn validator rewards from the 40% pool.<br>
+    <span style="color:var(--gold)">Phase 2 (1,000+ humans):</span> Minimum 10 independent node operators required. Node diversity enforced by smart contract.<br>
+    <span style="color:var(--purple)">Phase 3 (10,000+ humans):</span> Fully decentralized BlockDAG. No single operator can censor or halt the chain.<br><br>
+    The node operator guide (PDF) is available on the Network tab. Each new node operator earns from the 40% validator pool — the more nodes, the more resilient the network.</div>
   </div>
 </div>
 </div>
@@ -2101,6 +2142,7 @@ function showTab(name, el) {
   document.getElementById('tab-' + name).classList.add('active');
   el.classList.add('active');
   if (name === 'swap') loadPoolStatus();
+  if (name === 'index') { drawGiniHistoryChart(); drawLorenzCurve(); drawWcapSlideChart(); }
   history.pushState(null, '', '/' + name);
 }
 
@@ -2215,6 +2257,8 @@ async function loadStatus() {
     document.getElementById('s-uptime').textContent = Math.floor(up/3600) + 'h ' + Math.floor((up%3600)/60) + 'm';
     document.getElementById('idx-score').textContent = fmt(d.index);
     document.getElementById('idx-gini').textContent = typeof d.gini === 'number' ? d.gini.toFixed(3) : '—';
+    const gniWarn = document.getElementById('gini-n-warn');
+    if (gniWarn) gniWarn.style.display = (d.total_humans < 10) ? 'block' : 'none';
     document.getElementById('idx-supply2').textContent = d.total_supply || '—';
     document.getElementById('idx-phase').textContent = fmt(d.phase);
     document.getElementById('idx-humans2').textContent = fmt(d.total_humans);
@@ -2258,6 +2302,112 @@ async function loadStatus() {
   } catch(_) {}
 }
 
+async function drawGiniHistoryChart() {
+  const canvas = document.getElementById('gini-history-chart');
+  if (!canvas || !canvas.offsetParent) return;
+  canvas.width = canvas.offsetWidth;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  try {
+    const d = await (await fetch('/api/gini/history')).json();
+    const history = (d.history || []).slice().reverse();
+    const emptyEl = document.getElementById('gini-history-empty');
+    if (!history.length) {
+      if (emptyEl) { emptyEl.style.display = 'block'; canvas.style.display = 'none'; } return;
+    }
+    if (emptyEl) { emptyEl.style.display = 'none'; canvas.style.display = 'block'; }
+    const pad = {l:36,r:16,t:14,b:8};
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.t + (H-pad.t-pad.b)*(1-i/4);
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+      ctx.fillText((i*25)+'', pad.l-3, y+3);
+    }
+    const targetY = pad.t + (H-pad.t-pad.b)*(1-35/100);
+    ctx.strokeStyle = 'rgba(0,255,209,0.3)'; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l,targetY); ctx.lineTo(W-pad.r,targetY); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle = 'rgba(0,255,209,0.6)'; ctx.font = '8px monospace'; ctx.textAlign = 'left';
+    ctx.fillText('Target 35', W-pad.r-48, targetY-3);
+    const xs = (W-pad.l-pad.r)/Math.max(history.length-1,1);
+    ctx.strokeStyle = '#C9A84C'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    history.forEach((pt,i)=>{ const x=pad.l+i*xs, y=pad.t+(H-pad.t-pad.b)*(1-pt.idx/100); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); });
+    ctx.stroke();
+    ctx.fillStyle = '#C9A84C';
+    history.forEach((pt,i)=>{ const x=pad.l+i*xs, y=pad.t+(H-pad.t-pad.b)*(1-pt.idx/100); ctx.beginPath(); ctx.arc(x,y,3,0,2*Math.PI); ctx.fill(); });
+  } catch(e) {}
+}
+
+async function drawLorenzCurve() {
+  const canvas = document.getElementById('lorenz-chart');
+  if (!canvas || !canvas.offsetParent) return;
+  canvas.width = canvas.offsetWidth;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const pad = {l:36,r:16,t:14,b:28};
+  try {
+    const d = await (await fetch('/api/humans')).json();
+    const humans = d.humans || [];
+    if (humans.length < 2) {
+      ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('Not enough humans registered yet', W/2, H/2); return;
+    }
+    const bals = humans.map(h=>h.balance||0).sort((a,b)=>a-b);
+    const total = bals.reduce((s,b)=>s+b,0);
+    const n = bals.length;
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.setLineDash([4,4]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b); ctx.lineTo(W-pad.r,pad.t); ctx.stroke();
+    ctx.setLineDash([]);
+    for (let i=0;i<=4;i++) {
+      const x=pad.l+(W-pad.l-pad.r)*i/4, y=pad.t+(H-pad.t-pad.b)*(1-i/4);
+      ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,H-pad.b); ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.font='9px monospace'; ctx.textAlign='center'; ctx.fillText((i*25)+'%',x,H-4);
+    }
+    ctx.strokeStyle='#C9A84C'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b);
+    let cum=0;
+    bals.forEach((b,i)=>{ cum+=b; const x=pad.l+(W-pad.l-pad.r)*(i+1)/n, y=(H-pad.b)-(H-pad.t-pad.b)*(cum/total); ctx.lineTo(x,y); });
+    ctx.stroke();
+    ctx.fillStyle='rgba(200,168,76,0.12)'; ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b);
+    cum=0; bals.forEach((b,i)=>{ cum+=b; const x=pad.l+(W-pad.l-pad.r)*(i+1)/n, y=(H-pad.b)-(H-pad.t-pad.b)*(cum/total); ctx.lineTo(x,y); });
+    ctx.lineTo(W-pad.r,H-pad.b); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.3)'; ctx.font='9px monospace'; ctx.textAlign='center';
+    ctx.fillText('% of AEQ (cumulative)', pad.l-30, H/2);
+  } catch(e) {}
+}
+
+function drawWcapSlideChart() {
+  const canvas = document.getElementById('wcap-slide-chart');
+  if (!canvas || !canvas.offsetParent) return;
+  canvas.width = canvas.offsetWidth;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const pad = {l:36,r:16,t:8,b:24};
+  const maxN = 28;
+  const bw = (W-pad.l-pad.r)/maxN;
+  for (let n=1; n<=maxN; n++) {
+    const mult = Math.max(5,Math.min(n,25));
+    const bh = (H-pad.t-pad.b)*(mult/25);
+    const x = pad.l+(n-1)*bw, y = H-pad.b-bh;
+    ctx.fillStyle = n<=25 ? (n===25?'rgba(0,255,209,0.55)':'rgba(200,168,76,0.55)') : 'rgba(255,255,255,0.1)';
+    ctx.fillRect(x+1,y,bw-2,bh);
+    if (n===1||n===5||n===10||n===15||n===20||n===25) {
+      ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.font='8px monospace'; ctx.textAlign='center';
+      ctx.fillText(mult+'×',x+bw/2,y-1);
+      ctx.fillStyle='rgba(255,255,255,0.3)';
+      ctx.fillText('N='+n,x+bw/2,H-2);
+    }
+  }
+  ctx.strokeStyle='rgba(0,255,209,0.3)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  const lockY = H-pad.b-(H-pad.t-pad.b);
+  ctx.beginPath(); ctx.moveTo(pad.l+(25-1)*bw,lockY); ctx.lineTo(W-pad.r,lockY); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
 async function loadBlocks() {
   try {
     const blocks = await (await fetch('/api/blocks')).json();
@@ -2298,6 +2448,12 @@ function swapLog(msg, type) {
   const el = document.getElementById('swap-log');
   el.innerHTML += '<div><span class="' + (type || 'info') + '">' + msg + '</span></div>';
   el.scrollTop = el.scrollHeight;
+}
+
+function sanitize(s) {
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
 }
 
 async function loadPoolStatus() {
@@ -2477,7 +2633,7 @@ async function connectSwapWallet() {
     document.getElementById('swap-btn-addliq').disabled = false;
     setSwapDirection('aeq_to_tusd');
   } catch (e) {
-    swapLog('Connection failed: ' + e.message, 'err');
+    swapLog('Connection failed: ' + sanitize(e.message), 'err');
   }
 }
 
@@ -2576,10 +2732,10 @@ async function doSwap() {
       document.getElementById('swap-bal-tusd').textContent = fmt(data.new_tusd_balance) + ' tUSD';
       loadPoolStatus();
     } else {
-      swapLog('✗ Swap failed: ' + data.message, 'err');
+      swapLog('✗ Swap failed: ' + sanitize(data.message), 'err');
     }
   } catch (e) {
-    swapLog('✗ Error: ' + e.message, 'err');
+    swapLog('✗ Error: ' + sanitize(e.message), 'err');
   }
   document.getElementById('swap-btn-go').disabled = false;
 }
@@ -2602,11 +2758,11 @@ async function claimFaucet() {
       swapLog('✓ Claimed ' + data.granted + ' test-tUSD', 'ok');
       document.getElementById('swap-bal-tusd').textContent = fmt(data.granted) + ' tUSD';
     } else {
-      swapLog('✗ Faucet claim failed: ' + data.message, 'err');
+      swapLog('✗ Faucet claim failed: ' + sanitize(data.message), 'err');
       document.getElementById('swap-btn-faucet').disabled = false;
     }
   } catch (e) {
-    swapLog('✗ Error: ' + e.message, 'err');
+    swapLog('✗ Error: ' + sanitize(e.message), 'err');
     document.getElementById('swap-btn-faucet').disabled = false;
   }
 }
@@ -2654,10 +2810,10 @@ async function doAddLiquidity() {
       await loadPoolStatus();
       await loadLPPosition();
     } else {
-      swapLog('✗ Add liquidity failed: ' + data.message, 'err');
+      swapLog('✗ Add liquidity failed: ' + sanitize(data.message), 'err');
     }
   } catch (e) {
-    swapLog('✗ Error: ' + e.message, 'err');
+    swapLog('✗ Error: ' + sanitize(e.message), 'err');
   }
   document.getElementById('swap-btn-addliq').disabled = false;
 }
@@ -2743,10 +2899,10 @@ async function doRemoveLiquidity() {
       await loadPoolStatus();
       await loadLPPosition();
     } else {
-      swapLog('✗ Remove liquidity failed: ' + data.message, 'err');
+      swapLog('✗ Remove liquidity failed: ' + sanitize(data.message), 'err');
     }
   } catch (e) {
-    swapLog('✗ Error: ' + e.message, 'err');
+    swapLog('✗ Error: ' + sanitize(e.message), 'err');
   }
   document.getElementById('swap-btn-removeliq').disabled = false;
 }
@@ -2876,7 +3032,7 @@ async function connectWalletAndProve() {
         document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
         return;
       }
-      addLog('Proof generation failed: ' + (err.error || 'unknown error'), 'err');
+      addLog('Proof generation failed: ' + sanitize(err.error || 'unknown error'), 'err');
       return;
     }
     proofData = await proveResp.json();
@@ -2886,7 +3042,7 @@ async function connectWalletAndProve() {
     document.getElementById('btn-reg').textContent = 'PROOF READY — CLICK TO REGISTER';
     addLog('Proof generated for your wallet. Click REGISTER to continue.', 'ok');
   } catch (e) {
-    addLog('Connection failed: ' + e.message, 'err');
+    addLog('Connection failed: ' + sanitize(e.message), 'err');
   }
 }
 
@@ -2936,8 +3092,18 @@ async function connectWallet() {
       document.getElementById('btn-reg').disabled = !proofData;
     }
   } catch (e) {
-    addLog('Connection failed: ' + e.message, 'err');
+    addLog('Connection failed: ' + sanitize(e.message), 'err');
   }
+}
+
+function copyAddr(id, btn) {
+  const addr = document.getElementById(id).textContent;
+  if (!addr || addr === '—') return;
+  navigator.clipboard.writeText(addr).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  });
 }
 
 function addLog(msg, type) {
@@ -2975,7 +3141,7 @@ async function registerViaBrowser() {
     addLog('Device identity hashed. Connecting wallet...', 'ok');
     await connectWalletAndProve();
   } catch (e) {
-    addLog('WebAuthn error: ' + e.message, 'err');
+    addLog('WebAuthn error: ' + sanitize(e.message), 'err');
   }
 }
 
@@ -3029,7 +3195,7 @@ async function doRegister() {
     if (!d.success) { addLog('Error: ' + d.message, 'err'); document.getElementById('btn-reg').disabled = false; return; }
     addLog('Registered! ' + d.message, 'ok');
     setTimeout(() => { window.location.href = '/registered?wallet=' + waddr; }, 1500);
-  } catch (e) { addLog('Error: ' + e.message, 'err'); document.getElementById('btn-reg').disabled = false; }
+  } catch (e) { addLog('Error: ' + sanitize(e.message), 'err'); document.getElementById('btn-reg').disabled = false; }
 }
 
 window.ethereum && window.ethereum.on('accountsChanged', function(a) {
@@ -3097,7 +3263,7 @@ async function restoreWalletFromStorage() {
       const bConn = document.getElementById('btn-conn');
       const bDisc = document.getElementById('btn-disconnect');
       if (wbox) wbox.style.display = 'block';
-      if (wadr) wadr.textContent = accounts[0];
+      if (wadr) { wadr.textContent = accounts[0]; wadr.title = accounts[0]; }
       if (bConn) { bConn.textContent = accounts[0].slice(0,10)+'...'+accounts[0].slice(-4); bConn.style.background='var(--green)'; bConn.style.color='#050A14'; }
       if (bDisc) bDisc.style.display = 'block';
       // Restore swap tab UI
@@ -3106,9 +3272,19 @@ async function restoreWalletFromStorage() {
       const swapConn = document.getElementById('swap-btn-conn');
       const swapDBtn = document.getElementById('swap-btn-disconnect');
       if (swapBox) swapBox.style.display = 'block';
-      if (swapAdr) swapAdr.textContent = accounts[0];
+      if (swapAdr) { swapAdr.textContent = accounts[0]; swapAdr.title = accounts[0]; }
       if (swapConn) { swapConn.textContent = accounts[0].slice(0,10)+'...'+accounts[0].slice(-4); swapConn.style.background='var(--green)'; swapConn.style.color='#050A14'; }
       if (swapDBtn) swapDBtn.style.display = 'block';
+      // Check registration status silently — no popup
+      try {
+        const br = await fetch('/api/balance?wallet=' + accounts[0]);
+        const bd = await br.json();
+        if (bd.is_human) {
+          const bReg = document.getElementById('btn-reg');
+          if (bReg) { bReg.disabled = true; bReg.textContent = 'ALREADY REGISTERED ✓'; }
+          addLog('✓ Wallet restored. Balance: ' + (bd.balance || 0).toFixed(4) + ' AEQ · Already registered.', 'ok');
+        }
+      } catch(_) {}
     } else {
       localStorage.removeItem('aeq_wallet');
     }
