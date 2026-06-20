@@ -287,7 +287,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="tab active" onclick="showTab('register',this)">🔐 Register</div>
   <div class="tab" onclick="showTab('explorer',this)">🔍 Explorer</div>
   <div class="tab" onclick="showTab('index',this)">⚖️ Equality</div>
-  <div class="tab" onclick="showTab('swap',this)">🔄 Swap</div>
+  <div class="tab" onclick="showTab('exchange',this)">🔄 Exchange</div>
   <div class="tab" onclick="showTab('network',this)">🌐 Network</div>
 </div>
 
@@ -548,8 +548,13 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 </div>
 </div>
 
-<!-- SWAP -->
-<div id="tab-swap" class="tab-content">
+<!-- EXCHANGE -->
+<div id="tab-exchange" class="tab-content">
+<nav class="stabs">
+  <div class="stab active" onclick="showStab('tab-exchange','exch-swap',this)">🔄 Swap</div>
+  <div class="stab" onclick="showStab('tab-exchange','exch-liquidity',this)">💧 Liquidity</div>
+</nav>
+<div id="exch-swap" class="stab-panel active">
 <div class="rs">
   <div class="rhero">
     <div class="rhero-title" data-i18n="swap-title">🔄 Swap AEQ ↔ tUSD</div>
@@ -618,7 +623,45 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <button class="rbtn" id="swap-btn-faucet" onclick="claimFaucet()" disabled data-i18n="swap-btn-faucet" style="margin-top:8px">💧 CLAIM TEST-tUSD</button>
     </div>
 
-    <div class="ic" style="margin-top:20px">
+<div class="ic">
+    <div class="ic-title" data-i18n="swap-pool-title">AEQ / tUSD — Pool Status</div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-price">Spot Price</span><span class="ic-val go" id="pool-price">—</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-aeq">AEQ Reserve</span><span class="ic-val p" id="pool-reserve-aeq">—</span></div>
+    <div class="ic-row" style="margin-bottom:4px"><span class="ic-key" data-i18n="swap-pool-tusd">tUSD Reserve</span><span class="ic-val b" id="pool-reserve-tusd">—</span></div>
+    <div style="margin:12px 0 4px">
+      <div style="font-size:0.54rem;color:var(--muted);margin-bottom:6px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase" data-i18n="swap-depth-lbl">Pool Composition</div>
+      <div class="depth-track">
+        <div id="depth-aeq-fill" class="depth-aeq-fill" style="width:50%"></div>
+        <div class="depth-tusd-fill"></div>
+      </div>
+      <div class="depth-lbls">
+        <span style="color:var(--purple)">AEQ <span id="depth-aeq-pct">50%</span></span>
+        <span style="color:var(--teal)"><span id="depth-tusd-pct">50%</span> tUSD</span>
+      </div>
+    </div>
+    <div class="ic-row" style="padding-top:4px"><span class="ic-key" data-i18n="swap-fee-bps">Swap Fee</span><span class="ic-val g">0.1% · split 40/30/20/10</span></div>
+    <div class="amm-box">
+      <div style="font-size:0.54rem;color:var(--purple);font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px" data-i18n="amm-title">x × y = k — Constant Product AMM</div>
+      <div class="amm-formula">AEQ_reserve × tUSD_reserve = k (constant)</div>
+      <div class="amm-text" data-i18n="amm-text">When you swap AEQ for tUSD, AEQ reserve grows and tUSD reserve shrinks — their product always stays equal to k. Every swap moves the price. Larger swaps relative to pool size cause greater price impact. The 0.1% fee is taken from the input before the formula is applied, ensuring the pool earns on every trade.</div>
+    </div>
+  </div>
+  <div class="ic">
+    <div class="ic-title" data-i18n="swap-pools-addr-title">Tokenomics Pool Addresses</div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-validators">Validators (40%)</span><span class="ic-val p" style="font-size:11px">0x78c1...d2bA</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-lps">Liquidity Providers (30%)</span><span class="ic-val p" style="font-size:11px">0xc181...01EB</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-ubi">UBI Pool (20%)</span><span class="ic-val p" style="font-size:11px">0x4A9b...054A</span></div>
+    <div class="ic-row"><span class="ic-key" data-i18n="swap-treasury">Treasury (10%)</span><span class="ic-val p" style="font-size:11px">0x2273...3eb15</span></div>
+  </div>
+</div>
+</div>
+<div id="exch-liquidity" class="stab-panel">
+<div class="rs">
+  <div class="rhero">
+    <div class="rhero-title">💧 Liquidity</div>
+    <div class="rhero-sub">Provide AEQ / tUSD liquidity to earn 30% of all swap fees, distributed daily.</div>
+  </div>
+<div class="ic" style="margin-top:20px">
       <div class="ic-title" data-i18n="swap-addliq-title">Provide Liquidity</div>
       <div class="ic-row"><span class="ic-key" id="swap-addliq-desc" data-i18n="swap-addliq-desc">Be the first to deposit — your ratio sets the starting price.</span></div>
       <input type="number" id="addliq-aeq" placeholder="AEQ amount" oninput="updateLiquidityRatio('aeq')" style="width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#0A1220;color:#E8EDF5;font-size:15px;margin:8px 0 4px;box-sizing:border-box">
@@ -656,37 +699,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <button class="rbtn br" id="swap-btn-removeliq" onclick="doRemoveLiquidity()" data-i18n="swap-btn-removeliq">🔥 REMOVE LIQUIDITY</button>
     </div>
   </div>
-
-  <div class="ic">
-    <div class="ic-title" data-i18n="swap-pool-title">AEQ / tUSD — Pool Status</div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-price">Spot Price</span><span class="ic-val go" id="pool-price">—</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-pool-aeq">AEQ Reserve</span><span class="ic-val p" id="pool-reserve-aeq">—</span></div>
-    <div class="ic-row" style="margin-bottom:4px"><span class="ic-key" data-i18n="swap-pool-tusd">tUSD Reserve</span><span class="ic-val b" id="pool-reserve-tusd">—</span></div>
-    <div style="margin:12px 0 4px">
-      <div style="font-size:0.54rem;color:var(--muted);margin-bottom:6px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase" data-i18n="swap-depth-lbl">Pool Composition</div>
-      <div class="depth-track">
-        <div id="depth-aeq-fill" class="depth-aeq-fill" style="width:50%"></div>
-        <div class="depth-tusd-fill"></div>
-      </div>
-      <div class="depth-lbls">
-        <span style="color:var(--purple)">AEQ <span id="depth-aeq-pct">50%</span></span>
-        <span style="color:var(--teal)"><span id="depth-tusd-pct">50%</span> tUSD</span>
-      </div>
-    </div>
-    <div class="ic-row" style="padding-top:4px"><span class="ic-key" data-i18n="swap-fee-bps">Swap Fee</span><span class="ic-val g">0.1% · split 40/30/20/10</span></div>
-    <div class="amm-box">
-      <div style="font-size:0.54rem;color:var(--purple);font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px" data-i18n="amm-title">x × y = k — Constant Product AMM</div>
-      <div class="amm-formula">AEQ_reserve × tUSD_reserve = k (constant)</div>
-      <div class="amm-text" data-i18n="amm-text">When you swap AEQ for tUSD, AEQ reserve grows and tUSD reserve shrinks — their product always stays equal to k. Every swap moves the price. Larger swaps relative to pool size cause greater price impact. The 0.1% fee is taken from the input before the formula is applied, ensuring the pool earns on every trade.</div>
-    </div>
-  </div>
-  <div class="ic">
-    <div class="ic-title" data-i18n="swap-pools-addr-title">Tokenomics Pool Addresses</div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-validators">Validators (40%)</span><span class="ic-val p" style="font-size:11px">0x78c1...d2bA</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-lps">Liquidity Providers (30%)</span><span class="ic-val p" style="font-size:11px">0xc181...01EB</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-ubi">UBI Pool (20%)</span><span class="ic-val p" style="font-size:11px">0x4A9b...054A</span></div>
-    <div class="ic-row"><span class="ic-key" data-i18n="swap-treasury">Treasury (10%)</span><span class="ic-val p" style="font-size:11px">0x2273...3eb15</span></div>
-  </div>
+</div>
 </div>
 </div>
 
@@ -698,7 +711,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="stab" onclick="showStab('tab-index','eqi-charts',this)">📈 Charts</div>
 </nav>
 <div id="eqi-score" class="stab-panel active">
-<div class="is">
 <div class="is">
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title" data-i18n="idx-title">Aequitas Index — Real-Time Economic Equality Score</div>
@@ -782,7 +794,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div style="font-size:0.63rem;color:var(--muted);line-height:1.9" data-i18n="gini-why-text">A simple "richest vs. poorest" ratio is easy to game and misses what happens in the middle: a network could have 10,000 people, a low min/max spread, yet 90% of all AEQ concentrated in 100 wallets. The Gini coefficient detects this — a ratio does not. It captures the complete distribution across all verified humans in a single auditable number. Because Aequitas publishes this number on-chain (via updateGini), it is transparent, tamper-evident, and globally verifiable. The protocol uses it as the primary input signal for automatic phase transitions, wealth cap multiplier selection, and redistribution intensity — creating a self-correcting economic system governed entirely by mathematics. No human, no committee, no foundation can override the index reading or the mechanisms it triggers.</div>
     </div>
   </div>
-</div>
 </div>
 <div id="eqi-economy" class="stab-panel">
 <div class="is">
@@ -3031,6 +3042,12 @@ function showStab(parentId, stabId, el) {
   document.getElementById(stabId).classList.add('active');
   el.classList.add('active');
   if (stabId === 'eqi-charts') { drawGiniHistoryChart(); drawLorenzCurve(); drawWcapSlideChart(); drawPriceChart(); }
+  // Push sub-route URL
+  const tabSlugMap = {'tab-register':'register','tab-explorer':'explorer','tab-index':'index','tab-network':'network','tab-exchange':'exchange'};
+  const stabSlugMap = {'sep-blocks':'blocks','sep-humans':'humans','eqi-score':'score','eqi-economy':'economy','eqi-charts':'charts','net-overview':'overview','net-runnode':'node','net-protocol':'protocol','exch-swap':'swap','exch-liquidity':'liquidity'};
+  const tabSlug = tabSlugMap[parentId];
+  const stabSlug = stabSlugMap[stabId];
+  if (tabSlug && stabSlug) history.pushState(null, '', '/' + tabSlug + '/' + stabSlug);
 }
 
 function showTab(name, el) {
@@ -3047,7 +3064,7 @@ function showTab(name, el) {
     panels[0].classList.add('active');
     if (stabs[0]) stabs[0].classList.add('active');
   }
-  if (name === 'swap') loadPoolStatus();
+  if (name === 'exchange') loadPoolStatus();
   history.pushState(null, '', '/' + name);
 }
 
@@ -3959,10 +3976,13 @@ async function doRemoveLiquidity() {
 }
 
 function activateTabFromPath(path) {
-  const tabNames = ['register','explorer','index','network','swap'];
-  const name = (path || '').replace(/^\//, '').split('/')[0];
+  const tabNames = ['register','explorer','index','network','exchange'];
+  const parts = (path || '').replace(/^\//, '').split('/');
+  let name = parts[0];
+  const stabSlug = parts[1] || '';
+  // Backwards-compat: /swap -> /exchange
+  if (name === 'swap') name = 'exchange';
   if (!name || !tabNames.includes(name)) return;
-  // Use attribute iteration instead of CSS attribute selector (more reliable cross-browser)
   let tabEl = null;
   document.querySelectorAll('.tab').forEach(t => {
     if ((t.getAttribute('onclick') || '').includes("'" + name + "'")) tabEl = t;
@@ -3974,16 +3994,29 @@ function activateTabFromPath(path) {
   if (!tabContent) return;
   tabContent.classList.add('active');
   tabEl.classList.add('active');
-  // Restore the first stab-panel within this tab so direct URL navigation works
+  // Activate stab-panel: use URL slug if present, otherwise first panel
+  const stabMap = {
+    explorer:  {blocks:'sep-blocks', humans:'sep-humans'},
+    index:     {score:'eqi-score', economy:'eqi-economy', charts:'eqi-charts'},
+    network:   {overview:'net-overview', node:'net-runnode', protocol:'net-protocol'},
+    exchange:  {swap:'exch-swap', liquidity:'exch-liquidity'}
+  };
   const panels = tabContent.querySelectorAll('.stab-panel');
-  const stabs = tabContent.querySelectorAll('.stab');
+  const stabs  = tabContent.querySelectorAll('.stab');
   if (panels.length) {
     panels.forEach(p => p.classList.remove('active'));
     stabs.forEach(s => s.classList.remove('active'));
-    panels[0].classList.add('active');
-    if (stabs[0]) stabs[0].classList.add('active');
+    const targetId = stabSlug && stabMap[name] && stabMap[name][stabSlug];
+    const targetEl = targetId ? document.getElementById(targetId) : panels[0];
+    if (targetEl) targetEl.classList.add('active');
+    // Activate matching stab button
+    const stabBtn = targetId
+      ? tabContent.querySelector('.stab[onclick*=\"' + targetId + '\"]')
+      : stabs[0];
+    if (stabBtn) stabBtn.classList.add('active');
+    else if (stabs[0]) stabs[0].classList.add('active');
   }
-  if (name === 'swap') loadPoolStatus();
+  if (name === 'exchange') loadPoolStatus();
 }
 
 document.addEventListener('DOMContentLoaded', () => {

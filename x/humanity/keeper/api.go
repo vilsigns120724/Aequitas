@@ -410,9 +410,14 @@ path := strings.Trim(r.URL.Path, "/")
 if idx := strings.Index(path, "/"); idx >= 0 {
 	path = path[:idx]
 }
+// Backwards-compat: /swap redirects to /exchange.
+if path == "swap" {
+	http.Redirect(w, r, "/exchange", http.StatusMovedPermanently)
+	return
+}
 // For non-register tabs, swap the active class server-side so the correct
 // tab is visible on direct URL load — no JS timing dependency.
-validTabs := map[string]bool{"explorer": true, "index": true, "network": true, "swap": true}
+validTabs := map[string]bool{"explorer": true, "index": true, "network": true, "exchange": true}
 if validTabs[path] {
 	html := strings.Replace(explorerHTML,
 		`class="tab active" onclick="showTab('register',this)"`,
