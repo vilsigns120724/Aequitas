@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -16,6 +19,48 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
+
+var registerRateLimit sync.Map
+
+// isPrivateOrLoopback returns true for RFC-1918 private ranges and loopback
+// addresses — used to decide whether to trust X-Forwarded-For (only safe when
+// the direct connection comes from a known reverse-proxy, not the open internet).
+func isPrivateOrLoopback(ipStr string) bool {
+	parsed := net.ParseIP(ipStr)
+	if parsed == nil {
+		return false
+	}
+	for _, cidr := range []string{
+		"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+		"::1/128", "fc00::/7",
+	} {
+		_, ipnet, err := net.ParseCIDR(cidr)
+		if err == nil && ipnet.Contains(parsed) {
+			return true
+		}
+	}
+	return false
+}
+
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	// Only trust X-Forwarded-For when the TCP connection itself comes from a
+	// private/loopback address — i.e. through Railway's or Render's proxy.
+	// A direct internet client must not be able to spoof their IP via this header.
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" && isPrivateOrLoopback(host) {
+		first := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
+		if ip, _, err := net.SplitHostPort(first); err == nil {
+			return ip
+		}
+		if first != "" {
+			return first
+		}
+	}
+	return host
+}
 
 // V7 ABI fragment for registerWithSig — used only to encode calldata correctly,
 // including the dynamic `bytes signature` parameter (offset/length tail encoding).
@@ -86,6 +131,16 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		return
 	}
+
+	ip := clientIP(r)
+	now := time.Now()
+	if last, ok := registerRateLimit.Load(ip); ok && now.Sub(last.(time.Time)) < 10*time.Second {
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "too many requests — please wait 10 seconds"})
+		return
+	}
+	registerRateLimit.Store(ip, now)
+
 	if r.Method != "POST" {
 		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "POST required"})
 		return

@@ -55,6 +55,10 @@ LastActivityAt int64 `json:"last_activity_at"`
 // can fire again for the next idle period rather than being a permanent
 // one-time-ever flag.
 Demurrage14DayWarningShown bool `json:"demurrage_14_day_warning_shown"`
+// FaucetClaimed is set permanently to true once an account has claimed the
+// tUSD test faucet. Unlike the old TUsdBalance>0 check, this flag is never
+// reset by spending tUSD, so a wallet cannot re-claim by draining its balance.
+FaucetClaimed bool `json:"faucet_claimed"`
 }
 
 // PoolState holds the two reserves of the single AEQ<->tUSD liquidity pool.
@@ -159,6 +163,7 @@ cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS tusd_balance FLO
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS lp_shares FLOAT NOT NULL DEFAULT 0`)
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS last_activity_at BIGINT NOT NULL DEFAULT 0`)
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS demurrage_14_day_warning_shown BOOLEAN NOT NULL DEFAULT false`)
+cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS faucet_claimed BOOLEAN NOT NULL DEFAULT false`)
 // Links a ZK proof commitment to the wallet that successfully registered
 // with it, so the app can ask "did MY proof get registered, and to which
 // wallet?" instead of guessing from a global, unfiltered list.
@@ -197,7 +202,7 @@ registered_at TIMESTAMP DEFAULT NOW()
 }
 
 func (cs *ChainState) loadFromDB() {
-rows, err := cs.db.Query("SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown FROM chain_accounts")
+rows, err := cs.db.Query("SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed FROM chain_accounts")
 if err != nil {
 fmt.Printf("⚠ Could not load from DB: %v\n", err)
 return
@@ -207,7 +212,7 @@ count := 0
 mergedCount := 0
 for rows.Next() {
 acc := &AccountState{}
-rows.Scan(&acc.Address, &acc.Balance, &acc.IsHuman, &acc.TUsdBalance, &acc.LPShares, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown)
+rows.Scan(&acc.Address, &acc.Balance, &acc.IsHuman, &acc.TUsdBalance, &acc.LPShares, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown, &acc.FaucetClaimed)
 count++
 
 // One-time migration: every state-mutating function (Transfer,
@@ -323,9 +328,9 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) {
 if !cs.useDB {
 return
 }
-_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown) VALUES ($1, $2, $3, $4, $5, $6, $7)
-ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7`,
-acc.Address, acc.Balance, acc.IsHuman, acc.TUsdBalance, acc.LPShares, acc.LastActivityAt, acc.Demurrage14DayWarningShown)
+_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8`,
+acc.Address, acc.Balance, acc.IsHuman, acc.TUsdBalance, acc.LPShares, acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed)
 if err != nil {
 fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
 } else {
@@ -1250,15 +1255,11 @@ acc, ok := cs.accounts[address]
 if !ok || !acc.IsHuman {
 return fmt.Errorf("only registered humans can claim the test-tUSD faucet")
 }
-if acc.TUsdBalance > 0 {
+if acc.FaucetClaimed {
 return fmt.Errorf("faucet already claimed")
 }
-// NOTE: this check only blocks re-claiming while a balance > 0 remains.
-// Spending it all via a swap or AddLiquidity would make TUsdBalance hit
-// 0 again, after which this same account could claim once more. Fine
-// for a first-pass test faucet; a real one-time flag (e.g. a separate
-// "claimed" column) would be needed before this matters in practice.
 
+acc.FaucetClaimed = true
 acc.TUsdBalance = tusdFaucetAmount
 cs.saveAccountToDB(acc)
 cs.save()
