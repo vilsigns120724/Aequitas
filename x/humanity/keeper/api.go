@@ -405,6 +405,29 @@ Return to the <span class="hl">Aequitas App</span> — it will confirm your regi
 
 func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "text/html")
+path := strings.Trim(r.URL.Path, "/")
+if idx := strings.Index(path, "/"); idx >= 0 {
+	path = path[:idx]
+}
+// For non-register tabs, swap the active class server-side so the correct
+// tab is visible on direct URL load — no JS timing dependency.
+validTabs := map[string]bool{"explorer": true, "index": true, "network": true, "swap": true}
+if validTabs[path] {
+	html := strings.Replace(explorerHTML,
+		`class="tab active" onclick="showTab('register',this)"`,
+		`class="tab" onclick="showTab('register',this)"`, 1)
+	html = strings.Replace(html,
+		`class="tab" onclick="showTab('`+path+`',this)"`,
+		`class="tab active" onclick="showTab('`+path+`',this)"`, 1)
+	html = strings.Replace(html,
+		`id="tab-register" class="tab-content active"`,
+		`id="tab-register" class="tab-content"`, 1)
+	html = strings.Replace(html,
+		`id="tab-`+path+`" class="tab-content"`,
+		`id="tab-`+path+`" class="tab-content active"`, 1)
+	fmt.Fprint(w, html)
+	return
+}
 fmt.Fprint(w, explorerHTML)
 }
 
