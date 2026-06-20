@@ -294,7 +294,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="tab" onclick="showTab('explorer',this)">🔍 Explorer</div>
   <div class="tab" onclick="showTab('index',this)">⚖️ Equality</div>
   <div class="tab" onclick="showTab('network',this)">🌐 Network</div>
-  <div class="tab" onclick="showTab('exchange',this)">🔄 Exchange</div>
+  <div class="tab" onclick="showTab('exchange',this);setTimeout(drawPriceChart,50)">🔄 Exchange</div>
 </div>
 
 <!-- REGISTER -->
@@ -557,10 +557,18 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <!-- EXCHANGE -->
 <div id="tab-exchange" class="tab-content">
 <nav class="stabs">
-  <div class="stab active" onclick="showStab('tab-exchange','exch-swap',this)">🔄 Swap</div>
+  <div class="stab active" onclick="showStab('tab-exchange','exch-swap',this);setTimeout(drawPriceChart,50)">🔄 Swap</div>
   <div class="stab" onclick="showStab('tab-exchange','exch-liquidity',this)">💧 Liquidity</div>
 </nav>
 <div id="exch-swap" class="stab-panel active">
+<div style="padding:16px 20px 0">
+  <div class="idx">
+    <div class="idx-title">AEQ / tUSD — Live Price</div>
+    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.</div>
+    <canvas id="price-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
+    <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No pool data yet — add liquidity to see the price chart.</div>
+  </div>
+</div>
 <div class="rs">
   <div class="rhero">
     <div class="rhero-title" data-i18n="swap-title">🔄 Swap AEQ ↔ tUSD</div>
@@ -715,7 +723,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <nav class="stabs">
   <div class="stab active" onclick="showStab('tab-index','eqi-score',this)">📊 Score</div>
   <div class="stab" onclick="showStab('tab-index','eqi-economy',this)">💸 Economy</div>
-  <div class="stab" onclick="showStab('tab-index','eqi-charts',this)">📈 Charts</div>
   <div class="stab" onclick="showStab('tab-index','eqi-story',this)">📖 Story</div>
 </nav>
 <div id="eqi-score" class="stab-panel active">
@@ -922,16 +929,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   </div>
 </div>
 </div>
-<div id="eqi-charts" class="stab-panel">
-<div class="is">
-<div class="idx" style="grid-column:1/-1">
-    <div class="idx-title">AEQ / tUSD — Live Price</div>
-    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Real-time price derived from the pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives. Accumulates up to 60 data points.</div>
-    <canvas id="price-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
-    <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No pool data yet — add liquidity to see the price chart.</div>
-  </div>
-</div>
-</div>
+
 <div id="eqi-story" class="stab-panel">
 <div class="is">
   <div class="idx" style="grid-column:1/-1">
@@ -3466,7 +3464,7 @@ function drawWcapSlideChart() {
 
 function drawPriceChart() {
   const canvas = document.getElementById('price-chart');
-  if (!canvas || !priceHistory.length) return;
+  if (!canvas || !priceHistory.length || !canvas.offsetParent) return;
   canvas.width = canvas.offsetWidth;
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
