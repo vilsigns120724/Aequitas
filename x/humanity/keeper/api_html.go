@@ -77,14 +77,25 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .sec-dot{width:6px;height:6px;border-radius:50%;background:var(--neon);box-shadow:0 0 8px var(--neon)}
 .sec-count{font-size:0.6rem;color:var(--muted);background:var(--card2);padding:3px 8px;border-radius:10px;border:1px solid var(--border)}
 .sec-desc{padding:10px 18px;font-size:0.65rem;color:var(--muted);background:rgba(139,92,246,0.03);border-bottom:1px solid var(--border);line-height:1.7}
-.block-item{padding:12px 18px;border-bottom:1px solid rgba(139,92,246,0.08);display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center;transition:all 0.15s}
-.block-item:hover{background:rgba(139,92,246,0.05)}.block-item:last-child{border-bottom:none}
+.block-item{padding:12px 18px;border-bottom:1px solid rgba(139,92,246,0.08);display:grid;grid-template-columns:60px 1fr auto;gap:10px;align-items:center;transition:all 0.15s;cursor:pointer}
+.block-item:hover{background:rgba(139,92,246,0.09)}.block-item:last-child{border-bottom:none}
 .block-num{font-size:0.8rem;font-weight:700;color:var(--purple);font-family:var(--font-mono);text-shadow:0 0 8px rgba(139,92,246,0.4)}
 .block-hash{font-size:0.63rem;color:var(--muted);margin-bottom:2px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-family:var(--font-mono)}
 .block-parents{font-size:0.57rem;color:rgba(139,92,246,0.3)}
 .block-right{text-align:right}
 .block-humans{font-size:0.65rem;color:var(--gold);margin-bottom:2px;font-weight:600}
 .block-time{font-size:0.57rem;color:var(--neon)}
+.block-detail-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:1000;padding:20px;overflow-y:auto;backdrop-filter:blur(4px)}
+.block-detail-overlay.open{display:flex;align-items:flex-start;justify-content:center;padding-top:50px}
+.bdc{background:var(--card);border:1px solid rgba(139,92,246,0.3);border-radius:12px;width:100%;max-width:620px;overflow:hidden;box-shadow:0 0 40px rgba(139,92,246,0.15)}
+.bdc-hdr{background:rgba(139,92,246,0.1);padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(139,92,246,0.15)}
+.bdc-close{cursor:pointer;color:var(--muted);font-size:1.1rem;padding:4px 10px;border-radius:6px;background:rgba(139,92,246,0.1);border:1px solid var(--border);transition:all 0.15s}
+.bdc-close:hover{color:var(--text);background:rgba(139,92,246,0.25)}
+.bdc-row{padding:9px 18px;border-bottom:1px solid rgba(139,92,246,0.06);display:grid;grid-template-columns:130px 1fr;gap:8px;font-size:0.62rem}
+.bdc-k{color:var(--muted);font-weight:600;padding-top:1px}
+.bdc-v{color:var(--text);font-family:var(--font-mono);word-break:break-all;line-height:1.5}
+.bdc-tx{margin:12px 18px;padding:9px 12px;background:rgba(0,230,118,0.04);border-radius:6px;border:1px solid rgba(0,230,118,0.15);font-size:0.59rem;font-family:var(--font-mono);color:var(--neon);word-break:break-all;line-height:1.6}
+.bdc-tx-hdr{padding:10px 18px 4px;font-size:0.6rem;font-weight:700;color:var(--neon);text-transform:uppercase;letter-spacing:1px}
 .bm{background:rgba(139,92,246,0.1);color:var(--purple);font-size:0.53rem;padding:2px 6px;border-radius:4px;border:1px solid rgba(139,92,246,0.2)}
 .bt{background:rgba(0,255,209,0.08);color:var(--neon);font-size:0.53rem;padding:2px 6px;border-radius:4px;border:1px solid rgba(0,255,209,0.15)}
 .empty{padding:40px;text-align:center;color:var(--muted);font-size:0.7rem;line-height:2.5}
@@ -259,6 +270,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <option value="hi">🌐 HI</option>
     <option value="id">🌐 ID</option>
     <option value="it">🌐 IT</option>
+    <option value="tr">🌐 TR</option>
   </select>
   <div class="header-right">
     <div class="badge badge-live"><span class="pulse"></span><span data-i18n="live">LIVE</span></div>
@@ -393,6 +405,16 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="sec-head"><div class="sec-title"><span class="sec-dot"></span><span data-i18n="recent-blocks">Recent Blocks</span></div><div class="sec-count" id="block-count">—</div></div>
     <div class="sec-desc" data-i18n="blocks-desc">Each row represents one block in the Aequitas BlockDAG. MERGE = this block has multiple parents, meaning two blocks were produced in parallel and later merged — the core feature of BlockDAG. TX = this block contains a human registration transaction. Block time averages ~6 seconds.</div>
     <div id="blocks-list"><div class="empty" data-i18n="loading">Loading blocks...</div></div>
+  </div>
+  <!-- Block detail overlay -->
+  <div class="block-detail-overlay" id="block-detail-overlay" onclick="if(event.target===this)closeBlock()">
+    <div class="bdc">
+      <div class="bdc-hdr">
+        <div style="font-size:0.75rem;font-weight:700;color:var(--purple);font-family:var(--font-mono)" id="bdc-title">Block #—</div>
+        <div class="bdc-close" onclick="closeBlock()">✕ Close</div>
+      </div>
+      <div id="bdc-content"></div>
+    </div>
   </div>
   <div class="right-col">
     <div class="ic">
@@ -2168,6 +2190,146 @@ it:{
   'usp-c4-title':'UBI quotidiano per sempre','usp-c4-desc':'Una volta registrato, ricevi automaticamente una quota giornaliera dei pagamenti UBI — ogni giorno, senza alcuna azione richiesta.',
   'v7-intro-title':'Cos\'è AequitasV7?',
   'v7-intro-text':'AequitasV7 è il contratto intelligente centrale del protocollo Aequitas. "V7" si riferisce alla 7ª versione principale del contratto di equità. È distribuito immutabilmente su Aequitas Chain (ID 1926) e gestisce ogni aspetto: registrazione umana, verifica ZK, gestione saldi, limite di ricchezza, distribuzione UBI, commissioni swap. Nessun amministratore può aggiornarlo. I sei meccanismi formano un sistema auto-rinforzante.'
+},
+tr:{
+  'logo-sub':'İNSANLIK KANITI','live':'CANLI',
+  'tab-register':'🔐 Kayıt','tab-explorer':'🔍 Gezgin','tab-humans':'👥 İnsanlar','tab-index':'📊 Endeks','tab-network':'🌐 Ağ','tab-protocol':'📜 Protokol V7','tab-swap':'🔄 Takas',
+  'reg-title':'🔐 Doğrulanmış İnsan Olarak Kayıt Ol',
+  'reg-sub':'Aequitas ağına katıl ve 1.000 AEQ Evrensel Temel Gelir hibeni al. Tek seferlik, kalıcı ve tamamen ücretsiz. Hiçbir kişisel veri asla saklanmaz.',
+  'app-title':'KAYIT YALNIZCA ANDROİD UYGULAMASI İLE',
+  'app-text':'İnsanlık Kanıtı, cihazında biyometrik doğrulama gerektirir. Parmak izi veya yüz tanıma yalnızca Donanım Güvenli Öğesi tarafından işlenir — ham biyometrik veriler asla cihazını terk etmez, asla bir sunucuya ulaşmaz. Uygulama, kimlik bilgilerini açıklamadan benzersizliğini matematiksel olarak kanıtlayan Sıfır Bilgi Kanıtı oluşturur. AequitasBio\'yu indir, biyometriklerini tara, MetaMask\'ı bağla ve <strong style="color:var(--gold)">1.000 AEQ\'n otomatik olarak yatırılacak</strong>.',
+  's1t':'Biyometrik Tarama','s1d':'AequitasBio uygulamasını aç · parmak izi veya yüzü tara · Donanım Güvenli Öğesi yerel olarak işler · biyometrik veriler asla cihazı terk etmez',
+  's2t':'ZK Kanıtı Oluşturma','s2d':'Groth16 Sıfır Bilgi Kanıtı sunucuda oluşturulur · benzersizlik kriptografik olarak doğrulanır · kimliğin asla açıklanmaz',
+  's3t':'Cüzdan Bağla','s3d':'Uygulama bu sayfada MetaMask\'ı açar · Ethereum cüzdanını bağla · kanıt kriptografik olarak adresine bağlanır',
+  's4t':'1.000 AEQ Yatırıldı','s4d':'Kayıt 6 saniye içinde Aequitas BlockDAG\'da onaylandı · 1.000 AEQ anında yatırıldı · kimliğin kalıcı olarak doğrulanmış insan olarak kaydedildi',
+  'priv-bar':'🔒 Donanım Güvenli Öğesi · Groth16 Sıfır Bilgi Kanıtı · Biyometrik veriler asla cihazı terk etmez · Gas ücreti yok · İnsan başına bir kayıt · Kalıcı ve değiştirilemez',
+  'conn-wallet':'BAĞLI CÜZDAN','proof-recv':'⚡ ZK KANITI ALINDI','proof-hint':'Kayıt için cüzdan bağla',
+  'btn-conn':'🦊 METAMASK BAĞLA','btn-reg':'🔐 ZİNCİRE KAYIT OL',
+  'btn-web-reg':'🌐 TARAYICI ÜZERİNDEN KAYIT (WebAuthn)',
+  'web-reg-warn':'⚠ Cihaza bağlı: Bu kimlik bu cihaza ve tarayıcıya bağlıdır. Başka bir cihaza aktarılamaz. Kalıcı çok cihazlı kimlik için Aequitas Android Uygulamasını kullan.',
+  'reg-log-hint':'// Kanıtını oluşturmak için Aequitas Android Uygulamasını aç, ardından buraya dön...',
+  'reg-details':'Kayıt Detayları','k-network':'Ağ','k-chainid':'Zincir ID','k-grant':'UBI Hibesi',
+  'k-fee':'Gas Ücreti','free':'ÜCRETSİZ — tamamen gas\'sız','k-limit':'Kayıtlar','k-limit-v':'İnsan başına bir kez · kalıcı · değiştirilemez',
+  'k-bio':'Biyometrik Veri','never-stored':'Asla saklanmaz — cihazında kalır',
+  'k-proof':'Kanıt Sistemi','k-conf':'Onay','k-conf-v':'6 saniye içinde (1 blok)',
+  'k-sybil':'Sybil Koruması','k-sybil-v':'Biyometri başına bir kimlik · kalıcı kilit',
+  'live-stats':'Canlı Zincir İstatistikleri',
+  's-height':'Blok Yüksekliği','s-height-sub':'Her ~6 saniyede yeni blok · BlockDAG · Paralel üretim',
+  's-humans':'Doğrulanmış İnsanlar','s-humans-sub':'Biyometrik ZKP · Bir kişi, bir cüzdan, sonsuza dek',
+  's-supply':'Toplam Arz','s-supply-sub':'Her zaman = İnsanlar × 1.000 AEQ',
+  's-index':'Aequitas Endeksi','s-index-sub':'0 = mükemmel eşitlik · 100 = maksimum eşitsizlik',
+  's-uptime':'Çalışma Süresi','s-uptime-sub':'Node v0.3.0 · Railway + Render · PostgreSQL',
+  'ib-poh':'İnsanlık Kanıtı','ib-poh-t':'Her AEQ sahibi, benzersiz bir yaşayan insan olduğunu kriptografik olarak kanıtlamak zorundadır. Robot yok, şirket yok, yapay zeka yok. Biyometrik veriler asla cihazı terk etmez.',
+  'ib-fair':'Radikal Şekilde Adil Dağıtım','ib-fair-t':'Her doğrulanmış insan kayıt sırasında tam olarak 1.000 AEQ alır. Ön madencilik yok, kurucu tahsisi yok. Toplam arz her zaman doğrulanmış insanlar × 1.000 eşittir.',
+  'ib-dag':'BlockDAG Mimarisi','ib-dag-t':'Birden fazla blok eş zamanlı olarak üretilebilir ve birleştirilebilir. Doğrusal blok zincirlerine kıyasla daha yüksek verim, daha düşük gecikme.',
+  'ib-gas':'Gerçekten Gas\'sız','ib-gas-t':'Kayıt ve AEQ transferleri kesinlikle ücretsizdir. ETH, BNB veya MATIC gerekmez. Banka hesabı veya kredi kartı gerekmez.',
+  'recent-blocks':'Son Bloklar','blocks-desc':'MERGE = birden fazla ebeveyn birleştirildi (BlockDAG). TX = kayıt işlemi. Blok süresi: ~6 saniye. Bloka tıklayarak detayları, doğrulayıcıyı ve işlemleri görüntüle.',
+  'loading':'Bloklar yükleniyor...','net-info':'Ağ Bilgisi','k-chain':'Zincir Adı','k-symbol':'Sembol','k-btime':'Blok Süresi',
+  'k-cons':'Konsensüs','k-nodes':'Aktif Node\'lar','k-storage':'Depolama','add-mm':'🦊 METAMASK\'A EKLE','k-dec':'Ondalık',
+  'btn-add-mm':'+ AEQUITAS AĞINI EKLE',
+  'phil':'"Para insanlar var olduğu için var.<br>Bundan fazlası değil, bundan azı değil."','phil-sub':'— AEQUİTAS İLKESİ —',
+  'humans-title':'Aequitas Zincirindeki Doğrulanmış İnsanlar',
+  'h-what':'Doğrulanmış İnsan Nedir?','h-what-t':'Doğrulanmış İnsan, biyometrik Sıfır Bilgi Kanıtı aracılığıyla benzersiz bir yaşayan insana ait olduğu kriptografik olarak kanıtlanmış bir cüzdan adresidir. Biyometrik veriler asla iletilmez veya saklanmaz.',
+  'h-zkp':'Sıfır Bilgi Kanıtı Sistemi','h-zkp-t':'Aequitas, BN128 üzerinde Groth16 kullanır. Kanıt boyutu: ~200 bayt. Doğrulama süresi: ~10ms. Kanıt, kimliği açıklamadan benzersizliği matematiksel olarak gösterir.',
+  'h-sybil':'Sybil Saldırısı Önleme','h-sybil-t':'Her biyometrik hash, keccak256 ile kalıcı olarak saklanır. İki kez kayıt olmaya çalışmak anında reddedilir. Bir insan, bir cüzdan, sonsuza dek. ⚠ Test aşaması: Mevcut doğrulama cihaza bağlı. Cihazdan bağımsız kimlik için MAX30102 PPG sensörü planlanmaktadır.',
+  'h-global':'Küresel Finansal Kapsayıcılık','h-global-t':'Banka hesabı, kredi kartı veya önceden kripto para gerekmez. Yalnızca biyometrik sensörlü bir Android akıllı telefon yeterlidir.',
+  'reg-humans':'Kayıtlı İnsanlar','h-desc':'Aşağıdaki her adres, biyometrik ZKP aracılığıyla benzersiz insan olarak doğrulandı. Her biri tam olarak 1.000 AEQ aldı. Kalıcı, değiştirilemez, zincir üzerinde.',
+  'no-humans':'Henüz kayıtlı insan yok.\n\nAequitas Android Uygulamasını indir ve zincirdeki ilk insan ol!',
+  'reg-stats':'Kayıt İstatistikleri','total-humans':'Toplam İnsan',
+  'idx-title':'Aequitas Endeksi — Gerçek Zamanlı Ekonomik Eşitlik Puanı',
+  'idx-desc':'Aequitas Endeksi, tüm doğrulanmış insanların ekonomik eşitsizliğini gerçek zamanlı olarak ölçer. Zincir üzerindeki bakiye dağılımının <strong style="color:var(--teal)">Gini katsayısından</strong> türetilir. <strong style="color:var(--neon)">0 = mükemmel eşitlik</strong>. <strong style="color:var(--red)">100 = maksimum eşitsizlik</strong>. Bitcoin Gini ≈ 0,85 · Güney Afrika ≈ 0,63 · İskandinavya ≈ 0,27 · Aequitas hedefi: Gini 0,35\'in altında.',
+  'gini-what-title':'Gini Katsayısı Nedir?',
+  'gini-what-text':'İtalyan istatistikçi Corrado Gini tarafından 1912\'de geliştirilmiştir. Lorenz eğrisi ile görselleştirilen gerçek dağılımı mükemmel eşit dağılımla karşılaştırarak servet dağılımını ölçer. Ölçek: 0 (herkes aynı miktarı tutar) ile 1 (bir kişi her şeyi tutar). Dünya Bankası, OECD ve BM tarafından kullanılır.',
+  'gini-calc-title':'Aequitas Endeksi Nasıl Hesaplanır?',
+  'gini-calc-text':'Tüm doğrulanmış insanların AEQ bakiyeleri toplanır. Formül, tüm bakiye çiftleri arasındaki ortalama mutlak farkı, nüfus karesi (n²) ve ortalama bakiye (x̄) ile normalleştirilmiş olarak hesaplar. Sonuç 0–1 ile 100 ile çarpılır = Aequitas Endeksi.',
+  'gini-why-title':'Neden Gini — Daha Basit Bir Metrik Değil?',
+  'gini-why-text':'Basit bir zengin-fakir oranı kolayca manipüle edilebilir: 10.000 cüzdan düşük bir spread gösterebilir ama AEQ\'nun %90\'ı 100 elde konsantre olabilir — Gini bunu tespit eder, bir oran etmez. Katsayı, tüm doğrulanmış insanlar arasındaki tam dağılımı tek bir denetlenebilir sayıda yakalar.',
+  'curr-idx':'Mevcut Endeks','bar-0':'0 — Mükemmel Eşitlik','bar-100':'100 — Maks. Eşitsizlik',
+  'wcap-lbl':'Mevcut Servet Tavanı:','wcap-mult':'Çarpan:','wcap-avg':'Ort. bakiye:',
+  'gini':'Gini Katsayısı','gini-desc':'0 = eşit · 1 = eşitsiz',
+  'supply-desc':'Her zaman = İnsanlar × 1.000 AEQ',
+  'phase':'Protokol Aşaması','phase-desc':'İnsan sayısına göre otomatik ilerler',
+  'humans-desc':'Biyometrik olarak doğrulanmış benzersiz insanlar',
+  'pools-title':'Yeniden Dağıtım Havuzları',
+  'pools-desc':'Her takas ücreti, gecikme ücreti ve servet tavanı taşması otomatik olarak dört havuza bölünür. Manuel müdahale yok. Tüm havuzlar günlük ödeme yapar.',
+  'vel-pool':'Doğrulayıcı Havuzu','vel-pool-desc':'Tüm ücretlerin %40\'ı → ağı güvence altına alan node operatörleri',
+  'liq-pool':'Likidite Havuzu','liq-pool-desc':'Tüm ücretlerin %30\'u → LP paylarıyla orantılı likidite sağlayıcıları',
+  'ubi-pool':'UBI Havuzu','ubi-pool-desc':'Tüm ücretlerin %20\'si → her 24 saatte tüm doğrulanmış insanlar eşit olarak',
+  'treasury':'Hazine','treasury-desc':'Tüm ücretlerin %10\'u → protokol geliştirme ve bakımı',
+  'phases-title':'Protokol Aşamaları',
+  'phases-desc':'Aşama 0\'da servet tavanı bir bootstrap çarpanı kullanır: max(5, min(N, 25))× ortalama bakiye. 1–4 insanla: 5× ortalama. Her yeni insan 1× ekler. 25+ insanda: kalıcı olarak 25×\'e sabitlenir. Aşama 1+ 25×\'i sabit tutar. Tüm geçişler otomatiktir — yönetişim oyu yok, yönetici anahtarı yok.',
+  'p0':'Bootstrap · &lt;100 insan · Servet Tavanı: max(5,min(N,25))× ort. · 5×→25× arası kayar · Şu anda aktif',
+  'p1':'Büyüme · 100–10.000 insan · Servet Tavanı: 25× ortalama bakiye',
+  'p2':'Kararlılık · 10.000–1M insan · Servet Tavanı: 25× ortalama bakiye',
+  'p3':'Olgunluk · 1M+ insan · Servet Tavanı: 25× ortalama bakiye',
+  'wealth-cap-explain':'Aşama 0\'daki (Bootstrap) Servet Tavanı max(5, min(N, 25))× ortalama AEQ bakiyesi kullanır; burada N = kayıtlı insan sayısı. 1–4 insan: 5× ortalama. Her yeni insan 1× ekler. 25+ insan: kalıcı olarak 25×. Tavan her zaman mevcut ortalama bakiyeyle ölçeklenir.',
+  'demurrage-title':'Gecikme Ücreti — Dolaşım Teşviki',
+  'demurrage-desc':'Aequitas, tarihi tamamlayıcı para birimlerinden ilham alan bir gecikme ücreti mekanizması uygular. Atıl AEQ bakiyeleri, biriktirmeyi caydırmak için yavaşça değer kaybeder.',
+  'dem-rate-k':'Bozunma Hızı','dem-rate-v':'Ayda %0,5 (sürekli, kademeli değil)',
+  'dem-grace-k':'İzin Süresi','dem-grace-v':'Bozunma başlamadan önce 3 aylık hareketsizlik',
+  'dem-reset-k':'Saat Sıfırlama','dem-reset-v':'Herhangi bir transfer, takas veya likidite işlemi zamanlayıcıyı sıfırlar',
+  'dem-dest-k':'Bozunan AEQ şuraya gider','dem-dest-v':'Yeniden dağıtım havuzları (40/30/20/10 bölünmesi)',
+  'dem-warn-k':'Uyarı Sistemi','dem-warn-v':'14 günlük bildirim (bir kez) + her girişte 7 günlük tekrarlayan hatırlatma',
+  'story-title':'Aequitas\'ın Hikayesi — Neden Var Olduğu',
+  'story-text':'<p>Yıl 2009. Satoshi Nakamoto Bitcoin\'i yayınlıyor. İlk kez, değer bir banka olmadan iki kişi arasında transfer edilebiliyor. Gerçek bir devrim. Ama neredeyse hemen bir şeyler ters gidiyor.</p><p>Erken madenciler neredeyse sıfır maliyetle milyonlarca coin biriktiriyor. 2021\'e kadar Bitcoin adreslerinin en üst %1\'i tüm Bitcoin\'in %90\'ından fazlasını kontrol ediyor. Bitcoin\'in tahmini Gini katsayısı 0,85\'i aşıyor — Dünya\'daki herhangi bir ülkeden daha yüksek.</p><p><span style="color:var(--gold)">Aequitas</span> — Latince "adalet" ve "eşitlik" anlamına gelir — tek bir soruyu yanıtlamak için yaratıldı: <em style="color:var(--gold)">"Her insana adil olacak şekilde ilk ilkelerden tasarlanmış bir kripto para nasıl görünürdü?"</em></p><p>Cevap basit: <strong style="color:var(--text)">Para insanlar var olduğu için var. Bu nedenle her insan, sadece insan olduğu için paradan eşit pay almalıdır.</strong></p><p><em style="color:var(--gold)">"Para insanlar var olduğu için var. Bundan fazlası değil, bundan azı değil."</em></p>',
+  'nodes-title':'Aktif Node\'lar — Mevcut Ağ Topolojisi',
+  'nodes-desc':'Aequitas ağı şu anda iki coğrafi olarak dağıtılmış node üzerinde çalışıyor. Her ikisi de blok üretimine, durum senkronizasyonuna ve API hizmetine katılıyor. libp2p aracılığıyla eşler arası iletişim kuruyor ve HTTP aracılığıyla blok durumunu senkronize ediyorlar. Ağ ek node\'ları desteklemek üzere tasarlanmıştır.',
+  'node1':'Node 1 — Railway (Birincil)','node1-desc':'Birincil API · Blok üreticisi · UBI dağıtımı · P2P Bootstrap · PostgreSQL · MetaMask için RPC',
+  'node2':'Node 2 — Render (İkincil)','node2-desc':'İkincil API · Blok üreticisi · P2P eşi · HTTP senkronizasyonu · Paylaşılan PostgreSQL durumu',
+  'run-node-title':'Kendi Node\'unu Çalıştır — Ağı Güvence Altına Almaya Yardım Et',
+  'run-node-desc':'Herkes bir Aequitas node\'u çalıştırabilir — izin, stake veya başvuru gerekmez. Node\'lar blok üretimine katılır ve insan kaydını doğrular. Node operatörleri, Doğrulayıcı Havuzu aracılığıyla protokol ücretlerinden pay kazanır (tüm takas ücretlerinin %40\'ı, günlük dağıtılır).',
+  'bootstrap-title':'Yeni Node Bağla','bootstrap-desc':'Kendi Aequitas node\'unu çalıştırmak için PEER_NODES ortam değişkenini aşağıdaki bootstrap node adresine ayarla. Node\'un tam zincir durumunu otomatik olarak senkronize edecek ve blok üretimine başlayacak.',
+  'tech-title':'Teknik Özellikler','mm-config':'MetaMask Yapılandırması',
+  'k-lang':'Dil','k-src':'Kaynak Kodu','evm-yes':'Evet — JSON-RPC /rpc · MetaMask uyumlu',
+  'proto-label':'Aequitas V7 Protokolü — Teknik Dokümantasyon',
+  'ca-title':'Sözleşme Adresleri','ca-text':'Zincir: Aequitas Chain (Zincir ID: 1926 · 0x786)<br>RPC: https://aequitas.digital/rpc<br><br>BioVerifier: 0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2<br>AequitasV7 (Ana): 0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78',
+  'ca-desc':'AequitasV7, tüm Aequitas ekonomisinin tek gerçek kaynağıdır. Her AEQ bakiyesi, her insan kaydı, her UBI ödemesi ve her servet tavanı uygulaması, bu tek değiştirilemez sözleşme tarafından yönetilir. Yönetici anahtarı yok, yükseltme proxy\'si yok, mantığının tek bir satırını değiştirebilecek yönetişim oyu yok. Bugün çalışan kod on yıl sonra da çalışacak koddur.',
+  'poa-title':'1. HAYAT KANITI — Hareketsiz Bakiye Kurtarma','poa-text':'<p>İnsanlar ölünce veya kalıcı olarak yetersiz hale gelince AEQ\'ya ne olur? Bitcoin\'de kaybedilen cüzdanlar, kalıcı olarak kaybedilen arz anlamına gelir. Aequitas bunu çok aşamalı bir hareketsizlik kurtarma sistemiyle çözer.</p>',
+  'poa-box':'Yıl 0–2: Normal kullanım — kısıtlama yok<br>Yıl 2: Uyarı 1 — Vasi adına yanıt verebilir<br>Yıl 2+60g: Uyarı 2 — artan aciliyet<br>Yıl 2+120g: Uyarı 3 — son bildirim<br>Yıl 2+180g: AEQ kişisel EMANET\'e taşındı (hâlâ kurtarılabilir)<br>Yıl 4: Hâlâ hareketsizse — EMANET UBI Havuzuna serbest bırakıldı',
+  'guard-title':'2. VASİ SİSTEMİ — İnsani Güvence','guard-text':'<p>Ya biri hastanede ya da başka bir nedenle aylarca cihazına erişemiyorsa? Vasi sistemi, güvenilen bir kişinin — başka bir doğrulanmış insanın — cüzdan sahibinin hâlâ hayatta olduğunu onaylamasına izin verir. Vasinin kesinlikle sıfır finansal erişimi vardır: yalnızca hareketsizlik zamanlayıcısını sıfırlayan tek bir işlevi çağırabilir.</p>',
+  'guard-box':'İnsan başına 1 Vasi · Aequitas\'ta doğrulanmış insan olmalı<br>Vasi YALNIZCA confirmAlive() çağırabilir — sıfır işlem hakkı<br>Vasi fon taşıyamaz, AEQ transfer edemez veya cüzdana erişemez<br>Vasi başına en fazla 3 korunan · 7 günlük kilit · Döngüsel ilişkiye izin yok',
+  'dem-title':'3. GECİKME ÜCRETİ — Biriktirme Karşıtı Mekanizma',
+  'dem-box':'Hız: 3 aylık hareketsizlikten sonra ayda %0,5 (sürekli, kademeli değil)<br>Herhangi bir transfer, takas veya likidite işlemi zamanlayıcıyı otomatik olarak sıfırlar<br>Bozunan AEQ dört havuza yeniden dağıtılır — asla yakılmaz<br>14 günlük uyarı bir kez gösterilir · 7 günlük uyarı her aktif oturumda tekrarlanır',
+  'dem-text':'<p>Gecikme ücreti, para üzerindeki bir tutma maliyetidir — biriktirmeyi pahalı, dolaşımı çekici kılan negatif bir faiz oranı. Wörgl Deneyi (Avusturya, 1932), gecikme ücretli bir para birimi kullandı ve bir yılda yerel işsizliği %25 azalttı.</p>',
+  'cap-title':'4. SERVET TAVANI — Matematiksel Adalet Uygulaması','cap-box':'Bootstrap tavanı: max(5,min(N,25))× mevcut ortalama AEQ bakiyesi<br>1–4 insan: 5× · insan başına +1× · 25+: kalıcı 25×<br>4 protokol havuzu adresi dışındaki TÜM adresler için geçerli<br>Fazla AEQ anında yeniden dağıtılır · Manuel müdahale yok',
+  'ubi-title':'5. EVRENSEL TEMEL GELİR — Günlük Yeniden Dağıtım','ubi-box':'UBI Havuzu Gelir Kaynakları:<br>· AEQ↔tUSD AMM havuzundan tüm takas ücretlerinin %20\'si<br>· Servet tavanı uygulamasından taşma<br>· Hareketsiz hesaplardan gecikme ücretleri<br>· 4 yıl sonra serbest bırakılan hareketsiz emanet<br><br>Dağıtım: Her 24 saatte bir, tüm UBI Havuzu bakiyesi tüm kayıtlı doğrulanmış insanlar arasında eşit olarak bölünür.',
+  'inf-title':'6. ALGORİTMİK ENFLASYON YOK — Sabit Arz Formülü','inf-box':'Yeni AEQ yaratan TEK olay: yeni bir doğrulanmış insan kaydolur.<br><br>Toplam Arz = Doğrulanmış İnsanlar × 1.000 AEQ<br><br>Bu bir politika değil — protokol tarafından zorlanır. Hiçbir yönetici ek AEQ basamaz.',
+  'btn-download-app':'AEQUİTASBİO UYGULAMASINI İNDİR',
+  'swap-title':'🔄 AEQ ↔ tUSD Takas Et','swap-sub':'Yerel likidite havuzu üzerinden AEQ\'yu tUSD (simüle edilmiş test doları) ile takas et. %0,1 ücret yalnızca takaslar için geçerlidir — insanlar arasındaki normal AEQ transferleri tamamen ücretsiz kalır.',
+  'swap-priv-bar':'🔒 Yalnızca %0,1 takas ücreti · AEQ\'dan AEQ\'ya transferler ücretsiz · tUSD gerçek değeri olmayan test para birimidir',
+  'swap-your-aeq':'Senin AEQ','swap-your-tusd':'Senin tUSD','swap-aeq-to-tusd':'AEQ → tUSD','swap-tusd-to-aeq':'tUSD → AEQ',
+  'swap-fee-est':'Protokol ücreti (%0,1)','swap-details-hdr':'Takas Detayları',
+  'swap-out-lbl':'Alacaksın (tahmini)','swap-impact-lbl':'Fiyat etkisi','swap-rate-lbl':'Döviz kuru',
+  'swap-depth-lbl':'Havuz Bileşimi','amm-title':'x × y = k — Sabit Çarpım AMM',
+  'amm-text':'AEQ\'yu tUSD karşılığında takas ettiğinde, AEQ rezervi büyür ve tUSD rezervi küçülür — çarpımları her zaman k\'ya eşit kalır. Daha büyük takaslar daha fazla fiyat etkisine neden olur. %0,1 ücreti formül uygulanmadan önce düşülür.',
+  'swap-btn-conn':'🦊 METAMASK BAĞLA','swap-btn-go':'🔄 TAKAS ET',
+  'swap-log-hint':'// Takas yapmak için cüzdan bağla...',
+  'swap-no-liquidity':'Henüz tUSD yok mu?','swap-faucet-desc':'Kayıtlı insanlar bir kez test tUSD talep edebilir','swap-btn-faucet':'💧 TEST tUSD TALEP ET',
+  'swap-addliq-title':'Likidite Sağla','swap-addliq-desc':'İlk yatıran ol — oranın başlangıç fiyatını belirler.','swap-btn-addliq':'💧 LİKİDİTE EKLE',
+  'swap-lp-title':'LP Pozisyonun','swap-lp-share':'Havuz Payı','swap-lp-withdrawable':'Çekilebilir',
+  'swap-lp-pct-label':'% pozisyonun','swap-lp-youget':'Alacaksın','swap-btn-removeliq':'🔥 LİKİDİTE KALDIR',
+  'swap-pool-title':'AEQ / tUSD — Havuz Durumu',
+  'swap-pool-aeq':'AEQ Rezervi','swap-pool-tusd':'tUSD Rezervi','swap-pool-price':'Spot Fiyat',
+  'swap-fee-bps':'Takas Ücreti','swap-fee-split':'Ücret Dağılımı','swap-fee-split-v':'%40 Doğrulayıcılar / %30 LP\'ler / %20 UBI / %10 Hazine',
+  'swap-pools-addr-title':'Tokenomik Havuz Adresleri',
+  'swap-validators':'Doğrulayıcılar (%40)','swap-lps':'Likidite Sağlayıcıları (%30)','swap-ubi':'UBI Havuzu (%20)','swap-treasury':'Hazine (%10)',
+  'ubi-hero-title':'EVRENSEL TEMEL GELİR — UBI HAVUZU',
+  'ubi-hero-sub':'Biriktirilmekte — bir sonraki ödeme tüm doğrulanmış insanlara eşit olarak dağıtılıyor:',
+  'ubi-bal-lbl':'mevcut havuz bakiyesi','ubi-hero-desc':'Tümüne eşit bölünür · her 24 saatte ödenir · havuz sıfırlanır · minimum bakiye gerekmez',
+  'ubi-how-fills':'UBI Havuzu Nasıl Dolar',
+  'ubi-src-swap':'Takas Ücretleri','ubi-src-swap-d':'Her AEQ↔tUSD takası, %0,1 ücretinin %20\'sini katkıda bulunur. Daha fazla işlem = daha hızlı dolma.',
+  'ubi-src-dem':'Gecikme Ücreti','ubi-src-dem-d':'Hareketsiz AEQ (3+ ay) ayda %0,5 bozunur. Bozunan miktarın %20\'si UBI\'ya gider.',
+  'ubi-src-cap':'Servet Tavanı Taşması','ubi-src-cap-d':'Servet tavanını (max(5,min(N,25))× ortalama) aşan cüzdanlar anında kesilir. %20\'si UBI\'ya akar.',
+  'pools4-header':'Dört yeniden dağıtım havuzunun tamamı',
+  'ubi-see-above':'yukarıdaki geri sayımı gör','ubi-timer-above':'⏰ geri sayım yukarıda gösterildi','pool-t-timer':'Birikiyor — zamanlayıcı yok',
+  'usp-headline':'Tarihte ilk kez — herkes eşit başlıyor',
+  'usp-sub':'Android akıllı telefonun varsa katılabilirsin. Banka yok, kripto bilgisi yok, yatırım yok.',
+  'usp-c1-title':'0,00 Başlangıç Yatırımı','usp-c1-desc':'Kayıt tamamen gas\'sız. ETH, MATIC veya kredi kartı gerekmez. Protokol tüm işlem maliyetlerini öder.',
+  'usp-c2-title':'Her insan için 1.000 AEQ','usp-c2-desc':'Milyarder ya da geçimlik çiftçi — herkes tam olarak 1.000 AEQ alır. Fazlası değil, azı değil. Eşit başlangıç, matematiksel garanti.',
+  'usp-c3-title':'Yalnızca bir akıllı telefon','usp-c3-desc':'Bilgisayar yok, banka hesabı yok, kimlik belgesi yok. Parmak izi sensörlü bir Android telefon yeterli.',
+  'usp-c4-title':'Sonsuza kadar günlük UBI','usp-c4-desc':'Kaydolduktan sonra, her gün otomatik olarak UBI ödemelerinden pay alırsın — her gün, hiçbir işlem gerektirmez.',
+  'v7-intro-title':'AequitasV7 Nedir?',
+  'v7-intro-text':'AequitasV7, Aequitas protokolünün merkezi akıllı sözleşmesidir. "V7", adalet sözleşmesinin 7. ana sürümüdür. Aequitas Chain\'de (Zincir ID 1926) değiştirilemez şekilde dağıtılmıştır ve her şeyi yönetir: insan kaydı, ZK doğrulaması, bakiye yönetimi, servet tavanı, UBI dağıtımı, takas ücretleri. Hiçbir yönetici onu güncelleyemez. Altı mekanizma kendi kendini güçlendiren bir sistem oluşturur.'
 }
 };
 
@@ -2451,18 +2613,72 @@ function drawWcapSlideChart() {
   ctx.setLineDash([]);
 }
 
+let allBlocks = [];
+
 async function loadBlocks() {
   try {
     const blocks = await (await fetch('/api/blocks')).json();
     const list = document.getElementById('blocks-list');
     if (!blocks || !blocks.length) { list.innerHTML = '<div class="empty">No blocks yet</div>'; return; }
+    allBlocks = blocks;
     document.getElementById('block-count').textContent = blocks.length + ' blocks';
-    list.innerHTML = blocks.map(b => {
+    list.innerHTML = blocks.slice().reverse().map(b => {
       const merge = b.parent_hashes && b.parent_hashes.length > 1;
       const hasTx = b.transactions && b.transactions.length > 0;
-      return '<div class="block-item"><div class="block-num">#' + b.height + '</div><div><div class="block-hash">' + short(b.hash) + (merge ? ' <span class="bm">MERGE</span>' : '') + (hasTx ? ' <span class="bt">TX</span>' : '') + '</div><div class="block-parents">' + (b.parent_hashes ? b.parent_hashes.length + ' parent(s)' : '') + '</div></div><div class="block-right"><div class="block-humans">' + (b.humans || 0) + ' humans</div><div class="block-time">' + timeAgo(b.timestamp) + '</div></div></div>';
+      const validator = b.proposer ? short(b.proposer, 6, 4) : '—';
+      return '<div class="block-item" onclick="openBlock(\'' + sanitize(b.hash) + '\')">' +
+        '<div class="block-num">#' + b.height + '</div>' +
+        '<div><div class="block-hash">' + short(b.hash) +
+          (merge ? ' <span class="bm">MERGE</span>' : '') +
+          (hasTx ? ' <span class="bt">TX</span>' : '') +
+          '</div>' +
+          '<div class="block-parents">' + (b.parent_hashes ? b.parent_hashes.length + ' parent(s)' : '') +
+          ' · validator: <span style="color:var(--teal)">' + validator + '</span></div>' +
+        '</div>' +
+        '<div class="block-right"><div class="block-humans">' + (b.humans || 0) + ' humans</div>' +
+        '<div class="block-time">' + timeAgo(b.timestamp) + '</div></div>' +
+        '</div>';
     }).join('');
   } catch (e) {}
+}
+
+function openBlock(hash) {
+  const b = allBlocks.find(x => x.hash === hash);
+  if (!b) return;
+  document.getElementById('bdc-title').textContent = 'Block #' + b.height;
+  const ts = new Date(b.timestamp * 1000);
+  const parentList = (b.parent_hashes || []).map(h => '<div style="margin-bottom:2px">' + h + '</div>').join('') || '—';
+  const isMerge = b.parent_hashes && b.parent_hashes.length > 1;
+  let html = '';
+  html += '<div class="bdc-row"><div class="bdc-k">Height</div><div class="bdc-v">#' + b.height + (b.is_genesis ? ' <span class="bm">GENESIS</span>' : '') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Full Hash</div><div class="bdc-v" style="font-size:0.55rem">' + b.hash + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Timestamp</div><div class="bdc-v">' + ts.toUTCString() + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Validator</div><div class="bdc-v" style="color:var(--teal)">' + (b.proposer || '—') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Humans</div><div class="bdc-v">' + (b.humans || 0) + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Type</div><div class="bdc-v">' + (isMerge ? '<span class="bm">MERGE BLOCK</span> — ' + b.parent_hashes.length + ' parents merged' : 'Standard block — 1 parent') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Parent(s)</div><div class="bdc-v" style="font-size:0.55rem">' + parentList + '</div></div>';
+  if (b.state_root) html += '<div class="bdc-row"><div class="bdc-k">State Root</div><div class="bdc-v" style="font-size:0.55rem">' + b.state_root + '</div></div>';
+  const txs = b.transactions || [];
+  if (txs.length > 0) {
+    html += '<div class="bdc-tx-hdr">Transactions (' + txs.length + ')</div>';
+    txs.forEach(tx => {
+      html += '<div class="bdc-tx">TYPE: ' + sanitize(tx.type || '?') +
+        '<br>WALLET: ' + sanitize(tx.wallet || '—') +
+        (tx.amount ? '<br>AMOUNT: ' + tx.amount + ' AEQ' : '') +
+        (tx.tx_hash ? '<br>TX HASH: ' + sanitize(tx.tx_hash) : '') +
+        '</div>';
+    });
+  } else {
+    html += '<div class="bdc-row"><div class="bdc-k">Transactions</div><div class="bdc-v" style="color:var(--muted)">None</div></div>';
+  }
+  document.getElementById('bdc-content').innerHTML = html;
+  document.getElementById('block-detail-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeBlock() {
+  document.getElementById('block-detail-overlay').classList.remove('open');
+  document.body.style.overflow = '';
 }
 
 async function loadHumans() {
@@ -2724,12 +2940,12 @@ function showDemurrageNotice(bd) {
 // themselves — same behavior, just one click instead of a calculator.
 function setPctAmount(side, pct) {
   if (side === 'aeq') {
-    const amt = myAEQBalance * pct;
-    document.getElementById('addliq-aeq').value = amt > 0 ? amt.toFixed(6) : '';
+    const floored = Math.floor(myAEQBalance * pct * 1e6) / 1e6;
+    document.getElementById('addliq-aeq').value = floored > 0 ? floored : '';
     updateLiquidityRatio('aeq');
   } else {
-    const amt = myTUSDBalance * pct;
-    document.getElementById('addliq-tusd').value = amt > 0 ? amt.toFixed(6) : '';
+    const floored = Math.floor(myTUSDBalance * pct * 1e6) / 1e6;
+    document.getElementById('addliq-tusd').value = floored > 0 ? floored : '';
     updateLiquidityRatio('tusd');
   }
 }
@@ -2815,15 +3031,15 @@ async function claimFaucet() {
 // requires (within 1% tolerance), so users don't have to calculate it
 // by hand and then get rejected for a slightly-off ratio.
 function updateLiquidityRatio(changed) {
-  if (currentPoolAEQ <= 0 || currentPoolTUSD <= 0) return; // first depositor sets any ratio
+  if (currentPoolAEQ <= 0 || currentPoolTUSD <= 0) return;
   const aeqInput = document.getElementById('addliq-aeq');
   const tusdInput = document.getElementById('addliq-tusd');
   if (changed === 'aeq') {
     const aeq = parseFloat(aeqInput.value || '0');
-    if (aeq > 0) tusdInput.value = (aeq * (currentPoolTUSD / currentPoolAEQ)).toFixed(6);
+    if (aeq > 0) tusdInput.value = Math.floor(aeq * (currentPoolTUSD / currentPoolAEQ) * 1e6) / 1e6;
   } else {
     const tusd = parseFloat(tusdInput.value || '0');
-    if (tusd > 0) aeqInput.value = (tusd * (currentPoolAEQ / currentPoolTUSD)).toFixed(6);
+    if (tusd > 0) aeqInput.value = Math.floor(tusd * (currentPoolAEQ / currentPoolTUSD) * 1e6) / 1e6;
   }
 }
 
