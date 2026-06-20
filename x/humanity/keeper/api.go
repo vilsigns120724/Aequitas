@@ -405,6 +405,7 @@ Return to the <span class="hl">Aequitas App</span> — it will confirm your regi
 
 func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "text/html")
+w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 path := strings.Trim(r.URL.Path, "/")
 if idx := strings.Index(path, "/"); idx >= 0 {
 	path = path[:idx]
