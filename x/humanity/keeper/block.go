@@ -1,12 +1,18 @@
 package keeper
 
 import (
+"crypto/ecdsa"
 "crypto/sha256"
 "encoding/hex"
 "encoding/json"
 "fmt"
+"os"
+"strings"
 "sync"
 "time"
+
+"github.com/ethereum/go-ethereum/common"
+"github.com/ethereum/go-ethereum/crypto"
 )
 
 type Transaction struct {
@@ -26,6 +32,7 @@ Humans       int      `json:"humans"`
 IsGenesis    bool     `json:"is_genesis,omitempty"`
 	StateRoot    string   `json:"state_root,omitempty"`
 	Transactions  []Transaction `json:"transactions,omitempty"`
+	Signature    string   `json:"signature,omitempty"`
 }
 
 type BlockDAG struct {
@@ -38,6 +45,7 @@ nodeID     string
 height     int64
 pendingTxs []Transaction
 txMu       sync.Mutex
+signingKey *ecdsa.PrivateKey
 }
 
 func (dag *BlockDAG) AddTransaction(tx Transaction) {
@@ -53,6 +61,14 @@ tips:   make(map[string]bool),
 keeper: keeper,
 state:  state,
 nodeID: nodeID,
+}
+if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
+	if key, err := crypto.HexToECDSA(pk); err == nil {
+		dag.signingKey = key
+		fmt.Println("✓ Block signing enabled (RELAYER_PRIVATE_KEY loaded)")
+	} else {
+		fmt.Printf("[BLOCK] Warning: RELAYER_PRIVATE_KEY invalid, blocks will be unsigned: %v\n", err)
+	}
 }
 dag.createGenesisBlock()
 return dag
@@ -121,6 +137,14 @@ Humans:       dag.state.TotalHumans(),
 Transactions: txs,
 }
 block.Hash = dag.calculateHash(block)
+if dag.signingKey != nil {
+	hashBytes := common.HexToHash(block.Hash)
+	if sig, err := crypto.Sign(hashBytes[:], dag.signingKey); err == nil {
+		block.Signature = hex.EncodeToString(sig)
+	} else {
+		fmt.Printf("[BLOCK] Warning: could not sign block #%d: %v\n", block.Height, err)
+	}
+}
 
 dag.blocks[block.Hash] = block
 
@@ -147,19 +171,44 @@ if _, exists := dag.blocks[block.Hash]; exists {
 return
 }
 
-// Minimal integrity check: recompute the hash from the block's own fields
-// and reject if it doesn't match what the peer claims. This does NOT make
-// this a real consensus mechanism — there's still no signature proving
-// which node actually produced the block, and a malicious or buggy peer
-// could still broadcast a self-consistent but bogus block. It does stop
-// the simplest case: a corrupted-in-transit or hand-crafted block whose
-// claimed hash doesn't match its contents, which previously would have
-// been accepted into the DAG without any check at all.
+// Integrity check 1: recompute hash from block fields.
 expectedHash := dag.calculateHash(block)
 if expectedHash != block.Hash {
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: hash mismatch (claimed %s..., computed %s...)\n",
 block.Height, block.Hash[:min(16, len(block.Hash))], expectedHash[:16])
 return
+}
+
+// Integrity check 2: if the block carries a signature, recover the signer
+// and verify it matches block.Proposer. Blocks without a signature (e.g.
+// from nodes that haven't set RELAYER_PRIVATE_KEY) are still accepted —
+// the hash check above provides basic integrity.
+if block.Signature != "" && !block.IsGenesis {
+	sigBytes, sigErr := hex.DecodeString(block.Signature)
+	if sigErr != nil || len(sigBytes) != 65 {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: malformed signature\n", block.Height)
+		return
+	}
+	hashBytes := common.HexToHash(block.Hash)
+	pubkeyBytes, recErr := crypto.Ecrecover(hashBytes[:], sigBytes)
+	if recErr != nil {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature recovery failed: %v\n", block.Height, recErr)
+		return
+	}
+	pubkey, parseErr := crypto.UnmarshalPubkey(pubkeyBytes)
+	if parseErr != nil {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid public key: %v\n", block.Height, parseErr)
+		return
+	}
+	recoveredAddr := strings.ToLower(crypto.PubkeyToAddress(*pubkey).Hex())
+	proposer := strings.ToLower(block.Proposer)
+	// Proposer may be a nodeID (libp2p) or an Ethereum address — only verify
+	// when it looks like an address (0x + 40 hex chars).
+	if strings.HasPrefix(proposer, "0x") && len(proposer) == 42 && recoveredAddr != proposer {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature mismatch (signer %s, proposer %s)\n",
+			block.Height, recoveredAddr, proposer)
+		return
+	}
 }
 
 dag.blocks[block.Hash] = block

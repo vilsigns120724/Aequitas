@@ -206,13 +206,24 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// checking whether registration would succeed.
 	_, dryRunErr := evmRPC.evm.CallContract(relayerAddr, to, calldata, big.NewInt(0), false)
 	if dryRunErr != nil {
-		fmt.Printf("[REGISTER] EVM registerWithSig dry-run reverted (%v); validating through native V7 mirror\n", dryRunErr)
+		errStr := strings.ToLower(dryRunErr.Error())
+		contractMissing := strings.Contains(errStr, "no code") ||
+			strings.Contains(errStr, "empty code") ||
+			strings.Contains(errStr, "contract not deployed")
+		if !contractMissing {
+			// Proof invalid, already registered, bad signature, etc. — surface
+			// the real EVM revert reason instead of silently bypassing via mirror.
+			return "", fmt.Errorf("registration rejected: %w", dryRunErr)
+		}
+		// V7 not yet deployed (startup race). Mirror validates the proof via
+		// BioVerifier and writes storage slots directly. Only allowed here.
+		fmt.Printf("[REGISTER] V7 not yet deployed — using mirror registration for %s\n", wallet)
 		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata)
 		if mirrorErr != nil {
-			return "", fmt.Errorf("registration would fail on-chain: %w; mirror validation failed: %v", dryRunErr, mirrorErr)
+			return "", fmt.Errorf("registration failed (V7 missing + mirror failed): %w; mirror: %v", dryRunErr, mirrorErr)
 		}
 		if regErr := a.state.RegisterHuman(wallet); regErr != nil {
-			fmt.Printf("[REGISTER] Warning: native balance grant failed (mirror registration still succeeded): %v\n", regErr)
+			fmt.Printf("[REGISTER] Warning: native balance grant failed after mirror: %v\n", regErr)
 		}
 		if len(req.PubSignals) > 0 {
 			commitment := req.PubSignals[0]

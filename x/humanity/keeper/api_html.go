@@ -318,6 +318,8 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="pbox" id="pbox"><div class="plbl" data-i18n="proof-recv">⚡ ZK PROOF RECEIVED</div><div class="pval" id="pval" data-i18n="proof-hint">Connect wallet to register</div></div>
     <button class="rbtn bc" id="btn-conn" onclick="connectWallet()" data-i18n="btn-conn">🦊 CONNECT METAMASK</button>
     <button class="rbtn br" id="btn-reg" onclick="doRegister()" disabled data-i18n="btn-reg">🔐 REGISTER ON-CHAIN</button>
+    <button class="rbtn" id="btn-web-reg" onclick="registerViaBrowser()" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;margin-top:8px" data-i18n="btn-web-reg">🌐 REGISTER VIA BROWSER (WebAuthn)</button>
+    <div id="web-reg-warn" style="display:none;font-size:0.62rem;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 10px;margin-top:6px" data-i18n="web-reg-warn">⚠ Device-bound: This identity is tied to this device and browser. You cannot transfer it to another device. For permanent multi-device identity, use the Aequitas Android App instead.</div>
     <div class="rlog" id="rlog"><span class="info" data-i18n="reg-log-hint">// Open Aequitas Android App to generate your proof, then return here...</span></div>
   </div>
   <div class="ic">
@@ -1140,6 +1142,8 @@ en:{
   'priv-bar':'🔒 Hardware Secure Element · Groth16 Zero-Knowledge Proof · Biometric data never leaves your device · No gas fees · One registration per human · Permanent &amp; immutable',
   'conn-wallet':'CONNECTED WALLET','proof-recv':'⚡ ZK PROOF RECEIVED','proof-hint':'Connect wallet to register',
   'btn-conn':'🦊 CONNECT METAMASK','btn-reg':'🔐 REGISTER ON-CHAIN',
+  'btn-web-reg':'🌐 REGISTER VIA BROWSER (WebAuthn)',
+  'web-reg-warn':'⚠ Device-bound: This identity is tied to this device and browser. You cannot transfer it to another device. For permanent multi-device identity, use the Aequitas Android App instead.',
   'reg-log-hint':'// Open Aequitas Android App to generate your proof, then return here...',
   'reg-details':'Registration Details','k-network':'Network','k-chainid':'Chain ID','k-grant':'UBI Grant',
   'k-fee':'Gas Fee','free':'FREE — completely gasless','k-limit':'Registrations','k-limit-v':'Once per human · permanent · immutable',
@@ -1242,6 +1246,8 @@ de:{
   'priv-bar':'🔒 Hardware Secure Element · Groth16 Zero-Knowledge-Beweis · Biometrische Daten verlassen nie dein Gerät · Keine Gasgebühren · Eine Registrierung pro Mensch · Permanent und unveränderlich',
   'conn-wallet':'VERBUNDENE WALLET','proof-recv':'⚡ ZK-BEWEIS EMPFANGEN','proof-hint':'Wallet verbinden um zu registrieren',
   'btn-conn':'🦊 METAMASK VERBINDEN','btn-reg':'🔐 ON-CHAIN REGISTRIEREN',
+  'btn-web-reg':'🌐 IM BROWSER REGISTRIEREN (WebAuthn)',
+  'web-reg-warn':'⚠ Gerätgebunden: Diese Identität ist an dieses Gerät und diesen Browser gebunden. Sie kann nicht auf ein anderes Gerät übertragen werden. Für dauerhafte Geräteunabhängigkeit nutze die Aequitas Android App.',
   'reg-log-hint':'// Öffne die Aequitas Android App um deinen Beweis zu erstellen, dann kehre hierher zurück...',
   'reg-details':'Registrierungsdetails','k-network':'Netzwerk','k-chainid':'Chain-ID','k-grant':'UBI-Zuteilung',
   'k-fee':'Gasgebühr','free':'KOSTENLOS — vollständig gebührenfrei','k-limit':'Registrierungen','k-limit-v':'Einmal pro Mensch · permanent · unveränderlich',
@@ -1397,6 +1403,8 @@ es:{
   'priv-bar':'🔒 Elemento Seguro de Hardware · Prueba ZK Groth16 · Datos biométricos nunca salen del dispositivo · Sin tarifas de gas · Un registro por humano · Permanente e inmutable',
   'conn-wallet':'WALLET CONECTADA','proof-recv':'⚡ PRUEBA ZK RECIBIDA','proof-hint':'Conecta wallet para registrar',
   'btn-conn':'🦊 CONECTAR METAMASK','btn-reg':'🔐 REGISTRAR ON-CHAIN',
+  'btn-web-reg':'🌐 REGISTRAR VIA NAVEGADOR (WebAuthn)',
+  'web-reg-warn':'⚠ Vinculado al dispositivo: Esta identidad está vinculada a este dispositivo y navegador. No puedes transferirla a otro dispositivo. Para identidad permanente multidispositivo, usa la App Android de Aequitas.',
   'reg-log-hint':'// Abre la App Android Aequitas para generar tu prueba, luego regresa aquí...',
   'reg-details':'Detalles del Registro','k-network':'Red','k-chainid':'ID de Cadena','k-grant':'Subsidio UBI',
   'k-fee':'Tarifa de Gas','free':'GRATIS — completamente sin gas','k-limit':'Registros','k-limit-v':'Una vez · permanente · inmutable',
@@ -1535,6 +1543,8 @@ ru:{
   'priv-bar':'🔒 Аппаратный Защищённый Элемент · Доказательство Groth16 с Нулевым Разглашением · Биометрия никогда не покидает устройство · Без комиссий · Одна регистрация на человека · Постоянно и неизменно',
   'conn-wallet':'ПОДКЛЮЧЁННЫЙ КОШЕЛЁК','proof-recv':'⚡ ZK-ДОКАЗАТЕЛЬСТВО ПОЛУЧЕНО','proof-hint':'Подключите кошелёк для регистрации',
   'btn-conn':'🦊 ПОДКЛЮЧИТЬ METAMASK','btn-reg':'🔐 ЗАРЕГИСТРИРОВАТЬ ОН-ЧЕЙН',
+  'btn-web-reg':'🌐 РЕГИСТРАЦИЯ ЧЕРЕЗ БРАУЗЕР (WebAuthn)',
+  'web-reg-warn':'⚠ Привязано к устройству: Эта личность привязана к данному устройству и браузеру. Перенести её на другое устройство невозможно. Для постоянной кроссплатформенной личности используйте Android-приложение Aequitas.',
   'reg-log-hint':'// Откройте Android-приложение Aequitas для создания доказательства, затем вернитесь сюда...',
   'reg-details':'Детали Регистрации','k-network':'Сеть','k-chainid':'ID Цепи','k-grant':'Субсидия UBI',
   'k-fee':'Комиссия Gas','free':'БЕСПЛАТНО — полностью без комиссий','k-limit':'Регистрации','k-limit-v':'Один раз · постоянно · неизменно',
@@ -1671,6 +1681,8 @@ zh:{
   'priv-bar':'🔒 硬件安全元件 · Groth16零知识证明 · 生物特征数据永不离开设备 · 无Gas费 · 每人一次注册 · 永久不可更改',
   'conn-wallet':'已连接钱包','proof-recv':'⚡ 已收到ZK证明','proof-hint':'连接钱包以注册',
   'btn-conn':'🦊 连接 METAMASK','btn-reg':'🔐 链上注册',
+  'btn-web-reg':'🌐 通过浏览器注册 (WebAuthn)',
+  'web-reg-warn':'⚠ 设备绑定：此身份绑定到当前设备和浏览器，无法转移到其他设备。如需永久性多设备身份，请使用Aequitas安卓应用。',
   'reg-log-hint':'// 打开Aequitas安卓应用生成您的证明，然后返回此处...',
   'reg-details':'注册详情','k-network':'网络','k-chainid':'链ID','k-grant':'UBI补贴',
   'k-fee':'Gas费','free':'免费——完全无Gas','k-limit':'注册','k-limit-v':'每人一次 · 永久 · 不可更改',
@@ -1809,6 +1821,8 @@ id:{
   'priv-bar':'🔒 Elemen Aman Perangkat Keras · Bukti ZK Groth16 · Data biometrik tidak pernah meninggalkan perangkat · Tanpa biaya gas · Satu pendaftaran per manusia · Permanen &amp; tidak dapat diubah',
   'conn-wallet':'DOMPET TERHUBUNG','proof-recv':'⚡ BUKTI ZK DITERIMA','proof-hint':'Hubungkan dompet untuk mendaftar',
   'btn-conn':'🦊 HUBUNGKAN METAMASK','btn-reg':'🔐 DAFTAR ON-CHAIN',
+  'btn-web-reg':'🌐 DAFTAR VIA BROWSER (WebAuthn)',
+  'web-reg-warn':'⚠ Terikat perangkat: Identitas ini terikat pada perangkat dan browser ini. Tidak dapat dipindahkan ke perangkat lain. Untuk identitas permanen multi-perangkat, gunakan Aplikasi Android Aequitas.',
   'reg-log-hint':'// Buka Aplikasi Android Aequitas untuk membuat bukti Anda, lalu kembali ke sini...',
   'reg-details':'Detail Pendaftaran','k-network':'Jaringan','k-chainid':'ID Rantai','k-grant':'Hibah UBI',
   'k-fee':'Biaya Gas','free':'GRATIS — sepenuhnya tanpa gas','k-limit':'Pendaftaran','k-limit-v':'Satu kali · permanen · tidak dapat diubah',
@@ -1945,6 +1959,8 @@ it:{
   'priv-bar':'🔒 Elemento Sicuro Hardware · Prova Groth16 a Conoscenza Zero · Dati biometrici non lasciano il dispositivo · Nessuna commissione gas · Una registrazione per umano · Permanente e immutabile',
   'conn-wallet':'WALLET CONNESSO','proof-recv':'⚡ PROVA ZK RICEVUTA','proof-hint':'Connetti wallet per registrarti',
   'btn-conn':'🦊 CONNETTI METAMASK','btn-reg':'🔐 REGISTRA ON-CHAIN',
+  'btn-web-reg':'🌐 REGISTRA VIA BROWSER (WebAuthn)',
+  'web-reg-warn':'⚠ Legato al dispositivo: Questa identità è legata a questo dispositivo e browser. Non è trasferibile su un altro dispositivo. Per un\'identità permanente multi-dispositivo, usa l\'App Android Aequitas.',
   'reg-log-hint':'// Apri l\'App Android Aequitas per generare la tua prova, poi torna qui...',
   'reg-details':'Dettagli Registrazione','k-network':'Rete','k-chainid':'ID Catena','k-grant':'Sussidio UBI',
   'k-fee':'Commissione Gas','free':'GRATUITO — completamente senza gas','k-limit':'Registrazioni','k-limit-v':'Una volta · permanente · immutabile',
@@ -2848,6 +2864,40 @@ async function connectWallet() {
 function addLog(msg, type) {
   const el = document.getElementById('rlog');
   el.innerHTML += '<div><span class="' + type + '">' + msg + '</span></div>';
+}
+
+async function registerViaBrowser() {
+  if (!navigator.credentials || !window.PublicKeyCredential) {
+    addLog('WebAuthn not supported in this browser.', 'err');
+    return;
+  }
+  document.getElementById('web-reg-warn').style.display = 'block';
+  addLog('Creating device credential (biometric or PIN prompt)...', 'info');
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const userId = crypto.getRandomValues(new Uint8Array(16));
+    const credential = await navigator.credentials.create({
+      publicKey: {
+        challenge,
+        rp: { name: 'Aequitas', id: window.location.hostname },
+        user: { id: userId, name: 'aequitas-user', displayName: 'Aequitas User' },
+        pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
+        timeout: 60000,
+        attestation: 'none',
+        authenticatorSelection: { userVerification: 'preferred' }
+      }
+    });
+    // Hash credential.rawId bytes into a BigInt, then reduce mod BN254 field size
+    const credBytes = new Uint8Array(credential.rawId);
+    let bioNum = BigInt(0);
+    for (const b of credBytes) bioNum = (bioNum << 8n) | BigInt(b);
+    const FIELD_SIZE = BigInt('21888242871839275222246405745257275088548364400416034343698204186575808495617');
+    pendingBioHash = (bioNum % FIELD_SIZE).toString();
+    addLog('Device identity hashed. Connecting wallet...', 'ok');
+    await connectWalletAndProve();
+  } catch (e) {
+    addLog('WebAuthn error: ' + e.message, 'err');
+  }
 }
 
 async function doRegister() {
