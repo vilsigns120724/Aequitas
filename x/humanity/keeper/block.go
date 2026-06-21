@@ -47,6 +47,8 @@ pendingTxs           []Transaction
 txMu                 sync.Mutex
 signingKey           *ecdsa.PrivateKey
 authorizedValidators map[string]bool // Ethereum addresses allowed to propose blocks
+activeSyncPeers      map[string]bool // peers with a running syncWithNode goroutine
+syncPeerMu           sync.Mutex
 }
 
 // loadAuthorizedValidators reads the AUTHORIZED_VALIDATORS env var
@@ -84,6 +86,7 @@ keeper:               keeper,
 state:                state,
 nodeID:               nodeID,
 authorizedValidators: loadAuthorizedValidators(),
+activeSyncPeers:      make(map[string]bool),
 }
 if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	if key, err := crypto.HexToECDSA(pk); err == nil {

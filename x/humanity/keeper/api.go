@@ -69,6 +69,8 @@ mux.HandleFunc("/api/lp-position", a.handleLPPosition)
 mux.HandleFunc("/api/faucet", a.handleFaucet)
 mux.HandleFunc("/api/pool", a.handlePoolStatus)
 mux.HandleFunc("/api/snapshot", a.handleSnapshot)
+mux.HandleFunc("/api/peers", a.handlePeers)
+mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 mux.HandleFunc("/registered", a.handleRegistered)
 mux.HandleFunc("/download/app.apk", a.handleAppDownload)
 fmt.Println("── Starting EVM RPC ─────────────────────")
@@ -449,6 +451,34 @@ if validTabs[path] {
 	return
 }
 fmt.Fprint(w, explorerHTML)
+}
+
+// handlePeerRegister accepts a node registration and returns the current peer list.
+// POST /api/peers/register  body: {"url":"https://..."}
+func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+if r.Method == "OPTIONS" { w.WriteHeader(200); return }
+var req struct{ URL string `json:"url"` }
+r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+json.NewDecoder(r.Body).Decode(&req)
+if req.URL != "" {
+GlobalPeerRegistry.Register(req.URL)
+fmt.Printf("[PEERS] Registered: %s\n", req.URL)
+// Also start syncing this new peer from our side
+a.blockchain.startSyncForPeer(req.URL)
+}
+json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
+}
+
+// handlePeers returns the list of all known peer nodes.
+// GET /api/peers
+func (a *APIServer) handlePeers(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
 }
 
 // handleSnapshot exports the full Go-state as a signed JSON snapshot.
