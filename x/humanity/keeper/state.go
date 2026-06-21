@@ -199,6 +199,56 @@ nullifier TEXT PRIMARY KEY,
 wallet_address TEXT NOT NULL,
 registered_at TIMESTAMP DEFAULT NOW()
 )`)
+cs.db.Exec(`CREATE TABLE IF NOT EXISTS chain_config (
+key TEXT PRIMARY KEY,
+value TEXT NOT NULL
+)`)
+}
+
+// setConfigValue persists a key/value pair to chain_config (upsert).
+func (cs *ChainState) setConfigValue(key, value string) {
+if cs.db == nil {
+return
+}
+cs.db.Exec(`INSERT INTO chain_config (key, value) VALUES ($1, $2)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value)
+}
+
+// getConfigValue reads a key from chain_config, returning "" if missing.
+func (cs *ChainState) getConfigValue(key string) string {
+if cs.db == nil {
+return ""
+}
+var v string
+cs.db.QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+return v
+}
+
+// GetLastUBIAt returns the Unix timestamp of the most recent UBI distribution,
+// or 0 if it has never run.
+func (cs *ChainState) GetLastUBIAt() int64 {
+v := cs.getConfigValue("last_ubi_at")
+if v == "" {
+return 0
+}
+var t int64
+fmt.Sscan(v, &t)
+return t
+}
+
+// TimeUntilNextUBI returns how long until the next UBI distribution is due.
+// Returns 0 if overdue.
+func (cs *ChainState) TimeUntilNextUBI() time.Duration {
+last := cs.GetLastUBIAt()
+if last == 0 {
+return 5 * time.Second
+}
+next := time.Unix(last, 0).Add(24 * time.Hour)
+d := time.Until(next)
+if d < 0 {
+return 0
+}
+return d
 }
 
 func (cs *ChainState) loadFromDB() {
@@ -528,6 +578,8 @@ cs.saveAccountToDB(acc)
 }
 cs.save()
 
+cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(nodes, validatorsPoolAddr)...)
+
 fmt.Printf("[VALIDATORS] ✓ Distributed %.6f AEQ equally across %d node operators (%.6f AEQ each)\n",
 total, len(nodes), share)
 }
@@ -580,6 +632,10 @@ cs.saveAccountToDB(acc)
 }
 cs.save()
 
+holderAddrs := make([]string, len(holders))
+for i, h := range holders { holderAddrs[i] = h.addr }
+cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(holderAddrs, lpPoolAddr)...)
+
 fmt.Printf("[LP] ✓ Distributed %.6f AEQ across %d LP holders (proportional to shares)\n", total, len(holders))
 }
 
@@ -618,6 +674,9 @@ cs.enforceWealthCapLocked(acc) // a UBI payout can in principle still push someo
 cs.saveAccountToDB(acc)
 }
 cs.save()
+
+cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", time.Now().Unix()))
+cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(humanAddrs, ubiPoolAddr)...)
 
 fmt.Printf("[UBI] ✓ Distributed %.6f AEQ across %d registered humans (%.6f AEQ each)\n",
 total, len(humanAddrs), share)
@@ -970,6 +1029,8 @@ cs.save()
 fmt.Printf("[SWAP] %s: %.4f %s → %.4f %s (fee %.4f)\n",
 address, amountIn, sideLabel(aeqToTusd, true), amountOut, sideLabel(aeqToTusd, false), fee)
 
+cs.syncBalanceLocked(V7_CONTRACT_ADDR, address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
+
 return amountOut, nil
 }
 
@@ -1117,6 +1178,8 @@ cs.saveAccountToDB(acc)
 cs.savePoolToDB()
 cs.save()
 
+cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
+
 fmt.Printf("[POOL] ✓ %s added liquidity: %.4f AEQ + %.4f tUSD → %.6f LP shares\n", address, amountAEQ, amountTUSD, mintedShares)
 return nil
 }
@@ -1161,6 +1224,8 @@ cs.pool.TotalLPShares -= sharesToBurn
 cs.saveAccountToDB(acc)
 cs.savePoolToDB()
 cs.save()
+
+cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
 
 fmt.Printf("[POOL] ✓ %s removed liquidity: %.6f shares → %.4f AEQ + %.4f tUSD\n", address, sharesToBurn, outAEQ, outTUSD)
 return outAEQ, outTUSD, nil

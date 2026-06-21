@@ -69,6 +69,8 @@ if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	} else {
 		fmt.Printf("[BLOCK] Warning: RELAYER_PRIVATE_KEY invalid, blocks will be unsigned: %v\n", err)
 	}
+} else {
+	fmt.Println("[BLOCK] ⚠ RELAYER_PRIVATE_KEY not set — blocks will be unsigned. Peer nodes will reject unsigned blocks.")
 }
 dag.createGenesisBlock()
 return dag
@@ -91,12 +93,17 @@ fmt.Printf("✓ Genesis Block (DAG): %s\n", genesis.Hash[:16]+"...")
 }
 
 func (dag *BlockDAG) calculateHash(b *Block) string {
+txData, _ := json.Marshal(b.Transactions)
+txRootBytes := sha256.Sum256(txData)
+txRoot := hex.EncodeToString(txRootBytes[:])
 data, _ := json.Marshal(map[string]interface{}{
 "height":        b.Height,
 "timestamp":     b.Timestamp,
 "parent_hashes": b.ParentHashes,
 "proposer":      b.Proposer,
 "humans":        b.Humans,
+"state_root":    b.StateRoot,
+"tx_root":       txRoot,
 })
 hash := sha256.Sum256(data)
 return hex.EncodeToString(hash[:])
@@ -135,6 +142,7 @@ ParentHashes: parentHashes,
 Proposer:     dag.nodeID,
 Humans:       dag.state.TotalHumans(),
 Transactions: txs,
+StateRoot:    dag.state.StateRoot(),
 }
 block.Hash = dag.calculateHash(block)
 if dag.signingKey != nil {
@@ -179,10 +187,14 @@ block.Height, block.Hash[:min(16, len(block.Hash))], expectedHash[:16])
 return
 }
 
-// Integrity check 2: if the block carries a signature, recover the signer
-// and verify it matches block.Proposer. Blocks without a signature (e.g.
-// from nodes that haven't set RELAYER_PRIVATE_KEY) are still accepted —
-// the hash check above provides basic integrity.
+// Integrity check 2: all non-genesis blocks must carry a valid ECDSA
+// signature from the proposer. Unsigned blocks are rejected — this is the
+// primary consensus enforcement mechanism.
+if !block.IsGenesis && block.Signature == "" {
+	fmt.Printf("[DAG] ✗ Rejected peer block #%d from %s: missing signature\n",
+		block.Height, block.Proposer)
+	return
+}
 if block.Signature != "" && !block.IsGenesis {
 	sigBytes, sigErr := hex.DecodeString(block.Signature)
 	if sigErr != nil || len(sigBytes) != 65 {

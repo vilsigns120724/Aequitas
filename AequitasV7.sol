@@ -47,6 +47,10 @@ contract AequitasV7 {
     mapping(address => uint256) public escrowOf;
     mapping(address => bool)    public isHuman;
     mapping(uint256 => bool)    public usedCommitments;
+    // usedNullifiers stores the on-chain record of each biometric nullifier.
+    // Slot 8. Prevents the same biometric from registering a second wallet
+    // even when bypassing the API layer and calling the contract directly.
+    mapping(bytes32 => address) public usedNullifiers;
     mapping(address => uint256) public commitmentOf;
     mapping(address => uint256) public lastActivity;
     mapping(address => uint256) public lastDemurrage;
@@ -77,13 +81,16 @@ contract AequitasV7 {
         bioVerifier = IBioVerifier(_bioVerifier);
     }
 
-    function register(uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[2] calldata pubSignals) external {
+    function register(uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[2] calldata pubSignals, bytes32 nullifier) external {
         require(!isHuman[msg.sender], "Already registered");
         uint256 commitment = pubSignals[0];
         require(!usedCommitments[commitment], "Commitment used");
+        require(nullifier != bytes32(0), "Nullifier required");
+        require(usedNullifiers[nullifier] == address(0), "Nullifier used");
         require(bioVerifier.verifyProof(pA, pB, pC, pubSignals), "Invalid proof");
         usedCommitments[commitment] = true;
         commitmentOf[msg.sender] = commitment;
+        usedNullifiers[nullifier] = msg.sender;
         isHuman[msg.sender] = true;
         totalHumans++;
         balanceOf[msg.sender] += INITIAL_GRANT;
@@ -108,18 +115,23 @@ contract AequitasV7 {
         uint[2] calldata pC,
         uint[2] calldata pubSignals,
         address claimedHuman,
-        bytes calldata signature
+        bytes calldata signature,
+        bytes32 nullifier
     ) external {
         require(!isHuman[claimedHuman], "Already registered");
 
         uint256 commitment = pubSignals[0];
         require(!usedCommitments[commitment], "Commitment used");
 
+        require(nullifier != bytes32(0), "Nullifier required");
+        require(usedNullifiers[nullifier] == address(0), "Nullifier used");
+
         bytes32 messageHash = keccak256(abi.encodePacked(
             block.chainid,
             address(this),
             "register",
-            commitment
+            commitment,
+            nullifier
         ));
         bytes32 ethSignedHash = keccak256(abi.encodePacked(
             "\x19Ethereum Signed Message:\n32",
@@ -134,6 +146,7 @@ contract AequitasV7 {
 
         usedCommitments[commitment] = true;
         commitmentOf[claimedHuman] = commitment;
+        usedNullifiers[nullifier] = claimedHuman;
         isHuman[claimedHuman] = true;
         totalHumans++;
         balanceOf[claimedHuman] += INITIAL_GRANT;

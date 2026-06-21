@@ -73,7 +73,8 @@ const registerWithSigABI = `[{
 {"name": "pC", "type": "uint256[2]"},
 {"name": "pubSignals", "type": "uint256[2]"},
 {"name": "claimedHuman", "type": "address"},
-{"name": "signature", "type": "bytes"}
+{"name": "signature", "type": "bytes"},
+{"name": "nullifier", "type": "bytes32"}
 ]
 }]`
 
@@ -242,12 +243,12 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	}
 
 	claimedHuman := common.HexToAddress(wallet)
-	// Nullifier check — fastest, no EVM call needed. Rejects the same
-	// biometric registering a second wallet even with a fresh bioHash.
-	if req.Nullifier != "" {
-		if existingWallet := a.state.GetWalletByNullifier(req.Nullifier); existingWallet != "" {
-			return "", fmt.Errorf("identity already registered (nullifier used by %s)", existingWallet)
-		}
+	// Nullifier is mandatory — reject registrations without one.
+	if req.Nullifier == "" {
+		return "", fmt.Errorf("nullifier required")
+	}
+	if existingWallet := a.state.GetWalletByNullifier(req.Nullifier); existingWallet != "" {
+		return "", fmt.Errorf("identity already registered (nullifier used by %s)", existingWallet)
 	}
 	if req.BioHash != "" {
 		if existingWallet := a.state.GetWalletByBioHash(req.BioHash); existingWallet != "" {
@@ -255,7 +256,17 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		}
 	}
 
-	calldata, err := parsedABI.Pack("registerWithSig", pA, pB, pC, pubSignals, claimedHuman, sigBytes)
+	// Encode nullifier as bytes32 — zero value if not provided.
+	var nullifierBytes [32]byte
+	if req.Nullifier != "" {
+		nullHex := strings.TrimPrefix(req.Nullifier, "0x")
+		if len(nullHex) > 64 {
+			nullHex = nullHex[:64]
+		}
+		copy(nullifierBytes[:], common.Hex2Bytes(nullHex))
+	}
+
+	calldata, err := parsedABI.Pack("registerWithSig", pA, pB, pC, pubSignals, claimedHuman, sigBytes, nullifierBytes)
 	if err != nil {
 		return "", fmt.Errorf("encoding failed: %w", err)
 	}
@@ -286,7 +297,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// V7 not yet deployed (startup race). Mirror validates the proof via
 		// BioVerifier and writes storage slots directly. Only allowed here.
 		fmt.Printf("[REGISTER] V7 not yet deployed — using mirror registration for %s\n", wallet)
-		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata)
+		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata, req.Nullifier)
 		if mirrorErr != nil {
 			return "", fmt.Errorf("registration failed (V7 missing + mirror failed): %w; mirror: %v", dryRunErr, mirrorErr)
 		}
@@ -364,6 +375,9 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// transaction the user pays for.
 	if regErr := a.state.RegisterHuman(wallet); regErr != nil {
 		fmt.Printf("[REGISTER] Warning: native balance grant failed (contract registration still succeeded): %v\n", regErr)
+	} else {
+		// Keep EVM balanceOf in sync with Go state after registration.
+		a.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, wallet)
 	}
 
 	// Record which wallet this proof's commitment actually registered to,
@@ -431,7 +445,10 @@ func notifyProofServer(bioHashKey, wallet string) {
 	}
 }
 
-func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractAddr, claimedHuman common.Address, pA [2]*big.Int, pB [2][2]*big.Int, pC [2]*big.Int, pubSignals [2]*big.Int, sigBytes []byte, calldata []byte) (string, error) {
+func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractAddr, claimedHuman common.Address, pA [2]*big.Int, pB [2][2]*big.Int, pC [2]*big.Int, pubSignals [2]*big.Int, sigBytes []byte, calldata []byte, nullifierHex string) (string, error) {
+	if nullifierHex == "" {
+		return "", fmt.Errorf("nullifier required")
+	}
 	wallet := strings.ToLower(claimedHuman.Hex())
 	if a.state.IsHuman(wallet) {
 		return "", fmt.Errorf("already registered")
@@ -448,7 +465,15 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 		return "", fmt.Errorf("commitment used")
 	}
 
-	if !validRegisterSignature(contractAddr, claimedHuman, commitment, sigBytes) {
+	// Check nullifier slot (slot 8) for replay protection.
+	nullKey := common.HexToHash(strings.TrimPrefix(nullifierHex, "0x"))
+	nullSlotCheck := mappingSlotBytes32(nullKey, 8)
+	nullVal, _ := a.state.LoadStorageSlot(addrStr, nullSlotCheck.Hex())
+	if common.HexToHash(nullVal) != (common.Hash{}) {
+		return "", fmt.Errorf("nullifier already used")
+	}
+
+	if !validRegisterSignature(contractAddr, claimedHuman, commitment, nullifierHex, sigBytes) {
 		return "", fmt.Errorf("invalid signature")
 	}
 
@@ -479,22 +504,29 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 4).Hex(), common.BigToHash(initialGrant).Hex())
 	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 6).Hex(), common.HexToHash("0x01").Hex())
 	a.state.SaveStorageSlot(addrStr, usedSlot.Hex(), common.HexToHash("0x01").Hex())
-	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 8).Hex(), common.BigToHash(commitment).Hex())
-	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 9).Hex(), common.BigToHash(now).Hex())
+	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 9).Hex(), common.BigToHash(commitment).Hex())
 	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 10).Hex(), common.BigToHash(now).Hex())
-	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 11).Hex(), common.BigToHash(ubiAccumulated).Hex())
+	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 11).Hex(), common.BigToHash(now).Hex())
+	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 12).Hex(), common.BigToHash(ubiAccumulated).Hex())
+
+	// usedNullifiers[nullifier] = claimedHuman — slot 8 (bytes32 → address mapping)
+	nullSlot := mappingSlotBytes32(nullKey, 8)
+	addrVal := common.BigToHash(claimedHuman.Big())
+	a.state.SaveStorageSlot(addrStr, nullSlot.Hex(), addrVal.Hex())
 
 	txHash := crypto.Keccak256Hash(append(calldata, claimedHuman.Bytes()...)).Hex()
 	fmt.Printf("[REGISTER] Native V7 mirror persisted for %s, tx=%s\n", wallet, txHash)
 	return txHash, nil
 }
 
-func validRegisterSignature(contractAddr, claimedHuman common.Address, commitment *big.Int, sigBytes []byte) bool {
-	packed := make([]byte, 0, 32+20+8+32)
+func validRegisterSignature(contractAddr, claimedHuman common.Address, commitment *big.Int, nullifierHex string, sigBytes []byte) bool {
+	nullKey := common.HexToHash(strings.TrimPrefix(nullifierHex, "0x"))
+	packed := make([]byte, 0, 32+20+8+32+32)
 	packed = append(packed, common.LeftPadBytes(big.NewInt(1926).Bytes(), 32)...)
 	packed = append(packed, contractAddr.Bytes()...)
 	packed = append(packed, []byte("register")...)
 	packed = append(packed, common.LeftPadBytes(commitment.Bytes(), 32)...)
+	packed = append(packed, nullKey.Bytes()...)
 	messageHash := crypto.Keccak256Hash(packed)
 	ethHash := accounts.TextHash(messageHash.Bytes())
 	sig := append([]byte(nil), sigBytes...)

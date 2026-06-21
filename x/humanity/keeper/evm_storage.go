@@ -123,6 +123,73 @@ func (cs *ChainState) LoadStorageSlot(address, slot string) (string, error) {
 	return value, err
 }
 
+// ─── DUAL-LEDGER SYNC ────────────────────────────────────────────────────────
+
+// SyncBalancesToEVM writes the current Go-state AEQ balance for each addr into
+// the AequitasV7 contract's balanceOf storage slot (mapping at position 4),
+// keeping both ledgers consistent after every Go-state change.
+func (cs *ChainState) SyncBalancesToEVM(contractAddr string, addrs ...string) {
+	if cs.db == nil {
+		return
+	}
+	contractAddr = strings.ToLower(contractAddr)
+	weiPerAEQ := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+	for _, addr := range addrs {
+		addr = strings.ToLower(addr)
+		cs.mu.RLock()
+		acc, ok := cs.accounts[addr]
+		cs.mu.RUnlock()
+		var bal float64
+		if ok {
+			bal = acc.Balance
+		}
+		balBig, _ := new(big.Float).SetPrec(256).Mul(
+			new(big.Float).SetFloat64(bal),
+			new(big.Float).SetInt(weiPerAEQ),
+		).Int(nil)
+		if balBig == nil {
+			balBig = new(big.Int)
+		}
+		slot := mappingSlot(common.HexToAddress(addr).Bytes(), 4).Hex()
+		val := common.BigToHash(balBig).Hex()
+		if err := cs.SaveStorageSlot(contractAddr, slot, val); err != nil {
+			fmt.Printf("[EVM] Warning: could not sync balance for %s: %v\n", addr, err)
+		}
+	}
+}
+
+// syncBalanceLocked is like SyncBalancesToEVM but reads cs.accounts directly
+// without acquiring cs.mu. Must be called only while the caller already holds
+// cs.mu (read or write lock) — calling SyncBalancesToEVM from inside a locked
+// function would deadlock on the inner RLock().
+func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
+	if cs.db == nil {
+		return
+	}
+	contractAddr = strings.ToLower(contractAddr)
+	weiPerAEQ := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+	for _, addr := range addrs {
+		addr = strings.ToLower(addr)
+		acc, ok := cs.accounts[addr]
+		var bal float64
+		if ok {
+			bal = acc.Balance
+		}
+		balBig, _ := new(big.Float).SetPrec(256).Mul(
+			new(big.Float).SetFloat64(bal),
+			new(big.Float).SetInt(weiPerAEQ),
+		).Int(nil)
+		if balBig == nil {
+			balBig = new(big.Int)
+		}
+		slot := mappingSlot(common.HexToAddress(addr).Bytes(), 4).Hex()
+		val := common.BigToHash(balBig).Hex()
+		if err := cs.SaveStorageSlot(contractAddr, slot, val); err != nil {
+			fmt.Printf("[EVM] Warning: could not sync balance for %s: %v\n", addr, err)
+		}
+	}
+}
+
 // ─── EVM ENGINE HELPERS ───────────────────────────────────────────────────────
 
 // PersistContractStorage reads storage slots from a stateDB and saves to PostgreSQL.
