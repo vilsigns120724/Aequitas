@@ -240,7 +240,90 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 	}
 	cs.mu.RUnlock()
 
+	// Restore guardian/escrow relationship slots (5, 13-16) that were saved
+	// before the storage wipe. These are not tracked in any Go-state table so
+	// they can only be preserved by snapshot + restore across the upgrade.
+	cs.RestorePreUpgradeRelationshipSlots(contractAddr)
+
 	fmt.Printf("[MIGRATE] ✓ EVM storage rebuilt: %d humans, %.2f AEQ total supply\n", totalHumans, totalSupply)
+}
+
+// upgradeRelationshipSlotsTable is the name of the temporary table used to
+// preserve guardian/escrow EVM storage slots across a contract upgrade wipe.
+const upgradeRelationshipSlotsTable = "evm_upgrade_relationship_slots"
+
+// SavePreUpgradeRelationshipSlots reads EVM storage slots 5 (escrowOf) and
+// 13-16 (guardianOf / pendingGuardian / guardianRequestedAt / wardCount) from
+// the live evm_storage table and copies them to a temporary snapshot table.
+// Call this BEFORE wiping evm_storage on a contract upgrade; then call
+// RestorePreUpgradeRelationshipSlots AFTER MigrateEVMFromGoState has rebuilt
+// the rest of the storage to re-inject these slots back in.
+func (cs *ChainState) SavePreUpgradeRelationshipSlots(contractAddr string) {
+	if cs.db == nil {
+		return
+	}
+	contractAddr = strings.ToLower(contractAddr)
+	cs.db.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+		address TEXT NOT NULL,
+		slot    TEXT NOT NULL,
+		value   TEXT NOT NULL,
+		PRIMARY KEY (address, slot)
+	)`, upgradeRelationshipSlotsTable))
+	// Clear any stale snapshot from a previous upgrade cycle.
+	cs.db.Exec(fmt.Sprintf(`DELETE FROM %s WHERE address = $1`, upgradeRelationshipSlotsTable), contractAddr)
+
+	// We can't filter by "slot prefix for base slot N" efficiently in SQL because
+	// the slot hash is opaque. Instead, snapshot ALL slots for this address that
+	// we cannot reconstruct from Go-state (i.e., everything EXCEPT the slots
+	// MigrateEVMFromGoState already writes: 0,1,4,6,7,8,9,10,11,12). We do
+	// this by saving all slots and then letting MigrateEVMFromGoState overwrite
+	// the ones it knows about, so only the truly-opaque slots (5,13-16) survive.
+	rows, err := cs.db.Query(`SELECT slot, value FROM evm_storage WHERE lower(address) = $1`, contractAddr)
+	if err != nil {
+		fmt.Printf("[DEPLOY] Warning: could not snapshot relationship slots: %v\n", err)
+		return
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var slot, value string
+		rows.Scan(&slot, &value)
+		cs.db.Exec(fmt.Sprintf(`INSERT INTO %s (address, slot, value) VALUES ($1, $2, $3)
+			ON CONFLICT (address, slot) DO UPDATE SET value = $3`, upgradeRelationshipSlotsTable),
+			contractAddr, slot, value)
+		count++
+	}
+	fmt.Printf("[DEPLOY] Saved %d EVM storage slots for guardian/escrow preservation\n", count)
+}
+
+// RestorePreUpgradeRelationshipSlots writes the slots that were saved by
+// SavePreUpgradeRelationshipSlots back into evm_storage. Called at the end of
+// MigrateEVMFromGoState so these survive the upgrade storage wipe.
+func (cs *ChainState) RestorePreUpgradeRelationshipSlots(contractAddr string) {
+	if cs.db == nil {
+		return
+	}
+	contractAddr = strings.ToLower(contractAddr)
+	rows, err := cs.db.Query(fmt.Sprintf(`SELECT slot, value FROM %s WHERE address = $1`, upgradeRelationshipSlotsTable), contractAddr)
+	if err != nil {
+		return // table doesn't exist yet (first-ever deploy, no prior snapshot)
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var slot, value string
+		rows.Scan(&slot, &value)
+		// Use INSERT … ON CONFLICT DO NOTHING so that slots MigrateEVMFromGoState
+		// already wrote (balanceOf, isHuman, etc.) are not overwritten by stale
+		// pre-upgrade values — only truly-missing slots get restored.
+		cs.db.Exec(`INSERT INTO evm_storage (address, slot, value) VALUES ($1, $2, $3)
+			ON CONFLICT (address, slot) DO NOTHING`,
+			contractAddr, slot, value)
+		count++
+	}
+	if count > 0 {
+		fmt.Printf("[MIGRATE] Restored %d guardian/escrow slots from pre-upgrade snapshot\n", count)
+	}
 }
 
 // SyncBalancesToEVM writes the current Go-state AEQ balance for each addr into

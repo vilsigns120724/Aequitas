@@ -230,6 +230,12 @@ reserve_tusd FLOAT NOT NULL DEFAULT 0,
 total_lp_shares FLOAT NOT NULL DEFAULT 0
 )`)
 cs.db.Exec(`ALTER TABLE liquidity_pool ADD COLUMN IF NOT EXISTS total_lp_shares FLOAT NOT NULL DEFAULT 0`)
+// Upgrade liquidity_pool columns to NUMERIC(20,6) for exact decimal storage
+// (same migration applied to chain_accounts columns above). Must run AFTER the
+// ADD COLUMN statements so that the column definitely exists before ALTER TYPE.
+cs.db.Exec(`ALTER TABLE liquidity_pool ALTER COLUMN reserve_aeq TYPE NUMERIC(20,6) USING reserve_aeq::NUMERIC(20,6)`)
+cs.db.Exec(`ALTER TABLE liquidity_pool ALTER COLUMN reserve_tusd TYPE NUMERIC(20,6) USING reserve_tusd::NUMERIC(20,6)`)
+cs.db.Exec(`ALTER TABLE liquidity_pool ALTER COLUMN total_lp_shares TYPE NUMERIC(20,6) USING total_lp_shares::NUMERIC(20,6)`)
 // nullifiers stores the one-way SHA256 derivative of each identity's bioHash.
 // Checked at registration time to prevent the same biometric from registering
 // with a second wallet. The nullifier itself never reveals the bioHash.
@@ -614,6 +620,8 @@ fmt.Println("[VALIDATORS] No registered node operators — pool left untouched")
 return
 }
 
+cs.acquireStateLock()
+defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 
@@ -670,6 +678,8 @@ fmt.Printf("[VALIDATORS] Distributed %.6f AEQ proportionally (%d nodes, block-we
 // provided, the larger your share of the fee income. Accounts with zero
 // LP shares receive nothing.
 func (cs *ChainState) DistributeLPPool() {
+cs.acquireStateLock()
+defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 
@@ -941,6 +951,8 @@ return false
 }
 
 func (cs *ChainState) RegisterHuman(address string) error {
+cs.acquireStateLock()
+defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 address = strings.ToLower(address)
@@ -1283,6 +1295,8 @@ return nil
 // balances. sharesToBurn must not exceed the account's own LPShares —
 // an account can only withdraw its own claim, never another LP's.
 func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (float64, float64, error) {
+cs.acquireStateLock()
+defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 address = strings.ToLower(address)

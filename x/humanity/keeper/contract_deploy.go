@@ -54,6 +54,12 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 		}
 		fmt.Printf("[DEPLOY] V7 contract version changed (%q → %q) — redeploying with new bytecode...\n",
 			storedVersion, V7ContractVersion)
+		// Before wiping EVM storage, preserve relationship slots that are not
+		// tracked in any Go-state table: escrowOf (slot 5) and the four
+		// guardian-relationship mappings (slots 13-16). We snapshot every
+		// row for those base-slot numbers and hand them to MigrateEVMFromGoState
+		// so they survive the bytecode upgrade.
+		state.SavePreUpgradeRelationshipSlots(v7Addr)
 		state.db.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, v7Addr)
 		state.db.Exec(`DELETE FROM evm_storage WHERE lower(address) = $1`, v7Addr)
 	} else {

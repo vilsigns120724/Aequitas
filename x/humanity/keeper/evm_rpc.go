@@ -25,6 +25,8 @@ nonces            map[string]uint64
 deployedContracts map[string]string // txHash -> contractAddress (lowercase)
 txStatus          map[string]bool   // txHash -> true if execution succeeded
 txError           map[string]string // txHash -> error message if failed
+txSenders         map[string]string // txHash -> sender address (lowercase)
+txTos             map[string]string // txHash -> to address (lowercase, "" for contract creation)
 }
 
 func NewEVMRPCServer(dag *BlockDAG, state *ChainState) *EVMRPCServer {
@@ -40,6 +42,8 @@ nonces:            make(map[string]uint64),
 deployedContracts: make(map[string]string),
 txStatus:          make(map[string]bool),
 txError:           make(map[string]string),
+txSenders:         make(map[string]string),
+txTos:             make(map[string]string),
 }
 }
 
@@ -394,6 +398,14 @@ return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too high: tx=%d 
 // requests arrive concurrently.
 s.nonces[senderAddr] = storedNonce + 1
 s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
+// Record sender (and to) for receipt construction — done inside the lock
+// while we already hold it, so no extra lock cycle needed.
+toAddrForReceipt := ""
+if tx.To() != nil {
+toAddrForReceipt = strings.ToLower(tx.To().Hex())
+}
+s.txSenders[txHash] = senderAddr
+s.txTos[txHash] = toAddrForReceipt
 s.mu.Unlock()
 
 // ── SIMPLE AEQ TRANSFER (native value transfer, no calldata) ─────────────
@@ -410,6 +422,7 @@ return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 }
 // Sync updated balances to EVM storage so both ledgers agree.
 s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
+s.mu.Lock(); s.txStatus[txHash] = true; s.mu.Unlock()
 fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
 return txHash, nil
 }
@@ -446,7 +459,7 @@ return nil, &RPCError{Code: -32603, Message: "Deploy failed: " + deployErr.Error
 }
 
 contractAddrStr := strings.ToLower(contractAddr.Hex())
-s.mu.Lock(); s.deployedContracts[txHash] = contractAddrStr; s.mu.Unlock()
+s.mu.Lock(); s.deployedContracts[txHash] = contractAddrStr; s.txStatus[txHash] = true; s.mu.Unlock()
 fmt.Printf("[RPC] ✓ Contract deployed: %s tx=%s\n", contractAddrStr, txHash)
 return txHash, nil
 }
@@ -517,27 +530,42 @@ var contractAddr interface{} = nil
 if addr, ok := s.deployedContracts[txHash]; ok {
 contractAddr = addr
 }
+// Default to success (0x1) for any tx we've seen; fall back to failure only
+// when we explicitly recorded a failure.
 status := "0x1"
 if succeeded, known := s.txStatus[txHash]; known && !succeeded {
 status = "0x0"
+}
+// Use the real sender recovered from the raw transaction at submission time.
+fromAddr := s.txSenders[txHash]
+if fromAddr == "" {
+fromAddr = "0x0000000000000000000000000000000000000000"
+}
+// Use the real destination recovered at submission time.
+toField := interface{}(nil)
+if toStr := s.txTos[txHash]; toStr != "" && contractAddr == nil {
+// For non-deployment transactions, populate the `to` field.
+toField = toStr
 }
 s.mu.Unlock()
 
 block := s.dag.LatestBlock()
 height := uint64(0)
+blockHash := "0x" + strings.Repeat("0", 63) + "1"
 if block != nil {
 height = uint64(block.Height)
+blockHash = "0x" + block.Hash
 }
 
 return map[string]interface{}{
 "transactionHash":   txHash,
 "transactionIndex":  "0x0",
-"blockHash":         "0x" + strings.Repeat("0", 63) + "1",
+"blockHash":         blockHash,
 "blockNumber":       fmt.Sprintf("0x%x", height),
-"from":              "0x0000000000000000000000000000000000000000",
-"to":                nil,
+"from":              fromAddr,
+"to":                toField,
 "cumulativeGasUsed": "0x5B8D80",
-"gasUsed":           "0x5B8D80",
+"gasUsed":           "0x5208", // realistic: 21000 for simple ops
 "contractAddress":   contractAddr,
 "logs":              []interface{}{},
 "logsBloom":         "0x" + strings.Repeat("0", 512),
