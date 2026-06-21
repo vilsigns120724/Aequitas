@@ -645,6 +645,16 @@ func (cs *ChainState) GetValidatorKeys() []map[string]string {
 	return result
 }
 
+// ValidateNodeOperatorWallet returns a warning string if the wallet is not a
+// registered human. Called by RegisterNode to log a clear message when
+// NODE_OPERATOR_WALLET is set before the wallet has completed human registration.
+func (cs *ChainState) ValidateNodeOperatorWallet(wallet string) string {
+	if !cs.IsHuman(strings.ToLower(wallet)) {
+		return "wallet " + wallet + " is not yet a registered human — complete biometric registration via the app first to receive validator rewards"
+	}
+	return ""
+}
+
 // InitSwapNoncesTable creates the swap_nonces table if it doesn't exist.
 func (cs *ChainState) InitSwapNoncesTable() {
 	if cs.db == nil {

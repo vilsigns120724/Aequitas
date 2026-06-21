@@ -3646,18 +3646,21 @@ function openBlock(hash) {
   if (!b) return;
   document.getElementById('bdc-title').textContent = 'Block #' + b.height;
   const ts = new Date(b.timestamp * 1000);
-  const parentList = (b.parent_hashes || []).map(h => '<div style="margin-bottom:2px">' + h + '</div>').join('') || '—';
+  // All peer-supplied block fields go through sanitize() before innerHTML
+  // to prevent XSS — an authorized validator can sign arbitrary content
+  // in parent_hashes, state_root, and proposer.
+  const parentList = (b.parent_hashes || []).map(function(h){ return '<div style="margin-bottom:2px">' + sanitize(h) + '</div>'; }).join('') || '—';
   const isMerge = b.parent_hashes && b.parent_hashes.length > 1;
   let html = '';
-  html += '<div class="bdc-row"><div class="bdc-k">Height</div><div class="bdc-v">#' + b.height + (b.is_genesis ? ' <span class="bm">GENESIS</span>' : '') + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Full Hash</div><div class="bdc-v" style="font-size:0.55rem">' + b.hash + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Timestamp</div><div class="bdc-v">' + ts.toUTCString() + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Node P2P ID</div><div class="bdc-v" style="color:var(--teal);word-break:break-all;font-size:0.54rem">' + (b.proposer || '—') + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k" style="color:var(--muted);font-size:0.54rem">ℹ</div><div class="bdc-v" style="color:var(--muted);font-size:0.52rem">libp2p peer identity of the block producer — not an ETH wallet address</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Humans</div><div class="bdc-v">' + (b.humans || 0) + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Type</div><div class="bdc-v">' + (isMerge ? '<span class="bm">MERGE BLOCK</span> — ' + b.parent_hashes.length + ' parents merged' : 'Standard block — 1 parent') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Height</div><div class="bdc-v">#' + sanitize(String(b.height)) + (b.is_genesis ? ' <span class="bm">GENESIS</span>' : '') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Full Hash</div><div class="bdc-v" style="font-size:0.55rem">' + sanitize(b.hash || '') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Timestamp</div><div class="bdc-v">' + sanitize(ts.toUTCString()) + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Node P2P ID</div><div class="bdc-v" style="color:var(--teal);word-break:break-all;font-size:0.54rem">' + sanitize(b.proposer || '—') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k" style="color:var(--muted);font-size:0.54rem">i</div><div class="bdc-v" style="color:var(--muted);font-size:0.52rem">Signing address of the block producer (Ethereum address derived from RELAYER_PRIVATE_KEY)</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Humans</div><div class="bdc-v">' + sanitize(String(b.humans || 0)) + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Type</div><div class="bdc-v">' + (isMerge ? '<span class="bm">MERGE BLOCK</span> &mdash; ' + sanitize(String(b.parent_hashes.length)) + ' parents merged' : 'Standard block &mdash; 1 parent') + '</div></div>';
   html += '<div class="bdc-row"><div class="bdc-k">Parent(s)</div><div class="bdc-v" style="font-size:0.55rem">' + parentList + '</div></div>';
-  if (b.state_root) html += '<div class="bdc-row"><div class="bdc-k">State Root</div><div class="bdc-v" style="font-size:0.55rem">' + b.state_root + '</div></div>';
+  if (b.state_root) html += '<div class="bdc-row"><div class="bdc-k">State Root</div><div class="bdc-v" style="font-size:0.55rem">' + sanitize(b.state_root) + '</div></div>';
   const txs = b.transactions || [];
   if (txs.length > 0) {
     html += '<div class="bdc-tx-hdr">Transactions (' + txs.length + ')</div>';

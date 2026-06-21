@@ -153,6 +153,26 @@ fmt.Println("── Starting Daily Pool Distributions ───")
 if os.Getenv("IS_PRIMARY_NODE") == "true" {
 fmt.Println("[POOLS] Primary node — daily distributions enabled (UBI + Validators + LP)")
 go func() {
+// Calculate how long until the NEXT distribution, accounting for
+// any time that has already elapsed since the last one. This ensures
+// a restart does not reset the 24h clock and delay payouts.
+lastAt := chainState.GetLastUBIAt()
+var firstDelay time.Duration
+if lastAt == 0 {
+firstDelay = 24 * time.Hour // never distributed yet
+} else {
+nextRun := time.Unix(lastAt, 0).Add(24 * time.Hour)
+firstDelay = time.Until(nextRun)
+if firstDelay < 0 {
+firstDelay = 0 // overdue — run immediately
+}
+}
+fmt.Printf("[POOLS] Next distribution in %s\n", firstDelay.Round(time.Minute))
+time.Sleep(firstDelay)
+chainState.DistributeUBIPool()
+chainState.DistributeValidatorsPool()
+chainState.DistributeLPPool()
+// Then every 24 h precisely
 ticker := time.NewTicker(24 * time.Hour)
 for range ticker.C {
 chainState.DistributeUBIPool()
@@ -168,6 +188,9 @@ fmt.Println("[POOLS] Not primary node — skipping daily distributions")
 // pool distributions. Any node that sets NODE_OPERATOR_WALLET gets
 // included automatically — no code change needed when new nodes join.
 if wallet := os.Getenv("NODE_OPERATOR_WALLET"); wallet != "" {
+if warn := chainState.ValidateNodeOperatorWallet(wallet); warn != "" {
+fmt.Printf("[NODE] Warning: %s\n", warn)
+}
 chainState.RegisterNode(wallet)
 } else {
 fmt.Println("[NODE] NODE_OPERATOR_WALLET not set — this node won't receive validator rewards")

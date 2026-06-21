@@ -179,8 +179,11 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("[REGISTER] Relaying registerWithSig for: %s\n", wallet)
 
-	evmRPC := NewEVMRPCServer(a.blockchain, a.state)
-	if evmRPC.evm == nil {
+	// Use the shared EVMRPCServer so all parallel registrations share
+	// the same nonce map + mutex — prevents two concurrent registrations
+	// from reading the same DB-Nonce and writing the same follower value.
+	evmRPC := a.evmRPC
+	if evmRPC == nil || evmRPC.evm == nil {
 		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "EVM engine unavailable"})
 		return
 	}

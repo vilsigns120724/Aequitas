@@ -6,6 +6,7 @@ import (
 "fmt"
 "io"
 "math/big"
+"net"
 "net/http"
 "os"
 "strings"
@@ -23,6 +24,10 @@ keeper            *Keeper
 startTime         time.Time
 proofServerStatus map[string]interface{}
 state             *ChainState
+// Shared EVM RPC server — one instance so all registration calls share
+// the same nonce map and mutex, preventing parallel registrations from
+// reading the same DB nonce and writing the same follower value.
+evmRPC            *EVMRPCServer
 }
 
 func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper, state *ChainState) *APIServer {
@@ -33,6 +38,7 @@ keeper:            k,
 startTime:         time.Now(),
 proofServerStatus: map[string]interface{}{},
 state:             state,
+evmRPC:            NewEVMRPCServer(bc, state),
 }
 go s.syncProofServerStatus()
 return s
@@ -279,17 +285,15 @@ w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 if r.Method == "OPTIONS" { w.WriteHeader(200); return }
 
-// Accept bioHash via POST body (preferred — keeps biometric identifier
-// out of server logs) or GET query string (legacy, for old app builds).
-var bioHash string
-if r.Method == "POST" {
-r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-var body struct{ BioHash string `json:"bioHash"` }
-json.NewDecoder(r.Body).Decode(&body)
-bioHash = body.BioHash
-} else {
-bioHash = r.URL.Query().Get("bioHash")
+// POST only — GET is removed because bioHash in the URL lands in
+// server/proxy logs creating unnecessary biometric linkability.
+if r.Method != "POST" && r.Method != "OPTIONS" {
+http.Error(w, `{"error":"POST required"}`, 405); return
 }
+r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+var bioHashBody struct{ BioHash string `json:"bioHash"` }
+json.NewDecoder(r.Body).Decode(&bioHashBody)
+var bioHash = bioHashBody.BioHash
 if bioHash == "" {
 json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
 return
@@ -523,10 +527,14 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 // GET /api/sign-validator-challenge?wallet=0x...
 func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
-remoteHost := r.RemoteAddr
-if idx := strings.LastIndex(remoteHost, ":"); idx >= 0 { remoteHost = remoteHost[:idx] }
-remoteHost = strings.TrimPrefix(strings.TrimPrefix(remoteHost, "["), "]")
-if remoteHost != "127.0.0.1" && remoteHost != "::1" && remoteHost != "localhost" {
+// Block requests that arrive through a proxy — X-Forwarded-For or
+// X-Real-IP being set means a proxy sits in front, potentially making
+// a non-local request appear to come from 127.0.0.1.
+if r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("X-Real-IP") != "" {
+http.Error(w, `{"error":"only accessible directly from localhost (no proxy)"}`, 403); return
+}
+host, _, err := net.SplitHostPort(r.RemoteAddr)
+if err != nil || (host != "127.0.0.1" && host != "::1") {
 http.Error(w, `{"error":"only accessible from localhost"}`, 403); return
 }
 humanWallet := strings.ToLower(r.URL.Query().Get("wallet"))
