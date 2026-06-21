@@ -492,6 +492,68 @@ func (cs *ChainState) GetWalletByNullifier(nullifier string) string {
 	return wallet
 }
 
+// ─── PRICE HISTORY ───────────────────────────────────────────────────────────
+
+func (cs *ChainState) InitPriceSnapshotsTable() {
+	if cs.db == nil {
+		return
+	}
+	cs.db.Exec(`CREATE TABLE IF NOT EXISTS price_snapshots (
+		id           SERIAL PRIMARY KEY,
+		price        DOUBLE PRECISION NOT NULL,
+		reserve_aeq  DOUBLE PRECISION NOT NULL,
+		reserve_tusd DOUBLE PRECISION NOT NULL,
+		captured_at  TIMESTAMP DEFAULT NOW()
+	)`)
+	// Keep only last 30 days (~324000 rows at 8s intervals) — purge older rows
+	cs.db.Exec(`DELETE FROM price_snapshots WHERE captured_at < NOW() - INTERVAL '30 days'`)
+}
+
+// SavePriceSnapshot records the current AEQ/tUSD price. Called after every
+// swap, add-liquidity, or remove-liquidity so charts have real price history.
+func (cs *ChainState) SavePriceSnapshot() {
+	if cs.db == nil || cs.pool == nil {
+		return
+	}
+	if cs.pool.ReserveAEQ <= 0 || cs.pool.ReserveTUSD <= 0 {
+		return
+	}
+	price := cs.pool.ReserveTUSD / cs.pool.ReserveAEQ
+	cs.db.Exec(`INSERT INTO price_snapshots (price, reserve_aeq, reserve_tusd) VALUES ($1, $2, $3)`,
+		price, cs.pool.ReserveAEQ, cs.pool.ReserveTUSD)
+}
+
+// GetPriceHistory returns price snapshots from the last `minutes` minutes,
+// limited to `limit` points. Returns [{t, p, aeq, tusd}, ...].
+func (cs *ChainState) GetPriceHistory(minutes, limit int) []map[string]interface{} {
+	if cs.db == nil {
+		return nil
+	}
+	rows, err := cs.db.Query(`
+		SELECT EXTRACT(EPOCH FROM captured_at)::BIGINT, price, reserve_aeq, reserve_tusd
+		FROM price_snapshots
+		WHERE captured_at >= NOW() - ($1 || ' minutes')::INTERVAL
+		ORDER BY captured_at ASC
+		LIMIT $2`, minutes, limit)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []map[string]interface{}
+	for rows.Next() {
+		var ts int64
+		var price, aeq, tusd float64
+		rows.Scan(&ts, &price, &aeq, &tusd)
+		result = append(result, map[string]interface{}{
+			"t": ts * 1000, // milliseconds for JS Date
+			"p": price,
+			"a": aeq,
+			"u": tusd,
+		})
+	}
+	return result
+}
+
 // ─── GINI HISTORY ────────────────────────────────────────────────────────────
 
 func (cs *ChainState) InitGiniSnapshotsTable() {

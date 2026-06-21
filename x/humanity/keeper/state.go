@@ -206,7 +206,8 @@ value TEXT NOT NULL
 
 cs.InitSwapNoncesTable()
 cs.InitValidatorKeysTable()
-cs.InitGiniSnapshotsTable()}
+cs.InitGiniSnapshotsTable()
+cs.InitPriceSnapshotsTable()}
 
 // setConfigValue persists a key/value pair to chain_config (upsert).
 func (cs *ChainState) setConfigValue(key, value string) {
@@ -1036,7 +1037,7 @@ fmt.Printf("[SWAP] %s: %.4f %s → %.4f %s (fee %.4f)\n",
 address, amountIn, sideLabel(aeqToTusd, true), amountOut, sideLabel(aeqToTusd, false), fee)
 
 cs.syncBalanceLocked(V7_CONTRACT_ADDR, address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
-
+go cs.SavePriceSnapshot()
 return amountOut, nil
 }
 
@@ -1185,6 +1186,7 @@ cs.savePoolToDB()
 cs.save()
 
 cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
+go cs.SavePriceSnapshot()
 
 fmt.Printf("[POOL] ✓ %s added liquidity: %.4f AEQ + %.4f tUSD → %.6f LP shares\n", address, amountAEQ, amountTUSD, mintedShares)
 return nil
@@ -1232,6 +1234,7 @@ cs.savePoolToDB()
 cs.save()
 
 cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
+go cs.SavePriceSnapshot()
 
 fmt.Printf("[POOL] ✓ %s removed liquidity: %.6f shares → %.4f AEQ + %.4f tUSD\n", address, sharesToBurn, outAEQ, outTUSD)
 return outAEQ, outTUSD, nil

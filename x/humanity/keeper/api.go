@@ -79,6 +79,7 @@ mux.HandleFunc("/api/faucet", a.handleFaucet)
 mux.HandleFunc("/api/pool", a.handlePoolStatus)
 mux.HandleFunc("/api/snapshot", a.handleSnapshot)
 mux.HandleFunc("/api/gini/history", a.handleGiniHistory)
+mux.HandleFunc("/api/price-history", a.handlePriceHistory)
 mux.HandleFunc("/api/wealth-cap", a.handleWealthCap)
 mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
 mux.HandleFunc("/api/nonce", a.handleNonce)
@@ -477,6 +478,20 @@ return
 }
 nonce := a.state.GetSwapNonce(wallet)
 json.NewEncoder(w).Encode(map[string]interface{}{"wallet": wallet, "nonce": nonce})
+}
+
+// handlePriceHistory returns AEQ/tUSD price snapshots for the chart.
+// GET /api/price-history?minutes=240&limit=5000
+func (a *APIServer) handlePriceHistory(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+w.Header().Set("Cache-Control", "no-cache")
+minutes := 14400
+limit := 5000
+fmt.Sscanf(r.URL.Query().Get("minutes"), "%d", &minutes)
+fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
+history := a.state.GetPriceHistory(minutes, limit)
+json.NewEncoder(w).Encode(map[string]interface{}{"history": history, "count": len(history)})
 }
 
 // handleGiniHistory returns Gini snapshots stored after each UBI distribution.

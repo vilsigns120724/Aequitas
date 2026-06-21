@@ -722,6 +722,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <button class="rbtn pctbtn" onclick="setRemovePct(0.75,this)" style="flex:1;padding:8px;font-size:12px">75%</button>
         <button class="rbtn pctbtn" onclick="setRemovePct(1,this)" style="flex:1;padding:8px;font-size:12px">MAX</button>
       </div>
+      <div id="lp-remove-inline" style="background:rgba(0,255,209,0.07);border:1px solid rgba(0,255,209,0.2);border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:0.66rem;color:var(--teal);text-align:center;display:none">≈ <span id="lp-inline-aeq">—</span> AEQ + <span id="lp-inline-tusd">—</span> tUSD</div>
       <div class="ic-row" style="margin-bottom:8px"><span class="ic-key" data-i18n="swap-lp-youget">You will receive</span><span class="ic-val go" id="lp-remove-preview">—</span></div>
       <button class="rbtn br" id="swap-btn-removeliq" onclick="doRemoveLiquidity()" data-i18n="swap-btn-removeliq">🔥 REMOVE LIQUIDITY</button>
     </div>
@@ -3118,7 +3119,7 @@ function showTab(name, el) {
     panels[0].classList.add('active');
     if (stabs[0]) stabs[0].classList.add('active');
   }
-  if (name === 'exchange') loadPoolStatus();
+  if (name === 'exchange') { loadPoolStatus(); preloadPriceHistory(); }
   history.pushState(null, '', '/' + name);
 }
 
@@ -3305,16 +3306,53 @@ async function drawGiniHistoryChart() {
       if (emptyEl) { emptyEl.style.display = 'block'; canvas.style.display = 'none'; } return;
     }
     if (emptyEl) { emptyEl.style.display = 'none'; canvas.style.display = 'block'; }
-    // Single data point — show large current Gini value, no chart line
+    // Single data point — draw a gauge/meter visualization
     if (history.length === 1) {
-      var pt0 = history[0];
-      ctx.fillStyle='rgba(200,168,76,0.12)'; ctx.fillRect(0,0,W,H);
-      ctx.fillStyle='rgba(200,168,76,0.95)'; ctx.font='bold 36px JetBrains Mono,monospace'; ctx.textAlign='center';
-      ctx.fillText(pt0.idx.toFixed(1), W/2, H/2-10);
-      ctx.font='13px Inter,sans-serif'; ctx.fillStyle='rgba(200,168,76,0.7)';
-      ctx.fillText('Current Gini Index (0 = perfect equality · 100 = max concentration)', W/2, H/2+22);
-      ctx.font='11px Inter,sans-serif'; ctx.fillStyle='rgba(0,255,209,0.7)';
-      ctx.fillText('Target: below 35  ·  Chart will grow after each daily UBI distribution', W/2, H/2+44);
+      var g0 = history[0].idx; // 0-100
+      // Background
+      ctx.fillStyle='rgba(8,10,22,0.7)'; ctx.fillRect(0,0,W,H);
+      // Horizontal bar gauge
+      var bx=40, by=H/2-18, bw=W-80, bh=28, r=6;
+      // Track
+      ctx.fillStyle='rgba(255,255,255,0.06)';
+      ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,r); ctx.fill();
+      // Zone colors: green 0-35, amber 35-70, red 70-100
+      var zones=[[0,35,'rgba(0,255,100,0.5)'],[35,70,'rgba(245,158,11,0.5)'],[70,100,'rgba(239,68,68,0.5)']];
+      zones.forEach(function(z){
+        var x1=bx+bw*z[0]/100, x2=bx+bw*z[1]/100;
+        ctx.fillStyle=z[2]; ctx.fillRect(x1,by,x2-x1,bh);
+      });
+      // Fill up to current value
+      var fill=bw*g0/100;
+      var grd=ctx.createLinearGradient(bx,0,bx+fill,0);
+      grd.addColorStop(0,'rgba(0,255,200,0.9)'); grd.addColorStop(0.5,'rgba(245,158,11,0.9)'); grd.addColorStop(1,'rgba(239,68,68,0.9)');
+      ctx.fillStyle=grd; ctx.beginPath(); ctx.roundRect(bx,by,fill,bh,r); ctx.fill();
+      // Target marker at 35
+      var tx=bx+bw*35/100;
+      ctx.strokeStyle='rgba(0,255,209,0.9)'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(tx,by-6); ctx.lineTo(tx,by+bh+6); ctx.stroke();
+      ctx.fillStyle='rgba(0,255,209,0.9)'; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='center';
+      ctx.fillText('TARGET', tx, by-10);
+      // Pointer
+      var px=bx+bw*g0/100;
+      ctx.fillStyle='#fff'; ctx.beginPath(); ctx.moveTo(px,by-2); ctx.lineTo(px-5,by-10); ctx.lineTo(px+5,by-10); ctx.fill();
+      // Labels: 0, 35, 70, 100
+      [[0,'0'],[35,'35'],[70,'70'],[100,'100']].forEach(function(l){
+        ctx.fillStyle='rgba(200,168,76,0.5)'; ctx.font='9px JetBrains Mono,monospace'; ctx.textAlign='center';
+        ctx.fillText(l[1], bx+bw*l[0]/100, by+bh+14);
+      });
+      // Big value
+      ctx.fillStyle='rgba(200,168,76,0.95)'; ctx.font='bold 28px JetBrains Mono,monospace'; ctx.textAlign='center';
+      ctx.fillText('Gini: ' + g0.toFixed(2), W/2, by-26);
+      // Description
+      var label = g0<35?'Excellent — below target':'g0'<70?'Above target':'Critical — maximum inequality';
+      if(g0<35) label='Below target — excellent equality';
+      else if(g0<70) label='Above target — redistribution active';
+      else label='Critical — protocol at maximum intervention';
+      ctx.font='11px Inter,sans-serif'; ctx.fillStyle='rgba(200,200,200,0.6)';
+      ctx.fillText(label, W/2, by+bh+28);
+      ctx.font='10px Inter,sans-serif'; ctx.fillStyle='rgba(0,255,209,0.5)';
+      ctx.fillText('History chart grows after each daily UBI distribution', W/2, H-10);
       return;
     }
     const pad = {l:48,r:24,t:36,b:32};
@@ -3396,23 +3434,14 @@ async function drawLorenzCurve() {
       ctx.fillStyle='rgba(139,92,246,0.5)'; ctx.font='12px Inter,sans-serif'; ctx.textAlign='center';
       ctx.fillText('Awaiting more registered humans...', W/2, H/2); return;
     }
-    // Compute Gini upfront so we can adapt the rendering
+    // Compute Gini upfront
     var balsForGini = humans.map(function(h){return h.balance||0;}).sort(function(a,b){return a-b;});
     var totalForGini = balsForGini.reduce(function(s,b){return s+b;},0);
     var cumForGini = 0, lorenzAreaPre = 0;
-    balsForGini.forEach(function(b){ cumForGini+=b; lorenzAreaPre+=(cumForGini/totalForGini)*(1/balsForGini.length); });
-    var currentGini = Math.max(0, 1-2*lorenzAreaPre);
-    // If very near perfect equality, show a special message instead of an invisible line
-    if (currentGini < 0.02 && humans.length > 1) {
-      ctx.fillStyle='rgba(0,255,209,0.12)'; ctx.fillRect(0,0,W,H);
-      ctx.fillStyle='rgba(0,255,209,0.95)'; ctx.font='bold 28px JetBrains Mono,monospace'; ctx.textAlign='center';
-      ctx.fillText('Gini: ' + (currentGini*100).toFixed(2), W/2, H/2-12);
-      ctx.font='13px Inter,sans-serif'; ctx.fillStyle='rgba(0,255,209,0.75)';
-      ctx.fillText('Near-Perfect Equality — ' + humans.length + ' humans, Lorenz curve = equality diagonal', W/2, H/2+18);
-      ctx.font='11px Inter,sans-serif'; ctx.fillStyle='rgba(200,168,76,0.6)';
-      ctx.fillText('The filled area between the curve and diagonal represents inequality. Here it is nearly zero.', W/2, H/2+40);
-      return;
+    if (totalForGini > 0) {
+      balsForGini.forEach(function(b){ cumForGini+=b; lorenzAreaPre+=(cumForGini/totalForGini)*(1/balsForGini.length); });
     }
+    var currentGini = Math.max(0, 1-2*lorenzAreaPre);
     const bals = humans.map(function(h){return h.balance||0;}).sort(function(a,b){return a-b;});
     const total = bals.reduce(function(s,b){return s+b;},0);
     const n = bals.length;
@@ -3433,13 +3462,35 @@ async function drawLorenzCurve() {
     ctx.fillText('% of AEQ held (cumulative)', 0, 0); ctx.restore();
     ctx.fillStyle='rgba(139,92,246,0.55)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='center';
     ctx.fillText('% of Population (poorest → richest)', pad.l+cW/2, H-2);
-    // equality diagonal (gradient)
+    // Reference country Lorenz approximations (simplified diagonal offsets)
+    var refs=[
+      {label:'Scandinavia ~27',g:0.27,color:'rgba(0,200,100,0.25)'},
+      {label:'Germany ~31',g:0.31,color:'rgba(0,200,150,0.2)'},
+      {label:'USA ~41',g:0.41,color:'rgba(245,158,11,0.2)'},
+      {label:'South Africa ~63',g:0.63,color:'rgba(239,68,68,0.15)'}
+    ];
+    refs.forEach(function(ref){
+      // Approximate Lorenz by quadratic: L(x) = x^(1+2g)
+      ctx.strokeStyle=ref.color; ctx.lineWidth=1; ctx.setLineDash([3,4]);
+      ctx.beginPath();
+      for(var xi=0;xi<=40;xi++){
+        var xf=xi/40, yf=Math.pow(xf,1+2*ref.g);
+        var rx=pad.l+cW*xf, ry=(H-pad.b)-cH*yf;
+        if(xi===0) ctx.moveTo(rx,ry); else ctx.lineTo(rx,ry);
+      }
+      ctx.stroke(); ctx.setLineDash([]);
+      // Label at midpoint
+      var mx=pad.l+cW*0.55, my=(H-pad.b)-cH*Math.pow(0.55,1+2*ref.g);
+      ctx.fillStyle=ref.color.replace('0.','0.8'); ctx.font='8px Inter,sans-serif'; ctx.textAlign='left';
+      ctx.fillText(ref.label, mx+3, my-2);
+    });
+    // Equality diagonal
     var dg=ctx.createLinearGradient(pad.l,H-pad.b,W-pad.r,pad.t);
-    dg.addColorStop(0,'rgba(139,92,246,0.4)'); dg.addColorStop(1,'rgba(6,182,212,0.4)');
-    ctx.strokeStyle=dg; ctx.lineWidth=1.5; ctx.setLineDash([6,5]);
+    dg.addColorStop(0,'rgba(139,92,246,0.5)'); dg.addColorStop(1,'rgba(6,182,212,0.5)');
+    ctx.strokeStyle=dg; ctx.lineWidth=2; ctx.setLineDash([6,5]);
     ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b); ctx.lineTo(W-pad.r,pad.t); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle='rgba(139,92,246,0.5)'; ctx.font='9px Inter,sans-serif'; ctx.textAlign='right';
+    ctx.fillStyle='rgba(139,92,246,0.7)'; ctx.font='bold 9px Inter,sans-serif'; ctx.textAlign='right';
     ctx.fillText('Perfect Equality', W-pad.r-3, pad.t+13);
     // Lorenz points
     var pts=[{x:pad.l,y:H-pad.b}]; var cum=0;
@@ -3462,15 +3513,18 @@ async function drawLorenzCurve() {
     ctx.save(); ctx.shadowColor='rgba(200,168,76,0.9)'; ctx.shadowBlur=14;
     ctx.beginPath(); ctx.arc(ep.x,ep.y,5,0,2*Math.PI); ctx.fillStyle='#C9A84C'; ctx.fill(); ctx.restore();
     ctx.beginPath(); ctx.arc(ep.x,ep.y,2.5,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
-    // Gini annotation (trapezoidal)
-    var lorenzArea=0; cum=0;
-    bals.forEach(function(b){cum+=b; lorenzArea+=(cum/total)*(1/n);});
-    var gini=1-2*lorenzArea;
-    ctx.fillStyle='rgba(200,168,76,0.95)'; ctx.font='bold 12px JetBrains Mono,monospace'; ctx.textAlign='left';
-    ctx.fillText('Gini: '+(gini*100).toFixed(1), pad.l+8, pad.t+24);
+    // Gini box (top-right)
+    var giniVal = (currentGini*100).toFixed(2);
+    var gColor = currentGini<0.35?'rgba(0,220,100,0.9)':currentGini<0.7?'rgba(245,158,11,0.9)':'rgba(239,68,68,0.9)';
+    ctx.fillStyle='rgba(8,10,22,0.75)'; ctx.fillRect(W-pad.r-110,pad.t-2,108,42);
+    ctx.strokeStyle=gColor; ctx.lineWidth=1; ctx.strokeRect(W-pad.r-110,pad.t-2,108,42);
+    ctx.fillStyle=gColor; ctx.font='bold 20px JetBrains Mono,monospace'; ctx.textAlign='center';
+    ctx.fillText('Gini '+giniVal, W-pad.r-56, pad.t+18);
+    ctx.font='8px Inter,sans-serif'; ctx.fillStyle='rgba(200,200,200,0.55)';
+    ctx.fillText(currentGini<0.35?'Below Target':'Above Target', W-pad.r-56, pad.t+33);
     // title
-    ctx.fillStyle='rgba(200,168,76,0.35)'; ctx.font='10px Inter,sans-serif';
-    ctx.fillText('LORENZ CURVE  —  WEALTH DISTRIBUTION', pad.l, 20);
+    ctx.fillStyle='rgba(200,168,76,0.38)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='left';
+    ctx.fillText('LORENZ CURVE  —  WEALTH DISTRIBUTION  (' + n + ' humans)', pad.l, 20);
   } catch(e) {}
 }
 
@@ -3707,6 +3761,27 @@ let myAEQBalance = 0;
 let myTUSDBalance = 0;
 var priceHistory = [];
 var chartIntervalMs = 60000;
+var priceHistoryLoaded = false;
+
+// Preload price history from DB so interval buttons show real historical data.
+// Fetches the last 4 hours of price snapshots saved after each swap/liquidity.
+async function preloadPriceHistory() {
+  if (priceHistoryLoaded) return;
+  try {
+    var d = await (await fetch('/api/price-history?minutes=14400&limit=5000')).json();
+    var hist = d.history || [];
+    if (hist.length > 0) {
+      // Merge DB history with any in-memory points, de-duplicate by timestamp
+      var existing = new Set(priceHistory.map(function(p){ return p.t; }));
+      hist.forEach(function(pt) {
+        if (!existing.has(pt.t)) priceHistory.push({t: pt.t, p: pt.p});
+      });
+      priceHistory.sort(function(a,b){ return a.t - b.t; });
+      priceHistoryLoaded = true;
+      drawPriceChart();
+    }
+  } catch(_) {}
+}
 
 function setChartInterval(ms) {
   chartIntervalMs = ms;
@@ -4155,10 +4230,19 @@ async function loadLPPosition() {
 // called whenever removePct changes, whether from a percentage button or
 // the manual input field, so both paths stay in sync with the same preview.
 function updateRemovePreview() {
-  const aeq = myFullWithdrawableAEQ * removePct;
-  const tusd = myFullWithdrawableTUSD * removePct;
-  document.getElementById('lp-remove-preview').textContent =
-    aeq.toFixed(6) + ' AEQ + ' + tusd.toFixed(6) + ' tUSD';
+  var aeq = myFullWithdrawableAEQ * removePct;
+  var tusd = myFullWithdrawableTUSD * removePct;
+  var preview = aeq.toFixed(4) + ' AEQ + ' + tusd.toFixed(4) + ' tUSD';
+  document.getElementById('lp-remove-preview').textContent = preview;
+  // Also update the prominent inline preview
+  var inline = document.getElementById('lp-remove-inline');
+  if (inline) {
+    inline.style.display = removePct > 0 ? 'block' : 'none';
+    var aeqEl = document.getElementById('lp-inline-aeq');
+    var tusdEl = document.getElementById('lp-inline-tusd');
+    if (aeqEl) aeqEl.textContent = fmt(aeq);
+    if (tusdEl) tusdEl.textContent = fmt(tusd);
+  }
 }
 
 // Manual percentage input — lets someone type e.g. "37.5" instead of only
@@ -4259,7 +4343,7 @@ function activateTabFromPath(path) {
     if (stabBtn) stabBtn.classList.add('active');
     else if (stabs[0]) stabs[0].classList.add('active');
   }
-  if (name === 'exchange') loadPoolStatus();
+  if (name === 'exchange') { loadPoolStatus(); preloadPriceHistory(); }
   if (name === 'index') {
     setTimeout(function() {
       const active = tabContent.querySelector('.stab-panel.active');
