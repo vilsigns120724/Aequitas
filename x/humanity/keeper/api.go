@@ -482,6 +482,8 @@ if validTabs[path] {
 	html = strings.Replace(html,
 		`id="tab-`+path+`" class="tab-content"`,
 		`id="tab-`+path+`" class="tab-content active"`, 1)
+	css := `<style>#tab-` + path + `{display:block!important}</style>`
+	html = strings.Replace(html, "</head>", css+"</head>", 1)
 	fmt.Fprint(w, html)
 	return
 }
