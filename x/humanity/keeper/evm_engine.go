@@ -274,7 +274,8 @@ if commitErr != nil {
 fmt.Printf("[EVM] revert Commit failed: %v\n", commitErr)
 } else {
 touchedAddrs, touchedCommitments := extractTouchedEntities(from, data)
-e.dumpAndPersistStorage(root, db, to, touchedAddrs, touchedCommitments)
+_, _, calldataNullifier := extractTouchedEntitiesWithNullifier(from, data)
+e.dumpAndPersistStorageWithNullifier(root, db, to, touchedAddrs, touchedCommitments, calldataNullifier)
 }
 e.syncBalancesFromDB(sdb)
 
@@ -370,6 +371,22 @@ default:
 // Unknown selector: at minimum, the caller's own address may have
 // been touched (e.g. a simple register() or transfer() from msg.sender).
 return []common.Address{from}, nil
+}
+}
+
+func (e *EVMEngine) dumpAndPersistStorageWithNullifier(root common.Hash, db state.Database, addr common.Address, touchedAddrs []common.Address, touchedCommitments []*big.Int, calldataNullifier *[32]byte) {
+e.dumpAndPersistStorage(root, db, addr, touchedAddrs, touchedCommitments)
+if calldataNullifier != nil {
+addrStr := strings.ToLower(addr.Hex())
+nullKey := common.BytesToHash(calldataNullifier[:])
+if nullKey != (common.Hash{}) {
+freshDB2, err2 := state.New(root, db, nil)
+if err2 == nil {
+nullSlot := mappingSlotBytes32(nullKey, 8)
+val := freshDB2.GetState(addr, nullSlot)
+if val != (common.Hash{}) { e.chainState.SaveStorageSlot(addrStr, nullSlot.Hex(), val.Hex()) }
+}
+}
 }
 }
 

@@ -47,7 +47,8 @@ return s
 
 func (a *APIServer) syncProofServerStatus() {
 for {
-resp, err := http.Get("https://aequitas-proof-server-production.up.railway.app/health")
+proofHTTP := &http.Client{Timeout: 8 * time.Second}
+resp, err := proofHTTP.Get("https://aequitas-proof-server-production.up.railway.app/health")
 if err == nil {
 body, _ := io.ReadAll(resp.Body)
 resp.Body.Close()
@@ -209,7 +210,8 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 func (a *APIServer) handleSepoliaHumans(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
-resp, err := http.Get("https://aequitas-proof-server-production.up.railway.app/humans")
+proofHTTP2 := &http.Client{Timeout: 8 * time.Second}
+resp, err := proofHTTP2.Get("https://aequitas-proof-server-production.up.railway.app/humans")
 if err != nil {
 json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
 return

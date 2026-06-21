@@ -165,13 +165,18 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 		if acc.IsHuman {
 			cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 6).Hex(), common.HexToHash("0x01").Hex())
 			totalHumans++
-			// Preserve lastActivity (slot 10), lastDemurrage (slot 11), ubiClaimed (slot 12)
-			// across contract upgrades so existing rights don't disappear.
+			// Preserve lastActivity (slot 10) and lastDemurrage (slot 11) from timestamp.
+			// Do NOT set ubiClaimed (slot 12) from LastActivityAt — it is a UBI accumulator
+			// (total UBI claimed per-human), not a timestamp. Setting it from a Unix time
+			// would give humans a massive incorrect ubiClaimed value, blocking future UBI payouts.
+			// After a contract upgrade, ubiClaimed defaults to 0 (slot is unset), which means
+			// humans can claim all UBI accumulated since the network started — this is fair
+			// and correct since their prior claims were lost in the storage wipe.
 			if acc.LastActivityAt > 0 {
 				ts := big.NewInt(acc.LastActivityAt)
 				cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 10).Hex(), common.BigToHash(ts).Hex())
 				cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 11).Hex(), common.BigToHash(ts).Hex())
-				cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 12).Hex(), common.BigToHash(ts).Hex())
+				// slot 12 (ubiClaimed) intentionally left as 0 — see comment above
 			}
 		}
 	}

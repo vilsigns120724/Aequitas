@@ -467,7 +467,8 @@ func notifyProofServer(bioHashKey, wallet string) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-chain-token", token)
-	resp, err := http.DefaultClient.Do(req)
+	proofClient := &http.Client{Timeout: 10 * time.Second}
+	resp, err := proofClient.Do(req)
 	if err != nil {
 		fmt.Printf("[REGISTER] Warning: proof-server /store-bio call failed: %v\n", err)
 		return

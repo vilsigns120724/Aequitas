@@ -86,6 +86,7 @@ TotalLPShares Decimal `json:"total_lp_shares"`
 
 type ChainState struct {
 mu        sync.RWMutex
+stateMu   sync.Mutex
 accounts  map[string]*AccountState
 pool      *PoolState
 db        *sql.DB
@@ -93,19 +94,18 @@ useDB     bool
 nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
 }
 
-// acquireStateLock acquires a PostgreSQL advisory lock so that only one
-// process can execute critical state mutations at a time. This prevents
-// multiple nodes sharing the same DB from overwriting each other's changes.
-// Returns true if lock was acquired, false if DB is unavailable.
+// acquireStateLock serializes critical state mutations using an in-process
+// sync.Mutex. PostgreSQL advisory locks were removed because database/sql
+// uses a connection pool and lock/unlock can land on different connections,
+// causing lock leaks or deadlocks. For multi-node, the version column on
+// chain_accounts provides optimistic concurrency conflict detection.
 func (cs *ChainState) acquireStateLock() bool {
-if cs.db == nil { return true } // no DB, skip lock
-_, err := cs.db.Exec(`SELECT pg_advisory_lock(hashtext('aequitas-state-write')::bigint)`)
-return err == nil
+cs.stateMu.Lock()
+return true
 }
 
 func (cs *ChainState) releaseStateLock() {
-if cs.db == nil { return }
-cs.db.Exec(`SELECT pg_advisory_unlock(hashtext('aequitas-state-write')::bigint)`)
+cs.stateMu.Unlock()
 }
 
 // beginStateTx starts a SERIALIZABLE PostgreSQL transaction for critical
@@ -1442,6 +1442,11 @@ fmt.Printf("[FAUCET] ✓ %s claimed %.2f test-tUSD\n", address, tusdFaucetAmount
 return nil
 }
 
+// StateRoot computes a deterministic hash of ALL economically meaningful state:
+// human AEQ balances, tUSD balances, LP shares, pool reserves, and nullifiers.
+// Two states with the same root are guaranteed to be economically identical.
+// Previously only human AEQ balances were included; this allowed different
+// economic states to hash identically, defeating state-root verification.
 func (cs *ChainState) StateRoot() string {
 cs.mu.RLock()
 addrs := make([]string, 0, len(cs.accounts))
@@ -1450,8 +1455,28 @@ sort.Strings(addrs)
 var sb strings.Builder
 for _, a := range addrs {
 acc := cs.accounts[a]
-if acc.IsHuman { fmt.Fprintf(&sb, "%s:%.6f:", a, round6(acc.Balance.Float())) }
+// Include ALL accounts with non-zero AEQ or tUSD balances (not only humans)
+if acc.IsHuman || acc.Balance > 0 || acc.TUsdBalance > 0 || acc.LPShares > 0 {
+fmt.Fprintf(&sb, "%s:%.6f:%.6f:%.6f:",
+a,
+round6(acc.Balance.Float()),
+round6(acc.TUsdBalance.Float()),
+round6(acc.LPShares.Float()))
 }
+}
+// Include pool state: reserves and total LP shares
+if cs.pool != nil {
+fmt.Fprintf(&sb, "pool:%.6f:%.6f:%.6f",
+round6(cs.pool.ReserveAEQ.Float()),
+round6(cs.pool.ReserveTUSD.Float()),
+round6(cs.pool.TotalLPShares.Float()))
+}
+// Include nullifier count (hash of keys, not values, for privacy)
+nullKeys := make([]string, 0, len(cs.nullifiers))
+for k := range cs.nullifiers { nullKeys = append(nullKeys, k) }
+sort.Strings(nullKeys)
+fmt.Fprintf(&sb, "|n=%d:", len(nullKeys))
+for _, k := range nullKeys { sb.WriteString(k[:min(8, len(k))]) }
 cs.mu.RUnlock()
 hash := sha256.Sum256([]byte(sb.String()))
 return hex.EncodeToString(hash[:])

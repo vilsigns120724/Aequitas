@@ -469,14 +469,17 @@ return txHash, nil
 // Go/EVM ledger divergence. Unknown selectors could change EVM state
 // without updating Go-state (PostgreSQL), creating permanent inconsistency.
 var knownSelectors = map[string]bool{
-"a9059cbb": true, // transfer(address,uint256) — handled above
+// State-changing: handled by both Go-state AND EVM (both updated together)
+"33f4167a": true, // registerWithSig(...) — /api/register calls this internally
+"a9059cbb": true, // transfer(address,uint256) — intercepted and routed to Go-state above
+// Read-only: safe to pass through EVM only
 "095ea7b3": true, // approve(address,uint256)
-"70a08231": true, // balanceOf(address) — read-only
-"dd62ed3e": true, // allowance(address,address) — read-only
-"18160ddd": true, // totalSupply() — read-only
-"06fdde03": true, // name() — read-only
-"95d89b41": true, // symbol() — read-only
-"313ce567": true, // decimals() — read-only
+"70a08231": true, // balanceOf(address)
+"dd62ed3e": true, // allowance(address,address)
+"18160ddd": true, // totalSupply()
+"06fdde03": true, // name()
+"95d89b41": true, // symbol()
+"313ce567": true, // decimals()
 }
 if tx.To() != nil && len(tx.Data()) >= 4 {
 sel := hex.EncodeToString(tx.Data()[:4])
