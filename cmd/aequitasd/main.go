@@ -93,8 +93,15 @@ p2pNode.SetDAG(bc)
 		}
 	}
 
-	// HTTP Block Sync between nodes
-	bc.StartHTTPBlockSync("https://aequitas-production-9fba.up.railway.app")
+	// HTTP Block Sync between nodes.
+	// SELF_URL must be set to this node's own public URL so the sync loop
+	// can exclude it from the peer list — without this, a node would try to
+	// sync from itself and generate spurious hash-mismatch rejections.
+	selfURL := os.Getenv("SELF_URL")
+	if selfURL == "" {
+		selfURL = "https://aequitas-production-9fba.up.railway.app" // legacy default for Railway
+	}
+	bc.StartHTTPBlockSync(selfURL)
 	p2pNode.Start()
 	bc.ReconstructState(chainState)
 
