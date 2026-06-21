@@ -8,6 +8,7 @@ import (
 "math/big"
 "net/http"
 "strings"
+"sync"
 
 "github.com/ethereum/go-ethereum/common"
 "github.com/ethereum/go-ethereum/core/types"
@@ -19,6 +20,7 @@ type EVMRPCServer struct {
 dag               *BlockDAG
 state             *ChainState
 evm               *EVMEngine
+mu                sync.Mutex        // guards all map fields below against concurrent writes
 nonces            map[string]uint64
 deployedContracts map[string]string // txHash -> contractAddress (lowercase)
 txStatus          map[string]bool   // txHash -> true if execution succeeded
@@ -366,6 +368,31 @@ txHash := tx.Hash().Hex() // already has 0x prefix
 fmt.Printf("[RPC] eth_sendRawTransaction hash=%s from=%s to=%v data=%d bytes\n",
 txHash, senderAddr, tx.To(), len(tx.Data()))
 
+// ── NONCE CHECK + RESERVATION ─────────────────────────────────────────────
+// Check tx.Nonce() against the stored per-account nonce and atomically
+// reserve it before executing. Without this, the same signed transaction
+// can be replayed repeatedly until the account balance is exhausted.
+s.mu.Lock()
+storedNonce := s.nonces[senderAddr]
+if storedNonce == 0 {
+storedNonce = s.state.LoadNonce(senderAddr)
+s.nonces[senderAddr] = storedNonce
+}
+txNonce := tx.Nonce()
+if txNonce < storedNonce {
+s.mu.Unlock()
+return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too low: tx=%d expected=%d", txNonce, storedNonce)}
+}
+if txNonce > storedNonce {
+s.mu.Unlock()
+return nil, &RPCError{Code: -32603, Message: fmt.Sprintf("nonce too high: tx=%d expected=%d", txNonce, storedNonce)}
+}
+// Reserve nonce immediately — prevents replay even if two identical
+// requests arrive concurrently.
+s.nonces[senderAddr] = storedNonce + 1
+s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
+s.mu.Unlock()
+
 // ── SIMPLE AEQ TRANSFER (native value transfer, no calldata) ─────────────
 if tx.To() != nil && len(tx.Data()) == 0 && tx.Value().Sign() > 0 {
 toAddr := strings.ToLower(tx.To().Hex())
@@ -373,15 +400,13 @@ decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18
 valueFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(tx.Value()), decimals).Float64()
 
 if err := s.state.Transfer(senderAddr, toAddr, valueFloat); err != nil {
+// Restore nonce so the user can fix and retry.
+s.mu.Lock(); s.nonces[senderAddr] = storedNonce; s.state.SaveNonce(senderAddr, storedNonce); s.mu.Unlock()
 return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 }
 // Sync updated balances to EVM storage so both ledgers agree.
 s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
 fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
-
-// Update nonce
-s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
-s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
 return txHash, nil
 }
 
@@ -398,12 +423,11 @@ decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18
 amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountBig), decimals).Float64()
 
 if err := s.state.Transfer(senderAddr, toAddr, amountFloat); err != nil {
+s.mu.Lock(); s.nonces[senderAddr] = storedNonce; s.state.SaveNonce(senderAddr, storedNonce); s.mu.Unlock()
 return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 }
 s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
-s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
-s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
-s.txStatus[txHash] = true
+s.mu.Lock(); s.txStatus[txHash] = true; s.mu.Unlock()
 fmt.Printf("[RPC] ✓ Token transfer %.4f AEQ: %s → %s (via Go state)\n", amountFloat, senderAddr, toAddr)
 return txHash, nil
 }
@@ -419,12 +443,8 @@ return nil, &RPCError{Code: -32603, Message: "Deploy failed: " + deployErr.Error
 }
 
 contractAddrStr := strings.ToLower(contractAddr.Hex())
-s.deployedContracts[txHash] = contractAddrStr
+s.mu.Lock(); s.deployedContracts[txHash] = contractAddrStr; s.mu.Unlock()
 fmt.Printf("[RPC] ✓ Contract deployed: %s tx=%s\n", contractAddrStr, txHash)
-
-// Update nonce
-s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
-s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
 return txHash, nil
 }
 
@@ -452,23 +472,16 @@ s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
 
 if callErr != nil {
 fmt.Printf("[RPC] ✗ Contract call failed: %v\n", callErr)
-// Record the failure so getTransactionReceipt can report the real status,
-// and propagate the real error to the immediate caller instead of
-// silently returning a fake-success hash.
-s.txStatus[txHash] = false
-s.txError[txHash] = callErr.Error()
+s.mu.Lock(); s.txStatus[txHash] = false; s.txError[txHash] = callErr.Error(); s.mu.Unlock()
 return nil, &RPCError{Code: -32603, Message: "execution reverted: " + callErr.Error()}
 }
 
 fmt.Printf("[RPC] ✓ Contract call result: %x\n", result)
 s.evm.PersistContractStorage(toAddr)
-s.txStatus[txHash] = true
+s.mu.Lock(); s.txStatus[txHash] = true; s.mu.Unlock()
 return txHash, nil
 }
 
-// Update nonce for any other tx
-s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
-s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
 return txHash, nil
 }
 
@@ -480,20 +493,21 @@ var txHash string
 json.Unmarshal(params[0], &txHash)
 txHash = strings.ToLower(txHash)
 
+s.mu.Lock()
 var contractAddr interface{} = nil
 if addr, ok := s.deployedContracts[txHash]; ok {
 contractAddr = addr
 }
+status := "0x1"
+if succeeded, known := s.txStatus[txHash]; known && !succeeded {
+status = "0x0"
+}
+s.mu.Unlock()
 
 block := s.dag.LatestBlock()
 height := uint64(0)
 if block != nil {
 height = uint64(block.Height)
-}
-
-status := "0x1"
-if succeeded, known := s.txStatus[txHash]; known && !succeeded {
-status = "0x0"
 }
 
 return map[string]interface{}{

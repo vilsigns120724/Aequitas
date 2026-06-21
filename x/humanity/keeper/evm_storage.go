@@ -518,8 +518,16 @@ func (cs *ChainState) InitValidatorKeysTable() {
 		registered_at   TIMESTAMP DEFAULT NOW()
 	)`)
 	// Add UNIQUE on human_wallet if the table already existed without it.
-	cs.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_validator_keys_human_wallet
-		ON validator_keys (human_wallet)`)
+	// Remove any existing duplicates first so the index creation succeeds.
+	cs.db.Exec(`DELETE FROM validator_keys vk1
+		USING validator_keys vk2
+		WHERE vk1.registered_at < vk2.registered_at
+		  AND vk1.human_wallet = vk2.human_wallet`)
+	if _, err := cs.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_validator_keys_human_wallet
+		ON validator_keys (human_wallet)`); err != nil {
+		fmt.Printf("[STARTUP] FATAL: could not enforce UNIQUE(human_wallet) on validator_keys: %v\n", err)
+		panic("validator_keys uniqueness constraint failed — inspect DB for duplicates")
+	}
 }
 
 // RegisterValidatorKey links a node signing address to a registered human

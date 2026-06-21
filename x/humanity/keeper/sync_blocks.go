@@ -66,7 +66,14 @@ return result
 
 // ─── BLOCK SYNC ──────────────────────────────────────────────────────────────
 
-var httpSyncClient = &http.Client{Timeout: 30 * time.Second}
+var httpSyncClient = &http.Client{
+Timeout: 30 * time.Second,
+// Never follow redirects — a public URL could redirect to an internal
+// Railway/cloud address after our DNS-based SSRF check has passed.
+CheckRedirect: func(req *http.Request, via []*http.Request) error {
+return http.ErrUseLastResponse
+},
+}
 
 const maxSyncPeers = 20
 

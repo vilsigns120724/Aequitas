@@ -114,6 +114,9 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		return fmt.Errorf("download failed: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("snapshot server returned HTTP %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20)) // 50 MB cap
 	if err != nil {
@@ -125,9 +128,14 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		return fmt.Errorf("parse failed: %w", err)
 	}
 
-	// Verify snapshot age — reject anything older than 24 hours
-	if time.Now().Unix()-snap.Timestamp > 86400 {
-		return fmt.Errorf("snapshot is too old (%d seconds)", time.Now().Unix()-snap.Timestamp)
+	now := time.Now().Unix()
+	// Reject future-dated snapshots — could be injected by a compromised peer.
+	if snap.Timestamp > now+60 {
+		return fmt.Errorf("snapshot timestamp is in the future (%d seconds ahead)", snap.Timestamp-now)
+	}
+	// Reject stale snapshots older than 24 hours.
+	if now-snap.Timestamp > 86400 {
+		return fmt.Errorf("snapshot is too old (%d seconds)", now-snap.Timestamp)
 	}
 
 	// When BOOTSTRAP_SIGNER is configured, a valid signature is MANDATORY.

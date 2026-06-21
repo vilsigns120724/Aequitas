@@ -1,7 +1,6 @@
 package keeper
 
 import (
-"encoding/hex"
 "encoding/json"
 "fmt"
 "io"
@@ -11,9 +10,7 @@ import (
 "strings"
 "time"
 
-"github.com/ethereum/go-ethereum/accounts"
 "github.com/ethereum/go-ethereum/common"
-"github.com/ethereum/go-ethereum/crypto"
 )
 
 type APIServer struct {
@@ -76,7 +73,6 @@ mux.HandleFunc("/api/nonce", a.handleNonce)
 mux.HandleFunc("/api/peers", a.handlePeers)
 mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
-mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
 mux.HandleFunc("/registered", a.handleRegistered)
 mux.HandleFunc("/download/app.apk", a.handleAppDownload)
 fmt.Println("── Starting EVM RPC ─────────────────────")
@@ -336,10 +332,10 @@ json.NewEncoder(w).Encode(map[string]interface{}{"used": false})
 return
 }
 wallet := a.state.GetWalletByNullifier(nullifier)
-json.NewEncoder(w).Encode(map[string]interface{}{
-"used":   wallet != "",
-"wallet": wallet,
-})
+// Return only used/unused — never the associated wallet address.
+// The wallet linkage is a biometric identifier that should not be
+// publicly enumerable via the nullifier index.
+json.NewEncoder(w).Encode(map[string]interface{}{"used": wallet != ""})
 }
 
 // queryV7Status reads isHuman(address) and balanceOf(address) directly from
@@ -471,37 +467,6 @@ return
 }
 nonce := a.state.GetSwapNonce(wallet)
 json.NewEncoder(w).Encode(map[string]interface{}{"wallet": wallet, "nonce": nonce})
-}
-
-// handleSignValidatorChallenge signs "Aequitas: validator key linked to human {wallet}"
-// with the node's own RELAYER_PRIVATE_KEY. Called from the node operator's terminal
-// to produce the signing_key_signature needed by /api/register-validator-key.
-// GET /api/sign-validator-challenge?wallet=0x...
-func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-humanWallet := strings.ToLower(r.URL.Query().Get("wallet"))
-if humanWallet == "" || !strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
-http.Error(w, `{"error":"wallet required (0x...)"}`, 400); return
-}
-key := a.blockchain.GetSigningKey()
-if key == nil {
-http.Error(w, `{"error":"RELAYER_PRIVATE_KEY not configured on this node"}`, 500); return
-}
-message := "Aequitas: validator key linked to human " + humanWallet
-msgHash := accounts.TextHash([]byte(message))
-sig, err := crypto.Sign(msgHash, key)
-if err != nil {
-http.Error(w, `{"error":"signing failed"}`, 500); return
-}
-sig[64] += 27 // personal_sign uses v=27/28
-signingAddr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
-json.NewEncoder(w).Encode(map[string]interface{}{
-"signing_address": signingAddr,
-"human_wallet":    humanWallet,
-"signature":       "0x" + hex.EncodeToString(sig),
-"message":         message,
-})
 }
 
 // handleRegisterValidatorKey links a node signing key to a registered human
