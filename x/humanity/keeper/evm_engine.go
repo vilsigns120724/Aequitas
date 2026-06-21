@@ -291,8 +291,28 @@ return ret, nil
 // go-ethereum's StateDB offers no reliable generic "what changed" API in
 // this version (verified: RawDump does not find accounts after Commit,
 // even on the same backing database).
+// v7SimpleSlots: single-value slots that are always persisted.
 var v7SimpleSlots = []int64{0, 1, 2, 3} // totalSupply, totalHumans, ubiPool, ubiPerHumanAccumulated
-var v7AddressMappingSlots = []int64{4, 5, 6, 8, 9, 10, 11} // balanceOf, escrowOf, isHuman, commitmentOf, lastActivity, lastDemurrage, ubiClaimed
+
+// v7AddressMappingSlots: per-address mapping slots (all 13 address mappings in V7).
+var v7AddressMappingSlots = []int64{
+4,  // balanceOf
+5,  // escrowOf
+6,  // isHuman
+// 7 = usedCommitments (uint256 key, not address — handled separately)
+// 8 = usedNullifiers  (bytes32 key, not address — handled separately)
+9,  // commitmentOf
+10, // lastActivity
+11, // lastDemurrage
+12, // ubiClaimed
+13, // guardianOf
+14, // pendingGuardian
+15, // guardianRequestedAt
+16, // wardCount
+}
+
+// v7ArrayBaseSlots: the 10 fixed-size-array slots (CAPS[5] + THRESHOLDS[5]).
+var v7ArrayBaseSlots = []int64{17, 18, 19, 20, 21, 22, 23, 24, 25, 26}
 
 // extractTouchedEntities returns which addresses and commitments a given
 // call may have modified, based on an explicit, verified table of byte
@@ -336,6 +356,13 @@ addrStr := strings.ToLower(addr.Hex())
 count := 0
 
 for _, slotIdx := range v7SimpleSlots {
+slot := common.BigToHash(big.NewInt(slotIdx))
+val := freshDB.GetState(addr, slot)
+e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
+count++
+}
+// Persist all fixed-size array slots (CAPS[5] + THRESHOLDS[5]).
+for _, slotIdx := range v7ArrayBaseSlots {
 slot := common.BigToHash(big.NewInt(slotIdx))
 val := freshDB.GetState(addr, slot)
 e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())

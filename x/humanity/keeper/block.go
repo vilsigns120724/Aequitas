@@ -215,6 +215,10 @@ if dag.signingKey != nil {
 
 dag.blocks[block.Hash] = block
 
+// Record that this proposer produced a block — used for proportional
+// validator-reward distribution in DistributeValidatorsPool.
+go dag.state.IncrementBlockCount(proposer)
+
 // Remove all parents from tips, add this block as new tip
 for _, ph := range parentHashes {
 delete(dag.tips, ph)
@@ -351,6 +355,18 @@ dag.tips[block.Hash] = true
 
 if block.Height > dag.height {
 dag.height = block.Height
+}
+
+// State-root cross-check: verify the block's claimed state root matches our
+// own computed state root. A mismatch means the proposer signed incorrect
+// economic state. Log clearly but don't reject — nodes can legitimately have
+// slightly different states due to the dual-ledger architecture.
+if block.StateRoot != "" {
+localRoot := dag.state.StateRoot()
+if block.StateRoot != localRoot {
+fmt.Printf("[DAG] ⚠ Block #%d state root mismatch: proposer=%s... local=%s...\n",
+block.Height, block.StateRoot[:16], localRoot[:16])
+}
 }
 
 fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, len(dag.tips))

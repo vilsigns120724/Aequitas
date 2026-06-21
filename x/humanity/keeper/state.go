@@ -8,11 +8,12 @@ import (
 "fmt"
 "math"
 "os"
+"sort"
 "sync"
 "time"
 	"strings"
 
-_ "github.com/lib/pq"
+"github.com/lib/pq"
 )
 
 // timeNowFunc is a seam for time.Now(), letting demurrage timing be
@@ -59,6 +60,7 @@ Demurrage14DayWarningShown bool `json:"demurrage_14_day_warning_shown"`
 // tUSD test faucet. Unlike the old TUsdBalance>0 check, this flag is never
 // reset by spending tUSD, so a wallet cannot re-claim by draining its balance.
 FaucetClaimed bool `json:"faucet_claimed"`
+Version      int64 `json:"-"` // optimistic lock version, not serialized
 }
 
 // PoolState holds the two reserves of the single AEQ<->tUSD liquidity pool.
@@ -159,6 +161,7 @@ is_human BOOLEAN NOT NULL DEFAULT false
 // tusd_balance added separately (ALTER instead of being in the original
 // CREATE TABLE) so this upgrade doesn't require recreating the table on
 // chains that already have chain_accounts from before this feature.
+cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0`)
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS tusd_balance FLOAT NOT NULL DEFAULT 0`)
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS lp_shares FLOAT NOT NULL DEFAULT 0`)
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS last_activity_at BIGINT NOT NULL DEFAULT 0`)
@@ -382,8 +385,8 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) {
 if !cs.useDB {
 return
 }
-_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8`,
+_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
+ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1`,
 acc.Address, acc.Balance, acc.IsHuman, acc.TUsdBalance, acc.LPShares, acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed)
 if err != nil {
 fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
@@ -511,8 +514,10 @@ return
 wallet := strings.ToLower(operatorWallet)
 cs.db.Exec(`CREATE TABLE IF NOT EXISTS registered_nodes (
 wallet_address TEXT PRIMARY KEY,
-registered_at TIMESTAMP DEFAULT NOW()
+registered_at TIMESTAMP DEFAULT NOW(),
+blocks_produced BIGINT NOT NULL DEFAULT 0
 )`)
+cs.db.Exec(`ALTER TABLE registered_nodes ADD COLUMN IF NOT EXISTS blocks_produced BIGINT NOT NULL DEFAULT 0`)
 _, err := cs.db.Exec(
 `INSERT INTO registered_nodes (wallet_address) VALUES ($1) ON CONFLICT DO NOTHING`,
 wallet,
@@ -544,6 +549,15 @@ wallets = append(wallets, w)
 return wallets
 }
 
+// IncrementBlockCount records that the given proposer wallet produced a block.
+// Used by DistributeValidatorsPool to distribute rewards proportionally.
+func (cs *ChainState) IncrementBlockCount(proposerAddr string) {
+if cs.db == nil || proposerAddr == "" { return }
+proposerAddr = strings.ToLower(proposerAddr)
+// Only increment if this address is a registered node operator
+cs.db.Exec(`UPDATE registered_nodes SET blocks_produced = blocks_produced + 1 WHERE wallet_address = $1`, proposerAddr)
+}
+
 func (cs *ChainState) DistributeValidatorsPool() {
 // Load registered nodes BEFORE acquiring the lock — GetRegisteredNodes
 // only reads from PostgreSQL, not cs.accounts, so it doesn't need the
@@ -565,17 +579,36 @@ return
 }
 
 total := poolAcc.Balance
-share := total / float64(len(nodes))
+// Query block counts for proportional distribution
+type nodeShare struct{ wallet string; blocks int64 }
+var nodeShares []nodeShare
+var totalBlocks int64
+rows, _ := cs.db.Query(`SELECT wallet_address, blocks_produced FROM registered_nodes WHERE wallet_address = ANY($1)`, pq.Array(nodes))
+if rows != nil {
+for rows.Next() {
+var w string; var b int64
+rows.Scan(&w, &b)
+if b == 0 { b = 1 } // minimum weight so new nodes still get something
+nodeShares = append(nodeShares, nodeShare{w, b})
+totalBlocks += b
+}
+rows.Close()
+}
+if len(nodeShares) == 0 {
+for _, w := range nodes { nodeShares = append(nodeShares, nodeShare{w, 1}); totalBlocks++ }
+}
 poolAcc.Balance = 0
 cs.saveAccountToDB(poolAcc)
 
-for _, wallet := range nodes {
+for _, ns := range nodeShares {
+wallet := ns.wallet
+share := round6(total * float64(ns.blocks) / float64(totalBlocks))
 if _, ok := cs.accounts[wallet]; !ok {
 cs.accounts[wallet] = &AccountState{Address: wallet}
 }
 acc := cs.accounts[wallet]
 cs.settleDemurrageLocked(acc)
-acc.Balance += share
+acc.Balance = round6(acc.Balance + share)
 touchActivity(acc)
 cs.enforceWealthCapLocked(acc)
 cs.saveAccountToDB(acc)
@@ -583,9 +616,7 @@ cs.saveAccountToDB(acc)
 cs.save()
 
 cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(nodes, validatorsPoolAddr)...)
-
-fmt.Printf("[VALIDATORS] ✓ Distributed %.6f AEQ equally across %d node operators (%.6f AEQ each)\n",
-total, len(nodes), share)
+fmt.Printf("[VALIDATORS] Distributed %.6f AEQ proportionally (%d nodes, block-weighted)\n", total, len(nodeShares))
 }
 
 // DistributeLPPool pays out the entire LP pool balance to liquidity
@@ -901,7 +932,7 @@ if fromAcc.Balance < amount {
 return fmt.Errorf("insufficient balance")
 }
 
-fromAcc.Balance -= amount
+fromAcc.Balance = round6(fromAcc.Balance - amount)
 touchActivity(fromAcc) // sending counts as "using" the money — resets its decay clock
 cs.saveAccountToDB(fromAcc)
 
@@ -909,7 +940,7 @@ if _, ok := cs.accounts[to]; !ok {
 cs.accounts[to] = &AccountState{Address: to}
 }
 cs.settleDemurrageLocked(cs.accounts[to])
-cs.accounts[to].Balance += amount
+cs.accounts[to].Balance = round6(cs.accounts[to].Balance + amount)
 touchActivity(cs.accounts[to]) // receiving also resets the clock on the recipient's whole balance
 cs.enforceWealthCapLocked(cs.accounts[to])
 cs.saveAccountToDB(cs.accounts[to])
@@ -1005,23 +1036,23 @@ amountInAfterFee := amountIn - fee
 var amountOut float64
 if aeqToTusd {
 // x*y=k: reserveAEQ * reserveTUSD = (reserveAEQ + amountInAfterFee) * (reserveTUSD - amountOut)
-amountOut = (cs.pool.ReserveTUSD * amountInAfterFee) / (cs.pool.ReserveAEQ + amountInAfterFee)
+amountOut = round6((cs.pool.ReserveTUSD * amountInAfterFee) / (cs.pool.ReserveAEQ + amountInAfterFee))
 if amountOut >= cs.pool.ReserveTUSD {
 return 0, fmt.Errorf("swap too large for pool liquidity")
 }
-cs.pool.ReserveAEQ += amountInAfterFee
-cs.pool.ReserveTUSD -= amountOut
-acc.Balance -= amountIn
-acc.TUsdBalance += amountOut
+cs.pool.ReserveAEQ = round6(cs.pool.ReserveAEQ + amountInAfterFee)
+cs.pool.ReserveTUSD = round6(cs.pool.ReserveTUSD - amountOut)
+acc.Balance = round6(acc.Balance - amountIn)
+acc.TUsdBalance = round6(acc.TUsdBalance + amountOut)
 } else {
-amountOut = (cs.pool.ReserveAEQ * amountInAfterFee) / (cs.pool.ReserveTUSD + amountInAfterFee)
+amountOut = round6((cs.pool.ReserveAEQ * amountInAfterFee) / (cs.pool.ReserveTUSD + amountInAfterFee))
 if amountOut >= cs.pool.ReserveAEQ {
 return 0, fmt.Errorf("swap too large for pool liquidity")
 }
-cs.pool.ReserveTUSD += amountInAfterFee
-cs.pool.ReserveAEQ -= amountOut
-acc.TUsdBalance -= amountIn
-acc.Balance += amountOut
+cs.pool.ReserveTUSD = round6(cs.pool.ReserveTUSD + amountInAfterFee)
+cs.pool.ReserveAEQ = round6(cs.pool.ReserveAEQ - amountOut)
+acc.TUsdBalance = round6(acc.TUsdBalance - amountIn)
+acc.Balance = round6(acc.Balance + amountOut)
 }
 touchActivity(acc) // swapping (either direction) counts as using the AEQ side
 if !aeqToTusd {
@@ -1344,9 +1375,16 @@ return nil
 
 func (cs *ChainState) StateRoot() string {
 cs.mu.RLock()
-data, _ := json.Marshal(cs.accounts)
+addrs := make([]string, 0, len(cs.accounts))
+for a := range cs.accounts { addrs = append(addrs, a) }
+sort.Strings(addrs)
+var sb strings.Builder
+for _, a := range addrs {
+acc := cs.accounts[a]
+if acc.IsHuman { fmt.Fprintf(&sb, "%s:%.6f:", a, round6(acc.Balance)) }
+}
 cs.mu.RUnlock()
-hash := sha256.Sum256(data)
+hash := sha256.Sum256([]byte(sb.String()))
 return hex.EncodeToString(hash[:])
 }
 

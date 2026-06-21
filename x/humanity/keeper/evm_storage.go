@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 
@@ -11,6 +12,14 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 )
+
+// round6 rounds a float64 to 6 decimal places, eliminating floating-point
+// accumulation errors that build up in ledger operations over many transactions.
+// This is the application-level fix for float64 imprecision; a full integer
+// refactor (microAEQ int64) remains a future architecture task.
+func round6(v float64) float64 {
+	return math.Round(v*1_000_000) / 1_000_000
+}
 
 // ─── CONTRACT STORAGE ─────────────────────────────────────────────────────────
 
