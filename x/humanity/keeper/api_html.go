@@ -4593,18 +4593,25 @@ async function doRegister() {
     // commitment is pubSignals[0] — must match exactly what the contract reads
     const commitment = proofData.pubSignals[0];
 
-    // Compute nullifier FIRST — it must be included in the signed message so the
-    // relayer cannot substitute a different nullifier after the user has signed.
-    // nullifier = SHA256(bioHash + ":aequitas-ubi-v1")
+    // Nullifier: prefer ZK-circuit-derived (pubSignals[1] from v2 circuit) since
+    // it is cryptographically attested by the proof. Fall back to SHA256 for v1.
     let nullifier = '';
-    const bioHashForNullifier = pendingBioHash || proofData.bioHashKey || '';
-    if (bioHashForNullifier) {
-      const enc = new TextEncoder();
-      const buf = await crypto.subtle.digest('SHA-256', enc.encode(bioHashForNullifier + ':aequitas-ubi-v1'));
-      nullifier = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    if (proofData.zkNullifier) {
+      // v2 circuit: nullifier is pubSignals[1], proven inside the ZK statement.
+      const zkN = BigInt(proofData.zkNullifier);
+      nullifier = zkN.toString(16).padStart(64, '0');
+      addLog('Using ZK-bound nullifier (circuit v2)', 'info');
+    } else {
+      // v1 fallback: derive from bioHash off-chain (server validates derivation)
+      const bioHashForNullifier = pendingBioHash || proofData.bioHashKey || '';
+      if (bioHashForNullifier) {
+        const enc = new TextEncoder();
+        const buf = await crypto.subtle.digest('SHA-256', enc.encode(bioHashForNullifier + ':aequitas-ubi-v1'));
+        nullifier = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      }
     }
     if (!nullifier) {
-      addLog('Error: biometric hash unavailable — cannot compute nullifier', 'err');
+      addLog('Error: could not compute nullifier — biometric hash unavailable', 'err');
       document.getElementById('btn-reg').disabled = false;
       return;
     }
@@ -4633,7 +4640,9 @@ async function doRegister() {
         signature: signature,
         bioHash: pendingBioHash || '',
         bioHashKey: proofData.bioHashKey || '',
-        nullifier: nullifier
+        nullifier: nullifier,
+        circuitVersion: proofData.circuitVersion || 1,
+        zkNullifier: proofData.zkNullifier || null
       })
     });
     const d = await r.json();

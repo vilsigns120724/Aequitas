@@ -109,12 +109,14 @@ type RegisterRequest struct {
 	// duplicate check (which also uses keccak256) can detect re-registrations
 	// even when the user generates a new wallet on the same device.
 	BioHashKey string `json:"bioHashKey"`
-	// Nullifier is SHA256(bioHash + ":aequitas-ubi-v1"), computed by the
-	// client before submitting. Stored on-chain and checked at registration
-	// time to prevent the same biometric from registering a second wallet —
-	// even if a different bioHash is somehow generated. Future versions will
-	// generate the nullifier inside the Groth16 circuit (Semaphore-style).
+	// Nullifier is SHA256(bioHash + ":aequitas-ubi-v1") for v1 circuit, or
+	// the hex representation of pubSignals[1] for v2 circuit (ZK-bound).
 	Nullifier string `json:"nullifier"`
+	// ZKNullifier is pubSignals[1] from the v2 circuit — the nullifier
+	// derived INSIDE the ZK proof, making it cryptographically binding.
+	// When present, it overrides the client-SHA256 nullifier.
+	ZKNullifier   string `json:"zkNullifier"`
+	CircuitVersion int   `json:"circuitVersion"`
 }
 
 type RegisterResponse struct {
@@ -249,11 +251,20 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	}
 
 	claimedHuman := common.HexToAddress(wallet)
+
+	// Prefer ZK-circuit-derived nullifier (v2 circuit, pubSignals[1]) over
+	// client-SHA256 nullifier. When the v2 circuit is used, the nullifier is
+	// cryptographically attested by the Groth16 proof itself.
+	effectiveNullifier := req.Nullifier
+	if req.ZKNullifier != "" && req.CircuitVersion >= 2 {
+		effectiveNullifier = req.ZKNullifier
+		fmt.Printf("[REGISTER] Using ZK-bound nullifier (circuit v%d)\n", req.CircuitVersion)
+	}
 	// Nullifier is mandatory — reject registrations without one.
-	if req.Nullifier == "" {
+	if effectiveNullifier == "" {
 		return "", fmt.Errorf("nullifier required")
 	}
-	if existingWallet := a.state.GetWalletByNullifier(req.Nullifier); existingWallet != "" {
+	if existingWallet := a.state.GetWalletByNullifier(effectiveNullifier); existingWallet != "" {
 		return "", fmt.Errorf("identity already registered (nullifier used by %s)", existingWallet)
 	}
 	if req.BioHash != "" {
@@ -266,7 +277,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// arbitrary nullifier — the server independently recomputes and checks.
 		h := sha256.Sum256([]byte(req.BioHash + ":aequitas-ubi-v1"))
 		expectedNullifier := hex.EncodeToString(h[:])
-		actualNullifier := strings.ToLower(strings.TrimPrefix(req.Nullifier, "0x"))
+		actualNullifier := strings.ToLower(strings.TrimPrefix(effectiveNullifier, "0x"))
 		if expectedNullifier != actualNullifier {
 			return "", fmt.Errorf("nullifier does not match biometric hash derivation")
 		}
@@ -274,8 +285,8 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 
 	// Encode nullifier as bytes32 — zero value if not provided.
 	var nullifierBytes [32]byte
-	if req.Nullifier != "" {
-		nullHex := strings.TrimPrefix(req.Nullifier, "0x")
+	if effectiveNullifier != "" {
+		nullHex := strings.TrimPrefix(effectiveNullifier, "0x")
 		if len(nullHex) > 64 {
 			nullHex = nullHex[:64]
 		}
@@ -313,7 +324,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// V7 not yet deployed (startup race). Mirror validates the proof via
 		// BioVerifier and writes storage slots directly. Only allowed here.
 		fmt.Printf("[REGISTER] V7 not yet deployed — using mirror registration for %s\n", wallet)
-		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata, req.Nullifier)
+		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata, effectiveNullifier)
 		if mirrorErr != nil {
 			return "", fmt.Errorf("registration failed (V7 missing + mirror failed): %w; mirror: %v", dryRunErr, mirrorErr)
 		}
@@ -331,8 +342,8 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		} else if req.BioHash != "" {
 			a.state.SaveBioHash(req.BioHash, wallet)
 		}
-		if req.Nullifier != "" {
-			a.state.SaveNullifier(req.Nullifier, wallet)
+		if effectiveNullifier != "" {
+			a.state.SaveNullifier(effectiveNullifier, wallet)
 		}
 		return txHash, nil
 	}
