@@ -1209,6 +1209,16 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       </div>
       <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:0.62rem;color:var(--muted)">The block height should match the primary node within 1&ndash;2 blocks within seconds of startup. If it stays at 0, check that PEER_NODES is set correctly and the primary node URL is reachable.</div>
 
+      <!-- Step 5b: Register Validator Key -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5b &mdash; Register Your Validator Key (Decentralized Auth)</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Instead of a shared PEER_SECRET, register your node's signing key using your personal human wallet. This creates an individual on-chain credential: your human identity authorises your node key, no shared secret needed.</div>
+      <div id="vk-reg-box" style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.2);border-radius:8px;padding:16px;margin-bottom:18px">
+        <div style="font-size:0.61rem;color:var(--muted);margin-bottom:10px">Connect MetaMask with your <strong style="color:var(--text)">registered human wallet</strong>, then enter your node's RELAYER_ADDRESS (the public address matching RELAYER_PRIVATE_KEY).</div>
+        <input id="vk-signing-addr" placeholder="0x... (your RELAYER_ADDRESS)" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.3);color:var(--text);border-radius:6px;padding:8px 12px;font-family:var(--font-mono);font-size:0.62rem;margin-bottom:8px">
+        <button onclick="registerValidatorKey()" style="background:rgba(139,92,246,0.8);color:#fff;border:none;border-radius:6px;padding:10px 20px;font-size:0.65rem;cursor:pointer;font-weight:700">🔑 Sign &amp; Register Validator Key</button>
+        <div id="vk-status" style="margin-top:8px;font-size:0.6rem;color:var(--muted)"></div>
+      </div>
+
       <!-- Step 6: MetaMask -->
       <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 6 &mdash; Connect MetaMask to Your Node (Optional)</div>
       <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:8px">You can use your own node as a custom RPC in MetaMask so your wallet connects through your node instead of the shared public node. In MetaMask: click the network dropdown at the top &rarr; <strong style="color:var(--text)">Add network</strong> &rarr; <strong style="color:var(--text)">Add a network manually</strong>, then enter:</div>
@@ -4624,6 +4634,42 @@ setInterval(loadStatus, 6000);
 setInterval(loadBlocks, 6000);
 setInterval(loadHumans, 10000);
 setInterval(loadPoolStatus, 8000);
+
+async function registerValidatorKey() {
+  const status = document.getElementById('vk-status');
+  const signingAddr = document.getElementById('vk-signing-addr').value.trim().toLowerCase();
+  if (!signingAddr.startsWith('0x') || signingAddr.length !== 42) {
+    status.textContent = '✗ Enter a valid signing address (0x... 42 chars)';
+    status.style.color = 'var(--red, #f87171)';
+    return;
+  }
+  if (!window.ethereum) { status.textContent = '✗ MetaMask not found'; return; }
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const humanWallet = accounts[0].toLowerCase();
+    status.textContent = 'Signing with ' + humanWallet.slice(0,10) + '... (confirm in MetaMask)';
+    status.style.color = 'var(--gold)';
+    const message = 'Aequitas: authorize validator key ' + signingAddr;
+    const signature = await window.ethereum.request({ method: 'personal_sign', params: [message, humanWallet] });
+    status.textContent = 'Submitting...';
+    const resp = await fetch('/api/register-validator-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ signing_address: signingAddr, human_wallet: humanWallet, signature })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      status.textContent = '✓ Validator key registered! Your node blocks are now accepted by the primary.';
+      status.style.color = 'var(--teal)';
+    } else {
+      status.textContent = '✗ ' + sanitize(data.error || 'Registration failed');
+      status.style.color = 'var(--red, #f87171)';
+    }
+  } catch(e) {
+    status.textContent = '✗ ' + sanitize(e.message);
+    status.style.color = 'var(--red, #f87171)';
+  }
+}
 
 function generateNodeGuidePDF() {
   var lang = curLang || 'en';

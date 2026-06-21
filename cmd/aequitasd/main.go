@@ -76,6 +76,9 @@ return
 
 chainState := keeper.NewChainState("/tmp/aequitas_state.json")
 bc := keeper.NewBlockchain(humanKeeper, p2pNode.GetNodeID(), chainState)
+// Load individually-registered validator keys from DB into the DAG's
+// authorized set so they survive node restarts without re-registration.
+chainState.LoadValidatorKeysIntoDAG(bc)
 fmt.Println()
 
 p2pNode.SetDAG(bc)

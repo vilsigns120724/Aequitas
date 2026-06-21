@@ -498,6 +498,84 @@ func (cs *ChainState) GetWalletByNullifier(nullifier string) string {
 // The nonce is included in the signed message, so a captured signature cannot
 // be replayed — the nonce check atomically rejects any second use.
 
+// ─── VALIDATOR KEY REGISTRY ──────────────────────────────────────────────────
+//
+// Replaces the shared PEER_SECRET model with individual, human-authorized
+// validator keys. Each node operator signs their signing key with their
+// registered human wallet, creating a 1:1 link: "this human authorizes
+// this signing key to produce blocks on their behalf."
+//
+// A compromised node key can be revoked individually without affecting any
+// other validator. Authorization is tied to on-chain human identity.
+
+func (cs *ChainState) InitValidatorKeysTable() {
+	if cs.db == nil {
+		return
+	}
+	cs.db.Exec(`CREATE TABLE IF NOT EXISTS validator_keys (
+		signing_address TEXT PRIMARY KEY,
+		human_wallet    TEXT NOT NULL,
+		registered_at   TIMESTAMP DEFAULT NOW()
+	)`)
+}
+
+// RegisterValidatorKey links a node signing address to a registered human
+// wallet, authorizing that signing key to propose blocks. The human_wallet
+// must be a registered human; the signature must be a valid personal_sign
+// of "Aequitas: authorize validator key {signing_address}".
+func (cs *ChainState) RegisterValidatorKey(signingAddress, humanWallet string) error {
+	if cs.db == nil {
+		return fmt.Errorf("no database")
+	}
+	signingAddress = strings.ToLower(strings.TrimSpace(signingAddress))
+	humanWallet = strings.ToLower(strings.TrimSpace(humanWallet))
+	if !cs.IsHuman(humanWallet) {
+		return fmt.Errorf("human_wallet %s is not a registered human", humanWallet)
+	}
+	_, err := cs.db.Exec(
+		`INSERT INTO validator_keys (signing_address, human_wallet) VALUES ($1, $2)
+		 ON CONFLICT (signing_address) DO UPDATE SET human_wallet = $2, registered_at = NOW()`,
+		signingAddress, humanWallet)
+	return err
+}
+
+// LoadValidatorKeysIntoDAG reads all registered validator signing addresses
+// from the DB and adds them to the DAG's authorized validators set.
+// Called at startup so keys registered before the node restarted are effective.
+func (cs *ChainState) LoadValidatorKeysIntoDAG(dag interface{ AddAuthorizedValidator(string) }) {
+	if cs.db == nil {
+		return
+	}
+	rows, err := cs.db.Query(`SELECT signing_address FROM validator_keys`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var addr string
+		rows.Scan(&addr)
+		dag.AddAuthorizedValidator(strings.ToLower(strings.TrimSpace(addr)))
+	}
+}
+
+func (cs *ChainState) GetValidatorKeys() []map[string]string {
+	if cs.db == nil {
+		return nil
+	}
+	rows, err := cs.db.Query(`SELECT signing_address, human_wallet FROM validator_keys ORDER BY registered_at`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []map[string]string
+	for rows.Next() {
+		var addr, wallet string
+		rows.Scan(&addr, &wallet)
+		result = append(result, map[string]string{"signing_address": addr, "human_wallet": wallet})
+	}
+	return result
+}
+
 // InitSwapNoncesTable creates the swap_nonces table if it doesn't exist.
 func (cs *ChainState) InitSwapNoncesTable() {
 	if cs.db == nil {

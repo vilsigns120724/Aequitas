@@ -73,6 +73,18 @@ func (dag *BlockDAG) GetSigningKey() *ecdsa.PrivateKey {
 	return dag.signingKey
 }
 
+// AddAuthorizedValidator adds an Ethereum address to the set of addresses
+// allowed to propose blocks. Thread-safe; safe to call after startup.
+func (dag *BlockDAG) AddAuthorizedValidator(addr string) {
+	addr = strings.ToLower(strings.TrimSpace(addr))
+	if addr == "" {
+		return
+	}
+	dag.mu.Lock()
+	dag.authorizedValidators[addr] = true
+	dag.mu.Unlock()
+}
+
 func (dag *BlockDAG) AddTransaction(tx Transaction) {
 dag.txMu.Lock()
 defer dag.txMu.Unlock()
@@ -278,6 +290,45 @@ if block.Signature != "" && !block.IsGenesis {
 		}
 		return false
 	}
+}
+
+// Integrity check 3: all parent hashes must be known blocks.
+// Floating blocks with unknown parents could build a phantom chain.
+if !block.IsGenesis {
+if len(block.ParentHashes) == 0 {
+fmt.Printf("[DAG] ✗ Rejected peer block #%d: no parent hashes\n", block.Height)
+return false
+}
+maxParentHeight := int64(-1)
+for _, ph := range block.ParentHashes {
+parent, parentExists := dag.blocks[ph]
+if !parentExists {
+// Unknown parent — likely a gap in sync. Quietly drop; the sync
+// loop will re-fetch once the parent arrives.
+return false
+}
+if parent.Height > maxParentHeight {
+maxParentHeight = parent.Height
+}
+}
+// Height must be exactly one more than the tallest parent.
+if block.Height != maxParentHeight+1 {
+fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid height (parent max %d)\n",
+block.Height, maxParentHeight)
+return false
+}
+}
+
+// Integrity check 4: transaction type whitelist — unknown types could
+// inject unrecognised state-change commands into the audit log.
+for _, tx := range block.Transactions {
+switch tx.Type {
+case "", "register_human", "transfer", "swap", "add_liquidity", "remove_liquidity", "faucet":
+// known / empty — OK
+default:
+fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
+return false
+}
 }
 
 dag.blocks[block.Hash] = block

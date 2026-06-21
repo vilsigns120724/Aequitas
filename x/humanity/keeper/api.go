@@ -72,6 +72,7 @@ mux.HandleFunc("/api/snapshot", a.handleSnapshot)
 mux.HandleFunc("/api/nonce", a.handleNonce)
 mux.HandleFunc("/api/peers", a.handlePeers)
 mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
+mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
 mux.HandleFunc("/registered", a.handleRegistered)
 mux.HandleFunc("/download/app.apk", a.handleAppDownload)
 fmt.Println("── Starting EVM RPC ─────────────────────")
@@ -468,6 +469,51 @@ nonce := a.state.GetSwapNonce(wallet)
 json.NewEncoder(w).Encode(map[string]interface{}{"wallet": wallet, "nonce": nonce})
 }
 
+// handleRegisterValidatorKey links a node signing key to a registered human
+// wallet, authorising that signing key to propose blocks without a shared secret.
+// POST /api/register-validator-key
+// Body: {signing_address, human_wallet, signature}
+// signature = personal_sign("Aequitas: authorize validator key {signing_address}", human_wallet)
+func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+if r.Method == "OPTIONS" { w.WriteHeader(200); return }
+if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
+r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+var req struct {
+SigningAddress string `json:"signing_address"`
+HumanWallet   string `json:"human_wallet"`
+Signature     string `json:"signature"`
+}
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+http.Error(w, `{"error":"invalid request"}`, 400); return
+}
+signingAddr := strings.ToLower(strings.TrimSpace(req.SigningAddress))
+humanWallet := strings.ToLower(strings.TrimSpace(req.HumanWallet))
+if !strings.HasPrefix(signingAddr, "0x") || len(signingAddr) != 42 ||
+!strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
+http.Error(w, `{"error":"invalid address"}`, 400); return
+}
+// Verify the human wallet signed the authorization message.
+message := "Aequitas: authorize validator key " + signingAddr
+if err := verifyPersonalSign(message, req.Signature, humanWallet); err != nil {
+http.Error(w, `{"error":"invalid signature: `+err.Error()+`"}`, 400); return
+}
+// Store in DB and add to live authorized set.
+if err := a.state.RegisterValidatorKey(signingAddr, humanWallet); err != nil {
+http.Error(w, `{"error":"`+err.Error()+`"}`, 400); return
+}
+a.blockchain.AddAuthorizedValidator(signingAddr)
+fmt.Printf("[VALIDATOR] ✓ Registered key %s for human %s\n", signingAddr, humanWallet)
+json.NewEncoder(w).Encode(map[string]interface{}{
+"success":         true,
+"signing_address": signingAddr,
+"human_wallet":    humanWallet,
+})
+}
+
 // handlePeerRegister accepts a node registration and returns the current peer
 // list plus all authorized validator addresses. A node that sends its
 // signing_address is automatically added to the authorized validator set so
@@ -504,17 +550,22 @@ fmt.Printf("[PEERS] URL rejected (wrong or missing PEER_SECRET): %s\n", req.URL)
 } else if req.URL != "" {
 fmt.Printf("[PEERS] URL rejected (must be public HTTPS): %s\n", req.URL)
 }
-if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && strings.HasPrefix(addr, "0x") && len(addr) == 42 && secretOK {
-a.blockchain.mu.Lock()
-if !a.blockchain.authorizedValidators[addr] {
-a.blockchain.authorizedValidators[addr] = true
-fmt.Printf("[PEERS] Auto-authorized validator: %s\n", addr)
+if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && strings.HasPrefix(addr, "0x") && len(addr) == 42 {
+// Authorization: accept if PEER_SECRET matches OR if the address has
+// a registered validator key (individual human-signed credential).
+keys := a.state.GetValidatorKeys()
+keyAuthorized := false
+for _, k := range keys {
+if k["signing_address"] == addr { keyAuthorized = true; break }
 }
+if secretOK || keyAuthorized {
+a.blockchain.AddAuthorizedValidator(addr)
+if !keyAuthorized { fmt.Printf("[PEERS] Auto-authorized validator via secret: %s\n", addr) }
+}
+a.blockchain.mu.RLock()
 validators := make([]string, 0, len(a.blockchain.authorizedValidators))
-for v := range a.blockchain.authorizedValidators {
-validators = append(validators, v)
-}
-a.blockchain.mu.Unlock()
+for v := range a.blockchain.authorizedValidators { validators = append(validators, v) }
+a.blockchain.mu.RUnlock()
 json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": validators})
 return
 }

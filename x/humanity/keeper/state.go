@@ -204,7 +204,8 @@ key TEXT PRIMARY KEY,
 value TEXT NOT NULL
 )`)
 
-cs.InitSwapNoncesTable()}
+cs.InitSwapNoncesTable()
+cs.InitValidatorKeysTable()}
 
 // setConfigValue persists a key/value pair to chain_config (upsert).
 func (cs *ChainState) setConfigValue(key, value string) {
