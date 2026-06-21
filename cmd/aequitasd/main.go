@@ -87,11 +87,11 @@ p2pNode.SetDAG(bc)
 	// verify the snapshot's ECDSA signature before importing.
 	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && chainState.TotalHumans() == 0 {
 		expectedSigner := os.Getenv("BOOTSTRAP_SIGNER")
-		snapshotToken := os.Getenv("SNAPSHOT_TOKEN")
-		// Refuse to import without at least one authentication mechanism.
-		// An unauthenticated snapshot import would let anyone feed fake state.
-		if expectedSigner == "" && snapshotToken == "" {
-			fmt.Println("[BOOTSTRAP] ✗ Refused: set BOOTSTRAP_SIGNER and/or SNAPSHOT_TOKEN before importing a snapshot")
+		// BOOTSTRAP_SIGNER is always required — it verifies the cryptographic
+		// integrity of the snapshot payload regardless of HTTP token auth.
+		// A token-only import would accept any syntactically valid snapshot.
+		if expectedSigner == "" {
+			fmt.Println("[BOOTSTRAP] ✗ Refused: BOOTSTRAP_SIGNER must be set to the primary node's signing address (0x...)")
 		} else {
 			fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)
 			if err := chainState.ImportSnapshotFromURL(bootstrapURL, expectedSigner); err != nil {

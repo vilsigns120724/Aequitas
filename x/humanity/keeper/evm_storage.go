@@ -521,6 +521,19 @@ func (cs *ChainState) GetSwapNonce(wallet string) int64 {
 	return nonce
 }
 
+// RestoreSwapNonce decrements the nonce back to its pre-swap value when a
+// swap fails after the nonce was already consumed. Safe to call: if the nonce
+// has already advanced past nonce+1 (extremely unlikely concurrent case) the
+// UPDATE finds no rows and the decrement is skipped — user must re-sign.
+func (cs *ChainState) RestoreSwapNonce(wallet string, nonce int64) {
+	if cs.db == nil {
+		return
+	}
+	wallet = strings.ToLower(wallet)
+	cs.db.Exec(`UPDATE swap_nonces SET next_nonce = $2 WHERE wallet_address = $1 AND next_nonce = $2 + 1`,
+		wallet, nonce)
+}
+
 // ConsumeSwapNonce atomically verifies that nonce matches the expected value
 // and increments it. Returns an error if the nonce doesn't match (replay or
 // wrong value). Must be called only after the signature has been verified.

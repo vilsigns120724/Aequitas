@@ -227,22 +227,36 @@ dag.startSyncForPeer(peer)
 }
 }
 
-// isAllowedPeerURL returns true only for HTTPS URLs pointing at public hosts.
-// Rejects HTTP, loopback (127.x), link-local, and RFC-1918 private ranges to
-// prevent SSRF where an attacker registers an internal URL as a peer.
+// isAllowedPeerURL returns true only for HTTPS URLs that resolve exclusively
+// to public IP addresses. DNS is resolved at validation time to prevent
+// DNS-rebinding attacks where a hostname like "localhost.evil.com" initially
+// resolves to a public IP but later rebinds to 127.0.0.1.
 func isAllowedPeerURL(rawURL string) bool {
 u, err := url.Parse(rawURL)
 if err != nil || u.Scheme != "https" || u.Host == "" {
 return false
 }
 host := u.Hostname()
-ip := net.ParseIP(host)
-if ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
+if host == "" || host == "0.0.0.0" || host == "[::]" {
 return false
 }
-// Block numeric localhost variants
-if host == "0.0.0.0" || host == "[::]" {
+
+// If it's a literal IP, check it directly without DNS.
+if ip := net.ParseIP(host); ip != nil {
+return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast()
+}
+
+// For hostnames: resolve DNS and verify every returned IP is public.
+// A single private/loopback result rejects the whole URL.
+addrs, err := net.LookupHost(host)
+if err != nil || len(addrs) == 0 {
 return false
+}
+for _, addr := range addrs {
+ip := net.ParseIP(addr)
+if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+return false
+}
 }
 return true
 }

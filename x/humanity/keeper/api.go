@@ -487,19 +487,23 @@ PeerSecret     string `json:"peer_secret"`
 r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 json.NewDecoder(r.Body).Decode(&req)
 
-// Validate URL before registering: must be HTTPS and not a private/internal address.
+// Secret check comes FIRST. URL registration and sync goroutines are only
+// started for authenticated peers — prevents goroutine exhaustion via
+// unauthenticated registrations even when PEER_SECRET is not set.
+peerSecret := os.Getenv("PEER_SECRET")
+secretOK := peerSecret != "" && req.PeerSecret == peerSecret
+
 if req.URL != "" && isAllowedPeerURL(req.URL) {
+if secretOK {
 GlobalPeerRegistry.Register(req.URL)
 fmt.Printf("[PEERS] Registered: %s\n", req.URL)
 a.blockchain.startSyncForPeer(req.URL)
-} else if req.URL != "" {
-fmt.Printf("[PEERS] Rejected peer URL (must be public HTTPS): %s\n", req.URL)
+} else {
+fmt.Printf("[PEERS] URL rejected (wrong or missing PEER_SECRET): %s\n", req.URL)
 }
-
-// Only authorize the signing address if PEER_SECRET matches.
-// Without this check, any public caller could add themselves as validator.
-peerSecret := os.Getenv("PEER_SECRET")
-secretOK := peerSecret != "" && req.PeerSecret == peerSecret
+} else if req.URL != "" {
+fmt.Printf("[PEERS] URL rejected (must be public HTTPS): %s\n", req.URL)
+}
 if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && strings.HasPrefix(addr, "0x") && len(addr) == 42 && secretOK {
 a.blockchain.mu.Lock()
 if !a.blockchain.authorizedValidators[addr] {
