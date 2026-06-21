@@ -93,6 +93,21 @@ useDB     bool
 nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
 }
 
+// acquireStateLock acquires a PostgreSQL advisory lock so that only one
+// process can execute critical state mutations at a time. This prevents
+// multiple nodes sharing the same DB from overwriting each other's changes.
+// Returns true if lock was acquired, false if DB is unavailable.
+func (cs *ChainState) acquireStateLock() bool {
+if cs.db == nil { return true } // no DB, skip lock
+_, err := cs.db.Exec(`SELECT pg_advisory_lock(hashtext('aequitas-state-write')::bigint)`)
+return err == nil
+}
+
+func (cs *ChainState) releaseStateLock() {
+if cs.db == nil { return }
+cs.db.Exec(`SELECT pg_advisory_unlock(hashtext('aequitas-state-write')::bigint)`)
+}
+
 func NewChainState(dataFile string) *ChainState {
 cs := &ChainState{
 accounts:  make(map[string]*AccountState),
@@ -162,6 +177,12 @@ is_human BOOLEAN NOT NULL DEFAULT false
 // CREATE TABLE) so this upgrade doesn't require recreating the table on
 // chains that already have chain_accounts from before this feature.
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0`)
+// Upgrade balance columns to NUMERIC(20,6) for exact decimal storage.
+// FLOAT loses precision; NUMERIC stores exactly 6 decimal places.
+cs.db.Exec(`ALTER TABLE chain_accounts ALTER COLUMN balance TYPE NUMERIC(20,6) USING balance::NUMERIC(20,6)`)
+cs.db.Exec(`ALTER TABLE chain_accounts ALTER COLUMN tusd_balance TYPE NUMERIC(20,6) USING tusd_balance::NUMERIC(20,6)`)
+cs.db.Exec(`ALTER TABLE chain_accounts ALTER COLUMN lp_shares TYPE NUMERIC(20,6) USING lp_shares::NUMERIC(20,6)`)
+cs.db.Exec(`UPDATE liquidity_pool SET reserve_aeq = ROUND(reserve_aeq::NUMERIC, 6), reserve_tusd = ROUND(reserve_tusd::NUMERIC, 6), total_lp_shares = ROUND(total_lp_shares::NUMERIC, 6) WHERE id = 1`)
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS tusd_balance FLOAT NOT NULL DEFAULT 0`)
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS lp_shares FLOAT NOT NULL DEFAULT 0`)
 cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS last_activity_at BIGINT NOT NULL DEFAULT 0`)
@@ -920,6 +941,8 @@ return nil
 }
 
 func (cs *ChainState) Transfer(from, to string, amount float64) error {
+cs.acquireStateLock()
+defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 from = strings.ToLower(from)

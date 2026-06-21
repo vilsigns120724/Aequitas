@@ -452,6 +452,25 @@ return txHash, nil
 }
 
 // ── CONTRACT CALL ────────────────────────────────────────────────────────
+// Only allow calls to known, Go-state-integrated selectors to prevent
+// Go/EVM ledger divergence. Unknown selectors could change EVM state
+// without updating Go-state (PostgreSQL), creating permanent inconsistency.
+var knownSelectors = map[string]bool{
+"a9059cbb": true, // transfer(address,uint256) — handled above
+"095ea7b3": true, // approve(address,uint256)
+"70a08231": true, // balanceOf(address) — read-only
+"dd62ed3e": true, // allowance(address,address) — read-only
+"18160ddd": true, // totalSupply() — read-only
+"06fdde03": true, // name() — read-only
+"95d89b41": true, // symbol() — read-only
+"313ce567": true, // decimals() — read-only
+}
+if tx.To() != nil && len(tx.Data()) >= 4 {
+sel := hex.EncodeToString(tx.Data()[:4])
+if !knownSelectors[sel] && strings.ToLower(tx.To().Hex()) == strings.ToLower(V7_CONTRACT_ADDR) {
+return nil, &RPCError{Code: -32603, Message: "selector " + sel + " not supported via /rpc (use /api/* endpoints to prevent Go/EVM ledger divergence)"}
+}
+}
 if tx.To() != nil && len(tx.Data()) > 0 && s.evm != nil {
 toAddr := *tx.To()
 toStr := strings.ToLower(toAddr.Hex())

@@ -357,15 +357,16 @@ if block.Height > dag.height {
 dag.height = block.Height
 }
 
-// State-root cross-check: verify the block's claimed state root matches our
-// own computed state root. A mismatch means the proposer signed incorrect
-// economic state. Log clearly but don't reject — nodes can legitimately have
-// slightly different states due to the dual-ledger architecture.
+// State-root integrity check: verify the proposer's claimed state root
+// matches our locally computed root. A mismatch indicates the proposer
+// signed economically incorrect state (wrong balances or human count).
+// We hard-reject to prevent validators from lying about state.
 if block.StateRoot != "" {
 localRoot := dag.state.StateRoot()
 if block.StateRoot != localRoot {
-fmt.Printf("[DAG] ⚠ Block #%d state root mismatch: proposer=%s... local=%s...\n",
-block.Height, block.StateRoot[:16], localRoot[:16])
+fmt.Printf("[DAG] ✗ Rejected peer block #%d: state root mismatch (proposer=%s..., local=%s...)\n",
+block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
+return false
 }
 }
 
