@@ -3512,8 +3512,9 @@ function drawPriceChart() {
   ctx.clearRect(0, 0, W, H);
   const pad = {l:58, r:24, t:36, b:36};
   const now = Date.now();
-  const pts = chartIntervalMs > 0
-    ? priceHistory.filter(function(p){ return now - p.t <= chartIntervalMs; })
+  const _ciMs = (typeof chartIntervalMs !== 'undefined') ? chartIntervalMs : 0;
+  const pts = _ciMs > 0
+    ? priceHistory.filter(function(p){ return now - p.t <= _ciMs; })
     : priceHistory;
   if (!pts.length) {
     ctx.fillStyle='rgba(139,92,246,0.5)'; ctx.font='11px Inter,sans-serif'; ctx.textAlign='center';
@@ -3669,8 +3670,8 @@ let currentPoolAEQ = 0;
 let currentPoolTUSD = 0;
 let myAEQBalance = 0;
 let myTUSDBalance = 0;
-let priceHistory = [];
-let chartIntervalMs = 60000; // default: 1 minute
+var priceHistory = [];
+var chartIntervalMs = 60000; // default: 1 minute — var so it is hoisted above drawPriceChart
 
 function setChartInterval(ms) {
   chartIntervalMs = ms;
