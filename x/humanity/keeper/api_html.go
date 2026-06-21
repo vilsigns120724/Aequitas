@@ -3681,12 +3681,13 @@ async function drawLorenzCurve() {
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#070B16'; ctx.fillRect(0, 0, W, H);
 
-  // Leave right margin for labels
-  var pad = {l:64, r:200, t:44, b:60};
+  // Layout: 82px top header, 252px right legend panel, 62px bottom axis
+  var pad = {l:62, r:252, t:82, b:62};
   var cW = W - pad.l - pad.r;
   var cH = H - pad.t - pad.b;
   function px(f) { return pad.l + cW * f; }
   function py(f) { return pad.t + cH * (1 - f); }
+  function rr(x,y,w,h,r) { if(ctx.roundRect)ctx.roundRect(x,y,w,h,r); else ctx.rect(x,y,w,h); }
 
   try {
     var d = await (await fetch('/api/humans')).json();
@@ -3706,9 +3707,39 @@ async function drawLorenzCurve() {
     for(var i=1;i<lorenz.length;i++){area+=(lorenz[i].x-lorenz[i-1].x)*(lorenz[i].y+lorenz[i-1].y)/2;}
     var gini=Math.max(0,1-2*area);
 
-    // Update stat box
     var gEl=document.getElementById('lorenz-gini-val');
     if(gEl){gEl.textContent=gini.toFixed(4);gEl.style.color=gini<0.35?'#34D399':'#F0B429';}
+
+    var aqY50 = lorenz.reduce(function(best,p){return Math.abs(p.x-0.5)<Math.abs(best.x-0.5)?p:best;},{x:0,y:0}).y;
+    var gC = gini<0.35?'#34D399':'#F0B429';
+
+    // ── HEADER (0..82px): title + two info boxes ───────────────────────────
+    ctx.fillStyle='rgba(232,237,245,0.88)'; ctx.font='bold 11px Inter'; ctx.textAlign='left';
+    ctx.fillText('LORENZ CURVE — WEALTH DISTRIBUTION', pad.l, 14);
+    ctx.fillStyle='rgba(136,146,164,0.6)'; ctx.font='8.5px Inter';
+    ctx.fillText('Diagonal = perfect equality.  Curves bowing down = more inequality.  Shaded area = size of inequality gap.', pad.l, 27);
+
+    // Box 1: Aequitas Gini
+    var bw=180, bh=40;
+    ctx.fillStyle='rgba(7,11,22,0.97)'; ctx.strokeStyle=gC; ctx.lineWidth=1.5;
+    ctx.beginPath(); rr(pad.l, 34, bw, bh, 5); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='rgba(136,146,164,0.6)'; ctx.font='7px JetBrains Mono'; ctx.textAlign='center';
+    ctx.fillText('AEQUITAS GINI COEFFICIENT', pad.l+bw/2, 46);
+    ctx.fillStyle=gC; ctx.font='bold 17px JetBrains Mono';
+    ctx.fillText((gini*100).toFixed(1)+'%', pad.l+58, 65);
+    ctx.fillStyle='rgba(200,200,200,0.65)'; ctx.font='9px JetBrains Mono'; ctx.textAlign='left';
+    ctx.fillText('= '+gini.toFixed(4), pad.l+105, 65);
+
+    // Box 2: World Average
+    var b2x=pad.l+bw+12;
+    ctx.fillStyle='rgba(7,11,22,0.97)'; ctx.strokeStyle='rgba(167,139,250,0.7)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); rr(b2x, 34, bw, bh, 5); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='rgba(136,146,164,0.6)'; ctx.font='7px JetBrains Mono'; ctx.textAlign='center';
+    ctx.fillText('WORLD AVERAGE GINI 2024', b2x+bw/2, 46);
+    ctx.fillStyle='rgba(167,139,250,0.9)'; ctx.font='bold 17px JetBrains Mono';
+    ctx.fillText('38.0%', b2x+58, 65);
+    ctx.fillStyle='rgba(200,200,200,0.65)'; ctx.font='9px JetBrains Mono'; ctx.textAlign='left';
+    ctx.fillText('= 0.380', b2x+108, 65);
 
     // ── GRID ──────────────────────────────────────────────────────────────
     ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
@@ -3724,44 +3755,41 @@ async function drawLorenzCurve() {
       ctx.textAlign='center'; ctx.fillText(tl[i],px(i/4),pad.t+cH+18);
       ctx.textAlign='right';  ctx.fillText(tl[i],pad.l-6,py(i/4)+4);
     }
-    ctx.save();ctx.translate(14,pad.t+cH/2);ctx.rotate(-Math.PI/2);
-    ctx.fillStyle='rgba(155,114,246,0.75)';ctx.font='10px Inter';ctx.textAlign='center';
+    ctx.save();ctx.translate(12,pad.t+cH/2);ctx.rotate(-Math.PI/2);
+    ctx.fillStyle='rgba(155,114,246,0.7)';ctx.font='10px Inter';ctx.textAlign='center';
     ctx.fillText('Cumulative % of AEQ wealth',0,0);ctx.restore();
     ctx.fillStyle='rgba(155,114,246,0.6)';ctx.font='10px Inter';ctx.textAlign='center';
-    ctx.fillText('% of Population (poorest → richest)',px(0.5),pad.t+cH+36);
+    ctx.fillText('% of Population (poorest left → richest right)',px(0.5),pad.t+cH+36);
 
-    // ── VERTICAL ANNOTATION LINE at x=50% ─────────────────────────────────
+    // ── 50% GUIDE LINE ─────────────────────────────────────────────────────
     ctx.beginPath();ctx.moveTo(px(0.5),pad.t);ctx.lineTo(px(0.5),pad.t+cH);
-    ctx.strokeStyle='rgba(255,255,255,0.12)';ctx.lineWidth=1;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle='rgba(136,146,164,0.6)';ctx.font='8px JetBrains Mono';ctx.textAlign='center';
-    ctx.fillText('← 50% of people hold this % of wealth →',px(0.5),pad.t-8);
+    ctx.strokeStyle='rgba(255,255,255,0.09)';ctx.lineWidth=1;ctx.setLineDash([4,3]);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='rgba(136,146,164,0.45)';ctx.font='8px JetBrains Mono';ctx.textAlign='center';
+    ctx.fillText('50% mark',px(0.5),pad.t-4);
 
-    // Reference countries: Lorenz L(x) = x^(1+2g), compute y at x=0.5 for annotations
+    // ── REFERENCE COUNTRIES (most unequal first → fills stack correctly) ───
     var refs = [
-      {name:'South Africa',short:'South Africa',g:0.63,lc:'#F87171',fc:'rgba(239,68,68,0.20)',desc:'G=63% — Extreme inequality'},
-      {name:'Brazil',       short:'Brazil',      g:0.53,lc:'#FB923C',fc:'rgba(251,146,60,0.16)',desc:'G=53% — High inequality'},
-      {name:'USA',          short:'USA',          g:0.41,lc:'#FCD34D',fc:'rgba(252,211,77,0.13)',desc:'G=41% — Moderate inequality'},
-      {name:'Germany',      short:'Germany',      g:0.31,lc:'#34D399',fc:'rgba(52,211,153,0.11)',desc:'G=31% — Low inequality'},
-      {name:'Scandinavia',  short:'Scandinavia',  g:0.27,lc:'#60A5FA',fc:'rgba(96,165,250,0.09)',desc:'G=27% — Target for Aequitas'}
+      {label:'South Africa', g:0.63, lc:'#F87171', fc:'rgba(239,68,68,0.18)', tag:'Extreme inequality'},
+      {label:'Brazil',       g:0.53, lc:'#FB923C', fc:'rgba(251,146,60,0.14)', tag:'High inequality'},
+      {label:'USA',          g:0.41, lc:'#FCD34D', fc:'rgba(252,211,77,0.11)', tag:'Moderate'},
+      {label:'World Avg',    g:0.38, lc:'#A78BFA', fc:'rgba(167,139,250,0.09)', tag:'Global average'},
+      {label:'Germany',      g:0.31, lc:'#34D399', fc:'rgba(52,211,153,0.08)', tag:'Low inequality'},
+      {label:'Scandinavia',  g:0.27, lc:'#60A5FA', fc:'rgba(96,165,250,0.07)', tag:'Very low — target'}
     ];
 
-    // Draw reference fills + curves (most unequal first so fills stack correctly)
     refs.forEach(function(ref){
       var rpts=[];
       for(var j=0;j<=120;j++){var xf=j/120;rpts.push({x:xf,y:Math.pow(xf,1+2*ref.g)});}
-
-      // Fill between this curve and diagonal
-      ctx.beginPath();
-      ctx.moveTo(px(0),py(0));
+      ctx.beginPath();ctx.moveTo(px(0),py(0));
       rpts.forEach(function(p){ctx.lineTo(px(p.x),py(p.y));});
       for(var j=120;j>=0;j--){ctx.lineTo(px(j/120),py(j/120));}
-      ctx.closePath();
-      ctx.fillStyle=ref.fc;ctx.fill();
+      ctx.closePath();ctx.fillStyle=ref.fc;ctx.fill();
 
-      // Curve line
       ctx.beginPath();
       rpts.forEach(function(p,i){if(i===0)ctx.moveTo(px(p.x),py(p.y));else ctx.lineTo(px(p.x),py(p.y));});
-      ctx.strokeStyle=ref.lc;ctx.lineWidth=1.3;ctx.setLineDash([5,4]);ctx.stroke();ctx.setLineDash([]);
+      ctx.strokeStyle=ref.lc;
+      ctx.lineWidth=ref.label==='World Avg'?1.9:1.2;
+      ctx.setLineDash(ref.label==='World Avg'?[7,3]:[5,4]);ctx.stroke();ctx.setLineDash([]);
     });
 
     // ── EQUALITY DIAGONAL ──────────────────────────────────────────────────
@@ -3771,116 +3799,94 @@ async function drawLorenzCurve() {
     ctx.strokeStyle=diag;ctx.lineWidth=2;ctx.setLineDash([8,5]);ctx.stroke();ctx.setLineDash([]);
 
     // ── AEQUITAS CURVE ─────────────────────────────────────────────────────
-    // Fill between Aequitas and diagonal (shows tiny inequality)
     ctx.beginPath();
     lorenz.forEach(function(p,i){if(i===0)ctx.moveTo(px(p.x),py(p.y));else ctx.lineTo(px(p.x),py(p.y));});
     for(var j=lorenz.length-1;j>=0;j--){ctx.lineTo(px(lorenz[j].x),py(lorenz[j].x));}
     ctx.closePath();
     var aqFill=ctx.createLinearGradient(0,py(0.5),0,py(0));
-    aqFill.addColorStop(0,'rgba(240,180,41,0.55)');aqFill.addColorStop(1,'rgba(240,180,41,0.05)');
+    aqFill.addColorStop(0,'rgba(240,180,41,0.48)');aqFill.addColorStop(1,'rgba(240,180,41,0.04)');
     ctx.fillStyle=aqFill;ctx.fill();
 
-    // Aequitas line
     ctx.beginPath();
     lorenz.forEach(function(p,i){if(i===0)ctx.moveTo(px(p.x),py(p.y));else ctx.lineTo(px(p.x),py(p.y));});
-    ctx.save();ctx.shadowColor='rgba(240,180,41,0.9)';ctx.shadowBlur=14;
+    ctx.save();ctx.shadowColor='rgba(240,180,41,0.8)';ctx.shadowBlur=12;
     ctx.strokeStyle='#F0B429';ctx.lineWidth=3;ctx.stroke();ctx.restore();
     lorenz.slice(1).forEach(function(p){
-      ctx.beginPath();ctx.arc(px(p.x),py(p.y),4.5,0,2*Math.PI);
+      ctx.beginPath();ctx.arc(px(p.x),py(p.y),4,0,2*Math.PI);
       ctx.fillStyle='#F0B429';ctx.fill();
-      ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=1;ctx.stroke();
+      ctx.strokeStyle='rgba(0,0,0,0.6)';ctx.lineWidth=1;ctx.stroke();
     });
 
-    // ── RIGHT PANEL: ANNOTATION LABELS ────────────────────────────────────
-    var lx = pad.l + cW + 12; // start of label area
-    var labelItems = [];
-
-    // Equality diagonal at x=0.5 gives y=0.5
-    labelItems.push({name:'Perfect Equality',y50:0.5,color:'rgba(155,114,246,0.9)',bold:false,desc:'50% of people own 50%'});
-    // Aequitas
-    var aqY50 = lorenz.reduce(function(best,p){return Math.abs(p.x-0.5)<Math.abs(best.x-0.5)?p:best;},{x:0,y:0}).y;
-    labelItems.push({name:'Aequitas  G='+Math.round(gini*100*10)/10+'%',y50:aqY50,color:'#F0B429',bold:true,desc:aqY50.toFixed(0)+'%  of wealth owned by poorer half'});
-    // Reference countries
-    refs.slice().reverse().forEach(function(ref){
+    // ── RIGHT PANEL: clean stacked legend ─────────────────────────────────
+    // Items sorted most equal → least equal
+    var legendItems = [
+      {label:'Perfect Equality', gStr:'G = 0%',   owns:'50% own 50%', color:'rgba(155,114,246,0.85)', bold:false, tag:'ideal'},
+      {label:'Aequitas',         gStr:'G = '+(gini*100).toFixed(1)+'%', owns:'50% own '+(aqY50*100).toFixed(0)+'%', color:'#F0B429', bold:true, tag:'this chain'}
+    ];
+    refs.slice().sort(function(a,b){return a.g-b.g;}).forEach(function(ref){
       var y50=Math.pow(0.5,1+2*ref.g);
-      labelItems.push({name:ref.short+'  G='+Math.round(ref.g*100)+'%',y50:y50,color:ref.lc,bold:false,desc:Math.round(y50*100)+'%  of wealth'});
+      legendItems.push({label:ref.label, gStr:'G = '+Math.round(ref.g*100)+'%', owns:'50% own '+Math.round(y50*100)+'%', color:ref.lc, bold:false, tag:ref.tag});
     });
 
-    // Sort by y50 descending (higher = more equal = top of chart)
-    labelItems.sort(function(a,b){return b.y50-a.y50;});
+    var lx = pad.l + cW + 14;
+    var lw = pad.r - 20;
+    var itemH = Math.min(40, cH / legendItems.length);
+    var totalH = itemH * legendItems.length;
+    var startY = pad.t + (cH - totalH) / 2 + itemH / 2;
 
-    // Draw connector dot + horizontal line from chart edge to label
-    labelItems.forEach(function(item){
-      var chartY = py(item.y50);
-      // Horizontal connector
-      ctx.beginPath();ctx.moveTo(px(0.5),chartY);ctx.lineTo(lx-4,chartY);
-      ctx.strokeStyle=item.color;ctx.lineWidth=1;ctx.setLineDash([2,3]);ctx.stroke();ctx.setLineDash([]);
-      // Dot at x=50%
-      ctx.beginPath();ctx.arc(px(0.5),chartY,3.5,0,2*Math.PI);ctx.fillStyle=item.color;ctx.fill();
-    });
+    legendItems.forEach(function(item, idx){
+      var cy = startY + idx * itemH;
 
-    // Now draw labels with minimum spacing
-    var usedY = [];
-    function clampY(y, items) {
-      var minSpacing = 14;
-      var sorted = usedY.slice().sort(function(a,b){return a-b;});
-      var candidate = y;
-      for(var iter=0;iter<20;iter++){
-        var conflict=false;
-        for(var i=0;i<sorted.length;i++){
-          if(Math.abs(sorted[i]-candidate)<minSpacing){
-            candidate=sorted[i]+minSpacing;
-            conflict=true;break;
-          }
-        }
-        if(!conflict)break;
-      }
-      return candidate;
-    }
+      // Color bar left indicator
+      ctx.fillStyle = item.bold ? item.color : item.color;
+      ctx.globalAlpha = item.bold ? 1.0 : 0.85;
+      ctx.fillRect(lx, cy - Math.min(itemH*0.38, 14), 3, Math.min(itemH*0.76, 28));
+      ctx.globalAlpha = 1.0;
 
-    labelItems.forEach(function(item){
-      var rawY = py(item.y50);
-      var labelY = clampY(rawY, usedY);
-      usedY.push(labelY);
-
-      // Label box
-      var lw = pad.r - 16;
-      ctx.fillStyle = item.bold ? 'rgba(240,180,41,0.08)' : 'rgba(255,255,255,0.03)';
-      ctx.strokeStyle = item.color;
-      ctx.lineWidth = item.bold ? 1.5 : 0.8;
-      ctx.beginPath();
-      if(ctx.roundRect) ctx.roundRect(lx, labelY-10, lw, 20, 3);
-      else ctx.rect(lx, labelY-10, lw, 20);
-      ctx.fill();
-      if(item.bold||Math.abs(labelY-rawY)>2) ctx.stroke();
-
-      // Label text
+      // Country / label name
       ctx.fillStyle = item.color;
-      ctx.font = (item.bold?'bold ':'')+Math.min(9.5,(lw-8)/item.name.length*5.5)+'px JetBrains Mono';
-      ctx.textAlign='left';
-      ctx.fillText(item.name, lx+5, labelY+3.5);
+      ctx.font = (item.bold ? 'bold ' : '') + '11px Inter';
+      ctx.textAlign = 'left';
+      ctx.fillText(item.label, lx + 9, cy - 2);
+
+      // Gini value (larger, prominent)
+      ctx.fillStyle = item.bold ? item.color : 'rgba(232,237,245,0.88)';
+      ctx.font = (item.bold ? 'bold ' : '') + '11.5px JetBrains Mono';
+      ctx.fillText(item.gStr, lx + 9, cy + 11);
+
+      // Ownership note (small, only if room)
+      if(itemH >= 32) {
+        ctx.fillStyle = 'rgba(136,146,164,0.55)';
+        ctx.font = '8px Inter';
+        ctx.fillText(item.owns + '  —  ' + item.tag, lx + 9, cy + 22);
+      }
+
+      // Dot at x=50% in the chart
+      var dotY;
+      if(item.bold) {
+        dotY = py(aqY50);
+      } else if(item.label === 'Perfect Equality') {
+        dotY = py(0.5);
+      } else {
+        var refMatch = refs.filter(function(r){return r.label===item.label;})[0];
+        dotY = refMatch ? py(Math.pow(0.5,1+2*refMatch.g)) : null;
+      }
+      if(dotY !== null && dotY !== undefined) {
+        ctx.beginPath();ctx.arc(px(0.5), dotY, item.bold?5:3.5, 0, 2*Math.PI);
+        ctx.fillStyle = item.color; ctx.fill();
+        if(item.bold){ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=1;ctx.stroke();}
+      }
     });
-
-    // ── GINI BOX ──────────────────────────────────────────────────────────
-    var gC=gini<0.35?'#34D399':'#F0B429';
-    ctx.fillStyle='rgba(7,11,22,0.96)';ctx.strokeStyle=gC;ctx.lineWidth=1.5;
-    ctx.beginPath();if(ctx.roundRect)ctx.roundRect(pad.l,pad.t-38,170,32,6);else ctx.rect(pad.l,pad.t-38,170,32);
-    ctx.fill();ctx.stroke();
-    ctx.fillStyle='rgba(136,146,164,0.7)';ctx.font='7.5px JetBrains Mono';ctx.textAlign='center';
-    ctx.fillText('AEQUITAS GINI COEFFICIENT',pad.l+85,pad.t-26);
-    ctx.fillStyle=gC;ctx.font='bold 15px JetBrains Mono';
-    ctx.fillText(Math.round(gini*100*10)/10+'%  =  '+gini.toFixed(4),pad.l+85,pad.t-10);
-
-    // ── CHART TITLE ────────────────────────────────────────────────────────
-    ctx.fillStyle='rgba(155,114,246,0.7)';ctx.font='bold 9.5px Inter';
-    ctx.textAlign='left';ctx.fillText('LORENZ CURVE — WEALTH DISTRIBUTION',pad.l+175,pad.t-24);
-    ctx.fillStyle='rgba(136,146,164,0.55)';ctx.font='8.5px Inter';
-    ctx.fillText('At 50% marker: % of total wealth held by the poorest half of humans',pad.l+175,pad.t-10);
 
     // ── BOTTOM NOTE ────────────────────────────────────────────────────────
-    if(gini<0.12){
-      ctx.fillStyle='rgba(52,211,153,0.85)';ctx.font='bold italic 9.5px Inter';ctx.textAlign='center';
-      ctx.fillText('Aequitas curve hugs the diagonal — near-perfect equality! Goal achieved (target Gini < 0.35)',W/2-pad.r/2,pad.t+cH+52);
+    var noteY = pad.t + cH + 50;
+    if(noteY < H - 4) {
+      ctx.fillStyle = gini<0.12 ? 'rgba(52,211,153,0.8)' : 'rgba(136,146,164,0.5)';
+      ctx.font = (gini<0.12?'bold ':'') + 'italic 8.5px Inter'; ctx.textAlign='center';
+      var noteText = gini<0.12
+        ? 'Aequitas Gini '+(gini*100).toFixed(1)+'% — 4.5x below world average (38%) — near-perfect equality!'
+        : 'Aequitas target: Gini < 35% (Scandinavia level)  •  World average: 38%';
+      ctx.fillText(noteText, px(0.5), noteY);
     }
 
   } catch(e){ console.error('Lorenz error:',e); }
