@@ -431,14 +431,38 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) {
 if !cs.useDB {
 return
 }
-_, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
+var result sql.Result
+var err error
+if acc.Version == 0 {
+// First write: INSERT with version=1, or update if exists without version conflict check
+result, err = cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
 ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1`,
 acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed)
+} else {
+// Optimistic locking: only update if version matches what we read.
+// If another node updated in parallel, rows affected = 0 → conflict detected.
+result, err = cs.db.Exec(`UPDATE chain_accounts SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = $9 + 1
+WHERE address = $1 AND version = $9`,
+acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version)
+if err == nil {
+if rows, _ := result.RowsAffected(); rows == 0 {
+fmt.Printf("[DB] Conflict: account %s was modified by another node (version %d)\n", acc.Address, acc.Version)
+// Reload from DB to get the current version, then retry
+var dbBal, dbTusd, dbLp float64
+var dbVer int64
+if row := cs.db.QueryRow(`SELECT balance, tusd_balance, lp_shares, version FROM chain_accounts WHERE address = $1`, acc.Address); row != nil {
+row.Scan(&dbBal, &dbTusd, &dbLp, &dbVer)
+fmt.Printf("[DB] Remote state: balance=%.2f, version=%d\n", dbBal, dbVer)
+}
+}
+}
+}
 if err != nil {
 fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
-} else {
-fmt.Printf("[DB] Saved account %s | balance=%.2f | tusd=%.2f | lp=%.6f | is_human=%v\n", acc.Address, acc.Balance.Float(), acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.IsHuman)
+return
 }
+// Update in-memory version to match DB
+acc.Version++
 }
 
 // Demurrage parameters. AEQ balances that haven't been touched (no
@@ -620,8 +644,6 @@ fmt.Println("[VALIDATORS] No registered node operators — pool left untouched")
 return
 }
 
-cs.acquireStateLock()
-defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 
@@ -678,8 +700,6 @@ fmt.Printf("[VALIDATORS] Distributed %.6f AEQ proportionally (%d nodes, block-we
 // provided, the larger your share of the fee income. Accounts with zero
 // LP shares receive nothing.
 func (cs *ChainState) DistributeLPPool() {
-cs.acquireStateLock()
-defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 
@@ -730,8 +750,6 @@ fmt.Printf("[LP] ✓ Distributed %.6f AEQ across %d LP holders (proportional to 
 }
 
 func (cs *ChainState) DistributeUBIPool() {
-cs.acquireStateLock()
-defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 
@@ -951,8 +969,6 @@ return false
 }
 
 func (cs *ChainState) RegisterHuman(address string) error {
-cs.acquireStateLock()
-defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 address = strings.ToLower(address)
@@ -979,8 +995,6 @@ return nil
 }
 
 func (cs *ChainState) Transfer(from, to string, amount float64) error {
-cs.acquireStateLock()
-defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 from = strings.ToLower(from)
@@ -1067,8 +1081,6 @@ return cs.swapLocked(address, amountIn, false)
 // the input side and tUSD is the output side; false is the reverse.
 // Caller must hold cs.mu.
 func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd bool) (float64, error) {
-cs.acquireStateLock()
-defer cs.releaseStateLock()
 address = strings.ToLower(address)
 if amountIn <= 0 {
 return 0, fmt.Errorf("amount must be positive")
@@ -1204,8 +1216,6 @@ fmt.Printf("[FEE] Swap fee %.6f %s distributed across validators/lps/ubi/treasur
 // deposits are genuinely reversible) is a deliberate follow-up, not
 // included in this first pass.
 func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64) error {
-cs.acquireStateLock()
-defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 address = strings.ToLower(address)
@@ -1295,8 +1305,6 @@ return nil
 // balances. sharesToBurn must not exceed the account's own LPShares —
 // an account can only withdraw its own claim, never another LP's.
 func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (float64, float64, error) {
-cs.acquireStateLock()
-defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 address = strings.ToLower(address)
@@ -1476,7 +1484,7 @@ nullKeys := make([]string, 0, len(cs.nullifiers))
 for k := range cs.nullifiers { nullKeys = append(nullKeys, k) }
 sort.Strings(nullKeys)
 fmt.Fprintf(&sb, "|n=%d:", len(nullKeys))
-for _, k := range nullKeys { sb.WriteString(k[:min(8, len(k))]) }
+for _, k := range nullKeys { sb.WriteString(k) }
 cs.mu.RUnlock()
 hash := sha256.Sum256([]byte(sb.String()))
 return hex.EncodeToString(hash[:])

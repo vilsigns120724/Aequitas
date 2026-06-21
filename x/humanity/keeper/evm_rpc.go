@@ -7,6 +7,7 @@ import (
 "io"
 "math/big"
 "net/http"
+"os"
 "strings"
 "sync"
 
@@ -468,23 +469,38 @@ return txHash, nil
 // Only allow calls to known, Go-state-integrated selectors to prevent
 // Go/EVM ledger divergence. Unknown selectors could change EVM state
 // without updating Go-state (PostgreSQL), creating permanent inconsistency.
-var knownSelectors = map[string]bool{
-// State-changing: handled by both Go-state AND EVM (both updated together)
-"33f4167a": true, // registerWithSig(...) — /api/register calls this internally
-"a9059cbb": true, // transfer(address,uint256) — intercepted and routed to Go-state above
-// Read-only: safe to pass through EVM only
-"095ea7b3": true, // approve(address,uint256)
-"70a08231": true, // balanceOf(address)
-"dd62ed3e": true, // allowance(address,address)
-"18160ddd": true, // totalSupply()
-"06fdde03": true, // name()
-"95d89b41": true, // symbol()
-"313ce567": true, // decimals()
+var knownPublicSelectors = map[string]bool{
+// transfer(address,uint256) — intercepted above and routed through Go-state
+"a9059cbb": true,
+// Read-only ERC-20 calls: safe to forward to EVM
+"095ea7b3": true, // approve
+"70a08231": true, // balanceOf
+"dd62ed3e": true, // allowance
+"18160ddd": true, // totalSupply
+"06fdde03": true, // name
+"95d89b41": true, // symbol
+"313ce567": true, // decimals
+// NOTE: registerWithSig (33f4167a) is intentionally NOT listed here.
+// Public callers must use /api/register which updates BOTH EVM and Go-state.
+// A raw /rpc call to registerWithSig would update only the EVM contract,
+// leaving RegisterHuman, bio_registrations, bio_hashes, and Go-balance unset.
 }
 if tx.To() != nil && len(tx.Data()) >= 4 {
 sel := hex.EncodeToString(tx.Data()[:4])
-if !knownSelectors[sel] && strings.ToLower(tx.To().Hex()) == strings.ToLower(V7_CONTRACT_ADDR) {
-return nil, &RPCError{Code: -32603, Message: "selector " + sel + " not supported via /rpc (use /api/* endpoints to prevent Go/EVM ledger divergence)"}
+isV7 := strings.ToLower(tx.To().Hex()) == strings.ToLower(V7_CONTRACT_ADDR)
+if isV7 && !knownPublicSelectors[sel] {
+// Special case: registerWithSig is only allowed when the signer is the
+// relayer itself (i.e. called internally by /api/register). External wallets
+// must go through /api/register so Go-state is updated atomically.
+if sel == "33f4167a" {
+relayerAddr := strings.ToLower(os.Getenv("RELAYER_ADDRESS"))
+if relayerAddr == "" || strings.ToLower(senderAddr) != relayerAddr {
+return nil, &RPCError{Code: -32603, Message: "registerWithSig must be called via /api/register (direct RPC calls bypass Go-state updates)"}
+}
+// Allow: relayer is calling on behalf of /api/register
+} else {
+return nil, &RPCError{Code: -32603, Message: "selector " + sel + " not supported directly via /rpc — use /api/* endpoints"}
+}
 }
 }
 if tx.To() != nil && len(tx.Data()) > 0 && s.evm != nil {

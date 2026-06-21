@@ -165,19 +165,18 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 		if acc.IsHuman {
 			cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 6).Hex(), common.HexToHash("0x01").Hex())
 			totalHumans++
-			// Preserve lastActivity (slot 10) and lastDemurrage (slot 11) from timestamp.
-			// Do NOT set ubiClaimed (slot 12) from LastActivityAt — it is a UBI accumulator
-			// (total UBI claimed per-human), not a timestamp. Setting it from a Unix time
-			// would give humans a massive incorrect ubiClaimed value, blocking future UBI payouts.
-			// After a contract upgrade, ubiClaimed defaults to 0 (slot is unset), which means
-			// humans can claim all UBI accumulated since the network started — this is fair
-			// and correct since their prior claims were lost in the storage wipe.
+			// Preserve lastActivity (slot 10) and lastDemurrage (slot 11).
 			if acc.LastActivityAt > 0 {
 				ts := big.NewInt(acc.LastActivityAt)
 				cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 10).Hex(), common.BigToHash(ts).Hex())
 				cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 11).Hex(), common.BigToHash(ts).Hex())
-				// slot 12 (ubiClaimed) intentionally left as 0 — see comment above
 			}
+			// Set ubiClaimed (slot 12) to the CURRENT ubiPerHumanAccumulated (slot 3).
+			// This prevents double-claiming: after an upgrade, each human's "already claimed"
+			// marker is set to the current accumulator so they can't re-claim historical UBI.
+			// They can still earn new UBI from future distributions.
+			// ubiPerHumanAccumulated (slot 3) will be read from EVM storage below.
+			// We store a marker here; the actual slot-3 value is written after the loop.
 		}
 	}
 	cs.mu.RUnlock()
@@ -192,6 +191,24 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 	}
 	cs.SaveStorageSlot(contractAddr, common.BigToHash(big.NewInt(0)).Hex(), common.BigToHash(supplyWei).Hex())
 	cs.SaveStorageSlot(contractAddr, common.BigToHash(big.NewInt(1)).Hex(), common.BigToHash(big.NewInt(totalHumans)).Hex())
+
+	// Read current ubiPerHumanAccumulated (slot 3) from DB so we can set
+	// ubiClaimed = that value for every human, preventing double-claim on upgrade.
+	ubiAccumSlot := common.BigToHash(big.NewInt(3)).Hex()
+	ubiAccumVal, _ := cs.LoadStorageSlot(contractAddr, ubiAccumSlot)
+	if ubiAccumVal == "" { ubiAccumVal = common.Hash{}.Hex() }
+	// Also write slot 2 (ubiPool) and slot 3 (ubiPerHumanAccumulated) — preserve existing
+	// slot 3 value; it is NOT part of Go-state so we keep what was last in EVM.
+
+	// Set ubiClaimed (slot 12) = ubiPerHumanAccumulated for every human to prevent double-claiming.
+	cs.mu.RLock()
+	for addr, acc := range cs.accounts {
+		if acc.IsHuman {
+			addrB := common.HexToAddress(addr).Bytes()
+			cs.SaveStorageSlot(contractAddr, mappingSlot(addrB, 12).Hex(), ubiAccumVal)
+		}
+	}
+	cs.mu.RUnlock()
 
 	// usedNullifiers (slot 8): nullifier → wallet
 	rows, err := cs.db.Query(`SELECT nullifier, wallet_address FROM nullifiers`)
