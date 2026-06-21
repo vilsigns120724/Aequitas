@@ -68,6 +68,7 @@ mux.HandleFunc("/api/remove-liquidity", a.handleRemoveLiquidity)
 mux.HandleFunc("/api/lp-position", a.handleLPPosition)
 mux.HandleFunc("/api/faucet", a.handleFaucet)
 mux.HandleFunc("/api/pool", a.handlePoolStatus)
+mux.HandleFunc("/api/snapshot", a.handleSnapshot)
 mux.HandleFunc("/registered", a.handleRegistered)
 mux.HandleFunc("/download/app.apk", a.handleAppDownload)
 fmt.Println("── Starting EVM RPC ─────────────────────")
@@ -448,6 +449,22 @@ if validTabs[path] {
 	return
 }
 fmt.Fprint(w, explorerHTML)
+}
+
+// handleSnapshot exports the full Go-state as a signed JSON snapshot.
+// Protected by SNAPSHOT_TOKEN env var if set. A new node can bootstrap
+// itself by setting BOOTSTRAP_SNAPSHOT_URL to this endpoint's URL.
+func (a *APIServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
+if token := os.Getenv("SNAPSHOT_TOKEN"); token != "" {
+if r.URL.Query().Get("token") != token {
+http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+return
+}
+}
+snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey())
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+json.NewEncoder(w).Encode(snap)
 }
 
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {

@@ -2,6 +2,8 @@ package keeper
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -253,6 +255,16 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	if req.BioHash != "" {
 		if existingWallet := a.state.GetWalletByBioHash(req.BioHash); existingWallet != "" {
 			return "", fmt.Errorf("biometric already registered to %s", existingWallet)
+		}
+		// Application-level nullifier binding: verify the nullifier is correctly
+		// derived from the biometric hash via SHA256(bioHash+":aequitas-ubi-v1").
+		// This prevents a client from submitting a valid ZK proof with an
+		// arbitrary nullifier — the server independently recomputes and checks.
+		h := sha256.Sum256([]byte(req.BioHash + ":aequitas-ubi-v1"))
+		expectedNullifier := hex.EncodeToString(h[:])
+		actualNullifier := strings.ToLower(strings.TrimPrefix(req.Nullifier, "0x"))
+		if expectedNullifier != actualNullifier {
+			return "", fmt.Errorf("nullifier does not match biometric hash derivation")
 		}
 	}
 

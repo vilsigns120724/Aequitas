@@ -63,6 +63,13 @@ func loadAuthorizedValidators() map[string]bool {
 	return m
 }
 
+// GetSigningKey returns the ECDSA private key used to sign blocks, or nil
+// if no signing key is configured. Used by the snapshot handler to sign
+// exported snapshots so peer nodes can verify their authenticity.
+func (dag *BlockDAG) GetSigningKey() *ecdsa.PrivateKey {
+	return dag.signingKey
+}
+
 func (dag *BlockDAG) AddTransaction(tx Transaction) {
 dag.txMu.Lock()
 defer dag.txMu.Unlock()

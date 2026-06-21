@@ -80,11 +80,22 @@ fmt.Println()
 
 p2pNode.SetDAG(bc)
 
+	// Bootstrap from a peer snapshot if this is a fresh node (no humans in DB).
+	// Set BOOTSTRAP_SNAPSHOT_URL to the primary node's /api/snapshot endpoint.
+	// Set SNAPSHOT_TOKEN to match the primary node's SNAPSHOT_TOKEN env var.
+	// Set BOOTSTRAP_SIGNER to the primary node's signing address (0x...) to
+	// verify the snapshot's ECDSA signature before importing.
+	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && chainState.TotalHumans() == 0 {
+		fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)
+		expectedSigner := os.Getenv("BOOTSTRAP_SIGNER")
+		if err := chainState.ImportSnapshotFromURL(bootstrapURL, expectedSigner); err != nil {
+			fmt.Printf("[BOOTSTRAP] ✗ Import failed: %v\n", err)
+		}
+	}
+
 	// HTTP Block Sync between nodes
 	bc.StartHTTPBlockSync("https://aequitas-production-9fba.up.railway.app")
 	p2pNode.Start()
-	// Reconstruct state from blockchain
-	time.Sleep(10 * time.Second)
 	bc.ReconstructState(chainState)
 
 // Humans register natively via the V7 contract (see register.go) and are
