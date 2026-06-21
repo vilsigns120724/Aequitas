@@ -130,9 +130,6 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .idx{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--glow-purple);transition:border-color 0.25s,box-shadow 0.25s}
 .idx:hover{border-color:rgba(139,92,246,0.32);box-shadow:0 0 30px rgba(139,92,246,0.18)}
 .idx-title{font-size:0.6rem;color:var(--purple);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;font-weight:700;display:flex;align-items:center;gap:8px}
-.ci-btn{padding:2px 8px;font-size:0.58rem;font-family:JetBrains Mono,monospace;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);color:var(--muted);border-radius:4px;cursor:pointer;transition:all .15s}
-.ci-btn:hover{background:rgba(139,92,246,0.18);color:#c4b5fd}
-.ci-btn.ci-active{background:rgba(139,92,246,0.22);border-color:rgba(139,92,246,0.6);color:#c4b5fd}
 .idx-title::before{content:'';display:inline-block;width:3px;height:12px;background:linear-gradient(180deg,var(--purple),var(--teal));border-radius:2px;flex-shrink:0}
 .idx-desc{font-size:0.67rem;color:var(--muted);line-height:1.8;margin-bottom:16px}
 .idx-big{font-size:2.8rem;font-weight:900;line-height:1;font-family:var(--font-display);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
@@ -568,14 +565,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="idx">
     <div class="idx-title">AEQ / tUSD — Live Price</div>
     <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.</div>
-    <div style="display:flex;gap:4px;margin-bottom:6px">
-      <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn ci-active">1m</button>
-      <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn">5m</button>
-      <button onclick="setChartInterval(1800000)" id="ci-30m" class="ci-btn">30m</button>
-      <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn">1h</button>
-      <button onclick="setChartInterval(14400000)" id="ci-4h" class="ci-btn">4h</button>
-      <button onclick="setChartInterval(0)" id="ci-all" class="ci-btn">All</button>
-    </div>
     <canvas id="price-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
     <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No pool data yet — add liquidity to see the price chart.</div>
   </div>
@@ -1208,19 +1197,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <span style="color:var(--muted)">&nbsp;&rarr; Expected: {"jsonrpc":"2.0","error":"method not specified"} &mdash; this confirms RPC is alive</span>
       </div>
       <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:0.62rem;color:var(--muted)">The block height should match the primary node within 1&ndash;2 blocks within seconds of startup. If it stays at 0, check that PEER_NODES is set correctly and the primary node URL is reachable.</div>
-
-      <!-- Step 5b: Register Validator Key -->
-      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5b &mdash; Register Your Validator Key (Decentralized Auth)</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Instead of a shared PEER_SECRET, register your node's signing key using your personal human wallet. This creates an individual on-chain credential: your human identity authorises your node key, no shared secret needed.</div>
-      <div id="vk-reg-box" style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.2);border-radius:8px;padding:16px;margin-bottom:18px">
-        <div style="font-size:0.61rem;color:var(--muted);margin-bottom:8px">Requires <strong style="color:var(--text)">two signatures</strong>: one from your human wallet (MetaMask) and one from your node signing key (run the command below in your node's terminal to get it).</div>
-        <div style="font-size:0.6rem;color:var(--muted);margin-bottom:8px"><strong style="color:var(--neon)">Step 1</strong> — Get your node's signing key signature by running this on your node server:</div>
-        <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.4);border-radius:4px;padding:8px;font-size:0.58rem;color:var(--teal);margin-bottom:10px;word-break:break-all">curl -s "https://aequitas.digital/api/sign-validator-challenge?wallet=<span id="vk-wallet-hint" style="color:var(--gold)">YOUR_HUMAN_WALLET</span>"</div>
-        <input id="vk-signing-addr" placeholder="0x... (your RELAYER_ADDRESS)" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.3);color:var(--text);border-radius:6px;padding:8px 12px;font-family:var(--font-mono);font-size:0.62rem;margin-bottom:6px">
-        <input id="vk-signing-sig" placeholder="Signing key signature (from node terminal)" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.3);color:var(--text);border-radius:6px;padding:8px 12px;font-family:var(--font-mono);font-size:0.62rem;margin-bottom:8px">
-        <button onclick="registerValidatorKey()" style="background:rgba(139,92,246,0.8);color:#fff;border:none;border-radius:6px;padding:10px 20px;font-size:0.65rem;cursor:pointer;font-weight:700">🔑 Sign with MetaMask &amp; Register</button>
-        <div id="vk-status" style="margin-top:8px;font-size:0.6rem;color:var(--muted)"></div>
-      </div>
 
       <!-- Step 6: MetaMask -->
       <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 6 &mdash; Connect MetaMask to Your Node (Optional)</div>
@@ -3514,15 +3490,7 @@ function drawPriceChart() {
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
   const pad = {l:58, r:24, t:36, b:36};
-  const now = Date.now();
-  const _ciMs = (typeof chartIntervalMs !== 'undefined') ? chartIntervalMs : 0;
-  const pts = _ciMs > 0
-    ? priceHistory.filter(function(p){ return now - p.t <= _ciMs; })
-    : priceHistory;
-  if (!pts.length) {
-    ctx.fillStyle='rgba(139,92,246,0.5)'; ctx.font='11px Inter,sans-serif'; ctx.textAlign='center';
-    ctx.fillText('No data for this interval yet', W/2, H/2); return;
-  }
+  const pts = priceHistory;
   const prices = pts.map(function(p){return p.p;});
   const minP = Math.min.apply(null,prices), maxP = Math.max.apply(null,prices);
   const range = maxP - minP || minP * 0.01 || 0.0001;
@@ -3673,19 +3641,7 @@ let currentPoolAEQ = 0;
 let currentPoolTUSD = 0;
 let myAEQBalance = 0;
 let myTUSDBalance = 0;
-var priceHistory = [];
-var chartIntervalMs = 60000; // default: 1 minute — var so it is hoisted above drawPriceChart
-
-function setChartInterval(ms) {
-  chartIntervalMs = ms;
-  const ids = ['ci-1m','ci-5m','ci-30m','ci-1h','ci-4h','ci-all'];
-  const vals = [60000,300000,1800000,3600000,14400000,0];
-  ids.forEach(function(id,i){
-    const el = document.getElementById(id);
-    if (el) el.classList.toggle('ci-active', vals[i] === ms);
-  });
-  drawPriceChart();
-}
+let priceHistory = [];
 
 function swapLog(msg, type) {
   const el = document.getElementById('swap-log');
@@ -4638,51 +4594,6 @@ setInterval(loadStatus, 6000);
 setInterval(loadBlocks, 6000);
 setInterval(loadHumans, 10000);
 setInterval(loadPoolStatus, 8000);
-
-async function registerValidatorKey() {
-  const status = document.getElementById('vk-status');
-  const signingAddr = document.getElementById('vk-signing-addr').value.trim().toLowerCase();
-  const signingKeySig = document.getElementById('vk-signing-sig').value.trim();
-  if (!signingAddr.startsWith('0x') || signingAddr.length !== 42) {
-    status.textContent = '✗ Enter a valid signing address (0x... 42 chars)'; return;
-  }
-  if (!signingKeySig) {
-    status.textContent = '✗ Enter the signing key signature from your node terminal'; return;
-  }
-  if (!window.ethereum) { status.textContent = '✗ MetaMask not found'; return; }
-  try {
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    const humanWallet = accounts[0].toLowerCase();
-    const hint = document.getElementById('vk-wallet-hint');
-    if (hint) hint.textContent = humanWallet;
-    status.textContent = 'Sign with human wallet in MetaMask...';
-    status.style.color = 'var(--gold)';
-    const humanMsg = 'Aequitas: authorize validator key ' + signingAddr;
-    const humanSig = await window.ethereum.request({ method: 'personal_sign', params: [humanMsg, humanWallet] });
-    status.textContent = 'Submitting...';
-    const resp = await fetch('/api/register-validator-key', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        signing_address: signingAddr,
-        human_wallet: humanWallet,
-        human_signature: humanSig,
-        signing_key_signature: signingKeySig
-      })
-    });
-    const data = await resp.json();
-    if (data.success) {
-      status.textContent = '✓ Validator key registered! Your node blocks are now accepted.';
-      status.style.color = 'var(--teal)';
-    } else {
-      status.textContent = '✗ ' + sanitize(data.error || 'Registration failed');
-      status.style.color = 'var(--red, #f87171)';
-    }
-  } catch(e) {
-    status.textContent = '✗ ' + sanitize(e.message);
-    status.style.color = 'var(--red, #f87171)';
-  }
-}
 
 function generateNodeGuidePDF() {
   var lang = curLang || 'en';
