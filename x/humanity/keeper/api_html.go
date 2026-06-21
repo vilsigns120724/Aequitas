@@ -7,7 +7,7 @@ const explorerHTML = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Aequitas — Proof of Humanity Chain</title>
 <meta name="description" content="Aequitas Chain — a Proof of Humanity blockchain with built-in Universal Basic Income, demurrage, and wealth cap. Chain ID 1926.">
-<meta name="theme-color" content="#F0EDE8">
+<meta name="theme-color" content="#0C0E16">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Aequitas">
@@ -18,21 +18,22 @@ const explorerHTML = `<!DOCTYPE html>
   --font-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   --font-display:'DM Serif Display',Georgia,serif;
   --font-mono:'JetBrains Mono','Fira Code',Consolas,monospace;
-  --bg:#F0EDE8;--card:#FFFFFF;--card2:#F8F5F0;--border:#E0D9D0;
-  --purple:#6B46C1;--teal:#0891B2;--neon:#047857;--gold:#92400E;
-  --green:#047857;--red:#DC2626;--blue:#1D4ED8;
-  --text:#1A1A2E;--muted:#6B6B8A;
-  --glow-purple:0 2px 12px rgba(107,70,193,0.08);
-  --glow-teal:0 2px 12px rgba(8,145,178,0.08);
-  --glow-strong:0 4px 20px rgba(107,70,193,0.15);
+  --bg:#0C0E16;--card:#131620;--card2:#1A1D2B;--border:rgba(255,255,255,0.07);
+  --purple:#9B72F6;--teal:#22D3EE;--neon:#34D399;--gold:#F0B429;
+  --green:#34D399;--red:#F87171;--blue:#60A5FA;
+  --text:#E8EDF5;--muted:#8892A4;
+  --glow-purple:0 0 24px rgba(155,114,246,0.18);
+  --glow-teal:0 0 20px rgba(34,211,238,0.14);
+  --glow-strong:0 4px 32px rgba(155,114,246,0.28);
   --grad:linear-gradient(135deg,var(--purple),var(--teal));
-  --radius:14px;--radius-sm:8px;
+  --radius:12px;--radius-sm:8px;
+  --shadow:0 2px 16px rgba(0,0,0,0.4);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;overflow-x:hidden;line-height:1.5;background-image:radial-gradient(ellipse 80% 50% at 20% 0%,rgba(107,70,193,0.04) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 80% 100%,rgba(8,145,178,0.03) 0%,transparent 60%)}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;overflow-x:hidden;line-height:1.5;background-image:radial-gradient(ellipse 80% 50% at 20% 0%,rgba(155,114,246,0.06) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 80% 100%,rgba(34,211,238,0.04) 0%,transparent 60%)}
 body::before{display:none}
 @keyframes starFloat{0%{transform:translateY(0)}100%{transform:translateY(-8px)}}
-header{background:#fff;border-bottom:1px solid #E0D9D0;padding:0 24px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;height:60px;gap:10px;box-shadow:0 1px 12px rgba(0,0,0,0.06)}
+header{background:rgba(13,15,22,0.96);border-bottom:1px solid rgba(255,255,255,0.07);padding:0 24px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;height:60px;gap:10px;box-shadow:0 1px 24px rgba(0,0,0,0.5);backdrop-filter:blur(12px)}
 header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);opacity:0.8}
 .logo-wrap{display:flex;align-items:center;gap:12px;flex-shrink:0;position:relative;z-index:1}
 .logo-icon{width:34px;height:34px;border-radius:9px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:var(--glow-purple)}
@@ -44,11 +45,11 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .badge-dag{background:rgba(107,70,193,0.08);border:1px solid rgba(107,70,193,0.2);color:var(--purple)}
 .pulse{width:5px;height:5px;border-radius:50%;background:var(--neon);box-shadow:0 0 6px var(--neon);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.7)}}
-.lang-sel{background:#F8F5F0;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-family:var(--font-body);font-size:0.62rem;outline:none;cursor:pointer}
-.tabs{background:#fff;border-bottom:2px solid #E0D9D0;padding:0 24px;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:2px;position:relative;z-index:1}
+.lang-sel{background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:5px 10px;font-family:var(--font-body);font-size:0.62rem;outline:none;cursor:pointer}
+.tabs{background:rgba(13,15,22,0.9);border-bottom:1px solid rgba(255,255,255,0.08);padding:0 24px;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:2px;position:relative;z-index:1}
 .tabs::-webkit-scrollbar{display:none}
 .tab{padding:16px 16px;font-size:0.65rem;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;flex-shrink:0}
-.tab:hover{color:var(--purple)}.tab.active{color:var(--purple);border-bottom-color:var(--purple);background:rgba(107,70,193,0.04)}
+.tab:hover{color:var(--purple)}.tab.active{color:var(--purple);border-bottom-color:var(--purple);background:rgba(155,114,246,0.08)}
 .tab-content{display:none;position:relative;z-index:1}.tab-content.active{display:block}
 .hero{padding:20px 20px 0;position:relative;z-index:1}
 .section-label{font-size:0.6rem;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-bottom:14px;font-weight:600}
@@ -72,7 +73,7 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .main-grid{display:grid;grid-template-columns:1fr 310px;gap:16px;padding:0 20px 20px;position:relative;z-index:1}
 @media(max-width:800px){.main-grid{grid-template-columns:1fr}.right-col{display:none}}
 .section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
-.sec-head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:#F8F5F0}
+.sec-head{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--card2)}
 .sec-title{font-size:0.65rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:8px;font-weight:600}
 .sec-dot{width:6px;height:6px;border-radius:50%;background:var(--neon);box-shadow:0 0 8px var(--neon)}
 .sec-count{font-size:0.6rem;color:var(--muted);background:var(--card2);padding:3px 8px;border-radius:10px;border:1px solid var(--border)}
@@ -256,11 +257,11 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 .expl-name{font-size:0.63rem;font-weight:700;color:var(--text);margin-bottom:4px}
 .expl-desc{font-size:0.57rem;color:var(--muted);line-height:1.7}
 /* ── SUB-TAB NAVIGATION ─────────────────────────────────────── */
-.stabs{display:flex;gap:2px;padding:8px 20px 0;overflow-x:auto;background:#F8F5F0;border-bottom:1px solid #E0D9D0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.stabs{display:flex;gap:2px;padding:8px 20px 0;overflow-x:auto;background:var(--card2);border-bottom:1px solid var(--border);-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .stabs::-webkit-scrollbar{display:none}
 .stab{padding:7px 15px;font-size:0.6rem;color:var(--muted);cursor:pointer;border-radius:6px 6px 0 0;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;border:1px solid transparent;border-bottom:none;flex-shrink:0;position:relative}
 .stab:hover{color:var(--text);background:rgba(139,92,246,0.1)}
-.stab.active{color:var(--purple);background:#fff;border-color:rgba(107,70,193,0.3)}
+.stab.active{color:var(--purple);background:rgba(155,114,246,0.12);border-color:rgba(155,114,246,0.35)}
 .stab.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--purple),var(--teal));border-radius:2px 2px 0 0}
 .stab-panel{display:none}
 .stab-panel.active{display:block}
@@ -942,137 +943,137 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 </div>
 </div>
 
-<div id="eqi-story" class="stab-panel">
-<div style="padding:24px;max-width:900px;margin:0 auto">
-
-  <!-- ORIGIN STORY -->
-  <div class="idx" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(107,70,193,0.06),rgba(8,145,178,0.03));border-color:rgba(107,70,193,0.2)">
-    <div class="idx-title" data-i18n="story-title">The Story of Aequitas &#8212; Why This Exists</div>
-    <div class="story" style="font-size:0.7rem;line-height:2;color:var(--muted)">
-      <p>The year is 2009. Satoshi Nakamoto releases Bitcoin. For the first time, value can transfer between any two people without a bank. A genuine revolution. But something goes wrong almost immediately.</p>
-      <p>Early miners accumulate millions of coins at near-zero cost. By 2021, the top 1% of Bitcoin addresses control over 90% of all Bitcoin. Bitcoin&#8217;s Gini coefficient exceeds <strong style="color:var(--red)">0.85</strong> &#8212; higher than any country on Earth. The technology meant to democratize finance created the most extreme wealth concentration in history.</p>
-      <div class="hlbox" style="margin:16px 0">
-        <strong style="color:var(--purple)">Aequitas</strong> &#8212; Latin for <em>fairness</em> and <em>equity</em> &#8212; was built to answer one question:<br>
-        <em style="color:var(--gold);font-size:0.85rem">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em>
-      </div>
-      <p>The answer: <strong style="color:var(--text)">Money exists because people exist. Therefore every person should have an equal share of money simply by virtue of being human.</strong></p>
-      <p>Aequitas implements this mathematically. Every verified human receives exactly 1,000 AEQ &#8212; billionaire or subsistence farmer, no exceptions. Four redistribution mechanisms ensure inequality cannot accumulate indefinitely. The Gini coefficient is tracked on-chain in real time.</p>
-      <p><em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p>
-    </div>
-  </div>
-
-  <!-- HOW IT WORKS -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-    <div class="idx">
-      <div class="idx-title">The Core Innovation</div>
-      <div style="font-size:0.65rem;color:var(--muted);line-height:1.9">
-        <div style="margin-bottom:10px"><span style="color:var(--purple);font-weight:700">ZK Biometric Proof</span><br>Your fingerprint is processed on your phone&#8217;s Hardware Secure Element. A Groth16 Zero-Knowledge Proof proves you are a unique human being &#8212; without any biometric data ever leaving your device or touching any server.</div>
-        <div style="margin-bottom:10px"><span style="color:var(--teal);font-weight:700">No-Stake Blockchain</span><br>No mining. No staking. No proof-of-work. Block production is open to any node operator. Validators earn from the 40% fee pool &#8212; incentivized by fairness, not capital.</div>
-        <div><span style="color:var(--neon);font-weight:700">One Human = One Wallet = 1,000 AEQ</span><br>Supply formula: Total AEQ = Verified Humans x 1,000. No pre-mine. No admin keys. No governance vote can change this.</div>
-      </div>
-    </div>
-    <div class="idx">
-      <div class="idx-title">The 4 Redistribution Mechanisms</div>
-      <div style="font-size:0.65rem;color:var(--muted);line-height:1.9">
-        <div style="padding:8px;background:rgba(4,120,87,0.06);border-radius:6px;border-left:3px solid var(--neon);margin-bottom:8px"><strong style="color:var(--neon)">UBI Pool (20%)</strong><br>Every 24 hours, the pool divides equally among all verified humans. Funded by swap fees + demurrage + wealth cap overflows.</div>
-        <div style="padding:8px;background:rgba(107,70,193,0.06);border-radius:6px;border-left:3px solid var(--purple);margin-bottom:8px"><strong style="color:var(--purple)">Validators Pool (40%)</strong><br>Node operators earn from all protocol fees. More nodes = more decentralization.</div>
-        <div style="padding:8px;background:rgba(8,145,178,0.06);border-radius:6px;border-left:3px solid var(--teal);margin-bottom:8px"><strong style="color:var(--teal)">Liquidity Pool (30%)</strong><br>Liquidity providers earn proportionally from all swap activity.</div>
-        <div style="padding:8px;background:rgba(146,64,14,0.06);border-radius:6px;border-left:3px solid var(--gold)"><strong style="color:var(--gold)">Treasury (10%)</strong><br>Protocol development. No VC allocation. No founder bonus.</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- PHASE ROADMAP -->
-  <div class="idx" style="margin-bottom:16px">
-    <div class="idx-title">Phase Roadmap &#8212; The Path to Global Scale</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px">
-      <div style="background:rgba(107,70,193,0.08);border:2px solid var(--purple);border-radius:10px;padding:14px;position:relative">
-        <div style="position:absolute;top:-1px;left:50%;transform:translateX(-50%);background:var(--purple);color:#fff;font-size:0.55rem;font-weight:700;padding:2px 8px;border-radius:0 0 6px 6px">ACTIVE NOW</div>
-        <div style="font-size:0.72rem;font-weight:700;color:var(--purple);margin:10px 0 6px">Phase 0</div>
-        <div style="font-size:0.62rem;font-weight:600;color:var(--text);margin-bottom:6px">Bootstrap</div>
-        <div style="font-size:0.6rem;color:var(--muted);line-height:1.75">0 &#8211; 100 humans. Sliding wealth cap 5x &#8594; 25x. Foundation building.</div>
-      </div>
-      <div style="background:#F8F5F0;border:1px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-size:0.72rem;font-weight:700;color:var(--teal);margin-bottom:6px">Phase 1</div>
-        <div style="font-size:0.62rem;font-weight:600;color:var(--text);margin-bottom:6px">Growth</div>
-        <div style="font-size:0.6rem;color:var(--muted);line-height:1.75">100 &#8211; 10,000 humans. Fixed cap 25x. Open node joining.</div>
-      </div>
-      <div style="background:#F8F5F0;border:1px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-size:0.72rem;font-weight:700;color:var(--gold);margin-bottom:6px">Phase 2</div>
-        <div style="font-size:0.62rem;font-weight:600;color:var(--text);margin-bottom:6px">Stability</div>
-        <div style="font-size:0.6rem;color:var(--muted);line-height:1.75">10,000 &#8211; 1M humans. Min 10 nodes. Fully decentralized.</div>
-      </div>
-      <div style="background:#F8F5F0;border:1px solid var(--border);border-radius:10px;padding:14px">
-        <div style="font-size:0.72rem;font-weight:700;color:var(--neon);margin-bottom:6px">Phase 3</div>
-        <div style="font-size:0.62rem;font-weight:600;color:var(--text);margin-bottom:6px">Maturity</div>
-        <div style="font-size:0.6rem;color:var(--muted);line-height:1.75">1M+ humans. Global UBI at scale. Gini target &lt;0.35.</div>
-      </div>
-    </div>
-    <div style="margin-top:14px;padding:12px 16px;background:rgba(107,70,193,0.05);border-radius:8px;font-size:0.63rem;color:var(--muted);line-height:1.75;border:1px solid rgba(107,70,193,0.12)">Phase transitions are automatic &#8212; triggered by human count thresholds, enforced by the smart contract. No governance vote, no admin key.</div>
-  </div>
-
-  <!-- GUARDIAN SYSTEM -->
-  <div class="idx" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(8,145,178,0.05),rgba(107,70,193,0.03));border-color:rgba(8,145,178,0.2)">
-    <div class="idx-title" style="color:var(--teal)">Guardian System &#8212; Human Failsafe for Lost Wallets</div>
-    <div style="font-size:0.65rem;color:var(--muted);line-height:1.9;margin-bottom:14px">What happens when someone is hospitalized, incarcerated, or dies? In most crypto systems, lost wallets mean lost coins forever. Aequitas has a three-layer inactivity recovery system.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <div>
-        <div style="font-size:0.6rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">What is a Guardian?</div>
-        <div style="font-size:0.63rem;color:var(--muted);line-height:1.85">A Guardian is a <strong style="color:var(--text)">trusted verified human</strong> you designate. They have exactly one power: confirming you are still alive. They cannot move funds, transfer AEQ, or access your wallet under any circumstances. Maximum 3 wards per Guardian prevents centralization of trust.</div>
-      </div>
-      <div>
-        <div style="font-size:0.6rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Inactivity Timeline</div>
-        <div style="font-size:0.62rem;color:var(--muted);line-height:2">
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--text);font-weight:600">0 &#8211; 2 years</span>Normal usage, no restrictions</div>
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--gold);font-weight:600">Year 2</span>Warning 1 &#8212; Guardian can respond</div>
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--gold);font-weight:600">+60 days</span>Warning 2 &#8212; escalating urgency</div>
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--red);font-weight:600">+180 days</span>AEQ moved to escrow (recoverable)</div>
-          <div style="display:flex;gap:8px;align-items:center"><span style="min-width:80px;color:var(--red);font-weight:600">Year 4</span>Escrow released to UBI Pool</div>
-        </div>
-      </div>
-    </div>
-    <div style="padding:12px 16px;background:rgba(8,145,178,0.06);border-radius:8px;border:1px solid rgba(8,145,178,0.15);font-size:0.62rem;color:var(--muted);line-height:1.8"><strong style="color:var(--teal)">Key protections:</strong> 7-day timelock on Guardian assignment. No circular Guardian relationships. Guardian assignment is public and on-chain.</div>
-  </div>
-
-  <!-- PROOF OF ALIVE -->
-  <div class="idx" style="margin-bottom:16px">
-    <div class="idx-title">Proof of Alive &#8212; Biometric Without Surveillance</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
-      <div>
-        <div style="font-size:0.6rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Why Biometrics?</div>
-        <div style="font-size:0.63rem;color:var(--muted);line-height:1.85">Sybil resistance &#8212; preventing one person from registering multiple wallets &#8212; is the core unsolved problem of fair money distribution. Aequitas uses biometric Zero-Knowledge Proofs: mathematically proven uniqueness with <strong style="color:var(--text)">zero personal data exposed</strong>.</div>
-      </div>
-      <div>
-        <div style="font-size:0.6rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">How It Works</div>
-        <div style="font-size:0.63rem;color:var(--muted);line-height:1.85">1. Fingerprint scanned by Hardware Secure Element (HSE)<br>2. HSE derives a device-bound cryptographic key<br>3. keccak256(bioKey) = bioHash (stored on-chain)<br>4. Groth16 ZK proof: proves uniqueness without revealing bioHash<br>5. Nullifier system: attempting to register twice is mathematically impossible</div>
-      </div>
-    </div>
-    <div style="margin-top:12px;padding:12px 16px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.15);font-size:0.63rem;color:var(--muted);line-height:1.8"><strong style="color:var(--neon)">Privacy guarantee:</strong> Your raw biometric data never leaves your device. The proof server receives only the ZK proof (200 bytes). The chain stores only a nullifier hash. No government, company, or attacker can reverse-engineer your identity. <em>Future: PPG sensor (MAX30102) for device-independent biometric verification.</em></div>
-  </div>
-
-  <!-- THE VISION -->
-  <div class="idx" style="background:linear-gradient(135deg,rgba(146,64,14,0.06),rgba(107,70,193,0.04));border-color:rgba(146,64,14,0.2)">
-    <div class="idx-title" style="color:var(--gold)">The Vision &#8212; A Global Basic Income Protocol</div>
-    <div style="font-size:0.72rem;color:var(--muted);line-height:2;font-style:italic;text-align:center;padding:10px 0;font-family:var(--font-display)">"Imagine a world where every person on Earth &#8212; regardless of where they were born, what language they speak, or how much money their parents had &#8212; receives a guaranteed daily income simply for being human. Not as charity. As a mathematical right, enforced by code that no government or corporation can override."</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px">
-      <div style="text-align:center;padding:14px;background:rgba(107,70,193,0.06);border-radius:8px;border:1px solid rgba(107,70,193,0.12)">
-        <div style="font-size:1.4rem;font-weight:900;color:var(--purple);font-family:var(--font-display)">8B</div>
-        <div style="font-size:0.58rem;color:var(--muted);margin-top:4px">humans could register</div>
-      </div>
-      <div style="text-align:center;padding:14px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.12)">
-        <div style="font-size:1.4rem;font-weight:900;color:var(--neon);font-family:var(--font-display)">&lt;0.35</div>
-        <div style="font-size:0.58rem;color:var(--muted);margin-top:4px">Gini target (Scandinavian level)</div>
-      </div>
-      <div style="text-align:center;padding:14px;background:rgba(146,64,14,0.06);border-radius:8px;border:1px solid rgba(146,64,14,0.12)">
-        <div style="font-size:1.4rem;font-weight:900;color:var(--gold);font-family:var(--font-display)">0</div>
-        <div style="font-size:0.58rem;color:var(--muted);margin-top:4px">admin keys or governance votes</div>
-      </div>
-    </div>
-  </div>
-
-</div>
-</div>
-
+<div id="eqi-story" class="stab-panel">
+<div style="padding:24px;max-width:900px;margin:0 auto">
+
+  <!-- ORIGIN STORY -->
+  <div class="idx" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(107,70,193,0.06),rgba(8,145,178,0.03));border-color:rgba(107,70,193,0.2)">
+    <div class="idx-title" data-i18n="story-title">The Story of Aequitas &#8212; Why This Exists</div>
+    <div class="story" style="font-size:0.7rem;line-height:2;color:var(--muted)">
+      <p>The year is 2009. Satoshi Nakamoto releases Bitcoin. For the first time, value can transfer between any two people without a bank. A genuine revolution. But something goes wrong almost immediately.</p>
+      <p>Early miners accumulate millions of coins at near-zero cost. By 2021, the top 1% of Bitcoin addresses control over 90% of all Bitcoin. Bitcoin&#8217;s Gini coefficient exceeds <strong style="color:var(--red)">0.85</strong> &#8212; higher than any country on Earth. The technology meant to democratize finance created the most extreme wealth concentration in history.</p>
+      <div class="hlbox" style="margin:16px 0">
+        <strong style="color:var(--purple)">Aequitas</strong> &#8212; Latin for <em>fairness</em> and <em>equity</em> &#8212; was built to answer one question:<br>
+        <em style="color:var(--gold);font-size:0.85rem">"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"</em>
+      </div>
+      <p>The answer: <strong style="color:var(--text)">Money exists because people exist. Therefore every person should have an equal share of money simply by virtue of being human.</strong></p>
+      <p>Aequitas implements this mathematically. Every verified human receives exactly 1,000 AEQ &#8212; billionaire or subsistence farmer, no exceptions. Four redistribution mechanisms ensure inequality cannot accumulate indefinitely. The Gini coefficient is tracked on-chain in real time.</p>
+      <p><em style="color:var(--gold)">"Money exists because people exist. Nothing more, nothing less."</em></p>
+    </div>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <div class="idx">
+      <div class="idx-title">The Core Innovation</div>
+      <div style="font-size:0.65rem;color:var(--muted);line-height:1.9">
+        <div style="margin-bottom:10px"><span style="color:var(--purple);font-weight:700">ZK Biometric Proof</span><br>Your fingerprint is processed on your phone&#8217;s Hardware Secure Element. A Groth16 Zero-Knowledge Proof proves you are a unique human being &#8212; without any biometric data ever leaving your device or touching any server.</div>
+        <div style="margin-bottom:10px"><span style="color:var(--teal);font-weight:700">No-Stake Blockchain</span><br>No mining. No staking. No proof-of-work. Block production is open to any node operator. Validators earn from the 40% fee pool &#8212; incentivized by fairness, not capital.</div>
+        <div><span style="color:var(--neon);font-weight:700">One Human = One Wallet = 1,000 AEQ</span><br>Supply formula: Total AEQ = Verified Humans x 1,000. No pre-mine. No admin keys. No governance vote can change this.</div>
+      </div>
+    </div>
+    <div class="idx">
+      <div class="idx-title">The 4 Redistribution Mechanisms</div>
+      <div style="font-size:0.65rem;color:var(--muted);line-height:1.9">
+        <div style="padding:8px;background:rgba(4,120,87,0.06);border-radius:6px;border-left:3px solid var(--neon);margin-bottom:8px"><strong style="color:var(--neon)">UBI Pool (20%)</strong><br>Every 24 hours, the pool divides equally among all verified humans. Funded by swap fees + demurrage + wealth cap overflows.</div>
+        <div style="padding:8px;background:rgba(107,70,193,0.06);border-radius:6px;border-left:3px solid var(--purple);margin-bottom:8px"><strong style="color:var(--purple)">Validators Pool (40%)</strong><br>Node operators earn from all protocol fees. More nodes = more decentralization.</div>
+        <div style="padding:8px;background:rgba(8,145,178,0.06);border-radius:6px;border-left:3px solid var(--teal);margin-bottom:8px"><strong style="color:var(--teal)">Liquidity Pool (30%)</strong><br>Liquidity providers earn proportionally from all swap activity.</div>
+        <div style="padding:8px;background:rgba(146,64,14,0.06);border-radius:6px;border-left:3px solid var(--gold)"><strong style="color:var(--gold)">Treasury (10%)</strong><br>Protocol development. No VC allocation. No founder bonus.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE ROADMAP -->
+  <div class="idx" style="margin-bottom:16px">
+    <div class="idx-title">Phase Roadmap &#8212; The Path to Global Scale</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px">
+      <div style="background:rgba(107,70,193,0.08);border:2px solid var(--purple);border-radius:10px;padding:14px;position:relative">
+        <div style="position:absolute;top:-1px;left:50%;transform:translateX(-50%);background:var(--purple);color:#fff;font-size:0.55rem;font-weight:700;padding:2px 8px;border-radius:0 0 6px 6px">ACTIVE NOW</div>
+        <div style="font-size:0.72rem;font-weight:700;color:var(--purple);margin:10px 0 6px">Phase 0</div>
+        <div style="font-size:0.62rem;font-weight:600;color:var(--text);margin-bottom:6px">Bootstrap</div>
+        <div style="font-size:0.6rem;color:var(--muted);line-height:1.75">0 &#8211; 100 humans. Sliding wealth cap 5x &#8594; 25x. Foundation building.</div>
+      </div>
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div style="font-size:0.72rem;font-weight:700;color:var(--teal);margin-bottom:6px">Phase 1</div>
+        <div style="font-size:0.62rem;font-weight:600;color:var(--text);margin-bottom:6px">Growth</div>
+        <div style="font-size:0.6rem;color:var(--muted);line-height:1.75">100 &#8211; 10,000 humans. Fixed cap 25x. Open node joining.</div>
+      </div>
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div style="font-size:0.72rem;font-weight:700;color:var(--gold);margin-bottom:6px">Phase 2</div>
+        <div style="font-size:0.62rem;font-weight:600;color:var(--text);margin-bottom:6px">Stability</div>
+        <div style="font-size:0.6rem;color:var(--muted);line-height:1.75">10,000 &#8211; 1M humans. Min 10 nodes. Fully decentralized.</div>
+      </div>
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div style="font-size:0.72rem;font-weight:700;color:var(--neon);margin-bottom:6px">Phase 3</div>
+        <div style="font-size:0.62rem;font-weight:600;color:var(--text);margin-bottom:6px">Maturity</div>
+        <div style="font-size:0.6rem;color:var(--muted);line-height:1.75">1M+ humans. Global UBI at scale. Gini target &lt;0.35.</div>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:12px 16px;background:rgba(107,70,193,0.05);border-radius:8px;font-size:0.63rem;color:var(--muted);line-height:1.75;border:1px solid rgba(107,70,193,0.12)">Phase transitions are automatic &#8212; triggered by human count thresholds, enforced by the smart contract. No governance vote, no admin key.</div>
+  </div>
+
+  <!-- GUARDIAN SYSTEM -->
+  <div class="idx" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(8,145,178,0.05),rgba(107,70,193,0.03));border-color:rgba(8,145,178,0.2)">
+    <div class="idx-title" style="color:var(--teal)">Guardian System &#8212; Human Failsafe for Lost Wallets</div>
+    <div style="font-size:0.65rem;color:var(--muted);line-height:1.9;margin-bottom:14px">What happens when someone is hospitalized, incarcerated, or dies? In most crypto systems, lost wallets mean lost coins forever. Aequitas has a three-layer inactivity recovery system.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div>
+        <div style="font-size:0.6rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">What is a Guardian?</div>
+        <div style="font-size:0.63rem;color:var(--muted);line-height:1.85">A Guardian is a <strong style="color:var(--text)">trusted verified human</strong> you designate. They have exactly one power: confirming you are still alive. They cannot move funds, transfer AEQ, or access your wallet under any circumstances. Maximum 3 wards per Guardian prevents centralization of trust.</div>
+      </div>
+      <div>
+        <div style="font-size:0.6rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Inactivity Timeline</div>
+        <div style="font-size:0.62rem;color:var(--muted);line-height:2">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--text);font-weight:600">0 &#8211; 2 years</span>Normal usage, no restrictions</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--gold);font-weight:600">Year 2</span>Warning 1 &#8212; Guardian can respond</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--gold);font-weight:600">+60 days</span>Warning 2 &#8212; escalating urgency</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span style="min-width:80px;color:var(--red);font-weight:600">+180 days</span>AEQ moved to escrow (recoverable)</div>
+          <div style="display:flex;gap:8px;align-items:center"><span style="min-width:80px;color:var(--red);font-weight:600">Year 4</span>Escrow released to UBI Pool</div>
+        </div>
+      </div>
+    </div>
+    <div style="padding:12px 16px;background:rgba(8,145,178,0.06);border-radius:8px;border:1px solid rgba(8,145,178,0.15);font-size:0.62rem;color:var(--muted);line-height:1.8"><strong style="color:var(--teal)">Key protections:</strong> 7-day timelock on Guardian assignment. No circular Guardian relationships. Guardian assignment is public and on-chain.</div>
+  </div>
+
+  <!-- PROOF OF ALIVE -->
+  <div class="idx" style="margin-bottom:16px">
+    <div class="idx-title">Proof of Alive &#8212; Biometric Without Surveillance</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+      <div>
+        <div style="font-size:0.6rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Why Biometrics?</div>
+        <div style="font-size:0.63rem;color:var(--muted);line-height:1.85">Sybil resistance &#8212; preventing one person from registering multiple wallets &#8212; is the core unsolved problem of fair money distribution. Aequitas uses biometric Zero-Knowledge Proofs: mathematically proven uniqueness with <strong style="color:var(--text)">zero personal data exposed</strong>.</div>
+      </div>
+      <div>
+        <div style="font-size:0.6rem;color:var(--teal);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">How It Works</div>
+        <div style="font-size:0.63rem;color:var(--muted);line-height:1.85">1. Fingerprint scanned by Hardware Secure Element (HSE)<br>2. HSE derives a device-bound cryptographic key<br>3. keccak256(bioKey) = bioHash (stored on-chain)<br>4. Groth16 ZK proof: proves uniqueness without revealing bioHash<br>5. Nullifier system: attempting to register twice is mathematically impossible</div>
+      </div>
+    </div>
+    <div style="margin-top:12px;padding:12px 16px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.15);font-size:0.63rem;color:var(--muted);line-height:1.8"><strong style="color:var(--neon)">Privacy guarantee:</strong> Your raw biometric data never leaves your device. The proof server receives only the ZK proof (200 bytes). The chain stores only a nullifier hash. No government, company, or attacker can reverse-engineer your identity. <em>Future: PPG sensor (MAX30102) for device-independent biometric verification.</em></div>
+  </div>
+
+  <!-- THE VISION -->
+  <div class="idx" style="background:linear-gradient(135deg,rgba(146,64,14,0.06),rgba(107,70,193,0.04));border-color:rgba(146,64,14,0.2)">
+    <div class="idx-title" style="color:var(--gold)">The Vision &#8212; A Global Basic Income Protocol</div>
+    <div style="font-size:0.72rem;color:var(--muted);line-height:2;font-style:italic;text-align:center;padding:10px 0;font-family:var(--font-display)">"Imagine a world where every person on Earth &#8212; regardless of where they were born, what language they speak, or how much money their parents had &#8212; receives a guaranteed daily income simply for being human. Not as charity. As a mathematical right, enforced by code that no government or corporation can override."</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px">
+      <div style="text-align:center;padding:14px;background:rgba(107,70,193,0.06);border-radius:8px;border:1px solid rgba(107,70,193,0.12)">
+        <div style="font-size:1.4rem;font-weight:900;color:var(--purple);font-family:var(--font-display)">8B</div>
+        <div style="font-size:0.58rem;color:var(--muted);margin-top:4px">humans could register</div>
+      </div>
+      <div style="text-align:center;padding:14px;background:rgba(4,120,87,0.06);border-radius:8px;border:1px solid rgba(4,120,87,0.12)">
+        <div style="font-size:1.4rem;font-weight:900;color:var(--neon);font-family:var(--font-display)">&lt;0.35</div>
+        <div style="font-size:0.58rem;color:var(--muted);margin-top:4px">Gini target (Scandinavian level)</div>
+      </div>
+      <div style="text-align:center;padding:14px;background:rgba(146,64,14,0.06);border-radius:8px;border:1px solid rgba(146,64,14,0.12)">
+        <div style="font-size:1.4rem;font-weight:900;color:var(--gold);font-family:var(--font-display)">0</div>
+        <div style="font-size:0.58rem;color:var(--muted);margin-top:4px">admin keys or governance votes</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
 <!-- NETWORK (merged) -->
 <div id="tab-network" class="tab-content">
 <nav class="stabs">
@@ -1147,19 +1148,19 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div style="margin-bottom:20px">
     <div style="font-size:0.57rem;color:var(--purple);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:14px">Choose Your Path</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-      <div style="background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06)">
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128100;</div>
         <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px">I am a Human</div>
         <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px">I want to register, receive 1,000 AEQ, and join the basic income network.</div>
         <div style="font-size:0.6rem;color:var(--purple);font-weight:600;line-height:1.9">1. Download AequitasBio app<br>2. Scan your biometric<br>3. Connect MetaMask<br>4. Receive 1,000 AEQ instantly</div>
       </div>
-      <div style="background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06)">
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128421;&#65039;</div>
         <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px">I am a Node Operator</div>
         <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px">I want to run a full node, participate in block production, and earn from the 40% validator pool.</div>
         <div style="font-size:0.6rem;color:var(--teal);font-weight:600;line-height:1.9">1. Get the node binary (Go)<br>2. Set PEER_NODES env var<br>3. Deploy on Railway/Render/VPS<br>4. Earn daily from validator pool</div>
       </div>
-      <div style="background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06)">
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128187;</div>
         <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px">I am a Developer</div>
         <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px">I want to build on Aequitas, integrate the API, or contribute to the protocol.</div>
@@ -1173,33 +1174,33 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="idx-title">AEQ Token Flow Diagram</div>
     <div style="overflow-x:auto;padding:8px 0">
     <svg viewBox="0 0 680 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:680px;display:block;margin:0 auto;font-family:Inter,sans-serif">
-      <rect width="680" height="240" fill="#F8F5F0" rx="10"/>
+      <rect width="680" height="240" fill="rgba(255,255,255,0.03)" rx="10"/>
       <rect x="20" y="90" width="110" height="60" rx="8" fill="rgba(107,70,193,0.1)" stroke="#6B46C1" stroke-width="1.5"/>
-      <text x="75" y="115" text-anchor="middle" font-size="11" font-weight="700" fill="#6B46C1">HUMAN</text>
-      <text x="75" y="130" text-anchor="middle" font-size="9" fill="#6B6B8A">registers</text>
-      <text x="75" y="143" text-anchor="middle" font-size="9" fill="#6B6B8A">+1,000 AEQ minted</text>
+      <text x="75" y="115" text-anchor="middle" font-size="11" font-weight="700" fill="rgba(155,114,246,0.9)">HUMAN</text>
+      <text x="75" y="130" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">registers</text>
+      <text x="75" y="143" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">+1,000 AEQ minted</text>
       <line x1="130" y1="120" x2="190" y2="120" stroke="#6B46C1" stroke-width="1.5" marker-end="url(#arr)"/>
       <rect x="190" y="70" width="130" height="100" rx="8" fill="rgba(8,145,178,0.08)" stroke="#0891B2" stroke-width="1.5"/>
-      <text x="255" y="95" text-anchor="middle" font-size="11" font-weight="700" fill="#0891B2">AEQ ACTIVITY</text>
-      <text x="255" y="112" text-anchor="middle" font-size="9" fill="#6B6B8A">Swap fees (0.1%)</text>
-      <text x="255" y="126" text-anchor="middle" font-size="9" fill="#6B6B8A">Demurrage (0.5%/mo)</text>
-      <text x="255" y="140" text-anchor="middle" font-size="9" fill="#6B6B8A">Wealth cap overflow</text>
-      <text x="255" y="154" text-anchor="middle" font-size="9" fill="#6B6B8A">Inactive escrow</text>
+      <text x="255" y="95" text-anchor="middle" font-size="11" font-weight="700" fill="rgba(34,211,238,0.9)">AEQ ACTIVITY</text>
+      <text x="255" y="112" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">Swap fees (0.1%)</text>
+      <text x="255" y="126" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">Demurrage (0.5%/mo)</text>
+      <text x="255" y="140" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">Wealth cap overflow</text>
+      <text x="255" y="154" text-anchor="middle" font-size="9" fill="rgba(136,146,164,0.9)">Inactive escrow</text>
       <line x1="320" y1="120" x2="380" y2="120" stroke="#0891B2" stroke-width="1.5" marker-end="url(#arr2)"/>
       <rect x="380" y="50" width="120" height="140" rx="8" fill="rgba(146,64,14,0.06)" stroke="#92400E" stroke-width="1.5"/>
-      <text x="440" y="75" text-anchor="middle" font-size="10" font-weight="700" fill="#92400E">REDISTRIBUTION</text>
-      <text x="440" y="95" text-anchor="middle" font-size="9" fill="#047857">&#9679; UBI Pool 20%</text>
-      <text x="440" y="112" text-anchor="middle" font-size="9" fill="#6B46C1">&#9679; Validators 40%</text>
-      <text x="440" y="129" text-anchor="middle" font-size="9" fill="#0891B2">&#9679; Liquidity LP 30%</text>
-      <text x="440" y="146" text-anchor="middle" font-size="9" fill="#92400E">&#9679; Treasury 10%</text>
-      <text x="440" y="165" text-anchor="middle" font-size="8" fill="#6B6B8A">paid out daily</text>
-      <text x="440" y="178" text-anchor="middle" font-size="8" fill="#6B6B8A">automatic on-chain</text>
+      <text x="440" y="75" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(240,180,41,0.9)">REDISTRIBUTION</text>
+      <text x="440" y="95" text-anchor="middle" font-size="9" fill="rgba(52,211,153,0.9)">&#9679; UBI Pool 20%</text>
+      <text x="440" y="112" text-anchor="middle" font-size="9" fill="rgba(155,114,246,0.9)">&#9679; Validators 40%</text>
+      <text x="440" y="129" text-anchor="middle" font-size="9" fill="rgba(34,211,238,0.9)">&#9679; Liquidity LP 30%</text>
+      <text x="440" y="146" text-anchor="middle" font-size="9" fill="rgba(240,180,41,0.9)">&#9679; Treasury 10%</text>
+      <text x="440" y="165" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">paid out daily</text>
+      <text x="440" y="178" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">automatic on-chain</text>
       <path d="M500 120 Q580 120 580 200 Q580 220 320 220 Q75 220 75 155" fill="none" stroke="#047857" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr3)"/>
-      <text x="340" y="215" text-anchor="middle" font-size="8" fill="#047857">daily UBI returns to all verified humans</text>
+      <text x="340" y="215" text-anchor="middle" font-size="8" fill="rgba(52,211,153,0.9)">daily UBI returns to all verified humans</text>
       <defs>
-        <marker id="arr" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6B46C1"/></marker>
-        <marker id="arr2" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#0891B2"/></marker>
-        <marker id="arr3" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#047857"/></marker>
+        <marker id="arr" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="rgba(155,114,246,0.9)"/></marker>
+        <marker id="arr2" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="rgba(34,211,238,0.9)"/></marker>
+        <marker id="arr3" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="rgba(52,211,153,0.9)"/></marker>
       </defs>
     </svg>
     </div>
@@ -1210,25 +1211,25 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="idx-title">Network Topology &#8212; Current State</div>
     <div style="overflow-x:auto;padding:8px 0">
     <svg viewBox="0 0 500 185" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:500px;display:block;margin:0 auto;font-family:Inter,sans-serif">
-      <rect width="500" height="185" fill="#F8F5F0" rx="10"/>
+      <rect width="500" height="185" fill="rgba(255,255,255,0.03)" rx="10"/>
       <ellipse cx="250" cy="95" rx="60" ry="30" fill="rgba(107,70,193,0.08)" stroke="rgba(107,70,193,0.3)" stroke-width="1" stroke-dasharray="4,3"/>
-      <text x="250" y="91" text-anchor="middle" font-size="9" fill="#6B46C1">P2P libp2p</text>
-      <text x="250" y="105" text-anchor="middle" font-size="8" fill="#6B6B8A">BlockDAG sync</text>
+      <text x="250" y="91" text-anchor="middle" font-size="9" fill="rgba(155,114,246,0.9)">P2P libp2p</text>
+      <text x="250" y="105" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">BlockDAG sync</text>
       <rect x="30" y="60" width="120" height="70" rx="8" fill="rgba(4,120,87,0.08)" stroke="#047857" stroke-width="1.5"/>
-      <text x="90" y="85" text-anchor="middle" font-size="10" font-weight="700" fill="#047857">Node 1</text>
-      <text x="90" y="100" text-anchor="middle" font-size="8" fill="#6B6B8A">Railway (Primary)</text>
-      <text x="90" y="116" text-anchor="middle" font-size="7.5" fill="#047857">&#9679; Primary API &#183; PostgreSQL</text>
-      <text x="90" y="126" text-anchor="middle" font-size="7.5" fill="#047857">&#9679; UBI distribution</text>
+      <text x="90" y="85" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(52,211,153,0.9)">Node 1</text>
+      <text x="90" y="100" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Railway (Primary)</text>
+      <text x="90" y="116" text-anchor="middle" font-size="7.5" fill="rgba(52,211,153,0.9)">&#9679; Primary API &#183; PostgreSQL</text>
+      <text x="90" y="126" text-anchor="middle" font-size="7.5" fill="rgba(52,211,153,0.9)">&#9679; UBI distribution</text>
       <rect x="350" y="60" width="120" height="70" rx="8" fill="rgba(8,145,178,0.08)" stroke="#0891B2" stroke-width="1.5"/>
-      <text x="410" y="85" text-anchor="middle" font-size="10" font-weight="700" fill="#0891B2">Node 2</text>
-      <text x="410" y="100" text-anchor="middle" font-size="8" fill="#6B6B8A">Render (Secondary)</text>
-      <text x="410" y="116" text-anchor="middle" font-size="7.5" fill="#0891B2">&#9679; Secondary API</text>
-      <text x="410" y="126" text-anchor="middle" font-size="7.5" fill="#0891B2">&#9679; HTTP sync</text>
+      <text x="410" y="85" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(34,211,238,0.9)">Node 2</text>
+      <text x="410" y="100" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Render (Secondary)</text>
+      <text x="410" y="116" text-anchor="middle" font-size="7.5" fill="rgba(34,211,238,0.9)">&#9679; Secondary API</text>
+      <text x="410" y="126" text-anchor="middle" font-size="7.5" fill="rgba(34,211,238,0.9)">&#9679; HTTP sync</text>
       <rect x="175" y="10" width="150" height="38" rx="8" fill="rgba(146,64,14,0.06)" stroke="#92400E" stroke-width="1"/>
-      <text x="250" y="27" text-anchor="middle" font-size="9" font-weight="700" fill="#92400E">MetaMask / Users</text>
-      <text x="250" y="41" text-anchor="middle" font-size="7.5" fill="#6B6B8A">JSON-RPC &#183; Chain ID 1926</text>
+      <text x="250" y="27" text-anchor="middle" font-size="9" font-weight="700" fill="rgba(240,180,41,0.9)">MetaMask / Users</text>
+      <text x="250" y="41" text-anchor="middle" font-size="7.5" fill="rgba(136,146,164,0.9)">JSON-RPC &#183; Chain ID 1926</text>
       <rect x="165" y="143" width="170" height="34" rx="8" fill="rgba(107,70,193,0.04)" stroke="rgba(107,70,193,0.2)" stroke-width="1" stroke-dasharray="4,3"/>
-      <text x="250" y="158" text-anchor="middle" font-size="8" fill="#6B6B8A">Future nodes (Phase 1+)</text>
+      <text x="250" y="158" text-anchor="middle" font-size="8" fill="rgba(136,146,164,0.9)">Future nodes (Phase 1+)</text>
       <text x="250" y="170" text-anchor="middle" font-size="7.5" fill="rgba(107,70,193,0.6)">anyone can run &#8212; permissionless</text>
       <line x1="150" y1="95" x2="190" y2="95" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
       <line x1="310" y1="95" x2="350" y2="95" stroke="#6B46C1" stroke-width="1.5" stroke-dasharray="4,3"/>
@@ -3641,131 +3642,99 @@ async function drawGiniHistoryChart() {
 }
 
 async function drawLorenzCurve() {
-  const canvas = document.getElementById('lorenz-chart');
+  var canvas = document.getElementById('lorenz-chart');
   if (!canvas || !canvas.offsetParent) return;
   canvas.width = canvas.offsetWidth;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0,0,W,H);
-  const pad = {l:48,r:24,t:36,b:44};
-  const cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0D1020'; ctx.fillRect(0, 0, W, H);
+  var pad = {l:54, r:18, t:32, b:50};
+  var cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+  function toX(f) { return pad.l + cW * f; }
+  function toY(f) { return pad.t + cH * (1 - f); }
   try {
-    const d = await (await fetch('/api/humans')).json();
-    const humans = d.humans || [];
+    var d = await (await fetch('/api/humans')).json();
+    var humans = d.humans || [];
     if (humans.length < 2) {
-      ctx.fillStyle='rgba(139,92,246,0.5)'; ctx.font='12px Inter,sans-serif'; ctx.textAlign='center';
-      ctx.fillText('Awaiting more registered humans...', W/2, H/2); return;
+      ctx.fillStyle = 'rgba(155,114,246,0.6)'; ctx.font = '12px Inter'; ctx.textAlign = 'center';
+      ctx.fillText('Need 2+ registered humans to show wealth distribution', W/2, H/2); return;
     }
-    // Compute Gini upfront
-    var balsForGini = humans.map(function(h){return h.balance||0;}).sort(function(a,b){return a-b;});
-    var totalForGini = balsForGini.reduce(function(s,b){return s+b;},0);
-    var cumForGini = 0, lorenzAreaPre = 0;
-    if (totalForGini > 0) {
-      balsForGini.forEach(function(b){ cumForGini+=b; lorenzAreaPre+=(cumForGini/totalForGini)*(1/balsForGini.length); });
+    var bals = humans.map(function(h){ return h.balance || 0; }).sort(function(a,b){ return a-b; });
+    var total = bals.reduce(function(s,b){ return s+b; }, 0);
+    var n = bals.length;
+    var lorenz = [{x:0,y:0}]; var cum = 0;
+    for (var i = 0; i < n; i++) { cum += bals[i]; lorenz.push({x:(i+1)/n, y:total>0?cum/total:(i+1)/n}); }
+    var area = 0;
+    for (var i = 1; i < lorenz.length; i++) { area += (lorenz[i].x-lorenz[i-1].x)*(lorenz[i].y+lorenz[i-1].y)/2; }
+    var gini = Math.max(0, 1 - 2*area);
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
+    for (var i = 0; i <= 4; i++) {
+      ctx.beginPath(); ctx.moveTo(pad.l,toY(i/4)); ctx.lineTo(pad.l+cW,toY(i/4)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(toX(i/4),pad.t); ctx.lineTo(toX(i/4),pad.t+cH); ctx.stroke();
     }
-    var currentGini = Math.max(0, 1-2*lorenzAreaPre);
-    const bals = humans.map(function(h){return h.balance||0;}).sort(function(a,b){return a-b;});
-    const total = bals.reduce(function(s,b){return s+b;},0);
-    const n = bals.length;
-    // grid
-    for (var i=0;i<=4;i++) {
-      var gx=pad.l+cW*i/4, gy=pad.t+cH*(1-i/4);
-      ctx.strokeStyle='rgba(107,70,193,0.12)'; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.moveTo(gx,pad.t); ctx.lineTo(gx,H-pad.b); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(pad.l,gy); ctx.lineTo(W-pad.r,gy); ctx.stroke();
-      ctx.fillStyle='rgba(107,70,193,0.75)'; ctx.font='10px JetBrains Mono,monospace'; ctx.textAlign='center';
-      ctx.fillText((i*25)+'%', gx, H-pad.b+16);
-      ctx.textAlign='right';
-      ctx.fillText((i*25)+'%', pad.l-6, H-pad.b-cH*i/4+4);
-    }
-    // axis labels
-    ctx.save(); ctx.translate(13,pad.t+cH/2); ctx.rotate(-Math.PI/2);
-    ctx.fillStyle='rgba(107,70,193,0.7)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='center';
-    ctx.fillText('% of AEQ held (cumulative)', 0, 0); ctx.restore();
-    ctx.fillStyle='rgba(107,70,193,0.7)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='center';
-    ctx.fillText('% of Population (poorest → richest)', pad.l+cW/2, H-2);
-    // Reference country Lorenz approximations (simplified diagonal offsets)
+    ctx.fillStyle='rgba(136,146,164,0.7)'; ctx.font='9px JetBrains Mono';
+    var lbs=['0%','25%','50%','75%','100%'];
+    for(var i=0;i<=4;i++){ctx.textAlign='center';ctx.fillText(lbs[i],toX(i/4),pad.t+cH+16);ctx.textAlign='right';ctx.fillText(lbs[i],pad.l-4,toY(i/4)+4);}
+    ctx.save();ctx.translate(13,pad.t+cH/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='rgba(155,114,246,0.7)';ctx.font='9px Inter';ctx.textAlign='center';ctx.fillText('Cumulative % of AEQ',0,0);ctx.restore();
+    ctx.fillStyle='rgba(155,114,246,0.7)';ctx.font='9px Inter';ctx.textAlign='center';ctx.fillText('% of Population (poorest left, richest right)',toX(0.5),H-6);
     var refs=[
-      {label:'Scandinavia ~27',g:0.27,color:'rgba(0,200,100,0.25)'},
-      {label:'Germany ~31',g:0.31,color:'rgba(0,200,150,0.2)'},
-      {label:'USA ~41',g:0.41,color:'rgba(245,158,11,0.2)'},
-      {label:'South Africa ~63',g:0.63,color:'rgba(239,68,68,0.15)'}
+      {name:'Scandinavia',g:0.27,color:'rgba(52,211,153,0.6)',tc:'#34D399'},
+      {name:'Germany',g:0.31,color:'rgba(34,211,238,0.55)',tc:'#22D3EE'},
+      {name:'USA',g:0.41,color:'rgba(251,191,36,0.55)',tc:'#FBBf24'},
+      {name:'Brazil',g:0.53,color:'rgba(248,113,113,0.5)',tc:'#F87171'},
+      {name:'South Africa',g:0.63,color:'rgba(239,68,68,0.45)',tc:'#EF4444'}
     ];
-    refs.forEach(function(ref){
-      // Approximate Lorenz by quadratic: L(x) = x^(1+2g)
-      ctx.strokeStyle=ref.color; ctx.lineWidth=1; ctx.setLineDash([3,4]);
+    refs.forEach(function(ref,ri) {
       ctx.beginPath();
-      for(var xi=0;xi<=40;xi++){
-        var xf=xi/40, yf=Math.pow(xf,1+2*ref.g);
-        var rx=pad.l+cW*xf, ry=(H-pad.b)-cH*yf;
-        if(xi===0) ctx.moveTo(rx,ry); else ctx.lineTo(rx,ry);
-      }
-      ctx.stroke(); ctx.setLineDash([]);
-      // Label at midpoint
-      var mx=pad.l+cW*0.55, my=(H-pad.b)-cH*Math.pow(0.55,1+2*ref.g);
-      ctx.fillStyle=ref.color.replace('0.','0.8'); ctx.font='8px Inter,sans-serif'; ctx.textAlign='left';
-      ctx.fillText(ref.label, mx+3, my-2);
+      for(var j=0;j<=60;j++){var xf=j/60,yf=Math.pow(xf,1+2*ref.g);if(j===0)ctx.moveTo(toX(xf),toY(yf));else ctx.lineTo(toX(xf),toY(yf));}
+      ctx.strokeStyle=ref.color;ctx.lineWidth=1.3;ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
+      var lx=0.62,ly=Math.pow(lx,1+2*ref.g);
+      ctx.fillStyle=ref.tc;ctx.font='bold 8px Inter';ctx.textAlign='left';
+      ctx.fillText(ref.name+' ~'+Math.round(ref.g*100),toX(lx)+4,toY(ly)-3-ri*0.5);
     });
-    // Equality diagonal
-    var dg=ctx.createLinearGradient(pad.l,H-pad.b,W-pad.r,pad.t);
-    dg.addColorStop(0,'rgba(139,92,246,0.5)'); dg.addColorStop(1,'rgba(6,182,212,0.5)');
-    ctx.strokeStyle=dg; ctx.lineWidth=2; ctx.setLineDash([6,5]);
-    ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b); ctx.lineTo(W-pad.r,pad.t); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle='rgba(139,92,246,0.7)'; ctx.font='bold 9px Inter,sans-serif'; ctx.textAlign='right';
-    ctx.fillText('Perfect Equality', W-pad.r-3, pad.t+13);
-    // Lorenz points
-    var pts=[{x:pad.l,y:H-pad.b}]; var cum=0;
-    bals.forEach(function(b,i){
-      cum+=b; pts.push({x:pad.l+cW*(i+1)/n, y:(H-pad.b)-cH*(cum/total)});
+    var gr=ctx.createLinearGradient(toX(0),toY(0),toX(1),toY(1));
+    gr.addColorStop(0,'rgba(155,114,246,0.65)');gr.addColorStop(1,'rgba(34,211,238,0.65)');
+    ctx.beginPath();ctx.moveTo(toX(0),toY(0));ctx.lineTo(toX(1),toY(1));
+    ctx.strokeStyle=gr;ctx.lineWidth=1.5;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='rgba(155,114,246,0.75)';ctx.font='bold 8px Inter';ctx.textAlign='right';
+    ctx.fillText('Perfect Equality (diagonal)',toX(1)-3,toY(1)+13);
+    ctx.beginPath();
+    lorenz.forEach(function(p,i){if(i===0)ctx.moveTo(toX(p.x),toY(p.y));else ctx.lineTo(toX(p.x),toY(p.y));});
+    ctx.lineTo(toX(1),toY(1));ctx.lineTo(toX(0),toY(0));ctx.closePath();
+    var fg=ctx.createLinearGradient(0,toY(1),0,toY(0));
+    fg.addColorStop(0,'rgba(240,180,41,0.25)');fg.addColorStop(1,'rgba(240,180,41,0.04)');
+    ctx.fillStyle=fg;ctx.fill();
+    ctx.beginPath();
+    lorenz.forEach(function(p,i){if(i===0)ctx.moveTo(toX(p.x),toY(p.y));else ctx.lineTo(toX(p.x),toY(p.y));});
+    ctx.save();ctx.shadowColor='rgba(240,180,41,0.7)';ctx.shadowBlur=10;
+    ctx.strokeStyle='#F0B429';ctx.lineWidth=2.5;ctx.stroke();ctx.restore();
+    lorenz.slice(1).forEach(function(p){
+      ctx.beginPath();ctx.arc(toX(p.x),toY(p.y),3.5,0,2*Math.PI);
+      ctx.fillStyle='#F0B429';ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,0.6)';ctx.lineWidth=0.8;ctx.stroke();
     });
-    // inequality fill
-    var fg=ctx.createLinearGradient(0,pad.t,0,H-pad.b);
-    fg.addColorStop(0,'rgba(146,64,14,0.15)'); fg.addColorStop(1,'rgba(146,64,14,0.03)');
-    ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y);
-    pts.forEach(function(p){ctx.lineTo(p.x,p.y);});
-    ctx.lineTo(W-pad.r,H-pad.b); ctx.closePath(); ctx.fillStyle=fg; ctx.fill();
-    // Lorenz line with glow
-    ctx.save();
-    ctx.strokeStyle='#92400E'; ctx.lineWidth=2.5;
-    ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y);
-    pts.forEach(function(p){ctx.lineTo(p.x,p.y);}); ctx.stroke(); ctx.restore();
-    // endpoint dot
-    var ep=pts[pts.length-1];
-    ctx.save();
-    ctx.beginPath(); ctx.arc(ep.x,ep.y,5,0,2*Math.PI); ctx.fillStyle='#92400E'; ctx.fill(); ctx.restore();
-    ctx.beginPath(); ctx.arc(ep.x,ep.y,2.5,0,2*Math.PI); ctx.fillStyle='#fff'; ctx.fill();
-    // Gini annotation box (top-right) — color coded green/amber/red
-    var gColor = currentGini<0.35?'#047857':currentGini<0.7?'#92400E':'#DC2626';
-    var gBg = currentGini<0.35?'rgba(4,120,87,0.10)':currentGini<0.7?'rgba(146,64,14,0.10)':'rgba(220,38,38,0.10)';
-    ctx.fillStyle=gBg;
-    ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(W-pad.r-125,pad.t-2,122,58,6);
-    else ctx.rect(W-pad.r-125,pad.t-2,122,58);
-    ctx.fill();
-    ctx.strokeStyle=gColor; ctx.lineWidth=1.5;
-    ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(W-pad.r-125,pad.t-2,122,58,6);
-    else ctx.rect(W-pad.r-125,pad.t-2,122,58);
-    ctx.stroke();
-    ctx.fillStyle=gColor; ctx.font='bold 22px JetBrains Mono,monospace'; ctx.textAlign='center';
-    ctx.fillText('Gini ' + currentGini.toFixed(3), W-pad.r-64, pad.t+23);
-    ctx.font='bold 8.5px Inter,sans-serif';
-    var gLabel = currentGini<0.35?'✓ Below 0.35 target':currentGini<0.7?'⚠ Moderate inequality':'⛔ High inequality';
-    ctx.fillText(gLabel, W-pad.r-64, pad.t+38);
-    ctx.font='7.5px Inter,sans-serif'; ctx.fillStyle='rgba(80,80,100,0.7)';
-    ctx.fillText(currentGini<0.35?'Comparable to Scandinavia':'Target: below 0.35', W-pad.r-64, pad.t+52);
-    // Near-equality annotation when Gini < 0.05
-    if (currentGini < 0.05) {
-      ctx.save(); ctx.font='bold 10px Inter,sans-serif'; ctx.fillStyle='#047857'; ctx.textAlign='center';
-      ctx.fillText('A flat curve = near-perfect equality — this is the goal!', pad.l+cW/2, H-pad.b-6);
-      ctx.restore();
+    var gPct=(gini*100).toFixed(2);
+    var gC=gini<0.35?'#34D399':gini<0.6?'#F0B429':'#F87171';
+    var gSub=gini<0.35?'Below 0.35 target':gini<0.6?'Above target':'Critical';
+    ctx.fillStyle='rgba(13,16,32,0.93)';ctx.strokeStyle=gC;ctx.lineWidth=1.5;
+    ctx.beginPath();if(ctx.roundRect)ctx.roundRect(W-pad.r-135,pad.t-2,132,50,6);else ctx.rect(W-pad.r-135,pad.t-2,132,50);ctx.fill();ctx.stroke();
+    ctx.fillStyle=gC;ctx.font='bold 19px JetBrains Mono';ctx.textAlign='center';
+    ctx.fillText('Gini '+gPct,W-pad.r-69,pad.t+21);
+    ctx.font='9px Inter';ctx.fillStyle='rgba(200,200,200,0.65)';
+    ctx.fillText(gSub,W-pad.r-69,pad.t+38);
+    var mid=lorenz[Math.floor(lorenz.length/2)];
+    ctx.fillStyle='#F0B429';ctx.font='bold 9px Inter';ctx.textAlign='left';
+    ctx.fillText('Aequitas ('+n+' humans)',toX(mid.x)+5,toY(mid.y)-7);
+    ctx.fillStyle='rgba(155,114,246,0.7)';ctx.font='bold 9px Inter';ctx.textAlign='left';
+    ctx.fillText('LORENZ CURVE — WEALTH DISTRIBUTION',pad.l,18);
+    if(gini<0.04){
+      ctx.fillStyle='rgba(52,211,153,0.8)';ctx.font='italic 9px Inter';ctx.textAlign='center';
+      ctx.fillText('Near-perfect equality — Aequitas curve overlaps the diagonal. This is the goal!',W/2,toY(0)+24);
     }
-    // title
-    ctx.fillStyle='rgba(107,70,193,0.55)'; ctx.font='10px Inter,sans-serif'; ctx.textAlign='left';
-    ctx.fillText('LORENZ CURVE  —  WEALTH DISTRIBUTION  (' + n + ' humans)', pad.l, 20);
-  } catch(e) { console.error('Lorenz chart error', e); }
+  } catch(e) { console.error('Lorenz error:',e); }
 }
+
 
 function drawWcapSlideChart() {
   const canvas = document.getElementById('wcap-slide-chart');
