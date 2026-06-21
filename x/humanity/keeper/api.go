@@ -468,22 +468,15 @@ if path == "swap" {
 // tab is visible on direct URL load — no JS timing dependency.
 validTabs := map[string]bool{"explorer": true, "index": true, "network": true, "exchange": true}
 if validTabs[path] {
-	html := strings.Replace(explorerHTML,
+	// Set data-active on <html> — CSS in api_html.go has html[data-active=X] rules.
+	html := strings.Replace(explorerHTML, `<html lang="en">`, `<html lang="en" data-active="`+path+`">`, 1)
+	// Activate tab button for blue underline.
+	html = strings.Replace(html,
 		`class="tab active" onclick="showTab('register',this)"`,
 		`class="tab" onclick="showTab('register',this)"`, 1)
 	html = strings.Replace(html,
 		`class="tab" onclick="showTab('`+path+`',this)"`,
 		`class="tab active" onclick="showTab('`+path+`',this)"`, 1)
-	html = strings.Replace(html,
-		`id="tab-register" class="tab-content active"`,
-		`id="tab-register" class="tab-content"`, 1)
-	// Pure server-side activation: add 'active' directly to the target tab-content div.
-	// No JS timing involved — the HTML arrives ready to paint.
-	html = strings.Replace(html,
-		`id="tab-`+path+`" class="tab-content"`,
-		`id="tab-`+path+`" class="tab-content active"`, 1)
-	css := `<style>#tab-` + path + `{display:block!important}</style>`
-	html = strings.Replace(html, "</head>", css+"</head>", 1)
 	fmt.Fprint(w, html)
 	return
 }
