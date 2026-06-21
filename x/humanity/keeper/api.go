@@ -1,6 +1,7 @@
 package keeper
 
 import (
+"encoding/hex"
 "encoding/json"
 "fmt"
 "io"
@@ -10,7 +11,9 @@ import (
 "strings"
 "time"
 
+"github.com/ethereum/go-ethereum/accounts"
 "github.com/ethereum/go-ethereum/common"
+"github.com/ethereum/go-ethereum/crypto"
 )
 
 type APIServer struct {
@@ -69,6 +72,9 @@ mux.HandleFunc("/api/lp-position", a.handleLPPosition)
 mux.HandleFunc("/api/faucet", a.handleFaucet)
 mux.HandleFunc("/api/pool", a.handlePoolStatus)
 mux.HandleFunc("/api/snapshot", a.handleSnapshot)
+mux.HandleFunc("/api/gini/history", a.handleGiniHistory)
+mux.HandleFunc("/api/wealth-cap", a.handleWealthCap)
+mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
 mux.HandleFunc("/api/nonce", a.handleNonce)
 mux.HandleFunc("/api/peers", a.handlePeers)
 mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
@@ -467,6 +473,82 @@ return
 }
 nonce := a.state.GetSwapNonce(wallet)
 json.NewEncoder(w).Encode(map[string]interface{}{"wallet": wallet, "nonce": nonce})
+}
+
+// handleGiniHistory returns current Gini snapshot (history grows over time as UBI runs).
+func (a *APIServer) handleGiniHistory(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+gini := a.state.CalcGini()
+index := a.state.CalcAequitasIndex()
+humans := a.state.TotalHumans()
+w.Header().Set("Cache-Control", "no-cache")
+json.NewEncoder(w).Encode(map[string]interface{}{
+"current_gini":  gini,
+"current_index": index,
+"history": []map[string]interface{}{
+{"gini": gini * 100, "index": index, "humans": humans, "timestamp": time.Now().Unix()},
+},
+})
+}
+
+// handleWealthCap returns the current wealth cap parameters.
+func (a *APIServer) handleWealthCap(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+w.Header().Set("Cache-Control", "no-cache")
+accs := a.state.GetAllAccounts()
+var total float64
+n := 0
+for _, acc := range accs {
+if acc.IsHuman { total += acc.Balance; n++ }
+}
+avg := 0.0
+if n > 0 { avg = total / float64(n) }
+mult := 5.0
+if n > 5 { mult = float64(n) }
+if mult > 25 { mult = 25 }
+cap := mult * avg
+json.NewEncoder(w).Encode(map[string]interface{}{
+"cap": cap, "multiplier": mult, "average": avg,
+"humans": n, "total_supply": total,
+})
+}
+
+// handleSignValidatorChallenge signs the key-possession challenge message with
+// RELAYER_PRIVATE_KEY. Restricted to loopback (127.0.0.1 / ::1) so only
+// node operators with server access can use it — not an internet-accessible oracle.
+// GET /api/sign-validator-challenge?wallet=0x...
+func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+remoteHost := r.RemoteAddr
+if idx := strings.LastIndex(remoteHost, ":"); idx >= 0 { remoteHost = remoteHost[:idx] }
+remoteHost = strings.TrimPrefix(strings.TrimPrefix(remoteHost, "["), "]")
+if remoteHost != "127.0.0.1" && remoteHost != "::1" && remoteHost != "localhost" {
+http.Error(w, `{"error":"only accessible from localhost"}`, 403); return
+}
+humanWallet := strings.ToLower(r.URL.Query().Get("wallet"))
+if humanWallet == "" || !strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
+http.Error(w, `{"error":"wallet required (0x...)"}`, 400); return
+}
+key := a.blockchain.GetSigningKey()
+if key == nil {
+http.Error(w, `{"error":"RELAYER_PRIVATE_KEY not configured"}`, 500); return
+}
+message := "Aequitas: validator key linked to human " + humanWallet
+msgHash := accounts.TextHash([]byte(message))
+sig, err := crypto.Sign(msgHash, key)
+if err != nil {
+http.Error(w, `{"error":"signing failed"}`, 500); return
+}
+sig[64] += 27
+signingAddr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
+json.NewEncoder(w).Encode(map[string]interface{}{
+"signing_address": signingAddr,
+"human_wallet":    humanWallet,
+"signature":       "0x" + hex.EncodeToString(sig),
+"message":         message,
+})
 }
 
 // handleRegisterValidatorKey links a node signing key to a registered human

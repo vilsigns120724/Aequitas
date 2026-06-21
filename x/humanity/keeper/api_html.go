@@ -130,6 +130,9 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .idx{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--glow-purple);transition:border-color 0.25s,box-shadow 0.25s}
 .idx:hover{border-color:rgba(139,92,246,0.32);box-shadow:0 0 30px rgba(139,92,246,0.18)}
 .idx-title{font-size:0.6rem;color:var(--purple);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;font-weight:700;display:flex;align-items:center;gap:8px}
+.ci-btn{padding:2px 8px;font-size:0.58rem;font-family:JetBrains Mono,monospace;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);color:var(--muted);border-radius:4px;cursor:pointer;transition:all .15s}
+.ci-btn:hover{background:rgba(139,92,246,0.18);color:#c4b5fd}
+.ci-btn.ci-active{background:rgba(139,92,246,0.22);border-color:rgba(139,92,246,0.6);color:#c4b5fd}
 .idx-title::before{content:'';display:inline-block;width:3px;height:12px;background:linear-gradient(180deg,var(--purple),var(--teal));border-radius:2px;flex-shrink:0}
 .idx-desc{font-size:0.67rem;color:var(--muted);line-height:1.8;margin-bottom:16px}
 .idx-big{font-size:2.8rem;font-weight:900;line-height:1;font-family:var(--font-display);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
@@ -565,6 +568,14 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="idx">
     <div class="idx-title">AEQ / tUSD — Live Price</div>
     <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.</div>
+    <div style="display:flex;gap:4px;margin-bottom:6px">
+      <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn ci-active">1m</button>
+      <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn">5m</button>
+      <button onclick="setChartInterval(1800000)" id="ci-30m" class="ci-btn">30m</button>
+      <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn">1h</button>
+      <button onclick="setChartInterval(14400000)" id="ci-4h" class="ci-btn">4h</button>
+      <button onclick="setChartInterval(0)" id="ci-all" class="ci-btn">All</button>
+    </div>
     <canvas id="price-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
     <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No pool data yet — add liquidity to see the price chart.</div>
   </div>
@@ -1197,6 +1208,18 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <span style="color:var(--muted)">&nbsp;&rarr; Expected: {"jsonrpc":"2.0","error":"method not specified"} &mdash; this confirms RPC is alive</span>
       </div>
       <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:0.62rem;color:var(--muted)">The block height should match the primary node within 1&ndash;2 blocks within seconds of startup. If it stays at 0, check that PEER_NODES is set correctly and the primary node URL is reachable.</div>
+
+      <!-- Step 5b: Register Validator Key -->
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5b &mdash; Register Your Validator Key (Decentralized Auth)</div>
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Instead of a shared PEER_SECRET, register your node signing key with your human wallet. Requires two signatures to prove you control both keys. Get the signing key signature by running this on your server (SSH/Railway shell):</div>
+      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.35);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:10px 14px;font-size:0.6rem;color:var(--teal);margin-bottom:12px;overflow-x:auto">curl "http://localhost:8080/api/sign-validator-challenge?wallet=<span style="color:var(--gold)">0xYOUR_HUMAN_WALLET</span>"</div>
+      <div id="vk-reg-box" style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.2);border-radius:8px;padding:16px;margin-bottom:18px">
+        <div style="font-size:0.6rem;color:var(--muted);margin-bottom:8px">Enter your node RELAYER_ADDRESS and the signature from the command above:</div>
+        <input id="vk-signing-addr" placeholder="0x... (RELAYER_ADDRESS — your node signing address)" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.3);color:var(--text);border-radius:6px;padding:8px 12px;font-family:var(--font-mono);font-size:0.62rem;margin-bottom:6px">
+        <input id="vk-signing-sig" placeholder='Signing key signature (from curl output, the "signature" field)' style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.3);color:var(--text);border-radius:6px;padding:8px 12px;font-family:var(--font-mono);font-size:0.62rem;margin-bottom:8px">
+        <button onclick="registerValidatorKey()" style="background:rgba(139,92,246,0.8);color:#fff;border:none;border-radius:6px;padding:10px 20px;font-size:0.65rem;cursor:pointer;font-weight:700">&#x1F511; Sign with MetaMask &amp; Register</button>
+        <div id="vk-status" style="margin-top:8px;font-size:0.6rem;color:var(--muted)"></div>
+      </div>
 
       <!-- Step 6: MetaMask -->
       <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 6 &mdash; Connect MetaMask to Your Node (Optional)</div>
@@ -3490,7 +3513,12 @@ function drawPriceChart() {
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
   const pad = {l:58, r:24, t:36, b:36};
-  const pts = priceHistory;
+  var now = Date.now();
+  var ciMs = (typeof chartIntervalMs !== 'undefined') ? chartIntervalMs : 0;
+  var pts = ciMs > 0
+    ? priceHistory.filter(function(p){ return now - p.t <= ciMs; })
+    : priceHistory;
+  if (!pts.length) pts = priceHistory;
   const prices = pts.map(function(p){return p.p;});
   const minP = Math.min.apply(null,prices), maxP = Math.max.apply(null,prices);
   const range = maxP - minP || minP * 0.01 || 0.0001;
@@ -3641,7 +3669,19 @@ let currentPoolAEQ = 0;
 let currentPoolTUSD = 0;
 let myAEQBalance = 0;
 let myTUSDBalance = 0;
-let priceHistory = [];
+var priceHistory = [];
+var chartIntervalMs = 60000;
+
+function setChartInterval(ms) {
+  chartIntervalMs = ms;
+  var btnIds = ['ci-1m','ci-5m','ci-30m','ci-1h','ci-4h','ci-all'];
+  var btnVals = [60000,300000,1800000,3600000,14400000,0];
+  for (var bi = 0; bi < btnIds.length; bi++) {
+    var btnEl = document.getElementById(btnIds[bi]);
+    if (btnEl) btnEl.className = 'ci-btn' + (btnVals[bi] === ms ? ' ci-active' : '');
+  }
+  drawPriceChart();
+}
 
 function swapLog(msg, type) {
   const el = document.getElementById('swap-log');
@@ -4595,6 +4635,49 @@ setInterval(loadBlocks, 6000);
 setInterval(loadHumans, 10000);
 setInterval(loadPoolStatus, 8000);
 
+async function registerValidatorKey() {
+  var statusEl = document.getElementById('vk-status');
+  var signingAddr = document.getElementById('vk-signing-addr').value.trim().toLowerCase();
+  var signingKeySig = document.getElementById('vk-signing-sig').value.trim();
+  if (!signingAddr.startsWith('0x') || signingAddr.length !== 42) {
+    statusEl.textContent = 'Enter a valid signing address (0x... 42 chars)'; return;
+  }
+  if (!signingKeySig) {
+    statusEl.textContent = 'Enter the signing key signature from the curl command'; return;
+  }
+  if (!window.ethereum) { statusEl.textContent = 'MetaMask not found'; return; }
+  try {
+    var accs = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    var humanWallet = accs[0].toLowerCase();
+    statusEl.textContent = 'Sign with human wallet in MetaMask...';
+    statusEl.style.color = 'var(--gold)';
+    var humanMsg = 'Aequitas: authorize validator key ' + signingAddr;
+    var humanSig = await window.ethereum.request({ method: 'personal_sign', params: [humanMsg, humanWallet] });
+    statusEl.textContent = 'Submitting...';
+    var resp = await fetch('/api/register-validator-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        signing_address: signingAddr,
+        human_wallet: humanWallet,
+        human_signature: humanSig,
+        signing_key_signature: signingKeySig
+      })
+    });
+    var data = await resp.json();
+    if (data.success) {
+      statusEl.textContent = 'Validator key registered! Node blocks are now accepted.';
+      statusEl.style.color = 'var(--teal)';
+    } else {
+      statusEl.textContent = sanitize(data.error || 'Registration failed');
+      statusEl.style.color = '#f87171';
+    }
+  } catch(e) {
+    statusEl.textContent = sanitize(e.message);
+    statusEl.style.color = '#f87171';
+  }
+}
+
 function generateNodeGuidePDF() {
   var lang = curLang || 'en';
   if (window.jspdf) { try { _buildNodeGuidePDF(lang); } catch(e) { alert('PDF-Fehler: ' + e.message); } return; }
@@ -4629,7 +4712,8 @@ function _buildNodeGuidePDF(lang) {
       s6:'6. Verify Your Node',v6:'Once running, check these endpoints to confirm the node is synced and healthy.',vc:'# 1. Node status (height should match the primary node within 1-2 blocks)\ncurl https://YOUR-NODE-URL/api/status\n# Expect: { "height": N, "total_humans": N, "index": N }\n\n# 2. EVM JSON-RPC (EVM compatibility check)\ncurl -X POST https://YOUR-NODE-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'\n\n# 3. In startup logs, confirm:\n#    [NODE] Registered node operator wallet: 0xYOUR_WALLET\n#    Aequitas Node Running V  (blocks every ~6 seconds)\n\n# MetaMask: RPC URL = https://YOUR-NODE-URL/rpc | Chain ID: 1926 | Symbol: AEQ',
       s7:'7. P2P Networking & Sync',p7:'Set PEER_NODES to at least one known bootstrap URL. The node connects and syncs the full chain automatically using libp2p gossip (real-time) plus periodic HTTP pulls from peers (fallback). The primary node libp2p multiaddress is:',pa:'/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R',pn:'The HTTP URL in PEER_NODES is more stable for bootstrap. The libp2p multiaddress above may change if the primary node is redeployed on Railway. When in doubt, use the HTTPS URL.',
       s8:'8. Earning Validator Rewards',w8:'Validator rewards come from the Validators Pool (40% of all protocol fees: swap fees, demurrage, wealth cap overflow). Steps to receive rewards:',b8:['First register as a human on Aequitas: install the Android app and complete biometric registration to receive your wallet address and 1,000 AEQ','Set NODE_OPERATOR_WALLET to that registered wallet address in your node\'s environment variables','Start (or restart) your node — it calls RegisterNode() on startup. Confirm in logs: "[NODE] Registered node operator wallet: 0xYOUR_WALLET"','The primary node distributes rewards every 24 h to all registered node operator wallets proportional to blocks produced','Secondary nodes do NOT need to trigger distribution — just keep your node running and synced','No minimum uptime required for BETA, but consistently offline nodes contribute less to block production and proportionally less to the pool share'],
-      s9:'9. Troubleshooting',th:['Symptom','Likely Cause','Fix'],tr:[['Height stays at 0 after start','PEER_NODES not set or unreachable','Set PEER_NODES=https://aequitas.digital and redeploy'],['"no code at address" in logs','V7 contract not deployed in EVM','Verify RELAYER_ADDRESS is set; node auto-deploys V7 on startup if missing'],['"NODE_OPERATOR_WALLET not set" in logs','Missing env var','Set NODE_OPERATOR_WALLET to your registered human wallet address'],['DATABASE_URL error on startup','Wrong connection string or DB unreachable','Check format: postgres://user:pass@host:5432/dbname and that PostgreSQL is running'],['Port 8080 not reachable','Firewall or cloud provider config','Open TCP 8080 inbound; check Railway/Render/VPS port settings'],['Docker build fails with go module error','No internet access during build','Ensure Docker build environment has outbound internet; Railway handles this automatically']],
+      s8b:'8b. Register Validator Key (Decentralized)',w8b:'Instead of a shared PEER_SECRET, link your node signing key to your human wallet. The primary node then accepts your blocks automatically when you join via peer discovery.',b8b:['SSH into your node server (or open Railway Shell) and run: curl "http://localhost:8080/api/sign-validator-challenge?wallet=0xYOUR_HUMAN_WALLET" — this returns the signing key signature','Open the Network tab on the Aequitas website, go to Node Guide, scroll to Step 5b','Enter your RELAYER_ADDRESS and paste the signature from the curl output','Click "Sign with MetaMask" using your registered human wallet — this signs the human authorization message','The primary node immediately accepts your blocks; set PRIMARY_NODE_URL=https://aequitas.digital so peer discovery auto-connects'],
+      s9:'9. Troubleshooting',th:['Symptom','Likely Cause','Fix'],tr:[['Height stays at 0 after start','PRIMARY_NODE_URL not set or wrong','Set PRIMARY_NODE_URL=https://aequitas.digital and SELF_URL to your public URL'],['"no code at address" in logs','V7 contract not deployed in EVM','Verify RELAYER_ADDRESS is set; node auto-deploys V7 on startup if missing'],['"NODE_OPERATOR_WALLET not set" in logs','Missing env var','Set NODE_OPERATOR_WALLET to your registered human wallet address'],['DATABASE_URL error on startup','Wrong connection string or DB unreachable','Check format: postgres://user:pass@host:5432/dbname and that PostgreSQL is running'],['Port 8080 not reachable','Firewall or cloud provider config','Open TCP 8080 inbound; check Railway/Render/VPS port settings'],['Blocks rejected: not authorized validator','Validator key not registered','Complete Step 5b: register your signing key via the website Node Guide']],
       s10:'10. MetaMask Configuration',m10:'To use your own node as the RPC endpoint in MetaMask or any EVM-compatible wallet:',mh:['Field','Value'],mr:[['Network Name','Aequitas Chain'],['RPC URL','https://YOUR-NODE-URL/rpc'],['Chain ID','1926  (hex: 0x786)'],['Currency Symbol','AEQ'],['Decimals','18'],['Block Explorer','https://aequitas.digital']],
       foot:'Open source · Permissionless · No admin keys · Aequitas Chain V7 · Chain ID 1926',link:'github.com/hanoi96international-gif/Aequitas'},
     de:{title:'Aequitas Node-Betreiber-Handbuch',sub:'Vollständige Schritt-für-Schritt-Anleitung · Aequitas Chain (Chain ID 1926)',badge:'BETA v0.1 · Open Source · Erlaubnisfrei · Kein Stake erforderlich',
@@ -4642,7 +4726,8 @@ function _buildNodeGuidePDF(lang) {
       s6:'6. Node verifizieren',v6:'Sobald der Node läuft, diese Endpunkte prüfen um Synchronisation und Gesundheit zu bestätigen.',vc:'# 1. Node-Status (Höhe sollte mit Primär-Node übereinstimmen)\ncurl https://DEINE-NODE-URL/api/status\n# Erwartet: { "height": N, "total_humans": N, "index": N }\n\n# 2. EVM JSON-RPC prüfen\ncurl -X POST https://DEINE-NODE-URL/rpc \\\n  -H "Content-Type: application/json" \\\n  -d \'{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}\'\n\n# 3. In Start-Logs bestätigen:\n#    [NODE] Registered node operator wallet: 0xDEINE_WALLET\n#    Aequitas Node Running V  (Blöcke alle ~6 Sekunden)\n\n# MetaMask: RPC-URL https://DEINE-NODE-URL/rpc | Chain-ID: 1926 | Symbol: AEQ',
       s7:'7. P2P-Netzwerk & Synchronisation',p7:'PEER_NODES auf mindestens eine bekannte Bootstrap-URL setzen. Der Node verbindet sich automatisch und synchronisiert den vollständigen Chain-Zustand via libp2p-Gossip (Echtzeit) und HTTP-Pulls von Peers (Fallback). Libp2p-Multiaddresse des Primär-Nodes:',pa:'/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R',pn:'Die HTTP-URL in PEER_NODES ist stabiler für Bootstrap. Die Multiaddresse kann sich ändern wenn der Primär-Node auf Railway neu bereitgestellt wird. Im Zweifelsfall die HTTPS-URL verwenden.',
       s8:'8. Validator-Belöhnungen erhalten',w8:'Validator-Belöhnungen kommen aus dem Validators-Pool (40% aller Protokollgebühren). Schritte um Belöhnungen zu erhalten:',b8:['Zuerst als Mensch auf Aequitas registrieren: Android-App installieren und biometrische Registrierung abschließen um Wallet-Adresse und 1.000 AEQ zu erhalten','NODE_OPERATOR_WALLET auf diese registrierte Wallet-Adresse in den Umgebungsvariablen des Nodes setzen','Node starten (oder neu starten) — er ruft RegisterNode() beim Start auf. In Logs bestätigen: "[NODE] Registered node operator wallet: 0xDEINE_WALLET"','Der Primär-Node verteilt Belöhnungen alle 24 Stunden an alle registrierten Node-Betreiber-Wallets proportional zur Blockproduktion','Sekundäre Nodes müssen die Verteilung NICHT auslösen — einfach den Node laufen lassen und synchronisiert halten','In der BETA keine Mindest-Verfügbarkeit erforderlich, aber dauerhaft offline Nodes tragen weniger zur Blockproduktion und zum Pool-Anteil bei'],
-      s9:'9. Fehlerbehebung',th:['Symptom','Wahrscheinliche Ursache','Lösung'],tr:[['Höhe bleibt bei 0 nach Start','PEER_NODES nicht gesetzt oder nicht erreichbar','PEER_NODES=https://aequitas.digital setzen und neu deployen'],['"no code at address" in Logs','V7-Contract nicht im EVM deployed','RELAYER_ADDRESS prüfen; Node deployed V7 automatisch beim Start wenn fehlend'],['"NODE_OPERATOR_WALLET not set" in Logs','Fehlende Umgebungsvariable','NODE_OPERATOR_WALLET auf registrierte Mensch-Wallet-Adresse setzen'],['DATABASE_URL-Fehler beim Start','Falscher Verbindungsstring oder DB nicht erreichbar','Format prüfen: postgres://user:pass@host:5432/dbname und PostgreSQL-Erreichbarkeit'],['Port 8080 nicht erreichbar','Firewall oder Cloud-Provider-Konfiguration','TCP 8080 eingehend öffnen; Railway/Render/VPS-Port-Einstellungen prüfen'],['Docker-Build mit Go-Modul-Fehler','Kein Internetzugang beim Build','Build-Umgebung muss ausgehenden Internetzugang haben; Railway handhabt dies automatisch']],
+      s8b:'8b. Validator-Key registrieren (dezentral)',w8b:'Statt PEER_SECRET: Signing-Key mit Human-Wallet verknüpfen. Der Primär-Node akzeptiert dann deine Blöcke automatisch.',b8b:['Per SSH oder Railway Shell auf dem Server: curl "http://localhost:8080/api/sign-validator-challenge?wallet=0xDEINE_HUMAN_WALLET" — gibt die Signing-Key-Signatur zurück','Website aufrufen: Network-Tab, Node Guide, zu Schritt 5b scrollen','RELAYER_ADDRESS und die Signatur aus dem curl-Output eintragen','"Sign with MetaMask" mit der registrierten Human-Wallet klicken','Primär-Node akzeptiert Blöcke sofort; PRIMARY_NODE_URL=https://aequitas.digital setzen für Auto-Discovery'],
+      s9:'9. Fehlerbehebung',th:['Symptom','Wahrscheinliche Ursache','Lösung'],tr:[['Höhe bleibt bei 0 nach Start','PRIMARY_NODE_URL nicht gesetzt oder falsch','PRIMARY_NODE_URL=https://aequitas.digital und SELF_URL auf eigene URL setzen'],['"no code at address" in Logs','V7-Contract nicht im EVM deployed','RELAYER_ADDRESS prüfen; Node deployed V7 automatisch beim Start wenn fehlend'],['"NODE_OPERATOR_WALLET not set" in Logs','Fehlende Umgebungsvariable','NODE_OPERATOR_WALLET auf registrierte Mensch-Wallet-Adresse setzen'],['DATABASE_URL-Fehler beim Start','Falscher Verbindungsstring oder DB nicht erreichbar','Format prüfen: postgres://user:pass@host:5432/dbname und PostgreSQL-Erreichbarkeit'],['Port 8080 nicht erreichbar','Firewall oder Cloud-Provider-Konfiguration','TCP 8080 eingehend öffnen; Railway/Render/VPS-Port-Einstellungen prüfen'],['Blöcke abgelehnt: kein autorisierter Validator','Validator-Key nicht registriert','Schritt 5b abschließen: Signing-Key auf der Website im Node Guide registrieren']],
       s10:'10. MetaMask-Konfiguration',m10:'Um deinen eigenen Node als RPC-Endpunkt in MetaMask oder einer anderen EVM-kompatiblen Wallet zu verwenden:',mh:['Feld','Wert'],mr:[['Netzwerkname','Aequitas Chain'],['RPC-URL','https://DEINE-NODE-URL/rpc'],['Chain-ID','1926  (hex: 0x786)'],['Währungssymbol','AEQ'],['Dezimalstellen','18'],['Block-Explorer','https://aequitas.digital']],
       foot:'Open Source · Erlaubnisfrei · Keine Admin-Schlüssel · Aequitas Chain V7 · Chain ID 1926',link:'github.com/hanoi96international-gif/Aequitas'},
     es:{title:'Guia del Operador de Nodos Aequitas',sub:'Guia completa paso a paso · Aequitas Chain (Chain ID 1926)',badge:'BETA v0.1 · Codigo Abierto · Sin permisos · Sin stake requerido',
@@ -4758,6 +4843,7 @@ function _buildNodeGuidePDF(lang) {
   h1(c.s6);tx(c.v6);cd(c.vc);
   h1(c.s7);tx(c.p7);cd(c.pa);tx(c.pn);
   h1(c.s8);tx(c.w8);bl(c.b8);
+  if(c.s8b){h1(c.s8b);tx(c.w8b);bl(c.b8b);}
   h1(c.s9);tbl(c.th,c.tr,[52,60,62]);
   h1(c.s10);tx(c.m10);tbl(c.mh,c.mr,[45,129]);
   ck(20);y+=6;
