@@ -103,6 +103,15 @@ p2pNode.SetDAG(bc)
 		}
 	}
 
+	// Save price snapshots every 30 seconds so the chart interval buttons
+	// (1m/5m/30m/1h/4h) show meaningful historical data even without swaps.
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		for range ticker.C {
+			chainState.SavePriceSnapshot()
+		}
+	}()
+
 	// HTTP Block Sync between nodes.
 	// SELF_URL must be set to this node's own public URL so the sync loop
 	// can exclude it from the peer list — without this, a node would try to

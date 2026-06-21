@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -305,21 +306,23 @@ func (a *APIServer) handleLPPosition(w http.ResponseWriter, r *http.Request) {
 		pct = mine / total * 100
 	}
 	reserveAEQ, reserveTUSD := a.state.GetPoolReserves()
+	// Floor to 6 decimal places (not round) to prevent "insufficient balance"
+	// when the user clicks MAX: float division can produce e.g. 99.9999997 which
+	// rounds up to 100.000000 but the actual balance is 99.999999.
+	floorD := func(v float64) float64 {
+		return math.Floor(v*1_000_000) / 1_000_000
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"shares":          mine,
 		"total_shares":    total,
 		"pool_share_pct":  pct,
 		"withdrawable_aeq": func() float64 {
-			if total == 0 {
-				return 0
-			}
-			return reserveAEQ * (mine / total)
+			if total == 0 { return 0 }
+			return floorD(reserveAEQ * (mine / total))
 		}(),
 		"withdrawable_tusd": func() float64 {
-			if total == 0 {
-				return 0
-			}
-			return reserveTUSD * (mine / total)
+			if total == 0 { return 0 }
+			return floorD(reserveTUSD * (mine / total))
 		}(),
 	})
 }
