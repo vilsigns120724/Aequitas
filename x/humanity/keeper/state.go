@@ -301,7 +301,7 @@ return d
 }
 
 func (cs *ChainState) loadFromDB() {
-rows, err := cs.db.Query("SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed FROM chain_accounts")
+rows, err := cs.db.Query("SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, COALESCE(version,0) FROM chain_accounts")
 if err != nil {
 fmt.Printf("⚠ Could not load from DB: %v\n", err)
 return
@@ -312,7 +312,7 @@ mergedCount := 0
 for rows.Next() {
 acc := &AccountState{}
 var bal, tusd, lp float64
-rows.Scan(&acc.Address, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown, &acc.FaucetClaimed)
+rows.Scan(&acc.Address, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown, &acc.FaucetClaimed, &acc.Version)
 acc.Balance = NewDecimal(bal)
 acc.TUsdBalance = NewDecimal(tusd)
 acc.LPShares = NewDecimal(lp)
@@ -1160,10 +1160,26 @@ func (cs *ChainState) savePoolToDB() {
 if !cs.useDB || cs.pool == nil {
 return
 }
-_, err := cs.db.Exec(`UPDATE liquidity_pool SET reserve_aeq = $1, reserve_tusd = $2, total_lp_shares = $3 WHERE id = 1`,
+// Use a transaction so concurrent pool writes are serialized at the DB level.
+// This prevents two nodes from simultaneously distributing UBI or running swaps
+// with stale pool reserves. The WHERE id = 1 ensures we update the single pool row.
+tx, err := cs.db.Begin()
+if err != nil {
+fmt.Printf("[DB] Error starting pool tx: %v\n", err)
+return
+}
+// Lock the pool row for this transaction (other writers block until we commit)
+var dummy int
+tx.QueryRow(`SELECT id FROM liquidity_pool WHERE id = 1 FOR UPDATE`).Scan(&dummy)
+_, err = tx.Exec(`UPDATE liquidity_pool SET reserve_aeq = $1, reserve_tusd = $2, total_lp_shares = $3 WHERE id = 1`,
 cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float(), cs.pool.TotalLPShares.Float())
 if err != nil {
+tx.Rollback()
 fmt.Printf("[DB] Error saving pool: %v\n", err)
+return
+}
+if err := tx.Commit(); err != nil {
+fmt.Printf("[DB] Error committing pool: %v\n", err)
 }
 }
 
@@ -1465,11 +1481,13 @@ for _, a := range addrs {
 acc := cs.accounts[a]
 // Include ALL accounts with non-zero AEQ or tUSD balances (not only humans)
 if acc.IsHuman || acc.Balance > 0 || acc.TUsdBalance > 0 || acc.LPShares > 0 {
-fmt.Fprintf(&sb, "%s:%.6f:%.6f:%.6f:",
+fmt.Fprintf(&sb, "%s:%.6f:%.6f:%.6f:h=%v:t=%d:",
 a,
 round6(acc.Balance.Float()),
 round6(acc.TUsdBalance.Float()),
-round6(acc.LPShares.Float()))
+round6(acc.LPShares.Float()),
+acc.IsHuman,
+acc.LastActivityAt)
 }
 }
 // Include pool state: reserves and total LP shares
@@ -1484,7 +1502,7 @@ nullKeys := make([]string, 0, len(cs.nullifiers))
 for k := range cs.nullifiers { nullKeys = append(nullKeys, k) }
 sort.Strings(nullKeys)
 fmt.Fprintf(&sb, "|n=%d:", len(nullKeys))
-for _, k := range nullKeys { sb.WriteString(k) }
+for _, k := range nullKeys { sb.WriteString(k); sb.WriteString(":"); sb.WriteString(cs.nullifiers[k]) }
 cs.mu.RUnlock()
 hash := sha256.Sum256([]byte(sb.String()))
 return hex.EncodeToString(hash[:])

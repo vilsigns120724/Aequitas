@@ -54,14 +54,23 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 		}
 		fmt.Printf("[DEPLOY] V7 contract version changed (%q → %q) — redeploying with new bytecode...\n",
 			storedVersion, V7ContractVersion)
-		// Before wiping EVM storage, preserve relationship slots that are not
-		// tracked in any Go-state table: escrowOf (slot 5) and the four
-		// guardian-relationship mappings (slots 13-16). We snapshot every
-		// row for those base-slot numbers and hand them to MigrateEVMFromGoState
-		// so they survive the bytecode upgrade.
+		// Before wiping EVM storage: save relationship slots AND the critical
+		// ubiPerHumanAccumulated (slot 3) which is NOT in Go-state. After the
+		// wipe, slot 3 is empty, so MigrateEVMFromGoState would read 0 and set
+		// ubiClaimed=0 for everyone (allowing double-claiming). We save slot 3
+		// here and restore it AFTER migration in evm_storage.go.
+		ubiSlot3Key := common.BigToHash(big.NewInt(3)).Hex()
+		ubiSlot3Val, _ := state.LoadStorageSlot(v7Addr, ubiSlot3Key)
+		if ubiSlot3Val != "" {
+			fmt.Printf("[DEPLOY] Saving ubiPerHumanAccumulated (slot 3) = %s before wipe\n", ubiSlot3Val[:min(16, len(ubiSlot3Val))])
+		}
 		state.SavePreUpgradeRelationshipSlots(v7Addr)
 		state.db.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, v7Addr)
 		state.db.Exec(`DELETE FROM evm_storage WHERE lower(address) = $1`, v7Addr)
+		// Restore slot 3 immediately after wipe so MigrateEVMFromGoState can read it
+		if ubiSlot3Val != "" {
+			state.SaveStorageSlot(v7Addr, ubiSlot3Key, ubiSlot3Val)
+		}
 	} else {
 		fmt.Printf("[DEPLOY] V7 contract not found — deploying from hardcoded bytecode...\n")
 	}

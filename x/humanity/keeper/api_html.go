@@ -735,6 +735,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div id="tab-index" class="tab-content">
 <nav class="stabs">
   <div class="stab active" onclick="showStab('tab-index','eqi-score',this)">📊 Score</div>
+  <div class="stab" onclick="showStab('tab-index','eqi-lorenz',this);setTimeout(drawLorenzCurve,60)">📈 Distribution</div>
   <div class="stab" onclick="showStab('tab-index','eqi-economy',this)">💸 Economy</div>
   <div class="stab" onclick="showStab('tab-index','eqi-story',this)">📖 Story</div>
 </nav>
@@ -828,10 +829,39 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <canvas id="gini-history-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
     <div id="gini-history-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No snapshots yet — first one saved after the next UBI distribution.</div>
   </div>
-  <div class="idx" style="grid-column:1/-1">
-    <div class="idx-title">Lorenz Curve — Wealth Distribution Across Humans</div>
-    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Each point = cumulative % of AEQ held by the poorest X% of humans. The diagonal = perfect equality. The further the curve bows below the diagonal, the higher the Gini.</div>
-    <canvas id="lorenz-chart" height="270" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
+</div>
+</div>
+<div id="eqi-lorenz" class="stab-panel">
+<div style="padding:24px 20px;max-width:1100px;margin:0 auto">
+  <div style="margin-bottom:20px">
+    <div style="font-size:0.58rem;color:var(--purple);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:6px">Wealth Distribution Analysis</div>
+    <div style="font-size:1.3rem;font-weight:800;color:var(--text);letter-spacing:-0.5px;margin-bottom:10px">Lorenz Curve — AEQ Distribution Across Humans</div>
+    <div style="font-size:0.68rem;color:var(--muted);line-height:1.9;max-width:780px">
+      The <strong style="color:var(--text)">Lorenz Curve</strong> visualizes how AEQ wealth is distributed among registered humans. The <span style="color:var(--purple)">diagonal line = perfect equality</span> — every human holds the same share. The further the gold curve bows <em>below</em> the diagonal, the more unequal the distribution. Reference curves show inequality in real countries. Aequitas targets a Gini coefficient <span style="color:var(--neon)">below 0.35</span> — comparable to Scandinavia.
+    </div>
+  </div>
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px">
+    <canvas id="lorenz-chart" height="400" style="width:100%;border-radius:6px;background:#0D1020;display:block"></canvas>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+    <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center">
+      <div style="font-size:0.57rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Aequitas Now</div>
+      <div id="lorenz-gini-val" style="font-size:1.4rem;font-weight:800;color:var(--neon);font-family:var(--font-mono)">—</div>
+      <div style="font-size:0.58rem;color:var(--muted);margin-top:4px">Gini coefficient (0–1)</div>
+    </div>
+    <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center">
+      <div style="font-size:0.57rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Target</div>
+      <div style="font-size:1.4rem;font-weight:800;color:var(--purple);font-family:var(--font-mono)">&lt; 0.35</div>
+      <div style="font-size:0.58rem;color:var(--muted);margin-top:4px">Like Scandinavia (~0.27)</div>
+    </div>
+    <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center">
+      <div style="font-size:0.57rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Bitcoin Gini</div>
+      <div style="font-size:1.4rem;font-weight:800;color:var(--red);font-family:var(--font-mono)">~0.85</div>
+      <div style="font-size:0.58rem;color:var(--muted);margin-top:4px">Most unequal currency ever</div>
+    </div>
+  </div>
+  <div style="background:var(--card2);border:1px solid rgba(155,114,246,0.2);border-radius:var(--radius-sm);padding:14px;font-size:0.62rem;color:var(--muted);line-height:1.85">
+    <strong style="color:var(--purple)">How to read this chart:</strong> The X-axis shows the population from poorest (left) to richest (right). The Y-axis shows cumulative AEQ wealth. A point at (50%, 50%) = the poorest half of humans hold exactly half the AEQ. In perfect equality, the curve IS the diagonal. Aequitas enforces equality through automatic wealth cap, demurrage (0.5%/month decay), and daily UBI redistribution — keeping the curve close to the diagonal as the network grows.
   </div>
 </div>
 </div>
@@ -3318,11 +3348,12 @@ function showStab(parentId, stabId, el) {
   parent.querySelectorAll('.stab').forEach(s => s.classList.remove('active'));
   document.getElementById(stabId).classList.add('active');
   el.classList.add('active');
-  if (stabId === 'eqi-score') { setTimeout(function(){ drawGiniHistoryChart(); drawLorenzCurve(); }, 30); }
+  if (stabId === 'eqi-score') { setTimeout(function(){ drawGiniHistoryChart(); }, 30); }
+  if (stabId === 'eqi-lorenz') { setTimeout(drawLorenzCurve, 30); }
   if (stabId === 'eqi-economy') { setTimeout(drawWcapSlideChart, 30); }
   // Push sub-route URL
   const tabSlugMap = {'tab-register':'register','tab-explorer':'explorer','tab-index':'index','tab-network':'network','tab-exchange':'exchange'};
-  const stabSlugMap = {'sep-blocks':'blocks','sep-humans':'humans','eqi-score':'score','eqi-economy':'economy','eqi-charts':'charts','net-overview':'overview','net-runnode':'node','net-protocol':'protocol','exch-swap':'swap','exch-liquidity':'liquidity'};
+  const stabSlugMap = {'sep-blocks':'blocks','sep-humans':'humans','eqi-score':'score','eqi-lorenz':'distribution','eqi-economy':'economy','eqi-charts':'charts','net-overview':'overview','net-runnode':'node','net-protocol':'protocol','exch-swap':'swap','exch-liquidity':'liquidity'};
   const tabSlug = tabSlugMap[parentId];
   const stabSlug = stabSlugMap[stabId];
   if (tabSlug && stabSlug) history.pushState(null, '', '/' + tabSlug + '/' + stabSlug);
@@ -3687,6 +3718,10 @@ async function drawLorenzCurve() {
       A += (lorenz[i].x - lorenz[i-1].x) * (lorenz[i].y + lorenz[i-1].y) / 2;
     }
     var gini = Math.max(0, 1 - 2*A); // 0-1 scale
+    // Update the stat box above the chart
+    var giniEl = document.getElementById('lorenz-gini-val');
+    if (giniEl) giniEl.textContent = gini.toFixed(4);
+    if (giniEl) giniEl.style.color = gini < 0.35 ? '#34D399' : gini < 0.60 ? '#F0B429' : '#F87171';
 
     // ── GRID ──────────────────────────────────────────────────────────────
     ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = 1;
@@ -4617,7 +4652,7 @@ function activateTabFromPath(path) {
   // Activate stab-panel: use URL slug if present, otherwise first panel
   const stabMap = {
     explorer:  {blocks:'sep-blocks', humans:'sep-humans'},
-    index:     {score:'eqi-score', economy:'eqi-economy', charts:'eqi-charts'},
+    index:     {score:'eqi-score', distribution:'eqi-lorenz', economy:'eqi-economy', charts:'eqi-charts'},
     network:   {overview:'net-overview', node:'net-runnode', protocol:'net-protocol'},
     exchange:  {swap:'exch-swap', liquidity:'exch-liquidity'}
   };

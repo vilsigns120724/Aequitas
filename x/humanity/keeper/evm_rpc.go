@@ -11,6 +11,8 @@ import (
 "strings"
 "sync"
 
+"github.com/ethereum/go-ethereum/crypto"
+
 "github.com/ethereum/go-ethereum/common"
 "github.com/ethereum/go-ethereum/core/types"
 "github.com/ethereum/go-ethereum/rlp"
@@ -493,7 +495,11 @@ if isV7 && !knownPublicSelectors[sel] {
 // relayer itself (i.e. called internally by /api/register). External wallets
 // must go through /api/register so Go-state is updated atomically.
 if sel == "33f4167a" {
+// Derive relayer from RELAYER_ADDRESS; fallback to signing key address
 relayerAddr := strings.ToLower(os.Getenv("RELAYER_ADDRESS"))
+if relayerAddr == "" && s.dag != nil && s.dag.GetSigningKey() != nil {
+relayerAddr = strings.ToLower(crypto.PubkeyToAddress(s.dag.GetSigningKey().PublicKey).Hex())
+}
 if relayerAddr == "" || strings.ToLower(senderAddr) != relayerAddr {
 return nil, &RPCError{Code: -32603, Message: "registerWithSig must be called via /api/register (direct RPC calls bypass Go-state updates)"}
 }
