@@ -365,7 +365,7 @@ txHash := tx.Hash().Hex() // already has 0x prefix
 fmt.Printf("[RPC] eth_sendRawTransaction hash=%s from=%s to=%v data=%d bytes\n",
 txHash, senderAddr, tx.To(), len(tx.Data()))
 
-// ── SIMPLE AEQ TRANSFER ──────────────────────────────────────────────────
+// ── SIMPLE AEQ TRANSFER (native value transfer, no calldata) ─────────────
 if tx.To() != nil && len(tx.Data()) == 0 && tx.Value().Sign() > 0 {
 toAddr := strings.ToLower(tx.To().Hex())
 decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
@@ -374,11 +374,36 @@ valueFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(tx.Value()), decimals)
 if err := s.state.Transfer(senderAddr, toAddr, valueFloat); err != nil {
 return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 }
+// Sync updated balances to EVM storage so both ledgers agree.
+s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
 fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
 
 // Update nonce
 s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
 s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
+return txHash, nil
+}
+
+// ── EVM TOKEN TRANSFER INTERCEPTION (AEQ V7, selector a9059cbb) ──────────
+// Route transfer(address,uint256) calls to the V7 contract through Go state
+// so both ledgers stay in sync (Go state is authoritative for balances).
+if tx.To() != nil && len(tx.Data()) >= 68 &&
+strings.ToLower(tx.To().Hex()) == strings.ToLower(V7_CONTRACT_ADDR) &&
+hex.EncodeToString(tx.Data()[:4]) == "a9059cbb" {
+toBytes := tx.Data()[16:36]
+toAddr := strings.ToLower(common.BytesToAddress(toBytes).Hex())
+amountBig := new(big.Int).SetBytes(tx.Data()[36:68])
+decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountBig), decimals).Float64()
+
+if err := s.state.Transfer(senderAddr, toAddr, amountFloat); err != nil {
+return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
+}
+s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
+s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
+s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
+s.txStatus[txHash] = true
+fmt.Printf("[RPC] ✓ Token transfer %.4f AEQ: %s → %s (via Go state)\n", amountFloat, senderAddr, toAddr)
 return txHash, nil
 }
 

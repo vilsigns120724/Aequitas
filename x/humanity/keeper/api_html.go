@@ -4405,11 +4405,27 @@ async function doRegister() {
     // commitment is pubSignals[0] — must match exactly what the contract reads
     const commitment = proofData.pubSignals[0];
 
+    // Compute nullifier FIRST — it must be included in the signed message so the
+    // relayer cannot substitute a different nullifier after the user has signed.
+    // nullifier = SHA256(bioHash + ":aequitas-ubi-v1")
+    let nullifier = '';
+    const bioHashForNullifier = pendingBioHash || proofData.bioHashKey || '';
+    if (bioHashForNullifier) {
+      const enc = new TextEncoder();
+      const buf = await crypto.subtle.digest('SHA-256', enc.encode(bioHashForNullifier + ':aequitas-ubi-v1'));
+      nullifier = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    if (!nullifier) {
+      addLog('Error: biometric hash unavailable — cannot compute nullifier', 'err');
+      document.getElementById('btn-reg').disabled = false;
+      return;
+    }
+
     // Build the EXACT same hash the contract computes:
-    // keccak256(abi.encodePacked(block.chainid, address(this), "register", commitment))
+    // keccak256(abi.encodePacked(block.chainid, address(this), "register", commitment, nullifier))
     const messageHash = ethers.solidityPackedKeccak256(
-      ['uint256', 'address', 'string', 'uint256'],
-      [1926, V7_CONTRACT, 'register', commitment]
+      ['uint256', 'address', 'string', 'uint256', 'bytes32'],
+      [1926, V7_CONTRACT, 'register', commitment, '0x' + nullifier]
     );
 
     addLog('Please sign the message in MetaMask to prove this wallet is yours (no gas, no cost)...', 'info');
@@ -4418,16 +4434,6 @@ async function doRegister() {
       method: 'personal_sign',
       params: [messageHash, waddr]
     });
-
-    // Compute nullifier = SHA256(bioHash + ":aequitas-ubi-v1")
-    // Stored on-chain to prevent the same biometric registering a second wallet.
-    let nullifier = '';
-    const bioHashForNullifier = pendingBioHash || proofData.bioHashKey || '';
-    if (bioHashForNullifier) {
-      const enc = new TextEncoder();
-      const buf = await crypto.subtle.digest('SHA-256', enc.encode(bioHashForNullifier + ':aequitas-ubi-v1'));
-      nullifier = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-    }
 
     addLog('Registering on Aequitas V7...', 'info');
     const r = await fetch('/api/register', {
