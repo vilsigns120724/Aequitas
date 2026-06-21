@@ -3923,14 +3923,15 @@ async function doSwap() {
 
   document.getElementById('swap-btn-go').disabled = true;
   try {
-    const message = 'Aequitas Swap: ' + swapDirection + ' ' + amount.toFixed(8);
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = 'Aequitas Swap: ' + swapDirection + ' ' + amount.toFixed(8) + ' ts:' + timestamp;
     swapLog('Sign the message in MetaMask to confirm this swap...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/swap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount, signature })
+      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount, timestamp, signature })
     });
     const data = await resp.json();
     if (data.success) {
@@ -3999,14 +4000,15 @@ async function doAddLiquidity() {
 
   document.getElementById('swap-btn-addliq').disabled = true;
   try {
-    const message = 'Aequitas Add Liquidity: ' + amountAEQ.toFixed(8) + ' AEQ + ' + amountTUSD.toFixed(8) + ' tUSD';
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = 'Aequitas Add Liquidity: ' + amountAEQ.toFixed(8) + ' AEQ + ' + amountTUSD.toFixed(8) + ' tUSD ts:' + timestamp;
     swapLog('Sign the message in MetaMask to confirm this deposit...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/add-liquidity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, amount_aeq: amountAEQ, amount_tusd: amountTUSD, signature })
+      body: JSON.stringify({ wallet: swapWaddr, amount_aeq: amountAEQ, amount_tusd: amountTUSD, timestamp, signature })
     });
     const data = await resp.json();
     if (data.success) {
@@ -4090,14 +4092,15 @@ async function doRemoveLiquidity() {
 
   document.getElementById('swap-btn-removeliq').disabled = true;
   try {
-    const message = 'Aequitas Remove Liquidity: ' + sharesToBurn.toFixed(8) + ' shares';
+    const timestamp = Math.floor(Date.now() / 1000);
+    const message = 'Aequitas Remove Liquidity: ' + sharesToBurn.toFixed(8) + ' shares ts:' + timestamp;
     swapLog('Sign the message in MetaMask to confirm this withdrawal...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/remove-liquidity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, shares: sharesToBurn, signature })
+      body: JSON.stringify({ wallet: swapWaddr, shares: sharesToBurn, timestamp, signature })
     });
     const data = await resp.json();
     if (data.success) {

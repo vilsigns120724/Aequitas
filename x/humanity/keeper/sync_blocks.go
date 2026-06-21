@@ -54,14 +54,16 @@ go dag.syncWithNode(nodeURL)
 }
 }
 
+var httpSyncClient = &http.Client{Timeout: 30 * time.Second}
+
 func (dag *BlockDAG) syncWithNode(nodeURL string) {
 ticker := time.NewTicker(6 * time.Second)
 for range ticker.C {
-resp, err := http.Get(nodeURL + "/api/blocks")
+resp, err := httpSyncClient.Get(nodeURL + "/api/blocks")
 if err != nil {
 continue
 }
-body, _ := io.ReadAll(resp.Body)
+body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB response cap
 resp.Body.Close()
 
 var blocks []*Block

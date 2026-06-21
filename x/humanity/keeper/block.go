@@ -332,30 +332,13 @@ tips = append(tips, hash)
 return tips
 }
 
+// ReconstructState is a no-op: the PostgreSQL database is the authoritative
+// source of truth and is already loaded by ChainState.LoadFromDB() before
+// this is called. Replaying register_human transactions from peer blocks
+// is unsafe — even an authorized proposer could inject entries without a
+// valid ZK proof, nullifier, or wallet signature. All valid registrations
+// go through the API (persistRegisterWithSigMirror) which writes to the
+// DB immediately, so no block-replay reconstruction is ever needed.
 func (dag *BlockDAG) ReconstructState(state *ChainState) {
-dag.mu.RLock()
-defer dag.mu.RUnlock()
-
-count := 0
-for _, block := range dag.blocks {
-	// Only replay transactions from authorized validators. Unsigned/unknown
-	// proposers could have injected register_human entries via forged blocks.
-	if !block.IsGenesis {
-		proposer := strings.ToLower(block.Proposer)
-		if !dag.authorizedValidators[proposer] {
-			continue
-		}
-	}
-	for _, tx := range block.Transactions {
-		if tx.Type == "register_human" && tx.Wallet != "" {
-			if !state.IsHuman(tx.Wallet) {
-				state.RegisterHuman(tx.Wallet)
-				count++
-			}
-		}
-	}
-}
-if count > 0 {
-fmt.Printf("[CHAIN] ✓ Reconstructed %d registrations from blockchain\n", count)
-}
+	fmt.Printf("[CHAIN] State loaded from DB — skipping block-replay reconstruction\n")
 }

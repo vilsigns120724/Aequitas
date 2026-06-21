@@ -54,6 +54,7 @@ w.WriteHeader(200)
 return
 }
 
+r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit — prevents memory exhaustion via /rpc
 body, err := io.ReadAll(r.Body)
 if err != nil {
 writeError(w, -32700, "Parse error", nil)

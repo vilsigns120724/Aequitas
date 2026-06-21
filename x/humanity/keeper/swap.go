@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -60,7 +61,8 @@ type SwapRequest struct {
 	Wallet    string  `json:"wallet"`
 	Direction string  `json:"direction"` // "aeq_to_tusd" or "tusd_to_aeq"
 	Amount    float64 `json:"amount"`
-	Signature string  `json:"signature"` // personal_sign over a fixed message, see below
+	Timestamp int64   `json:"timestamp"` // Unix seconds — included in signed message to prevent replay
+	Signature string  `json:"signature"`
 }
 
 type SwapResponse struct {
@@ -86,6 +88,7 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10) // 64 KB
 	body, _ := io.ReadAll(r.Body)
 	var req SwapRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -102,13 +105,15 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: "direction must be aeq_to_tusd or tusd_to_aeq"})
 		return
 	}
+	// Reject stale or future-dated requests to prevent replay attacks.
+	// The timestamp is part of the signed message, so an attacker cannot
+	// strip or change it without invalidating the signature.
+	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 300 {
+		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: "request expired or timestamp out of range"})
+		return
+	}
 
-	// The signed message is fixed and predictable from the request fields
-	// themselves, so the wallet owner is explicitly confirming THIS exact
-	// swap (amount + direction) — not just proving generic wallet
-	// ownership, which could otherwise be replayed against a different
-	// amount.
-	message := fmt.Sprintf("Aequitas Swap: %s %.8f", req.Direction, req.Amount)
+	message := fmt.Sprintf("Aequitas Swap: %s %.8f ts:%d", req.Direction, req.Amount, req.Timestamp)
 	if err := verifyPersonalSign(message, req.Signature, wallet); err != nil {
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return
@@ -141,6 +146,7 @@ type AddLiquidityRequest struct {
 	Wallet     string  `json:"wallet"`
 	AmountAEQ  float64 `json:"amount_aeq"`
 	AmountTUSD float64 `json:"amount_tusd"`
+	Timestamp  int64   `json:"timestamp"`
 	Signature  string  `json:"signature"`
 }
 
@@ -164,6 +170,7 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	body, _ := io.ReadAll(r.Body)
 	var req AddLiquidityRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -176,8 +183,12 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: "wallet and positive amounts required"})
 		return
 	}
+	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 300 {
+		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: "request expired or timestamp out of range"})
+		return
+	}
 
-	message := fmt.Sprintf("Aequitas Add Liquidity: %.8f AEQ + %.8f tUSD", req.AmountAEQ, req.AmountTUSD)
+	message := fmt.Sprintf("Aequitas Add Liquidity: %.8f AEQ + %.8f tUSD ts:%d", req.AmountAEQ, req.AmountTUSD, req.Timestamp)
 	if err := verifyPersonalSign(message, req.Signature, wallet); err != nil {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return
@@ -194,9 +205,10 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 // ── REMOVE LIQUIDITY ─────────────────────────────────────────────────────
 
 type RemoveLiquidityRequest struct {
-	Wallet      string  `json:"wallet"`
-	SharesToBurn float64 `json:"shares"` // pass the full LP share balance to withdraw everything
-	Signature   string  `json:"signature"`
+	Wallet       string  `json:"wallet"`
+	SharesToBurn float64 `json:"shares"`
+	Timestamp    int64   `json:"timestamp"`
+	Signature    string  `json:"signature"`
 }
 
 type RemoveLiquidityResponse struct {
@@ -221,6 +233,7 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	body, _ := io.ReadAll(r.Body)
 	var req RemoveLiquidityRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -233,8 +246,12 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "wallet and positive shares required"})
 		return
 	}
+	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 300 {
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "request expired or timestamp out of range"})
+		return
+	}
 
-	message := fmt.Sprintf("Aequitas Remove Liquidity: %.8f shares", req.SharesToBurn)
+	message := fmt.Sprintf("Aequitas Remove Liquidity: %.8f shares ts:%d", req.SharesToBurn, req.Timestamp)
 	if err := verifyPersonalSign(message, req.Signature, wallet); err != nil {
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return

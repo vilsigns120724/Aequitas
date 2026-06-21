@@ -185,13 +185,13 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 		}
 	}
 
-	// usedCommitments (slot 7): commitment → true
-	rows2, err2 := cs.db.Query(`SELECT commitment FROM bio_registrations`)
+	// usedCommitments (slot 7) + commitmentOf (slot 9): from bio_registrations
+	rows2, err2 := cs.db.Query(`SELECT commitment, wallet_address FROM bio_registrations`)
 	if err2 == nil {
 		defer rows2.Close()
 		for rows2.Next() {
-			var commitment string
-			rows2.Scan(&commitment)
+			var commitment, wallet string
+			rows2.Scan(&commitment, &wallet)
 			commitBig, ok := new(big.Int).SetString(strings.TrimPrefix(commitment, "0x"), 10)
 			if !ok {
 				commitBig, ok = new(big.Int).SetString(strings.TrimPrefix(commitment, "0x"), 16)
@@ -199,10 +199,29 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 			if !ok || commitBig == nil {
 				continue
 			}
-			commitSlot := mappingSlot(common.LeftPadBytes(commitBig.Bytes(), 32), 7)
-			cs.SaveStorageSlot(contractAddr, commitSlot.Hex(), common.HexToHash("0x01").Hex())
+			// usedCommitments[commitment] = true (slot 7)
+			commitSlot7 := mappingSlot(common.LeftPadBytes(commitBig.Bytes(), 32), 7)
+			cs.SaveStorageSlot(contractAddr, commitSlot7.Hex(), common.HexToHash("0x01").Hex())
+			// commitmentOf[wallet] = commitment (slot 9)
+			if wallet != "" {
+				commitSlot9 := mappingSlot(common.HexToAddress(wallet).Bytes(), 9)
+				cs.SaveStorageSlot(contractAddr, commitSlot9.Hex(), common.BigToHash(commitBig).Hex())
+			}
 		}
 	}
+
+	// lastActivity (slot 10) + lastDemurrage (slot 11): from chain_accounts
+	cs.mu.RLock()
+	for addr, acc := range cs.accounts {
+		if acc.LastActivityAt == 0 {
+			continue
+		}
+		ts := big.NewInt(acc.LastActivityAt)
+		addrBytes := common.HexToAddress(addr).Bytes()
+		cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 10).Hex(), common.BigToHash(ts).Hex())
+		cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 11).Hex(), common.BigToHash(ts).Hex())
+	}
+	cs.mu.RUnlock()
 
 	fmt.Printf("[MIGRATE] ✓ EVM storage rebuilt: %d humans, %.2f AEQ total supply\n", totalHumans, totalSupply)
 }

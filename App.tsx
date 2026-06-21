@@ -141,7 +141,11 @@ export default function App() {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
-        const resp = await fetch(`${WEBAPP}/api/check-registration-by-biohash?bioHash=${bioHash}`);
+        const resp = await fetch(`${WEBAPP}/api/check-registration-by-biohash`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bioHash })
+        });
         const data = await resp.json();
         if (data.registered && data.is_human) {
           clearInterval(pollRef.current);
@@ -301,7 +305,11 @@ export default function App() {
         const proofCheckData = await proofCheckResp.json();
         if (proofCheckData.registered) {
           // Bio hash is already in use — check if it's registered on chain
-          const chainResp = await fetch(`${WEBAPP}/api/check-registration-by-biohash?bioHash=${hashNum.toString()}`);
+          const chainResp = await fetch(`${WEBAPP}/api/check-registration-by-biohash`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bioHash: hashNum.toString() })
+          });
           const chainData = await chainResp.json();
           if (chainData.registered && chainData.is_human) {
             addLog('✓ Already registered on Aequitas Chain!', 'success');
@@ -323,7 +331,11 @@ export default function App() {
 
       // Check 2: ask chain API directly
       try {
-        const checkResp = await fetch(`${WEBAPP}/api/check-registration-by-biohash?bioHash=${hashNum.toString()}`);
+        const checkResp = await fetch(`${WEBAPP}/api/check-registration-by-biohash`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bioHash: hashNum.toString() })
+        });
         const checkData = await checkResp.json();
         if (checkData.registered && checkData.is_human) {
           addLog('✓ Already registered on Aequitas Chain!', 'success');

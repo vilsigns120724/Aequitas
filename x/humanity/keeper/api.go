@@ -264,8 +264,21 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 func (a *APIServer) handleCheckRegistrationByBioHash(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
+w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+if r.Method == "OPTIONS" { w.WriteHeader(200); return }
 
-bioHash := r.URL.Query().Get("bioHash")
+// Accept bioHash via POST body (preferred — keeps biometric identifier
+// out of server logs) or GET query string (legacy, for old app builds).
+var bioHash string
+if r.Method == "POST" {
+r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+var body struct{ BioHash string `json:"bioHash"` }
+json.NewDecoder(r.Body).Decode(&body)
+bioHash = body.BioHash
+} else {
+bioHash = r.URL.Query().Get("bioHash")
+}
 if bioHash == "" {
 json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
 return
