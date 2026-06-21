@@ -482,15 +482,25 @@ if r.Method == "OPTIONS" { w.WriteHeader(200); return }
 var req struct {
 URL            string `json:"url"`
 SigningAddress string `json:"signing_address"`
+PeerSecret     string `json:"peer_secret"`
 }
 r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 json.NewDecoder(r.Body).Decode(&req)
-if req.URL != "" {
+
+// Validate URL before registering: must be HTTPS and not a private/internal address.
+if req.URL != "" && isAllowedPeerURL(req.URL) {
 GlobalPeerRegistry.Register(req.URL)
 fmt.Printf("[PEERS] Registered: %s\n", req.URL)
 a.blockchain.startSyncForPeer(req.URL)
+} else if req.URL != "" {
+fmt.Printf("[PEERS] Rejected peer URL (must be public HTTPS): %s\n", req.URL)
 }
-if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && strings.HasPrefix(addr, "0x") && len(addr) == 42 {
+
+// Only authorize the signing address if PEER_SECRET matches.
+// Without this check, any public caller could add themselves as validator.
+peerSecret := os.Getenv("PEER_SECRET")
+secretOK := peerSecret != "" && req.PeerSecret == peerSecret
+if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && strings.HasPrefix(addr, "0x") && len(addr) == 42 && secretOK {
 a.blockchain.mu.Lock()
 if !a.blockchain.authorizedValidators[addr] {
 a.blockchain.authorizedValidators[addr] = true
@@ -501,16 +511,10 @@ for v := range a.blockchain.authorizedValidators {
 validators = append(validators, v)
 }
 a.blockchain.mu.Unlock()
-json.NewEncoder(w).Encode(map[string]interface{}{
-"peers":      GlobalPeerRegistry.AllPeers(),
-"validators": validators,
-})
+json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": validators})
 return
 }
-json.NewEncoder(w).Encode(map[string]interface{}{
-"peers":      GlobalPeerRegistry.AllPeers(),
-"validators": []string{},
-})
+json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": []string{}})
 }
 
 // handlePeers returns the list of all known peer nodes.

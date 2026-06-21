@@ -119,8 +119,9 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return
 	}
-	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
-		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: err.Error()})
+	// Verify nonce is correct before attempting the swap (read-only check).
+	if a.state.GetSwapNonce(wallet) != req.Nonce {
+		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: fmt.Sprintf("nonce %d already used or invalid", req.Nonce)})
 		return
 	}
 
@@ -132,8 +133,13 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		amountOut, err = a.state.SwapTUSDForAEQ(wallet, req.Amount)
 	}
 	if err != nil {
+		// Swap failed (e.g. insufficient balance) — do NOT consume nonce so user can retry.
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: err.Error()})
 		return
+	}
+	// Swap succeeded — atomically consume nonce now.
+	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
+		fmt.Printf("[SWAP] Warning: nonce consume after successful swap failed for %s: %v\n", wallet, err)
 	}
 
 	json.NewEncoder(w).Encode(SwapResponse{
@@ -199,16 +205,17 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return
 	}
-	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
-		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
+	if a.state.GetSwapNonce(wallet) != req.Nonce {
+		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: fmt.Sprintf("nonce %d already used or invalid", req.Nonce)})
 		return
 	}
-
 	if err := a.state.AddLiquidity(wallet, req.AmountAEQ, req.AmountTUSD); err != nil {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
-
+	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
+		fmt.Printf("[LIQUIDITY] Warning: nonce consume after add-liquidity failed for %s: %v\n", wallet, err)
+	}
 	json.NewEncoder(w).Encode(AddLiquidityResponse{Success: true, Message: "liquidity added"})
 }
 
@@ -267,17 +274,18 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return
 	}
-	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
-		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
+	if a.state.GetSwapNonce(wallet) != req.Nonce {
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: fmt.Sprintf("nonce %d already used or invalid", req.Nonce)})
 		return
 	}
-
 	outAEQ, outTUSD, err := a.state.RemoveLiquidity(wallet, req.SharesToBurn)
 	if err != nil {
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
-
+	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
+		fmt.Printf("[LIQUIDITY] Warning: nonce consume after remove-liquidity failed for %s: %v\n", wallet, err)
+	}
 	json.NewEncoder(w).Encode(RemoveLiquidityResponse{
 		Success:    true,
 		Message:    "liquidity removed",

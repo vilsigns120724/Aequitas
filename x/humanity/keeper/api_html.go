@@ -130,6 +130,9 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .idx{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--glow-purple);transition:border-color 0.25s,box-shadow 0.25s}
 .idx:hover{border-color:rgba(139,92,246,0.32);box-shadow:0 0 30px rgba(139,92,246,0.18)}
 .idx-title{font-size:0.6rem;color:var(--purple);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;font-weight:700;display:flex;align-items:center;gap:8px}
+.ci-btn{padding:2px 8px;font-size:0.58rem;font-family:JetBrains Mono,monospace;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);color:var(--muted);border-radius:4px;cursor:pointer;transition:all .15s}
+.ci-btn:hover{background:rgba(139,92,246,0.18);color:#c4b5fd}
+.ci-btn.ci-active{background:rgba(139,92,246,0.22);border-color:rgba(139,92,246,0.6);color:#c4b5fd}
 .idx-title::before{content:'';display:inline-block;width:3px;height:12px;background:linear-gradient(180deg,var(--purple),var(--teal));border-radius:2px;flex-shrink:0}
 .idx-desc{font-size:0.67rem;color:var(--muted);line-height:1.8;margin-bottom:16px}
 .idx-big{font-size:2.8rem;font-weight:900;line-height:1;font-family:var(--font-display);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
@@ -565,6 +568,14 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="idx">
     <div class="idx-title">AEQ / tUSD — Live Price</div>
     <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.</div>
+    <div style="display:flex;gap:4px;margin-bottom:6px">
+      <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn ci-active">1m</button>
+      <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn">5m</button>
+      <button onclick="setChartInterval(1800000)" id="ci-30m" class="ci-btn">30m</button>
+      <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn">1h</button>
+      <button onclick="setChartInterval(14400000)" id="ci-4h" class="ci-btn">4h</button>
+      <button onclick="setChartInterval(0)" id="ci-all" class="ci-btn">All</button>
+    </div>
     <canvas id="price-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
     <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No pool data yet — add liquidity to see the price chart.</div>
   </div>
@@ -3471,7 +3482,14 @@ function drawPriceChart() {
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
   const pad = {l:58, r:24, t:36, b:36};
-  const pts = priceHistory;
+  const now = Date.now();
+  const pts = chartIntervalMs > 0
+    ? priceHistory.filter(function(p){ return now - p.t <= chartIntervalMs; })
+    : priceHistory;
+  if (!pts.length) {
+    ctx.fillStyle='rgba(139,92,246,0.5)'; ctx.font='11px Inter,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('No data for this interval yet', W/2, H/2); return;
+  }
   const prices = pts.map(function(p){return p.p;});
   const minP = Math.min.apply(null,prices), maxP = Math.max.apply(null,prices);
   const range = maxP - minP || minP * 0.01 || 0.0001;
@@ -3623,6 +3641,18 @@ let currentPoolTUSD = 0;
 let myAEQBalance = 0;
 let myTUSDBalance = 0;
 let priceHistory = [];
+let chartIntervalMs = 60000; // default: 1 minute
+
+function setChartInterval(ms) {
+  chartIntervalMs = ms;
+  const ids = ['ci-1m','ci-5m','ci-30m','ci-1h','ci-4h','ci-all'];
+  const vals = [60000,300000,1800000,3600000,14400000,0];
+  ids.forEach(function(id,i){
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('ci-active', vals[i] === ms);
+  });
+  drawPriceChart();
+}
 
 function swapLog(msg, type) {
   const el = document.getElementById('swap-log');

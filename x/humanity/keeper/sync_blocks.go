@@ -5,7 +5,9 @@ import (
 "encoding/json"
 "fmt"
 "io"
+"net"
 "net/http"
+"net/url"
 "os"
 "strings"
 "sync"
@@ -65,17 +67,24 @@ return result
 
 var httpSyncClient = &http.Client{Timeout: 30 * time.Second}
 
+const maxSyncPeers = 20
+
 // startSyncForPeer starts a long-running syncWithNode goroutine for peerURL.
-// If a goroutine is already running for that URL, this is a no-op.
+// No-op if already syncing that URL or if the peer cap is reached.
 func (dag *BlockDAG) startSyncForPeer(peerURL string) {
 peerURL = strings.TrimRight(peerURL, "/")
+if !isAllowedPeerURL(peerURL) {
+fmt.Printf("[PEERS] Rejected peer URL (must be public HTTPS): %s\n", peerURL)
+return
+}
 dag.syncPeerMu.Lock()
 already := dag.activeSyncPeers[peerURL]
-if !already {
+tooMany := len(dag.activeSyncPeers) >= maxSyncPeers
+if !already && !tooMany {
 dag.activeSyncPeers[peerURL] = true
 }
 dag.syncPeerMu.Unlock()
-if already {
+if already || tooMany {
 return
 }
 go func() {
@@ -181,6 +190,7 @@ signerAddr = strings.ToLower(crypto.PubkeyToAddress(dag.signingKey.PublicKey).He
 body, _ := json.Marshal(map[string]string{
 "url":             selfURL,
 "signing_address": signerAddr,
+"peer_secret":     os.Getenv("PEER_SECRET"),
 })
 resp, err := httpSyncClient.Post(
 primaryURL+"/api/peers/register", "application/json", bytes.NewReader(body))
@@ -215,6 +225,26 @@ continue
 GlobalPeerRegistry.Register(peer)
 dag.startSyncForPeer(peer)
 }
+}
+
+// isAllowedPeerURL returns true only for HTTPS URLs pointing at public hosts.
+// Rejects HTTP, loopback (127.x), link-local, and RFC-1918 private ranges to
+// prevent SSRF where an attacker registers an internal URL as a peer.
+func isAllowedPeerURL(rawURL string) bool {
+u, err := url.Parse(rawURL)
+if err != nil || u.Scheme != "https" || u.Host == "" {
+return false
+}
+host := u.Hostname()
+ip := net.ParseIP(host)
+if ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
+return false
+}
+// Block numeric localhost variants
+if host == "0.0.0.0" || host == "[::]" {
+return false
+}
+return true
 }
 
 // staticPeers reads the PEER_NODES env var for backwards compatibility.
