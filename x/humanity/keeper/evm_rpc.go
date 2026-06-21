@@ -216,13 +216,16 @@ var addr string
 json.Unmarshal(params[0], &addr)
 addr = strings.ToLower(addr)
 
-// DB is source of truth
+// Read DB outside the lock (avoids blocking other goroutines on a DB call).
 dbNonce := s.state.LoadNonce(addr)
-memNonce := s.nonces[addr]
-if dbNonce > memNonce {
+// Lock only for the map read/write — brief critical section.
+s.mu.Lock()
+if dbNonce > s.nonces[addr] {
 s.nonces[addr] = dbNonce
 }
-return fmt.Sprintf("0x%x", s.nonces[addr]), nil
+result := s.nonces[addr]
+s.mu.Unlock()
+return fmt.Sprintf("0x%x", result), nil
 }
 
 func (s *EVMRPCServer) getBalance(params []json.RawMessage) (interface{}, *RPCError) {
@@ -400,8 +403,9 @@ decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18
 valueFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(tx.Value()), decimals).Float64()
 
 if err := s.state.Transfer(senderAddr, toAddr, valueFloat); err != nil {
-// Restore nonce so the user can fix and retry.
-s.mu.Lock(); s.nonces[senderAddr] = storedNonce; s.state.SaveNonce(senderAddr, storedNonce); s.mu.Unlock()
+// Nonce is NOT restored: once reserved it is consumed (matches EVM
+// semantics where a failed tx still increments the account nonce).
+// The caller must sign a new tx with nonce+1.
 return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 }
 // Sync updated balances to EVM storage so both ledgers agree.
@@ -423,7 +427,6 @@ decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18
 amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountBig), decimals).Float64()
 
 if err := s.state.Transfer(senderAddr, toAddr, amountFloat); err != nil {
-s.mu.Lock(); s.nonces[senderAddr] = storedNonce; s.state.SaveNonce(senderAddr, storedNonce); s.mu.Unlock()
 return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 }
 s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
@@ -464,11 +467,8 @@ s.evm.LoadContractStorage(toAddr)
 // transaction submitted via sendRawTransaction — the one place where a
 // state change should genuinely be written to PostgreSQL.
 result, callErr := s.evm.CallContract(sender, toAddr, tx.Data(), tx.Value(), true)
-
-// Update nonce regardless — the nonce is consumed whether the call
-// succeeded or reverted, exactly like real EVM semantics.
-s.nonces[senderAddr] = s.state.LoadNonce(senderAddr) + 1
-s.state.SaveNonce(senderAddr, s.nonces[senderAddr])
+// Nonce was already reserved atomically at the top of eth_sendRawTransaction.
+// Do NOT increment here — that would double-count, skipping every other nonce.
 
 if callErr != nil {
 fmt.Printf("[RPC] ✗ Contract call failed: %v\n", callErr)

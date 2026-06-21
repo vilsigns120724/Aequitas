@@ -2,6 +2,7 @@ package keeper
 
 import (
 "bytes"
+"context"
 "encoding/json"
 "fmt"
 "io"
@@ -66,12 +67,37 @@ return result
 
 // ─── BLOCK SYNC ──────────────────────────────────────────────────────────────
 
+// pinningDialer resolves the hostname once, verifies all IPs are public,
+// then connects directly to the first IP — bypassing any subsequent DNS
+// re-resolution that DNS-rebinding attacks rely on.
+func pinningDialer(ctx context.Context, network, addr string) (net.Conn, error) {
+host, port, err := net.SplitHostPort(addr)
+if err != nil {
+return nil, err
+}
+ips, err := net.LookupHost(host)
+if err != nil || len(ips) == 0 {
+return nil, fmt.Errorf("DNS lookup failed for %s", host)
+}
+for _, ip := range ips {
+parsed := net.ParseIP(ip)
+if parsed == nil || parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast() {
+return nil, fmt.Errorf("DNS resolved to private/loopback address %s for host %s", ip, host)
+}
+}
+// Pin to first resolved IP so no second lookup can redirect to a private address.
+d := &net.Dialer{Timeout: 10 * time.Second}
+return d.DialContext(ctx, network, net.JoinHostPort(ips[0], port))
+}
+
 var httpSyncClient = &http.Client{
 Timeout: 30 * time.Second,
-// Never follow redirects — a public URL could redirect to an internal
-// Railway/cloud address after our DNS-based SSRF check has passed.
+// Never follow redirects — a public URL could redirect internally after our check.
 CheckRedirect: func(req *http.Request, via []*http.Request) error {
 return http.ErrUseLastResponse
+},
+Transport: &http.Transport{
+DialContext: pinningDialer,
 },
 }
 
