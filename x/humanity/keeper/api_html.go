@@ -3052,7 +3052,8 @@ function showStab(parentId, stabId, el) {
   parent.querySelectorAll('.stab').forEach(s => s.classList.remove('active'));
   document.getElementById(stabId).classList.add('active');
   el.classList.add('active');
-  if (stabId === 'eqi-charts') { drawGiniHistoryChart(); drawLorenzCurve(); drawWcapSlideChart(); drawPriceChart(); }
+  if (stabId === 'eqi-score') { setTimeout(function(){ drawGiniHistoryChart(); drawLorenzCurve(); }, 30); }
+  if (stabId === 'eqi-economy') { setTimeout(drawWcapSlideChart, 30); }
   // Push sub-route URL
   const tabSlugMap = {'tab-register':'register','tab-explorer':'explorer','tab-index':'index','tab-network':'network','tab-exchange':'exchange'};
   const stabSlugMap = {'sep-blocks':'blocks','sep-humans':'humans','eqi-score':'score','eqi-economy':'economy','eqi-charts':'charts','net-overview':'overview','net-runnode':'node','net-protocol':'protocol','exch-swap':'swap','exch-liquidity':'liquidity'};
@@ -3663,7 +3664,7 @@ async function loadPoolStatus() {
     }
     if (d.reserve_aeq > 0 && d.price_aeq_in_tusd > 0) {
       priceHistory.push({ t: Date.now(), p: d.price_aeq_in_tusd });
-      if (priceHistory.length > 60) priceHistory.shift();
+      if (priceHistory.length > 1000) priceHistory.shift();
       drawPriceChart();
     }
     updateFeeEstimate();
@@ -4155,6 +4156,14 @@ function activateTabFromPath(path) {
     else if (stabs[0]) stabs[0].classList.add('active');
   }
   if (name === 'exchange') loadPoolStatus();
+  if (name === 'index') {
+    setTimeout(function() {
+      const active = tabContent.querySelector('.stab-panel.active');
+      if (!active) return;
+      if (active.id === 'eqi-score') { drawGiniHistoryChart(); drawLorenzCurve(); }
+      else if (active.id === 'eqi-economy') drawWcapSlideChart();
+    }, 50);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
