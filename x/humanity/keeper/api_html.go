@@ -3923,15 +3923,17 @@ async function doSwap() {
 
   document.getElementById('swap-btn-go').disabled = true;
   try {
+    const nonceResp = await fetch('/api/nonce?wallet=' + swapWaddr);
+    const { nonce } = await nonceResp.json();
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = 'Aequitas Swap: ' + swapDirection + ' ' + amount.toFixed(8) + ' ts:' + timestamp;
+    const message = 'Aequitas Swap: ' + swapDirection + ' ' + amount.toFixed(8) + ' nonce:' + nonce + ' ts:' + timestamp;
     swapLog('Sign the message in MetaMask to confirm this swap...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/swap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount, timestamp, signature })
+      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount, nonce, timestamp, signature })
     });
     const data = await resp.json();
     if (data.success) {
@@ -4000,15 +4002,17 @@ async function doAddLiquidity() {
 
   document.getElementById('swap-btn-addliq').disabled = true;
   try {
+    const nonceRespL = await fetch('/api/nonce?wallet=' + swapWaddr);
+    const { nonce: nonce_l } = await nonceRespL.json();
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = 'Aequitas Add Liquidity: ' + amountAEQ.toFixed(8) + ' AEQ + ' + amountTUSD.toFixed(8) + ' tUSD ts:' + timestamp;
+    const message = 'Aequitas Add Liquidity: ' + amountAEQ.toFixed(8) + ' AEQ + ' + amountTUSD.toFixed(8) + ' tUSD nonce:' + nonce_l + ' ts:' + timestamp;
     swapLog('Sign the message in MetaMask to confirm this deposit...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/add-liquidity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, amount_aeq: amountAEQ, amount_tusd: amountTUSD, timestamp, signature })
+      body: JSON.stringify({ wallet: swapWaddr, amount_aeq: amountAEQ, amount_tusd: amountTUSD, nonce: nonce_l, timestamp, signature })
     });
     const data = await resp.json();
     if (data.success) {
@@ -4092,15 +4096,17 @@ async function doRemoveLiquidity() {
 
   document.getElementById('swap-btn-removeliq').disabled = true;
   try {
+    const nonceRespR = await fetch('/api/nonce?wallet=' + swapWaddr);
+    const { nonce: nonce_r } = await nonceRespR.json();
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = 'Aequitas Remove Liquidity: ' + sharesToBurn.toFixed(8) + ' shares ts:' + timestamp;
+    const message = 'Aequitas Remove Liquidity: ' + sharesToBurn.toFixed(8) + ' shares nonce:' + nonce_r + ' ts:' + timestamp;
     swapLog('Sign the message in MetaMask to confirm this withdrawal...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/remove-liquidity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, shares: sharesToBurn, timestamp, signature })
+      body: JSON.stringify({ wallet: swapWaddr, shares: sharesToBurn, nonce: nonce_r, timestamp, signature })
     });
     const data = await resp.json();
     if (data.success) {

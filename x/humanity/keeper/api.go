@@ -69,6 +69,7 @@ mux.HandleFunc("/api/lp-position", a.handleLPPosition)
 mux.HandleFunc("/api/faucet", a.handleFaucet)
 mux.HandleFunc("/api/pool", a.handlePoolStatus)
 mux.HandleFunc("/api/snapshot", a.handleSnapshot)
+mux.HandleFunc("/api/nonce", a.handleNonce)
 mux.HandleFunc("/api/peers", a.handlePeers)
 mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 mux.HandleFunc("/registered", a.handleRegistered)
@@ -453,6 +454,20 @@ if validTabs[path] {
 fmt.Fprint(w, explorerHTML)
 }
 
+// handleNonce returns the next swap nonce a wallet should sign with.
+// GET /api/nonce?wallet=0x...
+func (a *APIServer) handleNonce(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+wallet := strings.ToLower(r.URL.Query().Get("wallet"))
+if wallet == "" {
+http.Error(w, `{"error":"wallet required"}`, 400)
+return
+}
+nonce := a.state.GetSwapNonce(wallet)
+json.NewEncoder(w).Encode(map[string]interface{}{"wallet": wallet, "nonce": nonce})
+}
+
 // handlePeerRegister accepts a node registration and returns the current peer list.
 // POST /api/peers/register  body: {"url":"https://..."}
 func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
@@ -485,11 +500,17 @@ json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.All
 // Protected by SNAPSHOT_TOKEN env var if set. A new node can bootstrap
 // itself by setting BOOTSTRAP_SNAPSHOT_URL to this endpoint's URL.
 func (a *APIServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
-if token := os.Getenv("SNAPSHOT_TOKEN"); token != "" {
+// SNAPSHOT_TOKEN is mandatory — the snapshot contains nullifier-to-wallet
+// mappings and bio-registration data. Without a token, all requests are
+// rejected so the endpoint is never accidentally left open.
+token := os.Getenv("SNAPSHOT_TOKEN")
+if token == "" {
+http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
+return
+}
 if r.URL.Query().Get("token") != token {
 http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 return
-}
 }
 snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey())
 w.Header().Set("Content-Type", "application/json")

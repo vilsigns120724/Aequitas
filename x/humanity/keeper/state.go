@@ -203,7 +203,8 @@ cs.db.Exec(`CREATE TABLE IF NOT EXISTS chain_config (
 key TEXT PRIMARY KEY,
 value TEXT NOT NULL
 )`)
-}
+
+cs.InitSwapNoncesTable()}
 
 // setConfigValue persists a key/value pair to chain_config (upsert).
 func (cs *ChainState) setConfigValue(key, value string) {

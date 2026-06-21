@@ -59,9 +59,10 @@ func verifyPersonalSign(message, signatureHex, claimedWallet string) error {
 
 type SwapRequest struct {
 	Wallet    string  `json:"wallet"`
-	Direction string  `json:"direction"` // "aeq_to_tusd" or "tusd_to_aeq"
+	Direction string  `json:"direction"`
 	Amount    float64 `json:"amount"`
-	Timestamp int64   `json:"timestamp"` // Unix seconds — included in signed message to prevent replay
+	Nonce     int64   `json:"nonce"`     // per-wallet monotonic counter — atomically consumed on use
+	Timestamp int64   `json:"timestamp"` // Unix time — secondary guard against stale requests
 	Signature string  `json:"signature"`
 }
 
@@ -113,9 +114,13 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message := fmt.Sprintf("Aequitas Swap: %s %.8f ts:%d", req.Direction, req.Amount, req.Timestamp)
+	message := fmt.Sprintf("Aequitas Swap: %s %.8f nonce:%d ts:%d", req.Direction, req.Amount, req.Nonce, req.Timestamp)
 	if err := verifyPersonalSign(message, req.Signature, wallet); err != nil {
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: "signature invalid: " + err.Error()})
+		return
+	}
+	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
+		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: err.Error()})
 		return
 	}
 
@@ -146,6 +151,7 @@ type AddLiquidityRequest struct {
 	Wallet     string  `json:"wallet"`
 	AmountAEQ  float64 `json:"amount_aeq"`
 	AmountTUSD float64 `json:"amount_tusd"`
+	Nonce      int64   `json:"nonce"`
 	Timestamp  int64   `json:"timestamp"`
 	Signature  string  `json:"signature"`
 }
@@ -188,9 +194,13 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message := fmt.Sprintf("Aequitas Add Liquidity: %.8f AEQ + %.8f tUSD ts:%d", req.AmountAEQ, req.AmountTUSD, req.Timestamp)
+	message := fmt.Sprintf("Aequitas Add Liquidity: %.8f AEQ + %.8f tUSD nonce:%d ts:%d", req.AmountAEQ, req.AmountTUSD, req.Nonce, req.Timestamp)
 	if err := verifyPersonalSign(message, req.Signature, wallet); err != nil {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: "signature invalid: " + err.Error()})
+		return
+	}
+	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
+		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
 
@@ -207,6 +217,7 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 type RemoveLiquidityRequest struct {
 	Wallet       string  `json:"wallet"`
 	SharesToBurn float64 `json:"shares"`
+	Nonce        int64   `json:"nonce"`
 	Timestamp    int64   `json:"timestamp"`
 	Signature    string  `json:"signature"`
 }
@@ -251,9 +262,13 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	message := fmt.Sprintf("Aequitas Remove Liquidity: %.8f shares ts:%d", req.SharesToBurn, req.Timestamp)
+	message := fmt.Sprintf("Aequitas Remove Liquidity: %.8f shares nonce:%d ts:%d", req.SharesToBurn, req.Nonce, req.Timestamp)
 	if err := verifyPersonalSign(message, req.Signature, wallet); err != nil {
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "signature invalid: " + err.Error()})
+		return
+	}
+	if err := a.state.ConsumeSwapNonce(wallet, req.Nonce); err != nil {
+		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
 
@@ -332,6 +347,7 @@ func (a *APIServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	body, _ := io.ReadAll(r.Body)
 	var req FaucetRequest
 	if err := json.Unmarshal(body, &req); err != nil {

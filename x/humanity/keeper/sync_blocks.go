@@ -105,8 +105,7 @@ for _, block := range blocks {
 dag.mu.RLock()
 _, exists := dag.blocks[block.Hash]
 dag.mu.RUnlock()
-if !exists {
-dag.AddPeerBlock(block)
+if !exists && dag.AddPeerBlock(block) {
 added++
 }
 }

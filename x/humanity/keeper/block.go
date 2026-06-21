@@ -122,7 +122,15 @@ fmt.Printf("✓ Genesis Block (DAG): %s\n", genesis.Hash[:16]+"...")
 }
 
 func (dag *BlockDAG) calculateHash(b *Block) string {
-txData, _ := json.Marshal(b.Transactions)
+// Normalize nil to empty slice so JSON always produces "[]" not "null".
+// omitempty on the Transactions field strips the key during HTTP transport,
+// and the receiver deserialises to nil — without this normalisation the
+// tx_root differs between producer and receiver, causing hash mismatches.
+txs := b.Transactions
+if txs == nil {
+txs = []Transaction{}
+}
+txData, _ := json.Marshal(txs)
 txRootBytes := sha256.Sum256(txData)
 txRoot := hex.EncodeToString(txRootBytes[:])
 data, _ := json.Marshal(map[string]interface{}{
@@ -207,13 +215,13 @@ fmt.Printf("[DAG] 🔀 Merged %d tips into block #%d\n", len(parentHashes), bloc
 return block
 }
 
-func (dag *BlockDAG) AddPeerBlock(block *Block) {
+func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 dag.mu.Lock()
 defer dag.mu.Unlock()
 
 // Skip if already known
 if _, exists := dag.blocks[block.Hash]; exists {
-return
+return false
 }
 
 // Integrity check 1: recompute hash from block fields.
@@ -221,7 +229,7 @@ expectedHash := dag.calculateHash(block)
 if expectedHash != block.Hash {
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: hash mismatch (claimed %s..., computed %s...)\n",
 block.Height, block.Hash[:min(16, len(block.Hash))], expectedHash[:16])
-return
+return false
 }
 
 // Integrity check 2: all non-genesis blocks must carry a valid ECDSA
@@ -230,24 +238,24 @@ return
 if !block.IsGenesis && block.Signature == "" {
 	fmt.Printf("[DAG] ✗ Rejected peer block #%d from %s: missing signature\n",
 		block.Height, block.Proposer)
-	return
+	return false
 }
 if block.Signature != "" && !block.IsGenesis {
 	sigBytes, sigErr := hex.DecodeString(block.Signature)
 	if sigErr != nil || len(sigBytes) != 65 {
 		fmt.Printf("[DAG] ✗ Rejected peer block #%d: malformed signature\n", block.Height)
-		return
+		return false
 	}
 	hashBytes := common.HexToHash(block.Hash)
 	pubkeyBytes, recErr := crypto.Ecrecover(hashBytes[:], sigBytes)
 	if recErr != nil {
 		fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature recovery failed: %v\n", block.Height, recErr)
-		return
+		return false
 	}
 	pubkey, parseErr := crypto.UnmarshalPubkey(pubkeyBytes)
 	if parseErr != nil {
 		fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid public key: %v\n", block.Height, parseErr)
-		return
+		return false
 	}
 	recoveredAddr := strings.ToLower(crypto.PubkeyToAddress(*pubkey).Hex())
 	proposer := strings.ToLower(block.Proposer)
@@ -257,14 +265,14 @@ if block.Signature != "" && !block.IsGenesis {
 	if recoveredAddr != proposer {
 		fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature mismatch (signer %s, proposer %s)\n",
 			block.Height, recoveredAddr, proposer)
-		return
+		return false
 	}
 	// Proposer must be in the authorized validator set. Without this check
 	// anyone can generate an Ethereum key, sign a block, and feed it in.
 	if !dag.authorizedValidators[proposer] {
 		fmt.Printf("[DAG] ✗ Rejected peer block #%d: proposer %s is not an authorized validator\n",
 			block.Height, proposer)
-		return
+		return false
 	}
 }
 
@@ -283,6 +291,7 @@ dag.height = block.Height
 }
 
 fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, len(dag.tips))
+return true
 }
 
 // Note: uses Go's built-in min() (available since Go 1.21; this module

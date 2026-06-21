@@ -61,18 +61,20 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey) *StateSnapsho
 		Nullifiers: nullifiers,
 	}
 
-	// Pull bio_registrations from DB (commitment → wallet + bioHash)
+	// Pull bio_registrations from DB (commitment → wallet only).
+	// bio_hash is intentionally omitted from the snapshot — it is a biometric
+	// identifier and must not be exported to peer nodes. A new node can verify
+	// commitment uniqueness without needing the raw bio_hash.
 	if cs.db != nil {
-		rows, err := cs.db.Query(`SELECT commitment, wallet_address, COALESCE(bio_hash,'') FROM bio_registrations`)
+		rows, err := cs.db.Query(`SELECT commitment, wallet_address FROM bio_registrations`)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
-				var commitment, wallet, bioHash string
-				rows.Scan(&commitment, &wallet, &bioHash)
+				var commitment, wallet string
+				rows.Scan(&commitment, &wallet)
 				snap.BioRegistrations = append(snap.BioRegistrations, SnapshotBioRegistration{
 					Commitment:    commitment,
 					WalletAddress: wallet,
-					BioHash:       bioHash,
 				})
 			}
 		}
@@ -128,8 +130,13 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		return fmt.Errorf("snapshot is too old (%d seconds)", time.Now().Unix()-snap.Timestamp)
 	}
 
-	// Verify signature if an expected signer is provided
-	if expectedSignerHex != "" && snap.Signature != "" {
+	// When BOOTSTRAP_SIGNER is configured, a valid signature is MANDATORY.
+	// Importing without a valid signature is rejected — an attacker cannot
+	// bypass verification by stripping the signature field.
+	if expectedSignerHex != "" {
+		if snap.Signature == "" {
+			return fmt.Errorf("snapshot has no signature but BOOTSTRAP_SIGNER is set — import rejected")
+		}
 		sigCopy := snap.Signature
 		snap.Signature = ""
 		unsigned, _ := json.Marshal(snap)

@@ -149,6 +149,7 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 256<<10) // 256 KB — ZK proofs are large
 	body, _ := io.ReadAll(r.Body)
 	var req RegisterRequest
 	if err := json.Unmarshal(body, &req); err != nil {

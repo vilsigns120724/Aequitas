@@ -491,3 +491,63 @@ func (cs *ChainState) GetWalletByNullifier(nullifier string) string {
 	cs.db.QueryRow(`SELECT wallet_address FROM nullifiers WHERE nullifier = $1`, nullifier).Scan(&wallet)
 	return wallet
 }
+
+// ─── SWAP NONCES ─────────────────────────────────────────────────────────────
+//
+// Each wallet has a monotonically increasing nonce for swap/liquidity actions.
+// The nonce is included in the signed message, so a captured signature cannot
+// be replayed — the nonce check atomically rejects any second use.
+
+// InitSwapNoncesTable creates the swap_nonces table if it doesn't exist.
+func (cs *ChainState) InitSwapNoncesTable() {
+	if cs.db == nil {
+		return
+	}
+	cs.db.Exec(`CREATE TABLE IF NOT EXISTS swap_nonces (
+		wallet_address TEXT PRIMARY KEY,
+		next_nonce     BIGINT NOT NULL DEFAULT 0
+	)`)
+}
+
+// GetSwapNonce returns the next nonce a wallet should sign with.
+// Returns 0 for wallets that have never performed a swap.
+func (cs *ChainState) GetSwapNonce(wallet string) int64 {
+	if cs.db == nil {
+		return 0
+	}
+	wallet = strings.ToLower(wallet)
+	var nonce int64
+	cs.db.QueryRow(`SELECT next_nonce FROM swap_nonces WHERE wallet_address = $1`, wallet).Scan(&nonce)
+	return nonce
+}
+
+// ConsumeSwapNonce atomically verifies that nonce matches the expected value
+// and increments it. Returns an error if the nonce doesn't match (replay or
+// wrong value). Must be called only after the signature has been verified.
+func (cs *ChainState) ConsumeSwapNonce(wallet string, nonce int64) error {
+	if cs.db == nil {
+		return nil // no DB — skip in development
+	}
+	wallet = strings.ToLower(wallet)
+	var result interface{ RowsAffected() (int64, error) }
+	var err error
+	if nonce == 0 {
+		// First ever swap for this wallet — insert with next_nonce=1.
+		result, err = cs.db.Exec(
+			`INSERT INTO swap_nonces (wallet_address, next_nonce) VALUES ($1, 1)
+			 ON CONFLICT (wallet_address) DO NOTHING`, wallet)
+	} else {
+		// Subsequent swap — increment only if current value matches.
+		result, err = cs.db.Exec(
+			`UPDATE swap_nonces SET next_nonce = next_nonce + 1
+			 WHERE wallet_address = $1 AND next_nonce = $2`, wallet, nonce)
+	}
+	if err != nil {
+		return fmt.Errorf("nonce db error: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("nonce %d already used or invalid — replay rejected", nonce)
+	}
+	return nil
+}
