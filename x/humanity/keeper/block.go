@@ -36,19 +36,20 @@ IsGenesis    bool     `json:"is_genesis,omitempty"`
 }
 
 type BlockDAG struct {
-blocks               map[string]*Block
-tips                 map[string]bool
-mu                   sync.RWMutex
-keeper               *Keeper
-state                *ChainState
-nodeID               string
-height               int64
-pendingTxs           []Transaction
-txMu                 sync.Mutex
-signingKey           *ecdsa.PrivateKey
-authorizedValidators map[string]bool // Ethereum addresses allowed to propose blocks
-activeSyncPeers      map[string]bool // peers with a running syncWithNode goroutine
-syncPeerMu           sync.Mutex
+blocks                 map[string]*Block
+tips                   map[string]bool
+mu                     sync.RWMutex
+keeper                 *Keeper
+state                  *ChainState
+nodeID                 string
+height                 int64
+pendingTxs             []Transaction
+txMu                   sync.Mutex
+signingKey             *ecdsa.PrivateKey
+authorizedValidators   map[string]bool // Ethereum addresses allowed to propose blocks
+activeSyncPeers        map[string]bool // peers with a running syncWithNode goroutine
+syncPeerMu             sync.Mutex
+warnedUnknownProposers map[string]bool // suppresses repeated "not authorized" log lines
 }
 
 // loadAuthorizedValidators reads the AUTHORIZED_VALIDATORS env var
@@ -80,13 +81,14 @@ dag.pendingTxs = append(dag.pendingTxs, tx)
 
 func NewBlockchain(keeper *Keeper, nodeID string, state *ChainState) *BlockDAG {
 dag := &BlockDAG{
-blocks:               make(map[string]*Block),
-tips:                 make(map[string]bool),
-keeper:               keeper,
-state:                state,
-nodeID:               nodeID,
-authorizedValidators: loadAuthorizedValidators(),
-activeSyncPeers:      make(map[string]bool),
+blocks:                 make(map[string]*Block),
+tips:                   make(map[string]bool),
+keeper:                 keeper,
+state:                  state,
+nodeID:                 nodeID,
+authorizedValidators:   loadAuthorizedValidators(),
+activeSyncPeers:        make(map[string]bool),
+warnedUnknownProposers: make(map[string]bool),
 }
 if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	if key, err := crypto.HexToECDSA(pk); err == nil {
@@ -270,8 +272,10 @@ if block.Signature != "" && !block.IsGenesis {
 	// Proposer must be in the authorized validator set. Without this check
 	// anyone can generate an Ethereum key, sign a block, and feed it in.
 	if !dag.authorizedValidators[proposer] {
-		fmt.Printf("[DAG] ✗ Rejected peer block #%d: proposer %s is not an authorized validator\n",
-			block.Height, proposer)
+		if !dag.warnedUnknownProposers[proposer] {
+			dag.warnedUnknownProposers[proposer] = true
+			fmt.Printf("[DAG] ✗ Proposer %s is not an authorized validator — add to AUTHORIZED_VALIDATORS env var to accept its blocks\n", proposer)
+		}
 		return false
 	}
 }
