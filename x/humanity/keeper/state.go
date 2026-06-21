@@ -910,6 +910,7 @@ cs.saveAccountToDB(cs.accounts[to])
 cs.save()
 
 fmt.Printf("[STATE] ✓ Transfer %.2f AEQ: %s → %s\n", amount, from, to)
+cs.syncBalanceLocked(V7_CONTRACT_ADDR, from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
 return nil
 }
 

@@ -135,11 +135,19 @@ copy(txs, dag.pendingTxs)
 dag.pendingTxs = nil
 dag.txMu.Unlock()
 
+proposer := dag.nodeID
+if dag.signingKey != nil {
+	// Use the Ethereum address derived from the signing key so peer nodes
+	// can verify the block signature against a known Ethereum address.
+	// The libp2p nodeID is used for network routing; the signing address
+	// is what peers need for consensus verification.
+	proposer = crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex()
+}
 block := &Block{
 Height:       maxParentHeight + 1,
 Timestamp:    time.Now().Unix(),
 ParentHashes: parentHashes,
-Proposer:     dag.nodeID,
+Proposer:     proposer,
 Humans:       dag.state.TotalHumans(),
 Transactions: txs,
 StateRoot:    dag.state.StateRoot(),
@@ -214,9 +222,10 @@ if block.Signature != "" && !block.IsGenesis {
 	}
 	recoveredAddr := strings.ToLower(crypto.PubkeyToAddress(*pubkey).Hex())
 	proposer := strings.ToLower(block.Proposer)
-	// Proposer may be a nodeID (libp2p) or an Ethereum address — only verify
-	// when it looks like an address (0x + 40 hex chars).
-	if strings.HasPrefix(proposer, "0x") && len(proposer) == 42 && recoveredAddr != proposer {
+	// Proposer must be the Ethereum address that produced the signature.
+	// Blocks where the proposer field does not match the recovered signing
+	// address are unconditionally rejected — no libp2p-nodeID exemption.
+	if recoveredAddr != proposer {
 		fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature mismatch (signer %s, proposer %s)\n",
 			block.Height, recoveredAddr, proposer)
 		return
