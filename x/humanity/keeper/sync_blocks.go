@@ -9,6 +9,7 @@ import (
 "net/http"
 "net/url"
 "os"
+"sort"
 "strings"
 "sync"
 "time"
@@ -111,6 +112,12 @@ var blocks []*Block
 if err := json.Unmarshal(body, &blocks); err != nil {
 continue
 }
+// Sort ascending by height so parents are always processed before
+// their children — this is critical for the parent-existence check
+// to pass during initial catch-up after a restart.
+sort.Slice(blocks, func(i, j int) bool {
+return blocks[i].Height < blocks[j].Height
+})
 added := 0
 for _, block := range blocks {
 dag.mu.RLock()

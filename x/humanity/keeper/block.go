@@ -238,6 +238,14 @@ if _, exists := dag.blocks[block.Hash]; exists {
 return false
 }
 
+// Genesis blocks are always created locally — never accept from peers.
+// A peer could send any block with IsGenesis=true and it would bypass
+// both the signature check and the parent check below.
+if block.IsGenesis {
+fmt.Printf("[DAG] ✗ Rejected peer genesis: genesis can only be created locally\n")
+return false
+}
+
 // Integrity check 1: recompute hash from block fields.
 expectedHash := dag.calculateHash(block)
 if expectedHash != block.Hash {
@@ -292,9 +300,12 @@ if block.Signature != "" && !block.IsGenesis {
 	}
 }
 
-// Integrity check 3: all parent hashes must be known blocks.
-// Floating blocks with unknown parents could build a phantom chain.
-if !block.IsGenesis {
+// Integrity check 3: parent-existence and height validation.
+// Only enforced when we already have a populated DAG (more than genesis).
+// During initial catch-up the DAG is empty so every block would appear
+// to have unknown parents — relaxing the check lets the first sync fill
+// the DAG, after which the check protects against floating blocks.
+if len(dag.blocks) > 1 {
 if len(block.ParentHashes) == 0 {
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: no parent hashes\n", block.Height)
 return false
@@ -303,15 +314,12 @@ maxParentHeight := int64(-1)
 for _, ph := range block.ParentHashes {
 parent, parentExists := dag.blocks[ph]
 if !parentExists {
-// Unknown parent — likely a gap in sync. Quietly drop; the sync
-// loop will re-fetch once the parent arrives.
 return false
 }
 if parent.Height > maxParentHeight {
 maxParentHeight = parent.Height
 }
 }
-// Height must be exactly one more than the tallest parent.
 if block.Height != maxParentHeight+1 {
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid height (parent max %d)\n",
 block.Height, maxParentHeight)

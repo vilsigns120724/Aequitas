@@ -514,9 +514,12 @@ func (cs *ChainState) InitValidatorKeysTable() {
 	}
 	cs.db.Exec(`CREATE TABLE IF NOT EXISTS validator_keys (
 		signing_address TEXT PRIMARY KEY,
-		human_wallet    TEXT NOT NULL,
+		human_wallet    TEXT NOT NULL UNIQUE,
 		registered_at   TIMESTAMP DEFAULT NOW()
 	)`)
+	// Add UNIQUE on human_wallet if the table already existed without it.
+	cs.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_validator_keys_human_wallet
+		ON validator_keys (human_wallet)`)
 }
 
 // RegisterValidatorKey links a node signing address to a registered human

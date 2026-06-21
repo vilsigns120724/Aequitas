@@ -113,7 +113,10 @@ if n.dag == nil {
 return
 }
 
-buf := make([]byte, 4096)
+// 256 KB — comfortably fits any realistic block with many transactions.
+// The old 4096-byte limit silently truncated larger blocks, causing
+// JSON parse errors that were hard to diagnose.
+buf := make([]byte, 256<<10)
 count, err := s.Read(buf)
 if err != nil {
 return
@@ -121,14 +124,17 @@ return
 
 var block Block
 if err := json.Unmarshal(buf[:count], &block); err != nil {
-fmt.Printf("[BLOCK-SYNC] Parse error: %v\n", err)
+fmt.Printf("[BLOCK-SYNC] ✗ Parse error from peer %s: %v\n",
+s.Conn().RemotePeer().String()[:12], err)
 return
 }
 
-// Add peer block as tip to our DAG
-n.dag.AddPeerBlock(&block)
-fmt.Printf("[BLOCK-SYNC] ✓ Received block #%d from peer %s\n",
+// Log only when the block is actually accepted — logging before
+// AddPeerBlock caused "Received" messages for blocks that were rejected.
+if n.dag.AddPeerBlock(&block) {
+fmt.Printf("[BLOCK-SYNC] ✓ Accepted block #%d from peer %s\n",
 block.Height, s.Conn().RemotePeer().String()[:12])
+}
 }
 
 // BroadcastBlock — send new block to all connected peers

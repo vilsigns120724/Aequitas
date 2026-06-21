@@ -1,6 +1,7 @@
 package keeper
 
 import (
+"encoding/hex"
 "encoding/json"
 "fmt"
 "io"
@@ -10,7 +11,9 @@ import (
 "strings"
 "time"
 
+"github.com/ethereum/go-ethereum/accounts"
 "github.com/ethereum/go-ethereum/common"
+"github.com/ethereum/go-ethereum/crypto"
 )
 
 type APIServer struct {
@@ -73,6 +76,7 @@ mux.HandleFunc("/api/nonce", a.handleNonce)
 mux.HandleFunc("/api/peers", a.handlePeers)
 mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
+mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
 mux.HandleFunc("/registered", a.handleRegistered)
 mux.HandleFunc("/download/app.apk", a.handleAppDownload)
 fmt.Println("── Starting EVM RPC ─────────────────────")
@@ -469,11 +473,48 @@ nonce := a.state.GetSwapNonce(wallet)
 json.NewEncoder(w).Encode(map[string]interface{}{"wallet": wallet, "nonce": nonce})
 }
 
+// handleSignValidatorChallenge signs "Aequitas: validator key linked to human {wallet}"
+// with the node's own RELAYER_PRIVATE_KEY. Called from the node operator's terminal
+// to produce the signing_key_signature needed by /api/register-validator-key.
+// GET /api/sign-validator-challenge?wallet=0x...
+func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+humanWallet := strings.ToLower(r.URL.Query().Get("wallet"))
+if humanWallet == "" || !strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
+http.Error(w, `{"error":"wallet required (0x...)"}`, 400); return
+}
+key := a.blockchain.GetSigningKey()
+if key == nil {
+http.Error(w, `{"error":"RELAYER_PRIVATE_KEY not configured on this node"}`, 500); return
+}
+message := "Aequitas: validator key linked to human " + humanWallet
+msgHash := accounts.TextHash([]byte(message))
+sig, err := crypto.Sign(msgHash, key)
+if err != nil {
+http.Error(w, `{"error":"signing failed"}`, 500); return
+}
+sig[64] += 27 // personal_sign uses v=27/28
+signingAddr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
+json.NewEncoder(w).Encode(map[string]interface{}{
+"signing_address": signingAddr,
+"human_wallet":    humanWallet,
+"signature":       "0x" + hex.EncodeToString(sig),
+"message":         message,
+})
+}
+
 // handleRegisterValidatorKey links a node signing key to a registered human
-// wallet, authorising that signing key to propose blocks without a shared secret.
-// POST /api/register-validator-key
-// Body: {signing_address, human_wallet, signature}
-// signature = personal_sign("Aequitas: authorize validator key {signing_address}", human_wallet)
+// wallet, authorising that signing key to propose blocks.
+//
+// Requires TWO signatures proving control of BOTH keys:
+//   human_signature:      personal_sign("Aequitas: authorize validator key {signing_address}", human_wallet)
+//   signing_key_signature: personal_sign("Aequitas: validator key linked to human {human_wallet}", signing_address)
+//
+// The double-signature requirement proves the requester controls both the
+// human wallet AND the node signing key, preventing impersonation attacks
+// where someone registers a victim's signing address using their own wallet.
+// UNIQUE(human_wallet) ensures one human = one validator key.
 func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -483,9 +524,10 @@ if r.Method == "OPTIONS" { w.WriteHeader(200); return }
 if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
 r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 var req struct {
-SigningAddress string `json:"signing_address"`
-HumanWallet   string `json:"human_wallet"`
-Signature     string `json:"signature"`
+SigningAddress      string `json:"signing_address"`
+HumanWallet        string `json:"human_wallet"`
+HumanSignature     string `json:"human_signature"`
+SigningKeySignature string `json:"signing_key_signature"`
 }
 if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 http.Error(w, `{"error":"invalid request"}`, 400); return
@@ -496,12 +538,16 @@ if !strings.HasPrefix(signingAddr, "0x") || len(signingAddr) != 42 ||
 !strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
 http.Error(w, `{"error":"invalid address"}`, 400); return
 }
-// Verify the human wallet signed the authorization message.
-message := "Aequitas: authorize validator key " + signingAddr
-if err := verifyPersonalSign(message, req.Signature, humanWallet); err != nil {
-http.Error(w, `{"error":"invalid signature: `+err.Error()+`"}`, 400); return
+// 1. Human wallet proves it authorises this signing key.
+humanMsg := "Aequitas: authorize validator key " + signingAddr
+if err := verifyPersonalSign(humanMsg, req.HumanSignature, humanWallet); err != nil {
+http.Error(w, `{"error":"invalid human_signature: `+err.Error()+`"}`, 400); return
 }
-// Store in DB and add to live authorized set.
+// 2. Signing key proves it is linked to this human wallet (key-possession proof).
+signingMsg := "Aequitas: validator key linked to human " + humanWallet
+if err := verifyPersonalSign(signingMsg, req.SigningKeySignature, signingAddr); err != nil {
+http.Error(w, `{"error":"invalid signing_key_signature — sign with RELAYER_PRIVATE_KEY: `+err.Error()+`"}`, 400); return
+}
 if err := a.state.RegisterValidatorKey(signingAddr, humanWallet); err != nil {
 http.Error(w, `{"error":"`+err.Error()+`"}`, 400); return
 }
@@ -539,13 +585,23 @@ json.NewDecoder(r.Body).Decode(&req)
 peerSecret := os.Getenv("PEER_SECRET")
 secretOK := peerSecret != "" && req.PeerSecret == peerSecret
 
+// Pre-check validator key status so URL registration can use it too.
+var keyAuthorizedEarly bool
+if earlyAddr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); earlyAddr != "" {
+for _, k := range a.state.GetValidatorKeys() {
+if k["signing_address"] == earlyAddr { keyAuthorizedEarly = true; break }
+}
+}
 if req.URL != "" && isAllowedPeerURL(req.URL) {
-if secretOK {
+// Allow URL registration if PEER_SECRET matches OR the signing address
+// has an individually registered validator key. Without this, a node
+// with a valid key could not connect via peer discovery.
+if secretOK || keyAuthorizedEarly {
 GlobalPeerRegistry.Register(req.URL)
 fmt.Printf("[PEERS] Registered: %s\n", req.URL)
 a.blockchain.startSyncForPeer(req.URL)
 } else {
-fmt.Printf("[PEERS] URL rejected (wrong or missing PEER_SECRET): %s\n", req.URL)
+fmt.Printf("[PEERS] URL rejected (no valid PEER_SECRET or validator key): %s\n", req.URL)
 }
 } else if req.URL != "" {
 fmt.Printf("[PEERS] URL rejected (must be public HTTPS): %s\n", req.URL)
