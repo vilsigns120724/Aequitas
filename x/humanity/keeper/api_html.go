@@ -3305,6 +3305,18 @@ async function drawGiniHistoryChart() {
       if (emptyEl) { emptyEl.style.display = 'block'; canvas.style.display = 'none'; } return;
     }
     if (emptyEl) { emptyEl.style.display = 'none'; canvas.style.display = 'block'; }
+    // Single data point — show large current Gini value, no chart line
+    if (history.length === 1) {
+      var pt0 = history[0];
+      ctx.fillStyle='rgba(200,168,76,0.12)'; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='rgba(200,168,76,0.95)'; ctx.font='bold 36px JetBrains Mono,monospace'; ctx.textAlign='center';
+      ctx.fillText(pt0.idx.toFixed(1), W/2, H/2-10);
+      ctx.font='13px Inter,sans-serif'; ctx.fillStyle='rgba(200,168,76,0.7)';
+      ctx.fillText('Current Gini Index (0 = perfect equality · 100 = max concentration)', W/2, H/2+22);
+      ctx.font='11px Inter,sans-serif'; ctx.fillStyle='rgba(0,255,209,0.7)';
+      ctx.fillText('Target: below 35  ·  Chart will grow after each daily UBI distribution', W/2, H/2+44);
+      return;
+    }
     const pad = {l:48,r:24,t:36,b:32};
     const cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
     const toX = (i) => pad.l + cW*i/Math.max(history.length-1,1);
@@ -3383,6 +3395,23 @@ async function drawLorenzCurve() {
     if (humans.length < 2) {
       ctx.fillStyle='rgba(139,92,246,0.5)'; ctx.font='12px Inter,sans-serif'; ctx.textAlign='center';
       ctx.fillText('Awaiting more registered humans...', W/2, H/2); return;
+    }
+    // Compute Gini upfront so we can adapt the rendering
+    var balsForGini = humans.map(function(h){return h.balance||0;}).sort(function(a,b){return a-b;});
+    var totalForGini = balsForGini.reduce(function(s,b){return s+b;},0);
+    var cumForGini = 0, lorenzAreaPre = 0;
+    balsForGini.forEach(function(b){ cumForGini+=b; lorenzAreaPre+=(cumForGini/totalForGini)*(1/balsForGini.length); });
+    var currentGini = Math.max(0, 1-2*lorenzAreaPre);
+    // If very near perfect equality, show a special message instead of an invisible line
+    if (currentGini < 0.02 && humans.length > 1) {
+      ctx.fillStyle='rgba(0,255,209,0.12)'; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='rgba(0,255,209,0.95)'; ctx.font='bold 28px JetBrains Mono,monospace'; ctx.textAlign='center';
+      ctx.fillText('Gini: ' + (currentGini*100).toFixed(2), W/2, H/2-12);
+      ctx.font='13px Inter,sans-serif'; ctx.fillStyle='rgba(0,255,209,0.75)';
+      ctx.fillText('Near-Perfect Equality — ' + humans.length + ' humans, Lorenz curve = equality diagonal', W/2, H/2+18);
+      ctx.font='11px Inter,sans-serif'; ctx.fillStyle='rgba(200,168,76,0.6)';
+      ctx.fillText('The filled area between the curve and diagonal represents inequality. Here it is nearly zero.', W/2, H/2+40);
+      return;
     }
     const bals = humans.map(function(h){return h.balance||0;}).sort(function(a,b){return a-b;});
     const total = bals.reduce(function(s,b){return s+b;},0);
@@ -3518,7 +3547,11 @@ function drawPriceChart() {
   var pts = ciMs > 0
     ? priceHistory.filter(function(p){ return now - p.t <= ciMs; })
     : priceHistory;
-  if (!pts.length) pts = priceHistory;
+  if (!pts.length) {
+    ctx.fillStyle='rgba(139,92,246,0.45)'; ctx.font='11px Inter,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('No price data in this interval yet — wait a few minutes or select a wider range', W/2, H/2);
+    return;
+  }
   const prices = pts.map(function(p){return p.p;});
   const minP = Math.min.apply(null,prices), maxP = Math.max.apply(null,prices);
   const range = maxP - minP || minP * 0.01 || 0.0001;

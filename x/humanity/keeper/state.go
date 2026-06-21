@@ -205,7 +205,8 @@ value TEXT NOT NULL
 )`)
 
 cs.InitSwapNoncesTable()
-cs.InitValidatorKeysTable()}
+cs.InitValidatorKeysTable()
+cs.InitGiniSnapshotsTable()}
 
 // setConfigValue persists a key/value pair to chain_config (upsert).
 func (cs *ChainState) setConfigValue(key, value string) {
@@ -682,6 +683,7 @@ cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(humanAddrs, ubiPoolAddr)...)
 
 fmt.Printf("[UBI] ✓ Distributed %.6f AEQ across %d registered humans (%.6f AEQ each)\n",
 total, len(humanAddrs), share)
+cs.SaveGiniSnapshot()
 }
 
 // getAverageBalanceLocked computes the mean AEQ balance across every

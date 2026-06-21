@@ -492,6 +492,64 @@ func (cs *ChainState) GetWalletByNullifier(nullifier string) string {
 	return wallet
 }
 
+// ─── GINI HISTORY ────────────────────────────────────────────────────────────
+
+func (cs *ChainState) InitGiniSnapshotsTable() {
+	if cs.db == nil {
+		return
+	}
+	cs.db.Exec(`CREATE TABLE IF NOT EXISTS gini_snapshots (
+		id          SERIAL PRIMARY KEY,
+		gini        DOUBLE PRECISION NOT NULL,
+		humans      INT NOT NULL,
+		captured_at TIMESTAMP DEFAULT NOW()
+	)`)
+}
+
+// SaveGiniSnapshot persists the current Gini coefficient. Called after each
+// UBI distribution so the history chart has real data points over time.
+func (cs *ChainState) SaveGiniSnapshot() {
+	if cs.db == nil {
+		return
+	}
+	gini := cs.CalcGini()
+	humans := cs.TotalHumans()
+	cs.db.Exec(`INSERT INTO gini_snapshots (gini, humans) VALUES ($1, $2)`, gini, humans)
+}
+
+// GetGiniHistory returns the last n Gini snapshots in chronological order.
+// Returns a slice of maps with keys: idx (0-100), gini (0-1), humans, timestamp.
+func (cs *ChainState) GetGiniHistory(n int) []map[string]interface{} {
+	if cs.db == nil {
+		return nil
+	}
+	rows, err := cs.db.Query(
+		`SELECT gini, humans, EXTRACT(EPOCH FROM captured_at)::BIGINT
+		 FROM gini_snapshots ORDER BY captured_at DESC LIMIT $1`, n)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []map[string]interface{}
+	for rows.Next() {
+		var gini float64
+		var humans int
+		var ts int64
+		rows.Scan(&gini, &humans, &ts)
+		result = append(result, map[string]interface{}{
+			"idx":       gini * 100,
+			"gini":      gini,
+			"humans":    humans,
+			"timestamp": ts,
+		})
+	}
+	// Reverse to get chronological order (we queried DESC).
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
+	}
+	return result
+}
+
 // ─── SWAP NONCES ─────────────────────────────────────────────────────────────
 //
 // Each wallet has a monotonically increasing nonce for swap/liquidity actions.

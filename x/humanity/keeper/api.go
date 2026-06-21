@@ -475,24 +475,26 @@ nonce := a.state.GetSwapNonce(wallet)
 json.NewEncoder(w).Encode(map[string]interface{}{"wallet": wallet, "nonce": nonce})
 }
 
-// handleGiniHistory returns current Gini snapshot (history grows over time as UBI runs).
+// handleGiniHistory returns Gini snapshots stored after each UBI distribution.
+// Falls back to the current Gini as a single point when no history exists yet.
 func (a *APIServer) handleGiniHistory(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
-gini := a.state.CalcGini()
-index := a.state.CalcAequitasIndex()
-humans := a.state.TotalHumans()
 w.Header().Set("Cache-Control", "no-cache")
-json.NewEncoder(w).Encode(map[string]interface{}{
-"current_gini":  gini,
-"current_index": index,
-"history": []map[string]interface{}{
-{"gini": gini * 100, "index": index, "humans": humans, "timestamp": time.Now().Unix()},
-},
-})
+history := a.state.GetGiniHistory(60) // last 60 snapshots
+if len(history) == 0 {
+// First UBI hasn't run yet — return current state as bootstrap point.
+gini := a.state.CalcGini()
+humans := a.state.TotalHumans()
+history = []map[string]interface{}{
+{"idx": gini * 100, "gini": gini, "humans": humans, "timestamp": time.Now().Unix()},
+}
+}
+json.NewEncoder(w).Encode(map[string]interface{}{"history": history})
 }
 
 // handleWealthCap returns the current wealth cap parameters.
+// Field names match the live wealth-cap widget in the Equality tab.
 func (a *APIServer) handleWealthCap(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -508,9 +510,9 @@ if n > 0 { avg = total / float64(n) }
 mult := 5.0
 if n > 5 { mult = float64(n) }
 if mult > 25 { mult = 25 }
-cap := mult * avg
+capAEQ := mult * avg
 json.NewEncoder(w).Encode(map[string]interface{}{
-"cap": cap, "multiplier": mult, "average": avg,
+"cap_aeq": capAEQ, "multiplier": mult, "average_aeq": avg,
 "humans": n, "total_supply": total,
 })
 }
