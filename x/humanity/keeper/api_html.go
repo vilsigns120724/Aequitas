@@ -1075,14 +1075,14 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 </div>
 
 <!-- NETWORK (merged) -->
-<div id="tab-network" class="tab-content">
+<div id="tab-network" class="tab-content" style="min-height:200px">
 <nav class="stabs">
-  <div class="stab active" onclick="showStab('tab-network','net-overview',this)">🌐 Overview</div>
+  <div class="stab" onclick="showStab('tab-network','net-overview',this)">🌐 Overview</div>
   <div class="stab" onclick="showStab('tab-network','net-story',this)">📖 Story</div>
   <div class="stab" onclick="showStab('tab-network','net-runnode',this)">⚙️ Run a Node</div>
   <div class="stab" onclick="showStab('tab-network','net-protocol',this)">📜 Protocol V7</div>
 </nav>
-<div id="net-overview" class="stab-panel active">
+<div id="net-overview" class="stab-panel" style="display:block!important">
 <div class="ns">
 <div class="nc" style="grid-column:1/-1">
     <div class="nc-title" data-i18n="nodes-title">Active Nodes — Current Network Topology</div>
@@ -3335,13 +3335,13 @@ function showTab(name, el) {
   if (!tabContent) return;
   tabContent.classList.add('active');
   el.classList.add('active');
-  // Activate first stab-panel in the new tab if none are active
-  const panels = tabContent.querySelectorAll('.stab-panel');
-  const stabs = tabContent.querySelectorAll('.stab');
-  if (panels.length && !tabContent.querySelector('.stab-panel.active')) {
-    panels[0].classList.add('active');
-    if (stabs[0]) stabs[0].classList.add('active');
-  }
+  // Always activate first stab-panel when switching tabs
+  var panels2 = tabContent.querySelectorAll('.stab-panel');
+  var stabs2 = tabContent.querySelectorAll('.stab');
+  panels2.forEach(function(p){p.classList.remove('active');});
+  stabs2.forEach(function(s){s.classList.remove('active');});
+  if (panels2.length) panels2[0].classList.add('active');
+  if (stabs2.length) stabs2[0].classList.add('active');
   if (name === 'exchange') { loadPoolStatus(); preloadPriceHistory(); }
   history.pushState(null, '', '/' + name);
 }
