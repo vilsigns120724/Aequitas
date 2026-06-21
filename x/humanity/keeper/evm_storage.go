@@ -116,6 +116,28 @@ func (cs *ChainState) SaveStorageSlot(address, slot, value string) error {
 	return err
 }
 
+// LoadAllStorageSlots returns every slot stored for address, used to back up
+// contract state before a destructive upgrade so it can be restored on failure.
+func (cs *ChainState) LoadAllStorageSlots(address string) (map[string]string, error) {
+	if cs.db == nil {
+		return nil, nil
+	}
+	address = strings.ToLower(address)
+	rows, err := cs.db.Query(`SELECT slot, value FROM evm_storage WHERE lower(address) = $1`, address)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]string)
+	for rows.Next() {
+		var slot, value string
+		if err := rows.Scan(&slot, &value); err == nil {
+			out[slot] = value
+		}
+	}
+	return out, nil
+}
+
 func (cs *ChainState) LoadStorageSlot(address, slot string) (string, error) {
 	if cs.db == nil {
 		return "", nil

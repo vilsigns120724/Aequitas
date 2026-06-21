@@ -46,6 +46,8 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 	// Check V7 contract — redeploy if missing or version changed.
 	v7Addr := strings.ToLower(V7_CONTRACT_ADDR)
 	existing, err := state.LoadContract(v7Addr)
+	// restoreOnFailure is set only on upgrade paths; nil on fresh deploy.
+	var restoreOnFailure func(string)
 	if err == nil && len(existing) > 0 {
 		storedVersion := state.getConfigValue("v7_contract_version")
 		if storedVersion == V7ContractVersion {
@@ -64,6 +66,24 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 		if ubiSlot3Val != "" {
 			fmt.Printf("[DEPLOY] Saving ubiPerHumanAccumulated (slot 3) = %s before wipe\n", ubiSlot3Val[:min(16, len(ubiSlot3Val))])
 		}
+		// Back up all storage slots before the destructive wipe so we can
+		// restore them if deployment fails and avoid leaving an empty V7 state.
+		oldCode := existing
+		oldSlots, backupErr := state.LoadAllStorageSlots(v7Addr)
+		if backupErr != nil {
+			fmt.Printf("[DEPLOY] WARNING: could not backup storage before upgrade: %v\n", backupErr)
+			oldSlots = nil
+		}
+		restoreOnFailure = func(reason string) {
+			fmt.Printf("[DEPLOY] ERROR: %s — restoring previous V7 state\n", reason)
+			if len(oldCode) > 0 {
+				state.SaveContract(v7Addr, oldCode, deployerAddr)
+			}
+			for slot, val := range oldSlots {
+				state.SaveStorageSlot(v7Addr, slot, val)
+			}
+		}
+
 		state.SavePreUpgradeRelationshipSlots(v7Addr)
 		state.db.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, v7Addr)
 		state.db.Exec(`DELETE FROM evm_storage WHERE lower(address) = $1`, v7Addr)
@@ -77,7 +97,11 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 
 	bytecode, err := hex.DecodeString(V7ContractBytecode)
 	if err != nil {
-		fmt.Printf("[DEPLOY] ERROR: failed to decode V7 bytecode: %v\n", err)
+		if restoreOnFailure != nil {
+			restoreOnFailure("failed to decode V7 bytecode: " + err.Error())
+		} else {
+			fmt.Printf("[DEPLOY] ERROR: failed to decode V7 bytecode: %v\n", err)
+		}
 		return
 	}
 
@@ -91,7 +115,11 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 	deployer := common.HexToAddress(deployerAddr)
 	contractAddr, _, err := evm.DeployContract(deployer, deployBytecode, big.NewInt(0))
 	if err != nil {
-		fmt.Printf("[DEPLOY] ERROR: failed to deploy V7 contract: %v\n", err)
+		if restoreOnFailure != nil {
+			restoreOnFailure("failed to deploy V7 contract: " + err.Error())
+		} else {
+			fmt.Printf("[DEPLOY] ERROR: failed to deploy V7 contract: %v\n", err)
+		}
 		return
 	}
 

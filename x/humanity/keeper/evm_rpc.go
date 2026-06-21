@@ -442,17 +442,31 @@ amountBig := new(big.Int).SetBytes(tx.Data()[36:68])
 decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
 amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountBig), decimals).Float64()
 
-if err := s.state.Transfer(senderAddr, toAddr, amountFloat); err != nil {
+// Use TransferWithV7Fee to match V7's _calcFee() semantics:
+// 0.1% base + concentration surcharge, 20% to UBI pool, 80% burned.
+if err := s.state.TransferWithV7Fee(senderAddr, toAddr, amountFloat); err != nil {
 return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 }
 s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
 s.mu.Lock(); s.txStatus[txHash] = true; s.mu.Unlock()
-fmt.Printf("[RPC] ✓ Token transfer %.4f AEQ: %s → %s (via Go state)\n", amountFloat, senderAddr, toAddr)
+fmt.Printf("[RPC] ✓ Token transfer %.4f AEQ (with V7 fee): %s → %s\n", amountFloat, senderAddr, toAddr)
 return txHash, nil
 }
 
 // ── CONTRACT DEPLOYMENT ──────────────────────────────────────────────────
+// Restricted to RELAYER_ADDRESS or the node's own signing key address.
+// Open deployment allows arbitrary bytecode execution and DB writes with
+// no balance check — a trivial CPU/DB DoS vector.
 if tx.To() == nil && len(tx.Data()) > 0 && s.evm != nil {
+allowedDeployer := strings.ToLower(os.Getenv("RELAYER_ADDRESS"))
+if allowedDeployer == "" && s.dag != nil && s.dag.GetSigningKey() != nil {
+allowedDeployer = strings.ToLower(crypto.PubkeyToAddress(s.dag.GetSigningKey().PublicKey).Hex())
+}
+if senderAddr != allowedDeployer {
+fmt.Printf("[RPC] ✗ Deploy rejected from %s (only %s may deploy)\n", senderAddr, allowedDeployer)
+return nil, &RPCError{Code: -32603, Message: "contract deployment restricted to authorized address"}
+}
+
 fmt.Printf("[EVM] Deploying contract from %s, bytecode=%d bytes\n", senderAddr, len(tx.Data()))
 
 contractAddr, _, deployErr := s.evm.DeployContract(sender, tx.Data(), tx.Value())

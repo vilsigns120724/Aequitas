@@ -316,6 +316,14 @@ rows.Scan(&acc.Address, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &ac
 acc.Balance = NewDecimal(bal)
 acc.TUsdBalance = NewDecimal(tusd)
 acc.LPShares = NewDecimal(lp)
+// Accounts loaded from DB must always use the conditional optimistic-lock
+// UPDATE path in saveAccountToDB. If the version column is NULL in an old
+// row, COALESCE returns 0, which would trigger the INSERT/unconditional
+// path and bypass the conflict check. Normalize to 1 so the conditional
+// path is always taken for rows that provably exist in the DB.
+if acc.Version == 0 {
+	acc.Version = 1
+}
 count++
 
 // One-time migration: every state-mutating function (Transfer,
@@ -1028,6 +1036,85 @@ cs.syncBalanceLocked(V7_CONTRACT_ADDR, from, to, validatorsPoolAddr, lpPoolAddr,
 return nil
 }
 
+// TransferWithV7Fee is used by the RPC layer when intercepting V7 ERC-20
+// transfer() calls (selector a9059cbb). It mirrors V7's _calcFee():
+//   TX_FEE_BPS = 10 (0.1% base fee)
+//   Concentration surcharge if sender holds ≥1/5/10% of total supply
+//   20% of fee → UBI pool, 80% burned (removed from supply)
+// Without this, Go-ledger and V7-contract diverge on every user transfer.
+func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) error {
+cs.mu.Lock()
+defer cs.mu.Unlock()
+from = strings.ToLower(from)
+to = strings.ToLower(to)
+
+fromAcc, ok := cs.accounts[from]
+if !ok {
+return fmt.Errorf("insufficient balance")
+}
+cs.settleDemurrageLocked(fromAcc)
+if fromAcc.Balance.Float() < amount {
+return fmt.Errorf("insufficient balance")
+}
+
+// Compute total supply inline to avoid re-entering the mutex.
+humans := 0
+for _, acc := range cs.accounts {
+if acc.IsHuman { humans++ }
+}
+totalSupply := float64(humans) * 1000.0
+fee := calcV7Fee(fromAcc.Balance.Float(), amount, totalSupply)
+ubiContrib := round6(fee * 0.20)
+
+fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - amount))
+touchActivity(fromAcc)
+cs.saveAccountToDB(fromAcc)
+
+if _, ok := cs.accounts[to]; !ok {
+cs.accounts[to] = &AccountState{Address: to}
+}
+cs.settleDemurrageLocked(cs.accounts[to])
+cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + amount - fee))
+touchActivity(cs.accounts[to])
+cs.enforceWealthCapLocked(cs.accounts[to])
+cs.saveAccountToDB(cs.accounts[to])
+
+if ubiContrib > 0 {
+if _, ok := cs.accounts[ubiPoolAddr]; !ok {
+cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
+}
+cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(ubiContrib))
+cs.saveAccountToDB(cs.accounts[ubiPoolAddr])
+}
+cs.save()
+
+fmt.Printf("[STATE] ✓ TransferV7 %.6f AEQ (fee=%.6f burn=%.6f ubi=%.6f): %s → %s\n",
+amount, fee, fee-ubiContrib, ubiContrib, from, to)
+cs.syncBalanceLocked(V7_CONTRACT_ADDR, from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
+return nil
+}
+
+// calcV7Fee mirrors AequitasV7.sol's _calcFee():
+// base = TX_FEE_BPS (10) = 0.1% of amount
+// concentration surcharge based on sender's share of total supply.
+func calcV7Fee(senderBalance, amount, totalSupply float64) float64 {
+base := amount * 10.0 / 10_000.0
+if totalSupply <= 0 {
+return round6(base)
+}
+shareBPS := (senderBalance * 10_000.0) / totalSupply
+var extra float64
+switch {
+case shareBPS >= 1000:
+extra = amount * 100.0 / 10_000.0
+case shareBPS >= 500:
+extra = amount * 50.0 / 10_000.0
+case shareBPS >= 100:
+extra = amount * 10.0 / 10_000.0
+}
+return round6(base + extra)
+}
+
 // swapFeeBps is the fee taken from every swap's input amount, in basis
 // points (10 = 0.1%). This ONLY applies to swaps through the AEQ<->tUSD
 // pool — ordinary AEQ-to-AEQ transfers via Transfer() above remain
@@ -1481,13 +1568,17 @@ for _, a := range addrs {
 acc := cs.accounts[a]
 // Include ALL accounts with non-zero AEQ or tUSD balances (not only humans)
 if acc.IsHuman || acc.Balance > 0 || acc.TUsdBalance > 0 || acc.LPShares > 0 {
-fmt.Fprintf(&sb, "%s:%.6f:%.6f:%.6f:h=%v:t=%d:",
+// FaucetClaimed and LastActivityAt must be included: two nodes that
+// processed different sets of faucet claims would produce the same
+// balances but handle future UBI distribution differently.
+fmt.Fprintf(&sb, "%s:%.6f:%.6f:%.6f:h=%v:t=%d:fc=%v:",
 a,
 round6(acc.Balance.Float()),
 round6(acc.TUsdBalance.Float()),
 round6(acc.LPShares.Float()),
 acc.IsHuman,
-acc.LastActivityAt)
+acc.LastActivityAt,
+acc.FaucetClaimed)
 }
 }
 // Include pool state: reserves and total LP shares
@@ -1503,6 +1594,10 @@ for k := range cs.nullifiers { nullKeys = append(nullKeys, k) }
 sort.Strings(nullKeys)
 fmt.Fprintf(&sb, "|n=%d:", len(nullKeys))
 for _, k := range nullKeys { sb.WriteString(k); sb.WriteString(":"); sb.WriteString(cs.nullifiers[k]) }
+// Include last UBI distribution timestamp: two nodes with identical balances
+// but different UBI timestamps would diverge on the next UBI run.
+lastUBI := cs.getConfigValue("last_ubi_at")
+fmt.Fprintf(&sb, "|ubi:%s", lastUBI)
 cs.mu.RUnlock()
 hash := sha256.Sum256([]byte(sb.String()))
 return hex.EncodeToString(hash[:])

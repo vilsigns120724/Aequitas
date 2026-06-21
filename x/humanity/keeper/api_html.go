@@ -3681,8 +3681,10 @@ async function drawLorenzCurve() {
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#070B16'; ctx.fillRect(0, 0, W, H);
 
-  // Layout: 82px top header, 252px right legend panel, 62px bottom axis
-  var pad = {l:62, r:252, t:82, b:62};
+  // Layout: 82px top header, right legend panel (responsive), 62px bottom axis
+  // Narrow canvases (<520px, e.g. mobile) get a 140px panel to keep chart visible.
+  var legendW = W < 520 ? 140 : 252;
+  var pad = {l:62, r:legendW, t:82, b:62};
   var cW = W - pad.l - pad.r;
   var cH = H - pad.t - pad.b;
   function px(f) { return pad.l + cW * f; }
@@ -3710,7 +3712,17 @@ async function drawLorenzCurve() {
     var gEl=document.getElementById('lorenz-gini-val');
     if(gEl){gEl.textContent=gini.toFixed(4);gEl.style.color=gini<0.35?'#34D399':'#F0B429';}
 
-    var aqY50 = lorenz.reduce(function(best,p){return Math.abs(p.x-0.5)<Math.abs(best.x-0.5)?p:best;},{x:0,y:0}).y;
+    // Interpolate at exactly x=0.5 between the two bracketing Lorenz points
+    // (nearest-point snap was biased by data density near 50%).
+    var aqY50 = (function(){
+      for(var i=1;i<lorenz.length;i++){
+        if(lorenz[i].x>=0.5){
+          var t=(0.5-lorenz[i-1].x)/(lorenz[i].x-lorenz[i-1].x);
+          return lorenz[i-1].y+t*(lorenz[i].y-lorenz[i-1].y);
+        }
+      }
+      return lorenz[lorenz.length-1].y;
+    })();
     var gC = gini<0.35?'#34D399':'#F0B429';
 
     // ── HEADER (0..82px): title + two info boxes ───────────────────────────

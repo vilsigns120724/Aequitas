@@ -161,7 +161,10 @@ fromStr := strings.ToLower(from.Hex())
 
 // Persist to PostgreSQL
 e.chainState.SaveContract(addrStr, runtimeCode, fromStr)
-e.chainState.SaveNonce(fromStr, nonce+1)
+// Do NOT call SaveNonce here — when invoked via eth_sendRawTransaction the
+// RPC layer already reserved (nonce+1) before calling DeployContract.
+// Calling SaveNonce a second time would advance the nonce to nonce+2,
+// causing every subsequent tx from the same sender to fail with "nonce too low".
 
 // Persist ALL storage slots from stateDB to PostgreSQL
 // We iterate known slots by checking the stateDB journal
