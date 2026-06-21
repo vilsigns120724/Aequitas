@@ -468,24 +468,49 @@ nonce := a.state.GetSwapNonce(wallet)
 json.NewEncoder(w).Encode(map[string]interface{}{"wallet": wallet, "nonce": nonce})
 }
 
-// handlePeerRegister accepts a node registration and returns the current peer list.
-// POST /api/peers/register  body: {"url":"https://..."}
+// handlePeerRegister accepts a node registration and returns the current peer
+// list plus all authorized validator addresses. A node that sends its
+// signing_address is automatically added to the authorized validator set so
+// its blocks are accepted without manual AUTHORIZED_VALIDATORS configuration.
+// POST /api/peers/register  body: {"url":"https://...","signing_address":"0x..."}
 func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 if r.Method == "OPTIONS" { w.WriteHeader(200); return }
-var req struct{ URL string `json:"url"` }
+var req struct {
+URL            string `json:"url"`
+SigningAddress string `json:"signing_address"`
+}
 r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 json.NewDecoder(r.Body).Decode(&req)
 if req.URL != "" {
 GlobalPeerRegistry.Register(req.URL)
 fmt.Printf("[PEERS] Registered: %s\n", req.URL)
-// Also start syncing this new peer from our side
 a.blockchain.startSyncForPeer(req.URL)
 }
-json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
+if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && strings.HasPrefix(addr, "0x") && len(addr) == 42 {
+a.blockchain.mu.Lock()
+if !a.blockchain.authorizedValidators[addr] {
+a.blockchain.authorizedValidators[addr] = true
+fmt.Printf("[PEERS] Auto-authorized validator: %s\n", addr)
+}
+validators := make([]string, 0, len(a.blockchain.authorizedValidators))
+for v := range a.blockchain.authorizedValidators {
+validators = append(validators, v)
+}
+a.blockchain.mu.Unlock()
+json.NewEncoder(w).Encode(map[string]interface{}{
+"peers":      GlobalPeerRegistry.AllPeers(),
+"validators": validators,
+})
+return
+}
+json.NewEncoder(w).Encode(map[string]interface{}{
+"peers":      GlobalPeerRegistry.AllPeers(),
+"validators": []string{},
+})
 }
 
 // handlePeers returns the list of all known peer nodes.

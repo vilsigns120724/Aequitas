@@ -10,6 +10,8 @@ import (
 "strings"
 "sync"
 "time"
+
+"github.com/ethereum/go-ethereum/crypto"
 )
 
 // ─── PEER REGISTRY ───────────────────────────────────────────────────────────
@@ -167,10 +169,19 @@ dag.registerAndDiscover(selfURL, primaryURL)
 }()
 }
 
-// registerAndDiscover POSTs our URL to /api/peers/register on the primary,
-// gets back the full peer list, and starts sync goroutines for any new peers.
+// registerAndDiscover POSTs our URL and signing address to the primary's
+// /api/peers/register. The primary adds our signing address to its authorized
+// validator set so our blocks are accepted without any manual configuration.
+// We receive the peer list and the current authorized validator addresses back.
 func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) {
-body, _ := json.Marshal(map[string]string{"url": selfURL})
+signerAddr := ""
+if dag.signingKey != nil {
+signerAddr = strings.ToLower(crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex())
+}
+body, _ := json.Marshal(map[string]string{
+"url":             selfURL,
+"signing_address": signerAddr,
+})
 resp, err := httpSyncClient.Post(
 primaryURL+"/api/peers/register", "application/json", bytes.NewReader(body))
 if err != nil {
@@ -179,9 +190,23 @@ return
 }
 defer resp.Body.Close()
 var result struct {
-Peers []string `json:"peers"`
+Peers      []string `json:"peers"`
+Validators []string `json:"validators"`
 }
 json.NewDecoder(resp.Body).Decode(&result)
+
+// Add newly discovered authorized validators to our local set so we
+// accept blocks from them without requiring AUTHORIZED_VALIDATORS env var.
+dag.mu.Lock()
+for _, addr := range result.Validators {
+addr = strings.ToLower(strings.TrimSpace(addr))
+if addr != "" && !dag.authorizedValidators[addr] {
+dag.authorizedValidators[addr] = true
+fmt.Printf("[PEERS] Auto-authorized validator: %s\n", addr)
+}
+}
+dag.mu.Unlock()
+
 for _, peer := range result.Peers {
 peer = strings.TrimRight(peer, "/")
 if peer == selfURL {
