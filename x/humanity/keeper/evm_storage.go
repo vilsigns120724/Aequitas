@@ -153,7 +153,7 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 	cs.mu.RLock()
 	for addr, acc := range cs.accounts {
 		balBig, _ := new(big.Float).SetPrec(256).Mul(
-			new(big.Float).SetFloat64(acc.Balance),
+			new(big.Float).SetFloat64(acc.Balance.Float()),
 			new(big.Float).SetInt(weiPerAEQ),
 		).Int(nil)
 		if balBig == nil {
@@ -161,7 +161,7 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 		}
 		addrBytes := common.HexToAddress(addr).Bytes()
 		cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex())
-		totalSupply += acc.Balance
+		totalSupply += acc.Balance.Float()
 		if acc.IsHuman {
 			cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 6).Hex(), common.HexToHash("0x01").Hex())
 			totalHumans++
@@ -251,7 +251,7 @@ func (cs *ChainState) SyncBalancesToEVM(contractAddr string, addrs ...string) {
 		cs.mu.RUnlock()
 		var bal float64
 		if ok {
-			bal = acc.Balance
+			bal = acc.Balance.Float()
 		}
 		balBig, _ := new(big.Float).SetPrec(256).Mul(
 			new(big.Float).SetFloat64(bal),
@@ -268,19 +268,19 @@ func (cs *ChainState) SyncBalancesToEVM(contractAddr string, addrs ...string) {
 	}
 }
 
-// syncHumanRegistrationLocked writes both the balanceOf (slot 4) and
-// isHuman (slot 6) EVM slots for a newly registered human. Must be called
-// only while the caller already holds cs.mu (write lock).
+// syncHumanRegistrationLocked writes balanceOf (slot 4), isHuman (slot 6),
+// lastActivity (slot 10), and lastDemurrage (slot 11) EVM slots for a newly
+// registered human. Must be called only while the caller already holds cs.mu (write lock).
+// syncBalanceLocked now handles all four slots, so this is a simple delegation.
 func (cs *ChainState) syncHumanRegistrationLocked(contractAddr string, addr string) {
 	cs.syncBalanceLocked(contractAddr, addr)
-	isHumanSlot := mappingSlot(common.HexToAddress(addr).Bytes(), 6)
-	_ = cs.SaveStorageSlot(strings.ToLower(contractAddr), isHumanSlot.Hex(), common.HexToHash("0x01").Hex())
 }
 
 // syncBalanceLocked is like SyncBalancesToEVM but reads cs.accounts directly
 // without acquiring cs.mu. Must be called only while the caller already holds
 // cs.mu (read or write lock) — calling SyncBalancesToEVM from inside a locked
 // function would deadlock on the inner RLock().
+// Syncs slots: 4 (balanceOf), 6 (isHuman), 10 (lastActivity), 11 (lastDemurrage).
 func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 	if cs.db == nil {
 		return
@@ -292,7 +292,7 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		acc, ok := cs.accounts[addr]
 		var bal float64
 		if ok {
-			bal = acc.Balance
+			bal = acc.Balance.Float()
 		}
 		balBig, _ := new(big.Float).SetPrec(256).Mul(
 			new(big.Float).SetFloat64(bal),
@@ -301,10 +301,25 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		if balBig == nil {
 			balBig = new(big.Int)
 		}
-		slot := mappingSlot(common.HexToAddress(addr).Bytes(), 4).Hex()
-		val := common.BigToHash(balBig).Hex()
-		if err := cs.SaveStorageSlot(contractAddr, slot, val); err != nil {
+		addrBytes := common.HexToAddress(addr).Bytes()
+		// slot 4: balanceOf
+		if err := cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()); err != nil {
 			fmt.Printf("[EVM] Warning: could not sync balance for %s: %v\n", addr, err)
+		}
+		if !ok {
+			continue
+		}
+		// slot 6: isHuman
+		isHumanVal := common.HexToHash("0x00")
+		if acc.IsHuman {
+			isHumanVal = common.HexToHash("0x01")
+		}
+		cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 6).Hex(), isHumanVal.Hex())
+		// slots 10 + 11: lastActivity / lastDemurrage
+		if acc.LastActivityAt > 0 {
+			ts := common.BigToHash(big.NewInt(acc.LastActivityAt))
+			cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 10).Hex(), ts.Hex())
+			cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 11).Hex(), ts.Hex())
 		}
 	}
 }
@@ -329,7 +344,7 @@ func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 	for _, acc := range cs.GetAllAccounts() {
 		addr := common.HexToAddress(acc.Address)
 		decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-		wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), decimals)
+		wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance.Float())), decimals)
 		sdb.SetBalance(addr, wei)
 		sdb.SetNonce(addr, cs.LoadNonce(acc.Address))
 	}
@@ -530,9 +545,9 @@ func (cs *ChainState) SavePriceSnapshot() {
 		cs.mu.RUnlock()
 		return
 	}
-	price := cs.pool.ReserveTUSD / cs.pool.ReserveAEQ
-	aeq := cs.pool.ReserveAEQ
-	tusd := cs.pool.ReserveTUSD
+	price := cs.pool.ReserveTUSD.Float() / cs.pool.ReserveAEQ.Float()
+	aeq := cs.pool.ReserveAEQ.Float()
+	tusd := cs.pool.ReserveTUSD.Float()
 	cs.mu.RUnlock()
 	cs.db.Exec(`INSERT INTO price_snapshots (price, reserve_aeq, reserve_tusd) VALUES ($1, $2, $3)`,
 		price, aeq, tusd)

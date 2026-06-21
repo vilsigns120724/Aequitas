@@ -22,14 +22,14 @@ var timeNowFunc = time.Now
 
 type AccountState struct {
 Address     string  `json:"address"`
-Balance     float64 `json:"balance"`
+Balance     Decimal `json:"balance"`
 IsHuman     bool    `json:"is_human"`
 // TUsdBalance is the account's holding of tUSD — a simulated, chain-native
 // test-dollar token used to exercise the swap/liquidity-pool mechanism
 // without touching any real external currency or bridge. See PoolState
 // below for the actual AEQ<->tUSD liquidity pool this balance interacts
 // with.
-TUsdBalance float64 `json:"tusd_balance"`
+TUsdBalance Decimal `json:"tusd_balance"`
 // LPShares is this account's claim on the liquidity pool, in the same
 // units as PoolState.TotalLPShares. An account's withdrawable amount at
 // any moment is (LPShares / TotalLPShares) * each reserve — see
@@ -38,7 +38,7 @@ TUsdBalance float64 `json:"tusd_balance"`
 // LP's claim automatically reflects fees/price-impact accumulated by the
 // pool since they joined, without needing per-LP bookkeeping of "their"
 // specific tokens.
-LPShares float64 `json:"lp_shares"`
+LPShares Decimal `json:"lp_shares"`
 // LastActivityAt is the Unix timestamp (seconds) of this account's most
 // recent AEQ-moving action (registration, sending/receiving a transfer,
 // swapping, or adding/removing liquidity). Demurrage (see ApplyDemurrage)
@@ -74,14 +74,14 @@ Version      int64 `json:"-"` // optimistic lock version, not serialized
 // see DistributeSwapFee. Ordinary AEQ-to-AEQ transfers (state.Transfer)
 // are NOT touched by this fee; it only applies to swaps through this pool.
 type PoolState struct {
-ReserveAEQ    float64 `json:"reserve_aeq"`
-ReserveTUSD   float64 `json:"reserve_tusd"`
+ReserveAEQ    Decimal `json:"reserve_aeq"`
+ReserveTUSD   Decimal `json:"reserve_tusd"`
 // TotalLPShares is the sum of every account's LPShares. Starts at 0; the
 // very first deposit mints sqrt(amountAEQ * amountTUSD) shares (the
 // standard Uniswap v2 formula — using the geometric mean means the
 // first depositor's chosen ratio doesn't let them mint an arbitrarily
 // large or small initial share count by gaming the two amounts).
-TotalLPShares float64 `json:"total_lp_shares"`
+TotalLPShares Decimal `json:"total_lp_shares"`
 }
 
 type ChainState struct {
@@ -106,6 +106,21 @@ return err == nil
 func (cs *ChainState) releaseStateLock() {
 if cs.db == nil { return }
 cs.db.Exec(`SELECT pg_advisory_unlock(hashtext('aequitas-state-write')::bigint)`)
+}
+
+// beginStateTx starts a SERIALIZABLE PostgreSQL transaction for critical
+// state mutations. The caller is responsible for calling Commit or Rollback.
+// Returns nil if no DB is configured (in-memory/file mode).
+func (cs *ChainState) beginStateTx() *sql.Tx {
+if cs.db == nil {
+return nil
+}
+tx, err := cs.db.Begin()
+if err != nil {
+fmt.Printf("[DB] Warning: could not begin state tx: %v\n", err)
+return nil
+}
+return tx
 }
 
 func NewChainState(dataFile string) *ChainState {
@@ -290,7 +305,11 @@ count := 0
 mergedCount := 0
 for rows.Next() {
 acc := &AccountState{}
-rows.Scan(&acc.Address, &acc.Balance, &acc.IsHuman, &acc.TUsdBalance, &acc.LPShares, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown, &acc.FaucetClaimed)
+var bal, tusd, lp float64
+rows.Scan(&acc.Address, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown, &acc.FaucetClaimed)
+acc.Balance = NewDecimal(bal)
+acc.TUsdBalance = NewDecimal(tusd)
+acc.LPShares = NewDecimal(lp)
 count++
 
 // One-time migration: every state-mutating function (Transfer,
@@ -315,10 +334,10 @@ normalized := strings.ToLower(acc.Address)
 if existing, ok := cs.accounts[normalized]; ok {
 mergedCount++
 fmt.Printf("[MIGRATION] Merging duplicate-case account %s into %s (balance %.6f + %.6f, tusd %.6f + %.6f, lp %.6f + %.6f)\n",
-acc.Address, normalized, existing.Balance, acc.Balance, existing.TUsdBalance, acc.TUsdBalance, existing.LPShares, acc.LPShares)
-existing.Balance += acc.Balance
-existing.TUsdBalance += acc.TUsdBalance
-existing.LPShares += acc.LPShares
+acc.Address, normalized, existing.Balance.Float(), acc.Balance.Float(), existing.TUsdBalance.Float(), acc.TUsdBalance.Float(), existing.LPShares.Float(), acc.LPShares.Float())
+existing.Balance = existing.Balance.Add(acc.Balance)
+existing.TUsdBalance = existing.TUsdBalance.Add(acc.TUsdBalance)
+existing.LPShares = existing.LPShares.Add(acc.LPShares)
 existing.IsHuman = existing.IsHuman || acc.IsHuman
 if acc.LastActivityAt > existing.LastActivityAt {
 existing.LastActivityAt = acc.LastActivityAt
@@ -371,11 +390,11 @@ ON CONFLICT (id) DO NOTHING`)
 if insertErr != nil {
 fmt.Printf("⚠ Could not create liquidity pool row: %v\n", insertErr)
 }
-cs.pool = &PoolState{ReserveAEQ: 0, ReserveTUSD: 0, TotalLPShares: 0}
+cs.pool = &PoolState{ReserveAEQ: NewDecimal(0), ReserveTUSD: NewDecimal(0), TotalLPShares: NewDecimal(0)}
 fmt.Printf("✓ Liquidity pool created (empty — awaiting first deposit via AddLiquidity)\n")
 return
 }
-cs.pool = &PoolState{ReserveAEQ: reserveAEQ, ReserveTUSD: reserveTUSD, TotalLPShares: totalShares}
+cs.pool = &PoolState{ReserveAEQ: NewDecimal(reserveAEQ), ReserveTUSD: NewDecimal(reserveTUSD), TotalLPShares: NewDecimal(totalShares)}
 fmt.Printf("✓ Liquidity pool loaded: %.2f AEQ / %.2f tUSD / %.6f shares\n", reserveAEQ, reserveTUSD, totalShares)
 }
 
@@ -408,11 +427,11 @@ return
 }
 _, err := cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
 ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1`,
-acc.Address, acc.Balance, acc.IsHuman, acc.TUsdBalance, acc.LPShares, acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed)
+acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed)
 if err != nil {
 fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
 } else {
-fmt.Printf("[DB] Saved account %s | balance=%.2f | tusd=%.2f | lp=%.6f | is_human=%v\n", acc.Address, acc.Balance, acc.TUsdBalance, acc.LPShares, acc.IsHuman)
+fmt.Printf("[DB] Saved account %s | balance=%.2f | tusd=%.2f | lp=%.6f | is_human=%v\n", acc.Address, acc.Balance.Float(), acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.IsHuman)
 }
 }
 
@@ -472,7 +491,7 @@ return timeNowFunc().Unix()
 // lazy-settlement points (see settleDemurrageLocked) where it actually
 // gets written to the stored Balance field. Caller must hold at least a
 // read lock.
-func effectiveBalance(acc *AccountState) float64 {
+func effectiveBalance(acc *AccountState) Decimal {
 if acc.LastActivityAt == 0 {
 return acc.Balance
 }
@@ -483,7 +502,7 @@ return acc.Balance
 decayingSeconds := float64(idleSeconds - demurrageGracePeriodSeconds)
 monthsDecaying := decayingSeconds / float64(secondsPerMonth)
 factor := math.Pow(1-demurrageMonthlyRate, monthsDecaying)
-return acc.Balance * factor
+return acc.Balance.MulFloat(factor)
 }
 
 // settleDemurrageLocked actually writes off the decay computed by
@@ -496,13 +515,13 @@ return acc.Balance * factor
 // that exact moment. Caller must hold cs.mu (write lock).
 func (cs *ChainState) settleDemurrageLocked(acc *AccountState) {
 current := effectiveBalance(acc)
-lost := acc.Balance - current
+lost := acc.Balance.Sub(current)
 if lost <= 0 {
 return
 }
 acc.Balance = current
-cs.distributeSwapFee(lost, true) // true = denominated in AEQ; reuses the same 40/30/20/10 split as swap fees
-fmt.Printf("[DEMURRAGE] %s: idle balance decayed by %.6f AEQ, redistributed to pools\n", acc.Address, lost)
+cs.distributeSwapFee(lost.Float(), true) // true = denominated in AEQ; reuses the same 40/30/20/10 split as swap fees
+fmt.Printf("[DEMURRAGE] %s: idle balance decayed by %.6f AEQ, redistributed to pools\n", acc.Address, lost.Float())
 }
 
 func (cs *ChainState) GetBalance(address string) float64 {
@@ -510,7 +529,7 @@ cs.mu.RLock()
 defer cs.mu.RUnlock()
 address = strings.ToLower(address)
 if acc, ok := cs.accounts[address]; ok {
-return effectiveBalance(acc)
+return effectiveBalance(acc).Float()
 }
 return 0
 }
@@ -599,7 +618,7 @@ fmt.Println("[VALIDATORS] Pool is empty — nothing to distribute today")
 return
 }
 
-total := poolAcc.Balance
+total := poolAcc.Balance.Float()
 // Query block counts for proportional distribution
 type nodeShare struct{ wallet string; blocks int64 }
 var nodeShares []nodeShare
@@ -618,7 +637,7 @@ rows.Close()
 if len(nodeShares) == 0 {
 for _, w := range nodes { nodeShares = append(nodeShares, nodeShare{w, 1}); totalBlocks++ }
 }
-poolAcc.Balance = 0
+poolAcc.Balance = NewDecimal(0)
 cs.saveAccountToDB(poolAcc)
 
 for _, ns := range nodeShares {
@@ -629,7 +648,7 @@ cs.accounts[wallet] = &AccountState{Address: wallet}
 }
 acc := cs.accounts[wallet]
 cs.settleDemurrageLocked(acc)
-acc.Balance = round6(acc.Balance + share)
+acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 touchActivity(acc)
 cs.enforceWealthCapLocked(acc)
 cs.saveAccountToDB(acc)
@@ -664,8 +683,8 @@ var holders []lpHolder
 totalShares := 0.0
 for addr, acc := range cs.accounts {
 if acc.LPShares > 0 {
-holders = append(holders, lpHolder{addr, acc.LPShares})
-totalShares += acc.LPShares
+holders = append(holders, lpHolder{addr, acc.LPShares.Float()})
+totalShares += acc.LPShares.Float()
 }
 }
 if totalShares <= 0 || len(holders) == 0 {
@@ -673,15 +692,15 @@ fmt.Println("[LP] No LP holders — pool left untouched")
 return
 }
 
-total := poolAcc.Balance
-poolAcc.Balance = 0
+total := poolAcc.Balance.Float()
+poolAcc.Balance = NewDecimal(0)
 cs.saveAccountToDB(poolAcc)
 
 for _, h := range holders {
 share := (h.shares / totalShares) * total
 acc := cs.accounts[h.addr]
 cs.settleDemurrageLocked(acc)
-acc.Balance += share
+acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 touchActivity(acc)
 cs.enforceWealthCapLocked(acc)
 cs.saveAccountToDB(acc)
@@ -716,15 +735,15 @@ fmt.Println("[UBI] No registered humans yet — pool left untouched")
 return
 }
 
-total := poolAcc.Balance
+total := poolAcc.Balance.Float()
 share := total / float64(len(humanAddrs))
-poolAcc.Balance = 0
+poolAcc.Balance = NewDecimal(0)
 cs.saveAccountToDB(poolAcc)
 
 for _, addr := range humanAddrs {
 acc := cs.accounts[addr]
 cs.settleDemurrageLocked(acc) // settle any pending decay before adding the UBI share
-acc.Balance += share
+acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 touchActivity(acc) // receiving the daily UBI share counts as activity, like any other incoming AEQ
 cs.enforceWealthCapLocked(acc) // a UBI payout can in principle still push someone over the cap
 cs.saveAccountToDB(acc)
@@ -755,7 +774,7 @@ for _, acc := range cs.accounts {
 if !acc.IsHuman {
 continue
 }
-total += effectiveBalance(acc)
+total += effectiveBalance(acc).Float()
 count++
 }
 if count == 0 {
@@ -827,11 +846,11 @@ return // no meaningful average yet (e.g. only one human registered so far)
 }
 multiplier := cs.bootstrapMultiplierLocked()
 cap := avg * multiplier
-if acc.Balance <= cap {
+if acc.Balance.Float() <= cap {
 return
 }
-excess := acc.Balance - cap
-acc.Balance = cap
+excess := acc.Balance.Float() - cap
+acc.Balance = NewDecimal(cap)
 cs.distributeSwapFee(excess, true)
 fmt.Printf("[WEALTH CAP] %s exceeded %.2fx average (%.2f AEQ) — %.4f AEQ excess redistributed to pools\n",
 acc.Address, multiplier, cap, excess)
@@ -890,7 +909,7 @@ cs.mu.RLock()
 defer cs.mu.RUnlock()
 address = strings.ToLower(address)
 if acc, ok := cs.accounts[address]; ok {
-return acc.TUsdBalance
+return acc.TUsdBalance.Float()
 }
 return 0
 }
@@ -901,7 +920,7 @@ defer cs.mu.RUnlock()
 if cs.pool == nil {
 return 0, 0
 }
-return cs.pool.ReserveAEQ, cs.pool.ReserveTUSD
+return cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float()
 }
 
 func (cs *ChainState) IsHuman(address string) bool {
@@ -928,14 +947,14 @@ cs.accounts[address] = &AccountState{Address: address}
 }
 
 cs.accounts[address].IsHuman = true
-cs.accounts[address].Balance += 1000
+cs.accounts[address].Balance = cs.accounts[address].Balance.Add(NewDecimal(1000))
 touchActivity(cs.accounts[address]) // starts this 1,000 AEQ's own grace period fresh
 cs.enforceWealthCapLocked(cs.accounts[address])
 cs.saveAccountToDB(cs.accounts[address])
 cs.save()
 
 fmt.Printf("[STATE] ✓ Human registered: %s | Balance: %.2f AEQ\n",
-address, cs.accounts[address].Balance)
+address, cs.accounts[address].Balance.Float())
 cs.syncHumanRegistrationLocked(V7_CONTRACT_ADDR, address)
 return nil
 }
@@ -953,11 +972,11 @@ if !ok {
 return fmt.Errorf("insufficient balance")
 }
 cs.settleDemurrageLocked(fromAcc) // make sure we're checking against the real, decayed balance
-if fromAcc.Balance < amount {
+if fromAcc.Balance.Float() < amount {
 return fmt.Errorf("insufficient balance")
 }
 
-fromAcc.Balance = round6(fromAcc.Balance - amount)
+fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - amount))
 touchActivity(fromAcc) // sending counts as "using" the money — resets its decay clock
 cs.saveAccountToDB(fromAcc)
 
@@ -965,7 +984,7 @@ if _, ok := cs.accounts[to]; !ok {
 cs.accounts[to] = &AccountState{Address: to}
 }
 cs.settleDemurrageLocked(cs.accounts[to])
-cs.accounts[to].Balance = round6(cs.accounts[to].Balance + amount)
+cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + amount))
 touchActivity(cs.accounts[to]) // receiving also resets the clock on the recipient's whole balance
 cs.enforceWealthCapLocked(cs.accounts[to])
 cs.saveAccountToDB(cs.accounts[to])
@@ -1044,11 +1063,11 @@ return 0, fmt.Errorf("account not found")
 cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
 
 if aeqToTusd {
-if acc.Balance < amountIn {
+if acc.Balance.Float() < amountIn {
 return 0, fmt.Errorf("insufficient AEQ balance")
 }
 } else {
-if acc.TUsdBalance < amountIn {
+if acc.TUsdBalance.Float() < amountIn {
 return 0, fmt.Errorf("insufficient tUSD balance")
 }
 }
@@ -1061,23 +1080,23 @@ amountInAfterFee := amountIn - fee
 var amountOut float64
 if aeqToTusd {
 // x*y=k: reserveAEQ * reserveTUSD = (reserveAEQ + amountInAfterFee) * (reserveTUSD - amountOut)
-amountOut = round6((cs.pool.ReserveTUSD * amountInAfterFee) / (cs.pool.ReserveAEQ + amountInAfterFee))
-if amountOut >= cs.pool.ReserveTUSD {
+amountOut = AMMSwapOut(cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, NewDecimal(amountInAfterFee)).Float()
+if amountOut >= cs.pool.ReserveTUSD.Float() {
 return 0, fmt.Errorf("swap too large for pool liquidity")
 }
-cs.pool.ReserveAEQ = round6(cs.pool.ReserveAEQ + amountInAfterFee)
-cs.pool.ReserveTUSD = round6(cs.pool.ReserveTUSD - amountOut)
-acc.Balance = round6(acc.Balance - amountIn)
-acc.TUsdBalance = round6(acc.TUsdBalance + amountOut)
+cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() + amountInAfterFee))
+cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() - amountOut))
+acc.Balance = NewDecimal(round6(acc.Balance.Float() - amountIn))
+acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + amountOut))
 } else {
-amountOut = round6((cs.pool.ReserveAEQ * amountInAfterFee) / (cs.pool.ReserveTUSD + amountInAfterFee))
-if amountOut >= cs.pool.ReserveAEQ {
+amountOut = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, NewDecimal(amountInAfterFee)).Float()
+if amountOut >= cs.pool.ReserveAEQ.Float() {
 return 0, fmt.Errorf("swap too large for pool liquidity")
 }
-cs.pool.ReserveTUSD = round6(cs.pool.ReserveTUSD + amountInAfterFee)
-cs.pool.ReserveAEQ = round6(cs.pool.ReserveAEQ - amountOut)
-acc.TUsdBalance = round6(acc.TUsdBalance - amountIn)
-acc.Balance = round6(acc.Balance + amountOut)
+cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + amountInAfterFee))
+cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() - amountOut))
+acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - amountIn))
+acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountOut))
 }
 touchActivity(acc) // swapping (either direction) counts as using the AEQ side
 if !aeqToTusd {
@@ -1109,7 +1128,7 @@ if !cs.useDB || cs.pool == nil {
 return
 }
 _, err := cs.db.Exec(`UPDATE liquidity_pool SET reserve_aeq = $1, reserve_tusd = $2, total_lp_shares = $3 WHERE id = 1`,
-cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, cs.pool.TotalLPShares)
+cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float(), cs.pool.TotalLPShares.Float())
 if err != nil {
 fmt.Printf("[DB] Error saving pool: %v\n", err)
 }
@@ -1137,9 +1156,9 @@ if _, ok := cs.accounts[addr]; !ok {
 cs.accounts[addr] = &AccountState{Address: addr}
 }
 if feeInAEQ {
-cs.accounts[addr].Balance += amount
+cs.accounts[addr].Balance = cs.accounts[addr].Balance.Add(NewDecimal(amount))
 } else {
-cs.accounts[addr].TUsdBalance += amount
+cs.accounts[addr].TUsdBalance = cs.accounts[addr].TUsdBalance.Add(NewDecimal(amount))
 }
 cs.saveAccountToDB(cs.accounts[addr])
 }
@@ -1180,10 +1199,10 @@ if !ok {
 return fmt.Errorf("account not found")
 }
 cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
-if acc.Balance < amountAEQ {
+if acc.Balance.Float() < amountAEQ {
 return fmt.Errorf("insufficient AEQ balance")
 }
-if acc.TUsdBalance < amountTUSD {
+if acc.TUsdBalance.Float() < amountTUSD {
 return fmt.Errorf("insufficient tUSD balance")
 }
 
@@ -1192,7 +1211,7 @@ return fmt.Errorf("insufficient tUSD balance")
 // instantly shift the price, which is the same rule real AMMs enforce.
 var mintedShares float64
 if cs.pool.ReserveAEQ > 0 && cs.pool.ReserveTUSD > 0 {
-expectedTUSD := amountAEQ * (cs.pool.ReserveTUSD / cs.pool.ReserveAEQ)
+expectedTUSD := amountAEQ * (cs.pool.ReserveTUSD.Float() / cs.pool.ReserveAEQ.Float())
 tolerance := expectedTUSD * 0.01 // 1% slack for rounding
 if amountTUSD < expectedTUSD-tolerance || amountTUSD > expectedTUSD+tolerance {
 return fmt.Errorf("deposit ratio does not match pool ratio (expected ~%.4f tUSD for %.4f AEQ)", expectedTUSD, amountAEQ)
@@ -1202,7 +1221,7 @@ if cs.pool.TotalLPShares > 0 {
 // AEQ reserve as the fraction of total shares being minted, so an
 // LP's claim accurately tracks how much of the pool they actually
 // own (including any fees the pool has accumulated since genesis).
-mintedShares = (amountAEQ / cs.pool.ReserveAEQ) * cs.pool.TotalLPShares
+mintedShares = (amountAEQ / cs.pool.ReserveAEQ.Float()) * cs.pool.TotalLPShares.Float()
 } else {
 // The pool has real reserves but zero recorded shares — this
 // happens for reserves that were deposited before LP-share
@@ -1216,10 +1235,10 @@ mintedShares = (amountAEQ / cs.pool.ReserveAEQ) * cs.pool.TotalLPShares
 // them, since shares would stay stuck at zero forever (any future
 // deposit would hit this same zero-total-shares branch again).
 newShares := math.Sqrt(amountAEQ * amountTUSD)
-preExistingShares := math.Sqrt(cs.pool.ReserveAEQ * cs.pool.ReserveTUSD)
+preExistingShares := math.Sqrt(cs.pool.ReserveAEQ.Float() * cs.pool.ReserveTUSD.Float())
 mintedShares = newShares + preExistingShares
 fmt.Printf("[POOL] ⚠ Pool had %.4f AEQ / %.4f tUSD in reserves with zero recorded LP shares (pre-dates share tracking) — crediting depositor %.6f shares for those alongside %.6f shares for this new deposit\n",
-cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, preExistingShares, newShares)
+cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float(), preExistingShares, newShares)
 }
 } else {
 // First-ever deposit: shares = geometric mean of the two amounts
@@ -1229,13 +1248,13 @@ cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, preExistingShares, newShares)
 mintedShares = math.Sqrt(amountAEQ * amountTUSD)
 }
 
-acc.Balance -= amountAEQ
-acc.TUsdBalance -= amountTUSD
-acc.LPShares += mintedShares
+acc.Balance = NewDecimal(round6(acc.Balance.Float() - amountAEQ))
+acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - amountTUSD))
+acc.LPShares = NewDecimal(round6(acc.LPShares.Float() + mintedShares))
 touchActivity(acc) // depositing into the pool counts as using the AEQ
-cs.pool.ReserveAEQ += amountAEQ
-cs.pool.ReserveTUSD += amountTUSD
-cs.pool.TotalLPShares += mintedShares
+cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() + amountAEQ))
+cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + amountTUSD))
+cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() + mintedShares))
 
 cs.saveAccountToDB(acc)
 cs.savePoolToDB()
@@ -1268,22 +1287,22 @@ acc, ok := cs.accounts[address]
 if !ok {
 return 0, 0, fmt.Errorf("account not found")
 }
-if acc.LPShares < sharesToBurn {
-return 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)", acc.LPShares, sharesToBurn)
+if acc.LPShares.Float() < sharesToBurn {
+return 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)", acc.LPShares.Float(), sharesToBurn)
 }
 
-fraction := sharesToBurn / cs.pool.TotalLPShares
-outAEQ := cs.pool.ReserveAEQ * fraction
-outTUSD := cs.pool.ReserveTUSD * fraction
+fraction := sharesToBurn / cs.pool.TotalLPShares.Float()
+outAEQ := cs.pool.ReserveAEQ.Float() * fraction
+outTUSD := cs.pool.ReserveTUSD.Float() * fraction
 
-acc.LPShares -= sharesToBurn
-acc.Balance += outAEQ
-acc.TUsdBalance += outTUSD
+acc.LPShares = NewDecimal(round6(acc.LPShares.Float() - sharesToBurn))
+acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
+acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
 touchActivity(acc) // receiving AEQ back from the pool counts as using it
 cs.enforceWealthCapLocked(acc)
-cs.pool.ReserveAEQ -= outAEQ
-cs.pool.ReserveTUSD -= outTUSD
-cs.pool.TotalLPShares -= sharesToBurn
+cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() - outAEQ))
+cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() - outTUSD))
+cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
 
 cs.saveAccountToDB(acc)
 cs.savePoolToDB()
@@ -1305,11 +1324,11 @@ defer cs.mu.RUnlock()
 address = strings.ToLower(address)
 var mine float64
 if acc, ok := cs.accounts[address]; ok {
-mine = acc.LPShares
+mine = acc.LPShares.Float()
 }
 total := 0.0
 if cs.pool != nil {
-total = cs.pool.TotalLPShares
+total = cs.pool.TotalLPShares.Float()
 }
 return mine, total
 }
@@ -1390,7 +1409,7 @@ return fmt.Errorf("faucet already claimed")
 }
 
 acc.FaucetClaimed = true
-acc.TUsdBalance = tusdFaucetAmount
+acc.TUsdBalance = NewDecimal(tusdFaucetAmount)
 cs.saveAccountToDB(acc)
 cs.save()
 
@@ -1406,7 +1425,7 @@ sort.Strings(addrs)
 var sb strings.Builder
 for _, a := range addrs {
 acc := cs.accounts[a]
-if acc.IsHuman { fmt.Fprintf(&sb, "%s:%.6f:", a, round6(acc.Balance)) }
+if acc.IsHuman { fmt.Fprintf(&sb, "%s:%.6f:", a, round6(acc.Balance.Float())) }
 }
 cs.mu.RUnlock()
 hash := sha256.Sum256([]byte(sb.String()))
@@ -1418,7 +1437,7 @@ return hex.EncodeToString(hash[:])
 func (cs *ChainState) calcGiniLocked() float64 {
 balances := []float64{}
 for _, acc := range cs.accounts {
-if acc.IsHuman && acc.Balance > 0 { balances = append(balances, effectiveBalance(acc)) }
+if acc.IsHuman && acc.Balance > 0 { balances = append(balances, effectiveBalance(acc).Float()) }
 }
 n := len(balances)
 if n < 2 { return 0.0 }
@@ -1446,7 +1465,7 @@ for _, acc := range cs.accounts {
 // Only count registered humans — pool addresses and unregistered
 // wallets holding small fee amounts would skew the distribution.
 if acc.IsHuman && acc.Balance > 0 {
-balances = append(balances, effectiveBalance(acc))
+balances = append(balances, effectiveBalance(acc).Float())
 }
 }
 n := len(balances)
@@ -1514,10 +1533,10 @@ cs.mu.Lock()
 defer cs.mu.Unlock()
 address = strings.ToLower(address)
 if acc, ok := cs.accounts[address]; ok {
-acc.Balance = amount
+acc.Balance = NewDecimal(amount)
 cs.saveAccountToDB(acc)
 } else {
-acc = &AccountState{Address: address, Balance: amount}
+acc = &AccountState{Address: address, Balance: NewDecimal(amount)}
 cs.accounts[address] = acc
 cs.saveAccountToDB(acc)
 }

@@ -20,7 +20,7 @@ func newTestState() *ChainState {
 func addHuman(cs *ChainState, addr string, balance float64) {
 	cs.accounts[addr] = &AccountState{
 		Address: addr,
-		Balance: balance,
+		Balance: NewDecimal(balance),
 		IsHuman: true,
 	}
 }
@@ -90,7 +90,7 @@ func TestCalcGini_NonHumanBalancesIgnored(t *testing.T) {
 	addHuman(cs, "0x01", 100)
 	addHuman(cs, "0x02", 100)
 	// Non-human with huge balance — must not skew Gini
-	cs.accounts["0x99"] = &AccountState{Address: "0x99", Balance: 1_000_000, IsHuman: false}
+	cs.accounts["0x99"] = &AccountState{Address: "0x99", Balance: NewDecimal(1_000_000), IsHuman: false}
 	g := cs.CalcGini()
 	if g != 0.0 {
 		t.Errorf("non-human balance must be ignored: want Gini=0, got %v", g)
@@ -222,8 +222,8 @@ func TestEnforceWealthCap_BelowCap_NoChange(t *testing.T) {
 	cs.mu.Lock()
 	cs.enforceWealthCapLocked(acc)
 	cs.mu.Unlock()
-	if acc.Balance != 500 {
-		t.Errorf("under cap: balance should stay 500, got %v", acc.Balance)
+	if acc.Balance.Float() != 500 {
+		t.Errorf("under cap: balance should stay 500, got %v", acc.Balance.Float())
 	}
 }
 
@@ -245,13 +245,13 @@ func TestEnforceWealthCap_AboveCap_ExcessRedistributed(t *testing.T) {
 	cs.mu.Lock()
 	cs.enforceWealthCapLocked(acc)
 	cs.mu.Unlock()
-	if math.Abs(acc.Balance-expectedCap) > 1e-6 {
-		t.Errorf("after cap: want balance=%.6f, got %.6f", expectedCap, acc.Balance)
+	if math.Abs(acc.Balance.Float()-expectedCap) > 1e-6 {
+		t.Errorf("after cap: want balance=%.6f, got %.6f", expectedCap, acc.Balance.Float())
 	}
-	poolTotal := cs.accounts[validatorsPoolAddr].Balance +
-		cs.accounts[lpPoolAddr].Balance +
-		cs.accounts[ubiPoolAddr].Balance +
-		cs.accounts[treasuryPoolAddr].Balance
+	poolTotal := cs.accounts[validatorsPoolAddr].Balance.Float() +
+		cs.accounts[lpPoolAddr].Balance.Float() +
+		cs.accounts[ubiPoolAddr].Balance.Float() +
+		cs.accounts[treasuryPoolAddr].Balance.Float()
 	expectedExcess := 100_000.0 - expectedCap
 	if math.Abs(poolTotal-expectedExcess) > 1e-6 {
 		t.Errorf("pool total: want %.6f excess redistributed, got %.6f", expectedExcess, poolTotal)
@@ -262,12 +262,12 @@ func TestEnforceWealthCap_PoolAddresses_Exempt(t *testing.T) {
 	cs := newTestState()
 	addHuman(cs, "0x01", 100)
 	// Pool address with huge balance — must be exempt from cap
-	cs.accounts[validatorsPoolAddr] = &AccountState{Address: validatorsPoolAddr, Balance: 1_000_000}
+	cs.accounts[validatorsPoolAddr] = &AccountState{Address: validatorsPoolAddr, Balance: NewDecimal(1_000_000)}
 	acc := cs.accounts[validatorsPoolAddr]
 	cs.mu.Lock()
 	cs.enforceWealthCapLocked(acc)
 	cs.mu.Unlock()
-	if acc.Balance != 1_000_000 {
-		t.Errorf("pool address must be exempt from cap, balance changed to %v", acc.Balance)
+	if acc.Balance.Float() != 1_000_000 {
+		t.Errorf("pool address must be exempt from cap, balance changed to %v", acc.Balance.Float())
 	}
 }

@@ -77,7 +77,7 @@ return nil, nil, err
 for _, acc := range e.chainState.GetAllAccounts() {
 addr := common.HexToAddress(acc.Address)
 decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), decimals)
+wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance.Float())), decimals)
 sdb.SetBalance(addr, wei)
 sdb.SetNonce(addr, e.chainState.LoadNonce(acc.Address))
 }
@@ -416,7 +416,7 @@ if wei == nil || wei.Sign() == 0 {
 continue
 }
 balAEQ, _ := new(big.Float).Quo(new(big.Float).SetInt(wei), decimals).Float64()
-if balAEQ > 0 && balAEQ != acc.Balance {
+if balAEQ > 0 && balAEQ != acc.Balance.Float() {
 e.chainState.SetBalance(acc.Address, balAEQ)
 }
 }

@@ -529,7 +529,7 @@ accs := a.state.GetAllAccounts()
 var total float64
 n := 0
 for _, acc := range accs {
-if acc.IsHuman { total += acc.Balance; n++ }
+if acc.IsHuman { total += acc.Balance.Float(); n++ }
 }
 avg := 0.0
 if n > 0 { avg = total / float64(n) }
