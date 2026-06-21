@@ -4,6 +4,7 @@ import (
 "encoding/hex"
 "encoding/json"
 "fmt"
+"html"
 "io"
 "math/big"
 "net"
@@ -108,7 +109,20 @@ fmt.Println("✗ EVM Engine failed")
 }
 addr := fmt.Sprintf(":%d", port)
 fmt.Printf("✓ API Server listening on port %d\n", port)
-go http.ListenAndServe(addr, mux)
+// Use http.Server with explicit timeouts to prevent slowloris attacks and
+// goroutine leaks from clients that never send/read — the default mux has none.
+srv := &http.Server{
+Addr:         addr,
+Handler:      mux,
+ReadTimeout:  30 * time.Second,
+WriteTimeout: 60 * time.Second,
+IdleTimeout:  120 * time.Second,
+}
+go func() {
+if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+fmt.Printf("[API] Server error: %v\n", err)
+}
+}()
 }
 
 func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -397,7 +411,9 @@ return balance, isHuman
 
 func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "text/html")
-wallet := r.URL.Query().Get("wallet")
+// XSS fix: escape wallet parameter before writing to HTML — without this,
+// a crafted URL like /registered?wallet=<script>... would execute JS.
+wallet := html.EscapeString(r.URL.Query().Get("wallet"))
 fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
 <head>

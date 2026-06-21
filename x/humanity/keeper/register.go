@@ -432,7 +432,13 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// delay the registration response.
 		go notifyProofServer(bioHashKey, wallet)
 	}
-	if req.Nullifier != "" {
+	// Always save effectiveNullifier (the ZK-derived one when using v2 circuit),
+	// not just req.Nullifier — req.Nullifier may be empty or the old SHA256 value
+	// while effectiveNullifier is the one actually stored on-chain.
+	if effectiveNullifier != "" {
+		a.state.SaveNullifier(effectiveNullifier, wallet)
+		fmt.Printf("[NULLIFIER] ✓ Stored effectiveNullifier for %s\n", wallet)
+	} else if req.Nullifier != "" {
 		a.state.SaveNullifier(req.Nullifier, wallet)
 		fmt.Printf("[NULLIFIER] ✓ Stored nullifier for %s\n", wallet)
 	}

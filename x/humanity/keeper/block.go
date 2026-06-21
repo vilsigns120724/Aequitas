@@ -343,6 +343,17 @@ return false
 }
 }
 
+// State-root integrity check BEFORE writing to DAG — previously the block
+// was stored first, then checked, which let rejected blocks still become tips.
+if block.StateRoot != "" {
+localRoot := dag.state.StateRoot()
+if block.StateRoot != localRoot {
+fmt.Printf("[DAG] ✗ Rejected peer block #%d: state root mismatch (proposer=%s..., local=%s...)\n",
+block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
+return false
+}
+}
+
 dag.blocks[block.Hash] = block
 
 // Remove parents from tips
@@ -355,19 +366,6 @@ dag.tips[block.Hash] = true
 
 if block.Height > dag.height {
 dag.height = block.Height
-}
-
-// State-root integrity check: verify the proposer's claimed state root
-// matches our locally computed root. A mismatch indicates the proposer
-// signed economically incorrect state (wrong balances or human count).
-// We hard-reject to prevent validators from lying about state.
-if block.StateRoot != "" {
-localRoot := dag.state.StateRoot()
-if block.StateRoot != localRoot {
-fmt.Printf("[DAG] ✗ Rejected peer block #%d: state root mismatch (proposer=%s..., local=%s...)\n",
-block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
-return false
-}
 }
 
 fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, len(dag.tips))

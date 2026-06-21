@@ -5,6 +5,7 @@ import (
 "fmt"
 "math/big"
 "strings"
+"time"
 
 "github.com/ethereum/go-ethereum/common"
 "github.com/ethereum/go-ethereum/core/rawdb"
@@ -48,13 +49,16 @@ ShanghaiTime:        &shanghai,
 }
 
 func blockContext() vm.BlockContext {
+// Use real wall-clock time so Solidity block.timestamp-based checks
+// (Escrow timelocks, Guardian delays, inactivity rules) work correctly.
+now := uint64(time.Now().Unix())
 return vm.BlockContext{
 CanTransfer: func(_ vm.StateDB, _ common.Address, _ *big.Int) bool { return true },
 Transfer:    func(_ vm.StateDB, _, _ common.Address, _ *big.Int) {},
 GetHash:     func(_ uint64) common.Hash { return common.Hash{} },
 Coinbase:    common.Address{},
-BlockNumber: big.NewInt(1),
-Time:        1000000,
+BlockNumber: big.NewInt(int64(now / 6)), // ~6s blocks on Aequitas Chain
+Time:        now,
 Difficulty:  big.NewInt(0),
 GasLimit:    30_000_000,
 BaseFee:     big.NewInt(0),
@@ -319,6 +323,30 @@ var v7ArrayBaseSlots = []int64{17, 18, 19, 20, 21, 22, 23, 24, 25, 26}
 // offsets per function selector. This is NOT a heuristic — each offset was
 // confirmed against real ABI-encoded calldata before being hardcoded here.
 // Add a new case here whenever a new state-changing function is wired up.
+// extractTouchedEntitiesWithNullifier extends extractTouchedEntities to also
+// return the nullifier (bytes32) used in a registerWithSig call, so it can be
+// persisted to usedNullifiers slot 8. Returns nil nullifier for other calls.
+func extractTouchedEntitiesWithNullifier(from common.Address, data []byte) ([]common.Address, []*big.Int, *[32]byte) {
+addrs, commits := extractTouchedEntities(from, data)
+if len(data) < 4 {
+return addrs, commits, nil
+}
+sel := fmt.Sprintf("%x", data[:4])
+if sel == "33f4167a" && len(data) >= 4+32*6+20+32+32 {
+// Last static param before signature offset is the nullifier (bytes32).
+// ABI layout: 4 + pA(64) + pB(128) + pC(64) + pubSignals(64) + claimedHuman(32)
+// = 4+352 = 356; signature is dynamic, nullifier is the last fixed param
+// Dynamic offset for signature is at 356, actual nullifier at the LAST 32 bytes
+// of fixed params: 4+2*32+4*32+2*32+2*32+32 = 4+352 = 356, so nullifier at 356
+if len(data) >= 356+32 {
+var nullifier [32]byte
+copy(nullifier[:], data[356:388])
+return addrs, commits, &nullifier
+}
+}
+return addrs, commits, nil
+}
+
 func extractTouchedEntities(from common.Address, data []byte) ([]common.Address, []*big.Int) {
 if len(data) < 4 {
 return []common.Address{from}, nil
@@ -379,10 +407,32 @@ count++
 }
 
 for _, commitment := range touchedCommitments {
-slot := mappingSlotBytes32(common.BigToHash(commitment), 7) // usedCommitments
+slot := mappingSlotBytes32(common.BigToHash(commitment), 7) // usedCommitments (slot 7)
 val := freshDB.GetState(addr, slot)
 e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
 count++
+}
+// Persist usedNullifiers (slot 8): bytes32→address mapping. Previously only
+// usedCommitments was persisted; nullifiers were lost on StateDB reload,
+// allowing the same biometric to re-register after a node restart.
+_, _, nullifier := extractTouchedEntitiesWithNullifier(addr, nil) // need calldata
+_ = nullifier // calldata not available here — nullifiers persisted via SaveNullifier in register.go
+// Alternative: persist ALL non-zero bytes32-keyed entries from slot 8 by
+// scanning the nullifiers table and writing them all.
+if e.chainState.db != nil {
+rows, err := e.chainState.db.Query(`SELECT nullifier, wallet_address FROM nullifiers`)
+if err == nil {
+for rows.Next() {
+var nullHex, wallet string
+rows.Scan(&nullHex, &wallet)
+nullKey := common.HexToHash(strings.TrimPrefix(nullHex, "0x"))
+nullSlot := mappingSlotBytes32(nullKey, 8)
+walletHash := common.BigToHash(common.HexToAddress(wallet).Big())
+e.chainState.SaveStorageSlot(addrStr, nullSlot.Hex(), walletHash.Hex())
+count++
+}
+rows.Close()
+}
 }
 if count > 0 {
 fmt.Printf("[EVM] Persisted %d storage slots for %s\n", count, addrStr)

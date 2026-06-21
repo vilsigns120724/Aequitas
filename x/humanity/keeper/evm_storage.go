@@ -165,6 +165,14 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 		if acc.IsHuman {
 			cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 6).Hex(), common.HexToHash("0x01").Hex())
 			totalHumans++
+			// Preserve lastActivity (slot 10), lastDemurrage (slot 11), ubiClaimed (slot 12)
+			// across contract upgrades so existing rights don't disappear.
+			if acc.LastActivityAt > 0 {
+				ts := big.NewInt(acc.LastActivityAt)
+				cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 10).Hex(), common.BigToHash(ts).Hex())
+				cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 11).Hex(), common.BigToHash(ts).Hex())
+				cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 12).Hex(), common.BigToHash(ts).Hex())
+			}
 		}
 	}
 	cs.mu.RUnlock()

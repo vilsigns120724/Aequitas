@@ -554,13 +554,15 @@ return
 wallet := strings.ToLower(operatorWallet)
 cs.db.Exec(`CREATE TABLE IF NOT EXISTS registered_nodes (
 wallet_address TEXT PRIMARY KEY,
+signing_address TEXT DEFAULT '',
 registered_at TIMESTAMP DEFAULT NOW(),
 blocks_produced BIGINT NOT NULL DEFAULT 0
 )`)
 cs.db.Exec(`ALTER TABLE registered_nodes ADD COLUMN IF NOT EXISTS blocks_produced BIGINT NOT NULL DEFAULT 0`)
+cs.db.Exec(`ALTER TABLE registered_nodes ADD COLUMN IF NOT EXISTS signing_address TEXT DEFAULT ''`)
 _, err := cs.db.Exec(
-`INSERT INTO registered_nodes (wallet_address) VALUES ($1) ON CONFLICT DO NOTHING`,
-wallet,
+`INSERT INTO registered_nodes (wallet_address, signing_address) VALUES ($1, $2) ON CONFLICT (wallet_address) DO UPDATE SET signing_address = EXCLUDED.signing_address`,
+wallet, strings.ToLower(os.Getenv("RELAYER_ADDRESS")),
 )
 if err != nil {
 fmt.Printf("[NODE] Warning: could not register node wallet %s: %v\n", wallet, err)
@@ -595,7 +597,10 @@ func (cs *ChainState) IncrementBlockCount(proposerAddr string) {
 if cs.db == nil || proposerAddr == "" { return }
 proposerAddr = strings.ToLower(proposerAddr)
 // Only increment if this address is a registered node operator
-cs.db.Exec(`UPDATE registered_nodes SET blocks_produced = blocks_produced + 1 WHERE wallet_address = $1`, proposerAddr)
+res, _ := cs.db.Exec(`UPDATE registered_nodes SET blocks_produced = blocks_produced + 1 WHERE lower(signing_address) = lower($1)`, proposerAddr)
+if n, _ := res.RowsAffected(); n == 0 {
+cs.db.Exec(`UPDATE registered_nodes SET blocks_produced = blocks_produced + 1 WHERE lower(wallet_address) = lower($1)`, proposerAddr)
+}
 }
 
 func (cs *ChainState) DistributeValidatorsPool() {
@@ -715,6 +720,8 @@ fmt.Printf("[LP] ✓ Distributed %.6f AEQ across %d LP holders (proportional to 
 }
 
 func (cs *ChainState) DistributeUBIPool() {
+cs.acquireStateLock()
+defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 
@@ -1048,6 +1055,8 @@ return cs.swapLocked(address, amountIn, false)
 // the input side and tUSD is the output side; false is the reverse.
 // Caller must hold cs.mu.
 func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd bool) (float64, error) {
+cs.acquireStateLock()
+defer cs.releaseStateLock()
 address = strings.ToLower(address)
 if amountIn <= 0 {
 return 0, fmt.Errorf("amount must be positive")
@@ -1183,6 +1192,8 @@ fmt.Printf("[FEE] Swap fee %.6f %s distributed across validators/lps/ubi/treasur
 // deposits are genuinely reversible) is a deliberate follow-up, not
 // included in this first pass.
 func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64) error {
+cs.acquireStateLock()
+defer cs.releaseStateLock()
 cs.mu.Lock()
 defer cs.mu.Unlock()
 address = strings.ToLower(address)

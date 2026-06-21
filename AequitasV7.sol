@@ -85,12 +85,20 @@ contract AequitasV7 {
         require(!isHuman[msg.sender], "Already registered");
         uint256 commitment = pubSignals[0];
         require(!usedCommitments[commitment], "Commitment used");
-        require(nullifier != bytes32(0), "Nullifier required");
-        require(usedNullifiers[nullifier] == address(0), "Nullifier used");
+        // Bind nullifier to circuit output (pubSignals[1]) when v2 circuit is used.
+        // This is the same effectiveNullifier logic as registerWithSig.
+        bytes32 effectiveNullifier = nullifier;
+        if (pubSignals[1] != 0) {
+            bytes32 zkNullifier = bytes32(pubSignals[1]);
+            require(nullifier == bytes32(0) || nullifier == zkNullifier, "Nullifier/circuit mismatch");
+            effectiveNullifier = zkNullifier;
+        }
+        require(effectiveNullifier != bytes32(0), "Nullifier required");
+        require(usedNullifiers[effectiveNullifier] == address(0), "Nullifier used");
         require(bioVerifier.verifyProof(pA, pB, pC, pubSignals), "Invalid proof");
         usedCommitments[commitment] = true;
         commitmentOf[msg.sender] = commitment;
-        usedNullifiers[nullifier] = msg.sender;
+        usedNullifiers[effectiveNullifier] = msg.sender;
         isHuman[msg.sender] = true;
         totalHumans++;
         balanceOf[msg.sender] += INITIAL_GRANT;

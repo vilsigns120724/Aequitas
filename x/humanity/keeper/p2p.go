@@ -6,6 +6,7 @@ import (
 "encoding/base64"
 "encoding/json"
 "fmt"
+"io"
 "os"
 "time"
 
@@ -113,17 +114,16 @@ if n.dag == nil {
 return
 }
 
-// 256 KB — comfortably fits any realistic block with many transactions.
-// The old 4096-byte limit silently truncated larger blocks, causing
-// JSON parse errors that were hard to diagnose.
-buf := make([]byte, 256<<10)
-count, err := s.Read(buf)
-if err != nil {
+// io.ReadAll with a cap prevents TCP fragmentation issues — a single
+// s.Read() call may return only a partial message if the TCP segment
+// is fragmented; ReadAll accumulates all bytes until EOF/close.
+body, err := io.ReadAll(io.LimitReader(s, 512<<10)) // 512 KB cap
+if err != nil || len(body) == 0 {
 return
 }
 
 var block Block
-if err := json.Unmarshal(buf[:count], &block); err != nil {
+if err := json.Unmarshal(body, &block); err != nil {
 fmt.Printf("[BLOCK-SYNC] ✗ Parse error from peer %s: %v\n",
 s.Conn().RemotePeer().String()[:12], err)
 return
