@@ -477,24 +477,12 @@ if validTabs[path] {
 	html = strings.Replace(html,
 		`id="tab-register" class="tab-content active"`,
 		`id="tab-register" class="tab-content"`, 1)
-	// Inject a minimal inline script to activate the correct tab.
-	// String-replace was fragile; this script runs after DOMContentLoaded
-	// and directly activates the tab + first stab-panel.
-	activationScript := fmt.Sprintf(
-		`<script>document.addEventListener('DOMContentLoaded',function(){`+
-		`var tab=document.getElementById('tab-%s');`+
-		`if(!tab)return;`+
-		`document.querySelectorAll('.tab-content').forEach(function(t){t.classList.remove('active');});`+
-		`tab.classList.add('active');`+
-		`var panels=tab.querySelectorAll('.stab-panel');`+
-		`var stabs=tab.querySelectorAll('.stab');`+
-		`panels.forEach(function(p){p.classList.remove('active');});`+
-		`stabs.forEach(function(s){s.classList.remove('active');});`+
-		`if(panels.length>0)panels[0].classList.add('active');`+
-		`if(stabs.length>0)stabs[0].classList.add('active');`+
-		`});</script>`, path)
-	html = strings.Replace(html, "</head>", activationScript+"</head>", 1)
-fmt.Fprint(w, html)
+	// Pure server-side activation: add 'active' directly to the target tab-content div.
+	// No JS timing involved — the HTML arrives ready to paint.
+	html = strings.Replace(html,
+		`id="tab-`+path+`" class="tab-content"`,
+		`id="tab-`+path+`" class="tab-content active"`, 1)
+	fmt.Fprint(w, html)
 	return
 }
 fmt.Fprint(w, explorerHTML)
