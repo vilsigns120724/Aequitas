@@ -1105,14 +1105,14 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 </div>
 
 <!-- NETWORK (merged) -->
-<div id="tab-network" class="tab-content" style="min-height:200px">
+<div id="tab-network" class="tab-content">
 <nav class="stabs">
-  <div class="stab" onclick="showStab('tab-network','net-overview',this)">🌐 Overview</div>
+  <div class="stab active" onclick="showStab('tab-network','net-overview',this)">🌐 Overview</div>
   <div class="stab" onclick="showStab('tab-network','net-story',this)">📖 Story</div>
   <div class="stab" onclick="showStab('tab-network','net-runnode',this)">⚙️ Run a Node</div>
   <div class="stab" onclick="showStab('tab-network','net-protocol',this)">📜 Protocol V7</div>
 </nav>
-<div id="net-overview" class="stab-panel" style="display:block!important">
+<div id="net-overview" class="stab-panel active">
 <div class="ns">
 <div class="nc" style="grid-column:1/-1">
     <div class="nc-title" data-i18n="nodes-title">Active Nodes — Current Network Topology</div>

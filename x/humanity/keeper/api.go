@@ -477,9 +477,14 @@ if validTabs[path] {
 	html = strings.Replace(html,
 		`id="tab-register" class="tab-content active"`,
 		`id="tab-register" class="tab-content"`, 1)
-	html = strings.Replace(html,
-		`id="tab-`+path+`" class="tab-content"`,
-		`id="tab-`+path+`" class="tab-content active"`, 1)
+	// Use strings.Index for the tab-content activation to handle cases
+	// where extra attributes (e.g. style="...") are present on the div.
+	tabMarker := `id="tab-` + path + `" class="tab-content"`
+	if idx := strings.Index(html, tabMarker); idx >= 0 {
+		// Insert " active" after "tab-content"
+		insertAt := idx + len(tabMarker) - 1 // position of the closing "
+		html = html[:insertAt] + ` active` + html[insertAt:]
+	}
 	fmt.Fprint(w, html)
 	return
 }
