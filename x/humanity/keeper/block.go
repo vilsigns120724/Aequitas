@@ -36,16 +36,31 @@ IsGenesis    bool     `json:"is_genesis,omitempty"`
 }
 
 type BlockDAG struct {
-blocks     map[string]*Block
-tips       map[string]bool
-mu         sync.RWMutex
-keeper     *Keeper
-state      *ChainState
-nodeID     string
-height     int64
-pendingTxs []Transaction
-txMu       sync.Mutex
-signingKey *ecdsa.PrivateKey
+blocks               map[string]*Block
+tips                 map[string]bool
+mu                   sync.RWMutex
+keeper               *Keeper
+state                *ChainState
+nodeID               string
+height               int64
+pendingTxs           []Transaction
+txMu                 sync.Mutex
+signingKey           *ecdsa.PrivateKey
+authorizedValidators map[string]bool // Ethereum addresses allowed to propose blocks
+}
+
+// loadAuthorizedValidators reads the AUTHORIZED_VALIDATORS env var
+// (comma-separated Ethereum addresses). Used to reject peer blocks from
+// unknown signers so no one can inject arbitrary blocks into the DAG.
+func loadAuthorizedValidators() map[string]bool {
+	m := make(map[string]bool)
+	for _, addr := range strings.Split(os.Getenv("AUTHORIZED_VALIDATORS"), ",") {
+		addr = strings.ToLower(strings.TrimSpace(addr))
+		if strings.HasPrefix(addr, "0x") && len(addr) == 42 {
+			m[addr] = true
+		}
+	}
+	return m
 }
 
 func (dag *BlockDAG) AddTransaction(tx Transaction) {
@@ -56,16 +71,20 @@ dag.pendingTxs = append(dag.pendingTxs, tx)
 
 func NewBlockchain(keeper *Keeper, nodeID string, state *ChainState) *BlockDAG {
 dag := &BlockDAG{
-blocks: make(map[string]*Block),
-tips:   make(map[string]bool),
-keeper: keeper,
-state:  state,
-nodeID: nodeID,
+blocks:               make(map[string]*Block),
+tips:                 make(map[string]bool),
+keeper:               keeper,
+state:                state,
+nodeID:               nodeID,
+authorizedValidators: loadAuthorizedValidators(),
 }
 if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	if key, err := crypto.HexToECDSA(pk); err == nil {
 		dag.signingKey = key
-		fmt.Println("✓ Block signing enabled (RELAYER_PRIVATE_KEY loaded)")
+		// Always authorize ourselves — derived from the signing key, not the nodeID.
+		selfAddr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
+		dag.authorizedValidators[selfAddr] = true
+		fmt.Printf("✓ Block signing enabled (RELAYER_PRIVATE_KEY loaded), proposer addr: %s\n", selfAddr)
 	} else {
 		fmt.Printf("[BLOCK] Warning: RELAYER_PRIVATE_KEY invalid, blocks will be unsigned: %v\n", err)
 	}
@@ -230,6 +249,13 @@ if block.Signature != "" && !block.IsGenesis {
 			block.Height, recoveredAddr, proposer)
 		return
 	}
+	// Proposer must be in the authorized validator set. Without this check
+	// anyone can generate an Ethereum key, sign a block, and feed it in.
+	if !dag.authorizedValidators[proposer] {
+		fmt.Printf("[DAG] ✗ Rejected peer block #%d: proposer %s is not an authorized validator\n",
+			block.Height, proposer)
+		return
+	}
 }
 
 dag.blocks[block.Hash] = block
@@ -312,14 +338,22 @@ defer dag.mu.RUnlock()
 
 count := 0
 for _, block := range dag.blocks {
-for _, tx := range block.Transactions {
-if tx.Type == "register_human" && tx.Wallet != "" {
-if !state.IsHuman(tx.Wallet) {
-state.RegisterHuman(tx.Wallet)
-count++
-}
-}
-}
+	// Only replay transactions from authorized validators. Unsigned/unknown
+	// proposers could have injected register_human entries via forged blocks.
+	if !block.IsGenesis {
+		proposer := strings.ToLower(block.Proposer)
+		if !dag.authorizedValidators[proposer] {
+			continue
+		}
+	}
+	for _, tx := range block.Transactions {
+		if tx.Type == "register_human" && tx.Wallet != "" {
+			if !state.IsHuman(tx.Wallet) {
+				state.RegisterHuman(tx.Wallet)
+				count++
+			}
+		}
+	}
 }
 if count > 0 {
 fmt.Printf("[CHAIN] ✓ Reconstructed %d registrations from blockchain\n", count)

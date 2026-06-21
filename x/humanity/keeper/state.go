@@ -877,6 +877,7 @@ cs.save()
 
 fmt.Printf("[STATE] ✓ Human registered: %s | Balance: %.2f AEQ\n",
 address, cs.accounts[address].Balance)
+cs.syncHumanRegistrationLocked(V7_CONTRACT_ADDR, address)
 return nil
 }
 

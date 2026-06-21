@@ -125,6 +125,88 @@ func (cs *ChainState) LoadStorageSlot(address, slot string) (string, error) {
 
 // ─── DUAL-LEDGER SYNC ────────────────────────────────────────────────────────
 
+// MigrateEVMFromGoState rebuilds all V7 contract storage slots from the
+// authoritative Go-state and database after an evm_storage wipe (e.g. on
+// contract upgrade). Writes: totalSupply (slot 0), totalHumans (slot 1),
+// balanceOf (slot 4), isHuman (slot 6), usedCommitments (slot 7),
+// usedNullifiers (slot 8). Safe to call without holding cs.mu.
+func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
+	if cs.db == nil {
+		return
+	}
+	contractAddr = strings.ToLower(contractAddr)
+	fmt.Printf("[MIGRATE] Rebuilding EVM storage from Go-state for %s...\n", contractAddr)
+
+	weiPerAEQ := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+	var totalSupply float64
+	var totalHumans int64
+
+	cs.mu.RLock()
+	for addr, acc := range cs.accounts {
+		balBig, _ := new(big.Float).SetPrec(256).Mul(
+			new(big.Float).SetFloat64(acc.Balance),
+			new(big.Float).SetInt(weiPerAEQ),
+		).Int(nil)
+		if balBig == nil {
+			balBig = new(big.Int)
+		}
+		addrBytes := common.HexToAddress(addr).Bytes()
+		cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex())
+		totalSupply += acc.Balance
+		if acc.IsHuman {
+			cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 6).Hex(), common.HexToHash("0x01").Hex())
+			totalHumans++
+		}
+	}
+	cs.mu.RUnlock()
+
+	// totalSupply (slot 0) and totalHumans (slot 1)
+	supplyWei, _ := new(big.Float).SetPrec(256).Mul(
+		new(big.Float).SetFloat64(totalSupply),
+		new(big.Float).SetInt(weiPerAEQ),
+	).Int(nil)
+	if supplyWei == nil {
+		supplyWei = new(big.Int)
+	}
+	cs.SaveStorageSlot(contractAddr, common.BigToHash(big.NewInt(0)).Hex(), common.BigToHash(supplyWei).Hex())
+	cs.SaveStorageSlot(contractAddr, common.BigToHash(big.NewInt(1)).Hex(), common.BigToHash(big.NewInt(totalHumans)).Hex())
+
+	// usedNullifiers (slot 8): nullifier → wallet
+	rows, err := cs.db.Query(`SELECT nullifier, wallet_address FROM nullifiers`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var nullifier, wallet string
+			rows.Scan(&nullifier, &wallet)
+			nullKey := common.HexToHash(strings.TrimPrefix(nullifier, "0x"))
+			nullSlot := mappingSlotBytes32(nullKey, 8)
+			walletHash := common.BigToHash(common.HexToAddress(wallet).Big())
+			cs.SaveStorageSlot(contractAddr, nullSlot.Hex(), walletHash.Hex())
+		}
+	}
+
+	// usedCommitments (slot 7): commitment → true
+	rows2, err2 := cs.db.Query(`SELECT commitment FROM bio_registrations`)
+	if err2 == nil {
+		defer rows2.Close()
+		for rows2.Next() {
+			var commitment string
+			rows2.Scan(&commitment)
+			commitBig, ok := new(big.Int).SetString(strings.TrimPrefix(commitment, "0x"), 10)
+			if !ok {
+				commitBig, ok = new(big.Int).SetString(strings.TrimPrefix(commitment, "0x"), 16)
+			}
+			if !ok || commitBig == nil {
+				continue
+			}
+			commitSlot := mappingSlot(common.LeftPadBytes(commitBig.Bytes(), 32), 7)
+			cs.SaveStorageSlot(contractAddr, commitSlot.Hex(), common.HexToHash("0x01").Hex())
+		}
+	}
+
+	fmt.Printf("[MIGRATE] ✓ EVM storage rebuilt: %d humans, %.2f AEQ total supply\n", totalHumans, totalSupply)
+}
+
 // SyncBalancesToEVM writes the current Go-state AEQ balance for each addr into
 // the AequitasV7 contract's balanceOf storage slot (mapping at position 4),
 // keeping both ledgers consistent after every Go-state change.
@@ -156,6 +238,15 @@ func (cs *ChainState) SyncBalancesToEVM(contractAddr string, addrs ...string) {
 			fmt.Printf("[EVM] Warning: could not sync balance for %s: %v\n", addr, err)
 		}
 	}
+}
+
+// syncHumanRegistrationLocked writes both the balanceOf (slot 4) and
+// isHuman (slot 6) EVM slots for a newly registered human. Must be called
+// only while the caller already holds cs.mu (write lock).
+func (cs *ChainState) syncHumanRegistrationLocked(contractAddr string, addr string) {
+	cs.syncBalanceLocked(contractAddr, addr)
+	isHumanSlot := mappingSlot(common.HexToAddress(addr).Bytes(), 6)
+	_ = cs.SaveStorageSlot(strings.ToLower(contractAddr), isHumanSlot.Hex(), common.HexToHash("0x01").Hex())
 }
 
 // syncBalanceLocked is like SyncBalancesToEVM but reads cs.accounts directly

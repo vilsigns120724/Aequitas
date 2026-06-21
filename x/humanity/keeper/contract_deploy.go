@@ -93,4 +93,9 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 		fmt.Printf("[DEPLOY] ✓ V7 contract deployed at %s\n", V7_CONTRACT_ADDR)
 	}
 	state.setConfigValue("v7_contract_version", V7ContractVersion)
+
+	// Repopulate EVM storage from Go-state so existing humans, balances,
+	// commitments and nullifiers are visible to direct contract callers
+	// after the storage wipe that accompanied the bytecode upgrade.
+	state.MigrateEVMFromGoState(V7_CONTRACT_ADDR)
 }
