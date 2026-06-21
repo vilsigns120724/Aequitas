@@ -109,6 +109,11 @@ contract AequitasV7 {
      *      verified on-chain via ecrecover. usedCommitments prevents replay across
      *      either registration path.
      */
+    // registerWithSig v2: circuit now outputs the nullifier as pubSignals[1]
+    // so "1 biometric = 1 nullifier" is enforced by the ZK proof itself.
+    // pubSignals[0] = commitment, pubSignals[1] = nullifier (ZK-bound).
+    // The external bytes32 nullifier param is still accepted for compatibility
+    // but MUST match pubSignals[1] when circuit version >= 2.
     function registerWithSig(
         uint[2] calldata pA,
         uint[2][2] calldata pB,
@@ -123,8 +128,18 @@ contract AequitasV7 {
         uint256 commitment = pubSignals[0];
         require(!usedCommitments[commitment], "Commitment used");
 
-        require(nullifier != bytes32(0), "Nullifier required");
-        require(usedNullifiers[nullifier] == address(0), "Nullifier used");
+        // Use circuit-derived nullifier when available (pubSignals[1] != 0).
+        // This ZK-binds the nullifier to the biometric secret inside the proof.
+        bytes32 effectiveNullifier = nullifier;
+        if (pubSignals[1] != 0) {
+            bytes32 zkNullifier = bytes32(pubSignals[1]);
+            require(nullifier == bytes32(0) || nullifier == zkNullifier,
+                "Nullifier mismatch: submitted nullifier does not match ZK-derived value");
+            effectiveNullifier = zkNullifier;
+        }
+
+        require(effectiveNullifier != bytes32(0), "Nullifier required");
+        require(usedNullifiers[effectiveNullifier] == address(0), "Nullifier used");
 
         bytes32 messageHash = keccak256(abi.encodePacked(
             block.chainid,
@@ -146,7 +161,7 @@ contract AequitasV7 {
 
         usedCommitments[commitment] = true;
         commitmentOf[claimedHuman] = commitment;
-        usedNullifiers[nullifier] = claimedHuman;
+        usedNullifiers[effectiveNullifier] = claimedHuman;
         isHuman[claimedHuman] = true;
         totalHumans++;
         balanceOf[claimedHuman] += INITIAL_GRANT;

@@ -518,26 +518,37 @@ func (cs *ChainState) InitPriceSnapshotsTable() {
 	cs.db.Exec(`DELETE FROM price_snapshots WHERE captured_at < NOW() - INTERVAL '30 days'`)
 }
 
-// SavePriceSnapshot records the current AEQ/tUSD price. Called after every
-// swap, add-liquidity, or remove-liquidity so charts have real price history.
+// SavePriceSnapshot records the current AEQ/tUSD price. Must be safe to call
+// concurrently — copies pool values under RLock before the DB write so a
+// concurrent swap cannot modify cs.pool while we're reading it.
 func (cs *ChainState) SavePriceSnapshot() {
-	if cs.db == nil || cs.pool == nil {
+	if cs.db == nil {
 		return
 	}
-	if cs.pool.ReserveAEQ <= 0 || cs.pool.ReserveTUSD <= 0 {
+	cs.mu.RLock()
+	if cs.pool == nil || cs.pool.ReserveAEQ <= 0 || cs.pool.ReserveTUSD <= 0 {
+		cs.mu.RUnlock()
 		return
 	}
 	price := cs.pool.ReserveTUSD / cs.pool.ReserveAEQ
+	aeq := cs.pool.ReserveAEQ
+	tusd := cs.pool.ReserveTUSD
+	cs.mu.RUnlock()
 	cs.db.Exec(`INSERT INTO price_snapshots (price, reserve_aeq, reserve_tusd) VALUES ($1, $2, $3)`,
-		price, cs.pool.ReserveAEQ, cs.pool.ReserveTUSD)
+		price, aeq, tusd)
 }
 
 // GetPriceHistory returns price snapshots from the last `minutes` minutes,
 // limited to `limit` points. Returns [{t, p, aeq, tusd}, ...].
+// minutes is clamped to 1-43200, limit to 1-5000.
 func (cs *ChainState) GetPriceHistory(minutes, limit int) []map[string]interface{} {
 	if cs.db == nil {
 		return nil
 	}
+	if minutes < 1 { minutes = 1 }
+	if minutes > 43200 { minutes = 43200 }
+	if limit < 1 { limit = 1 }
+	if limit > 5000 { limit = 5000 }
 	rows, err := cs.db.Query(`
 		SELECT EXTRACT(EPOCH FROM captured_at)::BIGINT, price, reserve_aeq, reserve_tusd
 		FROM price_snapshots
@@ -579,12 +590,23 @@ func (cs *ChainState) InitGiniSnapshotsTable() {
 
 // SaveGiniSnapshot persists the current Gini coefficient. Called after each
 // UBI distribution so the history chart has real data points over time.
+// Must NOT be called while cs.mu is held — CalcGini acquires RLock internally.
 func (cs *ChainState) SaveGiniSnapshot() {
 	if cs.db == nil {
 		return
 	}
-	gini := cs.CalcGini()
-	humans := cs.TotalHumans()
+	gini := cs.CalcGini()    // acquires RLock
+	humans := cs.TotalHumans() // acquires RLock
+	cs.db.Exec(`INSERT INTO gini_snapshots (gini, humans) VALUES ($1, $2)`, gini, humans)
+}
+
+// SaveGiniSnapshotValues saves a pre-computed Gini/humans pair without
+// acquiring any lock. Call this from inside a locked function by passing
+// values already read under the lock, to avoid lock-reentrancy deadlocks.
+func (cs *ChainState) SaveGiniSnapshotValues(gini float64, humans int) {
+	if cs.db == nil {
+		return
+	}
 	cs.db.Exec(`INSERT INTO gini_snapshots (gini, humans) VALUES ($1, $2)`, gini, humans)
 }
 
@@ -716,12 +738,12 @@ func (cs *ChainState) GetValidatorKeys() []map[string]string {
 	return result
 }
 
-// ValidateNodeOperatorWallet returns a warning string if the wallet is not a
-// registered human. Called by RegisterNode to log a clear message when
-// NODE_OPERATOR_WALLET is set before the wallet has completed human registration.
+// ValidateNodeOperatorWallet returns an error string if the wallet is not a
+// registered human. The calling code must STOP registration if this returns
+// non-empty — rewards go only to verified humans, no exceptions.
 func (cs *ChainState) ValidateNodeOperatorWallet(wallet string) string {
 	if !cs.IsHuman(strings.ToLower(wallet)) {
-		return "wallet " + wallet + " is not yet a registered human — complete biometric registration via the app first to receive validator rewards"
+		return "wallet " + wallet + " is NOT a registered human — register via the Android app first before running a node"
 	}
 	return ""
 }

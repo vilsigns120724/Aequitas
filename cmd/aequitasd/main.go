@@ -189,9 +189,12 @@ fmt.Println("[POOLS] Not primary node — skipping daily distributions")
 // included automatically — no code change needed when new nodes join.
 if wallet := os.Getenv("NODE_OPERATOR_WALLET"); wallet != "" {
 if warn := chainState.ValidateNodeOperatorWallet(wallet); warn != "" {
-fmt.Printf("[NODE] Warning: %s\n", warn)
-}
+fmt.Printf("[NODE] ERROR: %s\n", warn)
+fmt.Println("[NODE] NODE_OPERATOR_WALLET rejected — complete biometric registration first")
+// Do NOT register — only verified humans receive validator rewards
+} else {
 chainState.RegisterNode(wallet)
+}
 } else {
 fmt.Println("[NODE] NODE_OPERATOR_WALLET not set — this node won't receive validator rewards")
 }

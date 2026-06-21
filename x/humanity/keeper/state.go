@@ -715,7 +715,9 @@ cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(humanAddrs, ubiPoolAddr)...)
 
 fmt.Printf("[UBI] ✓ Distributed %.6f AEQ across %d registered humans (%.6f AEQ each)\n",
 total, len(humanAddrs), share)
-cs.SaveGiniSnapshot()
+capturedGini := cs.calcGiniLocked()
+capturedHumans := len(humanAddrs)
+go cs.SaveGiniSnapshotValues(capturedGini, capturedHumans)
 }
 
 // getAverageBalanceLocked computes the mean AEQ balance across every
@@ -1386,6 +1388,28 @@ if acc.IsHuman { fmt.Fprintf(&sb, "%s:%.6f:", a, round6(acc.Balance)) }
 cs.mu.RUnlock()
 hash := sha256.Sum256([]byte(sb.String()))
 return hex.EncodeToString(hash[:])
+}
+
+// calcGiniLocked computes the Gini coefficient without acquiring cs.mu.
+// Must only be called while cs.mu is already held (read or write).
+func (cs *ChainState) calcGiniLocked() float64 {
+balances := []float64{}
+for _, acc := range cs.accounts {
+if acc.IsHuman && acc.Balance > 0 { balances = append(balances, effectiveBalance(acc)) }
+}
+n := len(balances)
+if n < 2 { return 0.0 }
+for i := 0; i < n; i++ {
+for j := i + 1; j < n; j++ { if balances[j] < balances[i] { balances[i], balances[j] = balances[j], balances[i] } }
+}
+var sum, numerator float64
+for i, x := range balances { sum += x; numerator += float64(2*i+1-n) * x }
+if sum == 0 { return 0.0 }
+gini := numerator / (float64(n) * sum)
+if gini < 0 { gini = -gini }
+if n > 1 { gini = gini * float64(n) / float64(n-1) }
+if gini > 1.0 { gini = 1.0 }
+return gini
 }
 
 func (cs *ChainState) CalcGini() float64 {

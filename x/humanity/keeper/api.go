@@ -89,9 +89,11 @@ mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
 mux.HandleFunc("/registered", a.handleRegistered)
 mux.HandleFunc("/download/app.apk", a.handleAppDownload)
 fmt.Println("── Starting EVM RPC ─────────────────────")
-evmRPC := NewEVMRPCServer(a.blockchain, a.state)
-mux.HandleFunc("/rpc", evmRPC.handleRPC)
-if evmRPC.evm != nil {
+// Use the shared EVMRPCServer (a.evmRPC) so /rpc and /api/register share
+// one nonce map + mutex — creating a second instance here caused separate
+// nonce maps, making the atomic nonce reservation ineffective.
+mux.HandleFunc("/rpc", a.evmRPC.handleRPC)
+if a.evmRPC.evm != nil {
 fmt.Println("✓ EVM Engine ready")
 // Ensure V7 contract is deployed — redeploys from hardcoded bytecode
 // if missing (e.g. after a DB reset). Without this the node fails with
@@ -100,7 +102,7 @@ deployerAddr := os.Getenv("RELAYER_ADDRESS")
 if deployerAddr == "" {
 deployerAddr = "0x0BE8b961CBf6564bd1931B0803D35C0659E0D016"
 }
-EnsureContractsDeployed(evmRPC.evm, a.state, deployerAddr)
+EnsureContractsDeployed(a.evmRPC.evm, a.state, deployerAddr)
 } else {
 fmt.Println("✗ EVM Engine failed")
 }
@@ -486,10 +488,15 @@ func (a *APIServer) handlePriceHistory(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 w.Header().Set("Cache-Control", "no-cache")
-minutes := 14400
-limit := 5000
+minutes := 240
+limit := 1000
 fmt.Sscanf(r.URL.Query().Get("minutes"), "%d", &minutes)
 fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
+// Clamp to prevent memory exhaustion from large DB reads.
+if minutes < 1 { minutes = 1 }
+if minutes > 43200 { minutes = 43200 } // max 30 days
+if limit < 1 { limit = 1 }
+if limit > 5000 { limit = 5000 }
 history := a.state.GetPriceHistory(minutes, limit)
 json.NewEncoder(w).Encode(map[string]interface{}{"history": history, "count": len(history)})
 }
