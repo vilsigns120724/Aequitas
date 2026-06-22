@@ -94,18 +94,23 @@ UBI from protocol economics — no taxation, no government, no political decisio
 
 ### 3. Wealth Cap — Vermögensobergrenze
 
-Harte Obergrenze, die ab dem ersten Menschen gilt:
+Dynamische Obergrenze — kein Admin-Key, kein Governance-Vote, automatisch durch Human-Count ausgelöst:
+Dynamic ceiling — no admin key, no governance vote, triggered automatically by human count:
 
-| Phase | Menschen / Humans | Cap |
-|-------|------------------|-----|
-| 0 | 1–100 | 50× fairShare |
-| 1 | 101–1.000 | 20× fairShare |
-| 2 | 1.001–10.000 | 10× fairShare |
-| 3 | 10.001–100.000 | 5× fairShare |
-| 4 | 100.000+ | 3× fairShare |
+| Phase | Menschen / Humans | Formel / Formula | Cap |
+|-------|------------------|-----------------|-----|
+| **0** Bootstrap | 1–99 | `max(5, min(N, 25)) × Ø-Balance` | 5×→25× (wächst mit jedem neuen Menschen / grows with each human) |
+| **1** Growth | 100–9.999 | `25 × Ø-Balance` | 25× Durchschnittsbalance |
+| **2** Stability | 10.000–999.999 | `25 × Ø-Balance` | 25× Durchschnittsbalance |
+| **3** Maturity | 1.000.000+ | `25 × Ø-Balance` | 25× Durchschnittsbalance |
 
-Überschuss wird sofort gleichmäßig an alle aktiven Menschen verteilt.
-Excess is instantly redistributed equally to all active humans.
+**Phase 0 Bootstrap-Mechanismus / Bootstrap mechanism:**
+- 1–4 Menschen / humans: **5× Durchschnitt / 5× average**
+- Jeder neue Mensch / each new human: **+1×**
+- Ab 25. Mensch / from 25th human: dauerhaft **25×** (kein Governance-Vote nötig)
+
+Überschuss fließt sofort in die Tokenomics-Pools — kein AEQ geht verloren.
+Excess flows instantly into tokenomics pools — no AEQ is destroyed.
 
 ### 4. Demurrage — Haltegebühr
 

@@ -165,20 +165,38 @@ The fee flows entirely into the UBI Pool. No AEQ is destroyed.
 
 ### 4.4 Wealth Cap — Vermögensobergrenze
 
-Eine dynamische Obergrenze verhindert extreme Konzentration und sinkt automatisch mit wachsender Gemeinschaft:
+### DE
+Die Wealth Cap verwendet einen Bootstrap-Multiplikator in Phase 0: `max(5, min(N, 25)) × Durchschnittsbalance`. Kein Admin-Key, kein Governance-Vote — alle Übergänge erfolgen automatisch durch die Anzahl registrierter Menschen.
 
-A dynamic ceiling prevents extreme concentration and automatically decreases as the community grows:
+**Formel Phase 0:** `cap = max(5, min(N, 25)) × Ø-Balance`
+- Menschen 1–4: Multiplikator = **5×**
+- Jeder neue Mensch: Multiplikator +1×
+- Ab dem 25. Menschen: dauerhaft **25×** (unveränderbar, kein Vote erforderlich)
 
-| Phase | Größe / Size | Obergrenze / Cap |
-|-------|-------------|-----------------|
-| 0 | 1–100 Menschen / humans | 50× fairShare = 50.000 AEQ |
-| 1 | 101–1.000 | 20× fairShare = 20.000 AEQ |
-| 2 | 1.001–10.000 | 10× fairShare = 10.000 AEQ |
-| 3 | 10.001–100.000 | 5× fairShare = 5.000 AEQ |
-| 4 | 100.000+ | 3× fairShare = 3.000 AEQ |
+### EN
+The wealth cap uses a bootstrap multiplier during Phase 0: `max(5, min(N, 25)) × average balance`. No admin key, no governance vote — all transitions trigger automatically by human count.
 
-Überschuss wird sofort gleichmäßig unter **allen** aktiven Menschen verteilt.
-Excess is instantly distributed equally among **all** active humans.
+**Phase 0 formula:** `cap = max(5, min(N, 25)) × avg_balance`
+- Humans 1–4: multiplier = **5×**
+- Each new human: multiplier +1×
+- At 25+ humans: permanently **25×** (immutable, no vote required)
+
+---
+
+| Phase | Menschen / Humans | Formel / Formula | Status |
+|-------|------------------|-----------------|--------|
+| **0** Bootstrap | 1–99 | `max(5, min(N,25)) × Ø` | ● Aktiv / Active |
+| **1** Growth | 100–9.999 | `25 × Ø-Balance` | ○ Geplant / Planned |
+| **2** Stability | 10.000–999.999 | `25 × Ø-Balance` | ○ Geplant / Planned |
+| **3** Maturity | 1.000.000+ | `25 × Ø-Balance` | ○ Geplant / Planned |
+
+**Beispiel / Example (Phase 0, N=10 Menschen, Ø=1.000 AEQ):**
+```
+cap = max(5, min(10, 25)) × 1.000 = 10 × 1.000 = 10.000 AEQ
+```
+
+Überschuss fließt sofort in die Tokenomics-Pools — kein AEQ wird vernichtet.
+Excess flows instantly into tokenomics pools — no AEQ is destroyed.
 
 ### 4.5 Transaktionsgebühren / Transaction Fees
 
