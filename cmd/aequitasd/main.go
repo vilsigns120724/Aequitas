@@ -160,43 +160,49 @@ time.Unix(block.Timestamp, 0).Format("15:04:05"),
 
 fmt.Println("── Starting Daily Pool Distributions ───")
 if os.Getenv("IS_PRIMARY_NODE") == "true" {
-fmt.Println("[POOLS] Primary node — daily distributions enabled (UBI + Validators + LP)")
+fmt.Println("[POOLS] Primary node — daily distributions at 20:00 Berlin time")
 go func() {
-// Calculate how long until the NEXT distribution, accounting for
-// any time that has already elapsed since the last one. This ensures
-// a restart does not reset the 24h clock and delay payouts.
+berlin, err := time.LoadLocation("Europe/Berlin")
+if err != nil {
+berlin = time.FixedZone("CET", 1*60*60) // fallback: UTC+1
+}
+
+// nextDaily20 returns the next 20:00 Berlin time after 'after'.
+// If the last distribution was less than 1 hour ago we skip tonight
+// and schedule tomorrow, preventing a double-payout on restart.
+nextDaily20 := func(after time.Time) time.Time {
+t := after.In(berlin)
+candidate := time.Date(t.Year(), t.Month(), t.Day(), 20, 0, 0, 0, berlin)
+if !after.Before(candidate) {
+candidate = candidate.Add(24 * time.Hour)
+}
+return candidate
+}
+
 lastAt := chainState.GetLastUBIAt()
-var firstDelay time.Duration
-if lastAt == 0 {
-firstDelay = 24 * time.Hour // never distributed yet
+var firstTarget time.Time
+if lastAt > 0 && time.Since(time.Unix(lastAt, 0)) < time.Hour {
+// Distributed very recently (e.g. just now on restart) — skip tonight
+firstTarget = nextDaily20(time.Now().Add(time.Hour))
 } else {
-nextRun := time.Unix(lastAt, 0).Add(24 * time.Hour)
-firstDelay = time.Until(nextRun)
-if firstDelay < 0 {
-firstDelay = 0 // overdue — run immediately
+firstTarget = nextDaily20(time.Now())
 }
-}
-nextAt := time.Now().Add(firstDelay)
-chainState.SetNextUBIAt(nextAt.Unix())
-fmt.Printf("[POOLS] Next distribution in %s (at %s)\n",
-firstDelay.Round(time.Minute), nextAt.Format("15:04:05"))
-time.Sleep(firstDelay)
+
+firstDelay := time.Until(firstTarget)
+chainState.SetNextUBIAt(firstTarget.Unix())
+fmt.Printf("[POOLS] Next distribution at %s Berlin time (in %s)\n",
+firstTarget.In(berlin).Format("02.01. 15:04:05"), firstDelay.Round(time.Minute))
+
+for {
+time.Sleep(time.Until(firstTarget))
 chainState.DistributeUBIPool()
 chainState.DistributeValidatorsPool()
 chainState.DistributeLPPool()
-// After first distribution, immediately set next_ubi_at = now+24h
-// so the countdown shows correctly (not stuck at 0 until ticker fires).
-chainState.SetNextUBIAt(time.Now().Add(24 * time.Hour).Unix())
-fmt.Printf("[POOLS] ✓ Distribution done — next in 24h\n")
-// Then every 24h precisely
-ticker := time.NewTicker(24 * time.Hour)
-for range ticker.C {
-chainState.SetNextUBIAt(time.Now().Add(24 * time.Hour).Unix())
-chainState.DistributeUBIPool()
-chainState.DistributeValidatorsPool()
-chainState.DistributeLPPool()
-chainState.SetNextUBIAt(time.Now().Add(24 * time.Hour).Unix())
-fmt.Printf("[POOLS] ✓ Distribution done — next in 24h\n")
+fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
+// Schedule next day's 20:00
+firstTarget = nextDaily20(time.Now())
+chainState.SetNextUBIAt(firstTarget.Unix())
+fmt.Printf("[POOLS] Next distribution at %s Berlin time\n", firstTarget.In(berlin).Format("02.01. 15:04:05"))
 }
 }()
 } else {
