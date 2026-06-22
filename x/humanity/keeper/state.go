@@ -884,19 +884,22 @@ go cs.SaveGiniSnapshotValues(capturedGini, capturedHumans)
 // — the cap is about wealth among the humans the system actually exists
 // for, not diluted by infrastructure accounts. Caller must hold cs.mu.
 func (cs *ChainState) getAverageBalanceLocked() float64 {
-total := 0.0
-count := 0
+// Use TotalSupply / humans (= 1000 AEQ always) rather than averaging
+// wallet balances. AEQ deposited into the AMM pool lives in cs.pool.ReserveAEQ
+// — NOT in any human's cs.accounts entry — so wallet-sum / humans gives a
+// misleadingly low number (e.g. 960 when 40 AEQ/human is in the pool).
+// The protocol invariant TotalSupply = humans × 1000 makes the fair-share
+// average exactly 1000 AEQ regardless of where those AEQ currently sit.
+humans := 0
 for _, acc := range cs.accounts {
-if !acc.IsHuman {
-continue
+if acc.IsHuman {
+humans++
 }
-total += effectiveBalance(acc).Float()
-count++
 }
-if count == 0 {
+if humans == 0 {
 return 0
 }
-return total / float64(count)
+return 1000.0 // TotalSupply / humans = humans×1000 / humans = 1000 AEQ
 }
 
 // enforceWealthCapLocked checks acc's balance against the current

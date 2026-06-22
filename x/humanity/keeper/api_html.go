@@ -1637,7 +1637,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   </div>
 </div>
 </div>
-</div>
 
 <script>
 const PS = 'https://aequitas-proof-server-production.up.railway.app';
