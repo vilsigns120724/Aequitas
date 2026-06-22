@@ -3528,13 +3528,18 @@ async function loadStatus() {
     document.getElementById('pool-u').textContent = fmtPool(d.pool_ubi);
     document.getElementById('pool-t').textContent = fmtPool(d.pool_treasury);
 
-    // UBI countdown timer + fill bar (shows time elapsed since last payout)
-    if (d.ubi_next_payout_secs !== undefined) {
+    // UBI countdown timer + fill bar
+    // Only (re)start the timer when the server returns a positive value.
+    // When ubi_next_payout_secs === 0 (IS_PRIMARY_NODE not set, or next_ubi_at
+    // not yet written to DB), leave the running timer alone — restarting from 0
+    // causes a reset loop because loadStatus fires every 6s.
+    if (d.ubi_next_payout_secs > 0) {
       startUBITimer(d.ubi_next_payout_secs);
-      const fillPct = Math.min(100, Math.max(0, (86400 - d.ubi_next_payout_secs) / 86400 * 100));
-      const fillBar = document.getElementById('ubi-fill-bar');
-      if (fillBar) fillBar.style.width = fillPct.toFixed(1) + '%';
     }
+    const fillSecs = d.ubi_next_payout_secs || 0;
+    const fillPct = Math.min(100, Math.max(0, (86400 - fillSecs) / 86400 * 100));
+    const fillBar = document.getElementById('ubi-fill-bar');
+    if (fillBar) fillBar.style.width = fillPct.toFixed(1) + '%';
 
     // Fix stale subtitle now that demurrage/wealth-cap mean supply can drift
     const subEl = document.getElementById('s-supply-sub');
