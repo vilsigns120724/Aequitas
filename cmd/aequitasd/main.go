@@ -7,6 +7,7 @@ import (
 "os/signal"
 "syscall"
 "time"
+_ "time/tzdata" // embed IANA timezone DB so Europe/Berlin works on Alpine without system tzdata
 
 "github.com/hanoi96international-gif/aequitas-chain/x/humanity/keeper"
 )
