@@ -750,7 +750,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div class="is">
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title" data-i18n="idx-title">Aequitas Index — Real-Time Economic Equality Score</div>
-    <div class="idx-desc" data-i18n="idx-desc">The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. Unlike a simple richest-vs-poorest ratio, the Gini coefficient captures the <em style="color:var(--text)">entire distribution</em> across every verified human simultaneously, in a single number. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds the same AEQ). <strong style="color:var(--red)">100 = maximum concentration</strong> (one wallet holds all AEQ in existence). For context: Bitcoin Gini ≈ 0.85 (Index 85) · most unequal country on Earth (South Africa) ≈ 0.63 · Scandinavia ≈ 0.27. Aequitas targets Gini below 0.30 (Index below 35) at scale — comparable to the most equal developed economies — enforced automatically by the wealth cap and redistribution pools, no governance vote required.</div>
+    <div class="idx-desc" data-i18n="idx-desc">The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. Unlike a simple richest-vs-poorest ratio, the Gini coefficient captures the <em style="color:var(--text)">entire distribution</em> across every verified human simultaneously, in a single number. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds the same AEQ). <strong style="color:var(--red)">100 = maximum concentration</strong> (one wallet holds all AEQ in existence). For context: Bitcoin Gini ≈ 0.85 (Index 85) · most unequal country on Earth (South Africa) ≈ 0.63 · Scandinavia ≈ 0.27. Aequitas targets Gini below 0.30 at scale — comparable to the most equal developed economies — enforced automatically by the wealth cap and redistribution pools, no governance vote required.</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;margin-top:12px">
       <div><div class="idx-big" id="idx-score">—</div><div class="idx-lbl" data-i18n="curr-idx">Current Index</div></div>
       <div>
@@ -832,7 +832,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   </div>
   <div class="idx" style="grid-column:1/-1">
     <div class="idx-title">Gini Index History</div>
-    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Recorded after each UBI distribution. Shows how equality evolves as the network grows. Lower is better — target is below 35.</div>
+    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Recorded after each UBI distribution. Shows how equality evolves as the network grows. Lower is better — target is Gini below 0.30.</div>
     <canvas id="gini-history-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
     <div id="gini-history-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No snapshots yet — first one saved after the next UBI distribution.</div>
   </div>
@@ -1144,7 +1144,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   </div>
   <div class="nc">
     <div class="nc-title" data-i18n="bootstrap-title">Connect a New Node</div>
-    <div style="font-size:0.63rem;color:var(--muted);line-height:1.8;margin-bottom:10px" data-i18n="bootstrap-desc">To run your own Aequitas node, set the PEER_NODES environment variable to the bootstrap node address below. Your node will automatically sync the full chain state and begin participating in block production.</div>
+    <div style="font-size:0.63rem;color:var(--muted);line-height:1.8;margin-bottom:10px" data-i18n="bootstrap-desc">To run your own Aequitas node, set PRIMARY_NODE_URL=https://aequitas.digital in your environment. Your node registers automatically, syncs the full chain state, and begins participating in block production.</div>
     <div style="font-size:0.6rem;color:var(--muted);margin-bottom:6px;letter-spacing:1px">LIBP2P MULTIADDRESS</div>
     <div class="bsbox">/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R</div>
     <div style="font-size:0.6rem;color:var(--muted);margin-top:10px;line-height:1.7">Set in your environment: <span style="color:var(--purple);font-family:var(--font-mono)">PRIMARY_NODE_URL=https://aequitas.digital</span></div>
@@ -1198,7 +1198,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div style="font-size:1.5rem;margin-bottom:10px">&#128421;&#65039;</div>
         <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px">I am a Node Operator</div>
         <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px">I want to run a full node, participate in block production, and earn from the 40% validator pool.</div>
-        <div style="font-size:0.6rem;color:var(--teal);font-weight:600;line-height:1.9">1. Get the node binary (Go)<br>2. Set PEER_NODES env var<br>3. Deploy on Railway/Render/VPS<br>4. Earn daily from validator pool</div>
+        <div style="font-size:0.6rem;color:var(--teal);font-weight:600;line-height:1.9">1. Get the node binary (Go)<br>2. Set PRIMARY_NODE_URL=https://aequitas.digital<br>3. Deploy on Railway/Render/VPS<br>4. Earn daily from validator pool</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128187;</div>
@@ -1471,7 +1471,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         https://YOUR-NODE-URL/rpc<br>
         <span style="color:var(--muted)">&nbsp;&rarr; Expected: {"jsonrpc":"2.0","error":"method not specified"} &mdash; this confirms RPC is alive</span>
       </div>
-      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:0.62rem;color:var(--muted)">The block height should match the primary node within 1&ndash;2 blocks within seconds of startup. If it stays at 0, check that PEER_NODES is set correctly and the primary node URL is reachable.</div>
+      <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:0.62rem;color:var(--muted)">The block height should match the primary node within 1&ndash;2 blocks within seconds of startup. If it stays at 0, check that PRIMARY_NODE_URL=https://aequitas.digital is set and reachable.</div>
 
       <!-- Step 5b: Register Validator Key -->
       <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5b &mdash; Register Your Validator Key (Decentralized Auth)</div>
@@ -1692,14 +1692,14 @@ en:{
   'no-humans':'No humans registered yet.\n\nDownload the Aequitas Android App and be the first human on the chain!',
   'reg-stats':'Registry Stats','total-humans':'Total Humans',
   'idx-title':'Aequitas Index — Real-Time Economic Equality Score',
-  'idx-desc':'The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. It captures the complete balance distribution across every verified human simultaneously. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds the same AEQ). <strong style="color:var(--red)">100 = total concentration</strong> (one wallet holds all AEQ). Bitcoin Gini ≈ 0.85 (Index 85) · South Africa (world record) ≈ 0.63 · Scandinavia ≈ 0.27 · Aequitas long-term target: Gini below 0.30 (Index below 35) — comparable to the most equal developed economies, enforced by the wealth cap and redistribution pools.',
+  'idx-desc':'The Aequitas Index is derived from the <strong style="color:var(--teal)">Gini coefficient</strong> — the international standard for measuring wealth inequality, adopted by the World Bank, OECD, and UN. It captures the complete balance distribution across every verified human simultaneously. <strong style="color:var(--neon)">0 = perfect equality</strong> (every wallet holds the same AEQ). <strong style="color:var(--red)">100 = total concentration</strong> (one wallet holds all AEQ). Bitcoin Gini ≈ 0.85 (Index 85) · South Africa (world record) ≈ 0.63 · Scandinavia ≈ 0.27 · Aequitas long-term target: Gini below 0.30 — comparable to the most equal developed economies, enforced by the wealth cap and redistribution pools.',
   'gini-what-title':'What is the Gini Coefficient?',
   'gini-what-text':'Developed by Italian statistician Corrado Gini (1912). Measures wealth distribution by comparing actual balances against a hypothetical perfectly equal baseline — visualized as the Lorenz curve. Scale: 0 (everyone holds the same) to 1 (one person holds everything). Used by World Bank, OECD, UN to compare countries. Reference values: Bitcoin ≈ 0.85 · South Africa (world record) ≈ 0.63 · USA ≈ 0.41 · Germany ≈ 0.31 · Scandinavia ≈ 0.27 · Aequitas long-term target: Gini below 0.30 — comparable to Scandinavian countries, enforced by wealth cap (bootstrap: 5×→25× per human).',
   'gini-calc-title':'How is the Aequitas Index calculated?',
   'gini-calc-text':'All AEQ balances of verified humans are collected. The formula computes the mean absolute difference between every possible pair of balances, normalized by population squared (n²) and the mean balance (x̄). Result 0–1 multiplied by 100 = Aequitas Index. Updated on-chain after every registration, monthly demurrage run, pool payout, and wealth cap event — via keeper calling updateGini().',
   'gini-why-title':'Why Gini — and not a simpler metric?',
   'gini-why-text':'A simple richest-vs-poorest ratio is easy to game: 10,000 wallets could show a low spread but 90% of AEQ concentrated in 100 hands — Gini detects this, a ratio does not. The coefficient captures the complete distribution across all verified humans in one auditable number. Aequitas publishes this on-chain — transparent, tamper-evident, globally verifiable. It is the primary signal for automatic phase transitions, wealth cap calibration, and redistribution intensity. No human can override the index reading or the mechanisms it triggers.',
-  'curr-idx':'Current Index','bar-0':'0 — Perfect Equality','bar-100':'100 — Max Inequality','wcap-lbl':'Current Wealth Cap (liquid AEQ):','wcap-mult':'Multiplier:','wcap-avg':'Avg balance:',
+  'curr-idx':'Current Index','bar-0':'0 — Perfect Equality','bar-100':'100 — Max Inequality','wcap-lbl':'Current Wealth Cap:','wcap-mult':'Multiplier:','wcap-avg':'Avg balance:',
   'gini':'Gini Coefficient','gini-desc':'0 = equal · 1 = unequal',
   'supply-desc':'Always = Humans × 1,000 AEQ',
   'phase':'Protocol Phase','phase-desc':'Auto-advances by human count',
@@ -1732,7 +1732,7 @@ en:{
   'node2':'Node 2 — Render (Secondary)','node2-desc':'Secondary API · Block producer · P2P peer · HTTP sync · Shared PostgreSQL state',
   'run-node-title':'Run Your Own Node — Help Secure the Network',
   'run-node-desc':'Anyone can run an Aequitas node — no permission, no stake, no application required. Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all swap fees, distributed daily).',
-  'bootstrap-title':'Connect a New Node','bootstrap-desc':'To run your own Aequitas node, set the PEER_NODES environment variable to the bootstrap node address below. Your node will automatically sync the full chain state and begin participating in block production.',
+  'bootstrap-title':'Connect a New Node','bootstrap-desc':'To run your own Aequitas node, set PRIMARY_NODE_URL=https://aequitas.digital in your environment. Your node registers automatically, syncs the full chain state, and begins participating in block production.',
   'tech-title':'Technical Specifications','mm-config':'MetaMask Configuration',
   'k-lang':'Language','k-src':'Source','evm-yes':'Yes — JSON-RPC /rpc · MetaMask compatible',
   'proto-label':'Aequitas V7 Protocol — Technical Documentation',
@@ -3652,7 +3652,7 @@ async function drawGiniHistoryChart() {
       ctx.strokeStyle='rgba(0,255,209,0.9)'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.moveTo(tx,by-6); ctx.lineTo(tx,by+bh+6); ctx.stroke();
       ctx.fillStyle='rgba(0,255,209,0.9)'; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='center';
-      ctx.fillText('TARGET', tx, by-10);
+      ctx.fillText('0.30', tx, by-10);
       // Pointer
       var px=bx+bw*g0/1.0;
       ctx.fillStyle='#fff'; ctx.beginPath(); ctx.moveTo(px,by-2); ctx.lineTo(px-5,by-10); ctx.lineTo(px+5,by-10); ctx.fill();
@@ -3699,7 +3699,7 @@ async function drawGiniHistoryChart() {
     ctx.beginPath(); ctx.moveTo(pad.l,targetY); ctx.lineTo(W-pad.r,targetY); ctx.stroke();
     ctx.setLineDash([]); ctx.restore();
     ctx.fillStyle='rgba(4,120,87,0.85)'; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='right';
-    ctx.fillText('TARGET 35', W-pad.r-2, targetY-5);
+    ctx.fillText('TARGET 0.30', W-pad.r-2, targetY-5);
     // bezier path helper
     var pathBez = function(pts) {
       ctx.moveTo(toX(0), toY(pts[0].idx));
@@ -3774,6 +3774,10 @@ async function drawLorenzCurve() {
     var area=0;
     for(var i=1;i<lorenz.length;i++){area+=(lorenz[i].x-lorenz[i-1].x)*(lorenz[i].y+lorenz[i-1].y)/2;}
     var gini=Math.max(0,1-2*area);
+    // Apply same small-sample bias correction as Go's calcGiniFromBalances: gini * n/(n-1)
+    // Without this the Lorenz Gini differs from the Score Gini by factor n/(n-1).
+    // At n=7: 0.0841 * 7/6 = 0.0981 — matching the server value.
+    if(n>1) gini=Math.min(1, gini * n/(n-1));
 
     var gEl=document.getElementById('lorenz-gini-val');
     if(gEl){gEl.textContent=gini.toFixed(4);gEl.style.color=gini<0.30?'#34D399':'#F0B429';}
