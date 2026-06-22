@@ -455,6 +455,8 @@ Return to the <span class="hl">Aequitas App</span> — it will confirm your regi
 func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "text/html")
 w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 path := strings.Trim(r.URL.Path, "/")
 if idx := strings.Index(path, "/"); idx >= 0 {
 	path = path[:idx]
@@ -480,7 +482,7 @@ if validTabs[path] {
 	// Inline style beats every CSS rule except JS .style.display override.
 	html = strings.Replace(html,
 		`id="tab-`+path+`" class="tab-content"`,
-		`id="tab-`+path+`" class="tab-content" style="display:block"`, 1)
+		`id="tab-`+path+`" class="tab-content" style="display:block!important;visibility:visible!important;opacity:1!important"`, 1)
 	// Also hide register content when not on register route.
 	html = strings.Replace(html,
 		`id="tab-register" class="tab-content active"`,

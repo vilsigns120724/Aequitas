@@ -5,6 +5,8 @@ const explorerHTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="google" content="notranslate">
+<meta name="translation" content="notranslate">
 <title>Aequitas — Proof of Humanity Chain</title>
 <meta name="description" content="Aequitas Chain — a Proof of Humanity blockchain with built-in Universal Basic Income, demurrage, and wealth cap. Chain ID 1926.">
 <meta name="theme-color" content="#0C0E16">
