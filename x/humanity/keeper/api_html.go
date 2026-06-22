@@ -1390,11 +1390,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
           <td style="font-size:0.61rem;color:var(--muted);padding:8px">Set to: <span style="font-family:var(--font-mono);color:var(--neon)">https://aequitas.digital</span> &mdash; the primary node your node registers with for automatic peer discovery. On startup your node posts its URL + signing address to the primary, gets the full peer list back, and joins the network automatically. No manual PEER_NODES list needed.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
-          <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--muted);padding:8px">PEER_NODES</td>
-          <td style="font-size:0.6rem;color:var(--muted);padding:8px">Optional</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Comma-separated static peer URLs (legacy). <strong style="color:var(--text)">Use PRIMARY_NODE_URL instead</strong> — it enables automatic peer discovery so you don't need to list every node manually. PEER_NODES still works as a fallback for manual override.</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--muted);padding:8px">PORT</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
           <td style="font-size:0.61rem;color:var(--muted);padding:8px">Leave unset on Railway &mdash; Railway sets this automatically. Default is 8080.</td>
@@ -1505,7 +1500,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span>Set <span style="font-family:var(--font-mono);color:var(--neon)">NODE_OPERATOR_WALLET</span> = your Aequitas human wallet address in your Railway Variables</span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">3.</span><span>Save &mdash; Railway redeploys automatically. On Docker: <span style="font-family:var(--font-mono);color:var(--teal)">docker restart aequitas-node</span></span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">4.</span><span>In your node logs, confirm: <span style="font-family:var(--font-mono);color:var(--teal)">[NODE] Registered node operator wallet: 0x...</span></span></div>
-        <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--gold);font-weight:700;min-width:16px">5.</span><span>Rewards are distributed automatically every 24 hours. Just keep your node running &mdash; no further action needed.</span></div>
+        <div style="display:flex;align-items:flex-start;gap:10px"><span style="color:var(--gold);font-weight:700;min-width:16px">5.</span><span>Rewards are distributed automatically every day at 20:00 Berlin time (CEST/CET). Just keep your node running &mdash; no further action needed.</span></div>
       </div>
 
       <!-- Troubleshooting -->
@@ -1878,7 +1873,7 @@ de:{
   'node2':'Node 2 — Render (Sekundär)','node2-desc':'Sekundärer API-Server · Blockproduzent · P2P-Peer · HTTP-Sync · Geteilter PostgreSQL-Status',
   'run-node-title':'Eigenen Node betreiben — Das Netzwerk sichern',
   'run-node-desc':'Jeder kann einen Aequitas-Node betreiben — keine Genehmigung, kein Stake, keine Bewerbung erforderlich. Nodes nehmen an der Blockproduktion teil und validieren die Menschenregistrierung. Node-Betreiber erhalten täglich einen Anteil der Protokollgebühren über den Validators-Pool (40% aller Swap-Gebühren).',
-  'bootstrap-title':'Neuen Node verbinden','bootstrap-desc':'Um einen eigenen Aequitas-Node zu betreiben, setze die PEER_NODES-Umgebungsvariable auf die unten stehende Bootstrap-Adresse. Dein Node synchronisiert automatisch den vollständigen Chain-Zustand und beginnt mit der Blockproduktion.',
+  'bootstrap-title':'Neuen Node verbinden','bootstrap-desc':'Um einen eigenen Aequitas-Node zu betreiben, setze die PRIMARY_NODE_URL=https://aequitas.digital in deiner Umgebung. Dein Node synchronisiert automatisch den vollständigen Chain-Zustand und beginnt mit der Blockproduktion.',
   'tech-title':'Technische Spezifikationen','mm-config':'MetaMask-Konfiguration',
   'k-lang':'Sprache','k-src':'Quellcode','evm-yes':'Ja — JSON-RPC /rpc · MetaMask-kompatibel',
   'proto-label':'Aequitas V7 Protokoll — Technische Dokumentation',
@@ -2072,7 +2067,7 @@ es:{
   'node2':'Nodo 2 — Render (Secundario)','node2-desc':'API secundario · Productor de bloques · Par P2P · Sincronización HTTP · Estado PostgreSQL compartido',
   'run-node-title':'Ejecuta Tu Propio Nodo — Ayuda a Asegurar la Red',
   'run-node-desc':'Cualquiera puede ejecutar un nodo de Aequitas — sin permiso, sin stake, sin solicitud requerida. Los nodos participan en la producción de bloques y validan el registro humano. Los operadores de nodos ganan una parte de las comisiones del protocolo via el Pool de Validadores (40% de todas las comisiones de swap, distribuidas diariamente).',
-  'bootstrap-title':'Conectar un Nuevo Nodo','bootstrap-desc':'Para ejecutar tu propio nodo, establece la variable de entorno PEER_NODES a la dirección de bootstrap. Tu nodo sincronizará automáticamente el estado completo de la cadena.',
+  'bootstrap-title':'Conectar un Nuevo Nodo','bootstrap-desc':'Para ejecutar tu propio nodo, establece PRIMARY_NODE_URL=https://aequitas.digital en tu entorno. Tu nodo sincronizará automáticamente el estado completo de la cadena.',
   'tech-title':'Especificaciones Técnicas','mm-config':'Configuración MetaMask',
   'k-lang':'Idioma','k-src':'Código Fuente','evm-yes':'Sí — JSON-RPC /rpc · Compatible con MetaMask',
   'proto-label':'Protocolo Aequitas V7 — Documentación Técnica',
@@ -2184,7 +2179,7 @@ ru:{
   'node2':'Нода 2 — Render (Вторичная)','node2-desc':'Вторичный API · Производитель блоков · P2P-пир · HTTP-синхронизация · Общее состояние PostgreSQL',
   'run-node-title':'Запустите Свою Ноду — Помогите Защитить Сеть',
   'run-node-desc':'Любой может запустить ноду без разрешения. Операторы нод получают 40% всех комиссий свопа ежедневно через Пул Валидаторов.',
-  'bootstrap-title':'Подключить Новую Ноду','bootstrap-desc':'Установите PEER_NODES на адрес bootstrap-ноды ниже. Нода автоматически синхронизируется и начнёт производство блоков.',
+  'bootstrap-title':'Подключить Новую Ноду','bootstrap-desc':'Установите PRIMARY_NODE_URL=https://aequitas.digital в вашей среде. Нода автоматически синхронизируется и начнёт производство блоков.',
   'tech-title':'Технические Характеристики','mm-config':'Конфигурация MetaMask',
   'k-lang':'Язык','k-src':'Исходный Код','evm-yes':'Да — JSON-RPC /rpc · Совместимо с MetaMask',
   'proto-label':'Протокол Aequitas V7 — Техническая Документация',
@@ -2767,7 +2762,7 @@ tr:{
   'node2':'Node 2 — Render (İkincil)','node2-desc':'İkincil API · Blok üreticisi · P2P eşi · HTTP senkronizasyonu · Paylaşılan PostgreSQL durumu',
   'run-node-title':'Kendi Node\'unu Çalıştır — Ağı Güvence Altına Almaya Yardım Et',
   'run-node-desc':'Herkes bir Aequitas node\'u çalıştırabilir — izin, stake veya başvuru gerekmez. Node\'lar blok üretimine katılır ve insan kaydını doğrular. Node operatörleri, Doğrulayıcı Havuzu aracılığıyla protokol ücretlerinden pay kazanır (tüm takas ücretlerinin %40\'ı, günlük dağıtılır).',
-  'bootstrap-title':'Yeni Node Bağla','bootstrap-desc':'Kendi Aequitas node\'unu çalıştırmak için PEER_NODES ortam değişkenini aşağıdaki bootstrap node adresine ayarla. Node\'un tam zincir durumunu otomatik olarak senkronize edecek ve blok üretimine başlayacak.',
+  'bootstrap-title':'Yeni Node Bağla','bootstrap-desc':'Kendi Aequitas node\'unu çalıştırmak için PRIMARY_NODE_URL=https://aequitas.digital ortam değişkenini ayarla. Node\'un tam zincir durumunu otomatik olarak senkronize edecek ve blok üretimine başlayacak.',
   'tech-title':'Teknik Özellikler','mm-config':'MetaMask Yapılandırması',
   'k-lang':'Dil','k-src':'Kaynak Kodu','evm-yes':'Evet — JSON-RPC /rpc · MetaMask uyumlu',
   'proto-label':'Aequitas V7 Protokolü — Teknik Dokümantasyon',
@@ -3060,7 +3055,7 @@ pt:{
   'node1':'Node 1 — Railway (Principal)','node1-desc':'API principal · Produtor de blocos · Distribuição UBI · Bootstrap P2P · PostgreSQL · RPC MetaMask',
   'node2':'Node 2 — Render (Secundário)','node2-desc':'API secundário · Produtor de blocos · Par P2P · Sync HTTP · Estado PostgreSQL compartilhado',
   'run-node-title':'Execute seu Próprio Node','run-node-desc':'Qualquer um pode executar um node Aequitas — sem permissão, sem stake. Operadores ganham 40% das taxas de swap distribuídas diariamente.',
-  'bootstrap-title':'Conectar um Novo Node','bootstrap-desc':'Defina PEER_NODES com o endereço do node bootstrap. Seu node sincroniza automaticamente o estado completo da cadeia.',
+  'bootstrap-title':'Conectar um Novo Node','bootstrap-desc':'Defina PRIMARY_NODE_URL=https://aequitas.digital no seu ambiente. Seu node sincroniza automaticamente o estado completo da cadeia.',
   'tech-title':'Especificações Técnicas','mm-config':'Configuração MetaMask',
   'k-lang':'Idioma','k-src':'Fonte','evm-yes':'Sim — JSON-RPC /rpc · Compatível MetaMask',
   'proto-label':'Protocolo Aequitas V7 — Documentação Técnica',
@@ -3197,7 +3192,7 @@ ar:{
   'node1':'العقدة 1 — Railway (الأساسية)','node1-desc':'API أساسي · منتج كتل · توزيع UBI · P2P Bootstrap · PostgreSQL · RPC لـ MetaMask',
   'node2':'العقدة 2 — Render (الثانوية)','node2-desc':'API ثانوي · منتج كتل · نظير P2P · مزامنة HTTP · حالة PostgreSQL مشتركة',
   'run-node-title':'قم بتشغيل عقدتك الخاصة','run-node-desc':'يمكن لأي شخص تشغيل عقدة Aequitas — بدون إذن أو حصة. المشغّلون يكسبون 40% من رسوم المبادلة يومياً.',
-  'bootstrap-title':'ربط عقدة جديدة','bootstrap-desc':'اضبط PEER_NODES على عنوان عقدة Bootstrap. عقدتك ستزامن حالة السلسلة الكاملة تلقائياً.',
+  'bootstrap-title':'ربط عقدة جديدة','bootstrap-desc':'اضبط PRIMARY_NODE_URL=https://aequitas.digital في بيئتك. عقدتك ستزامن حالة السلسلة الكاملة تلقائياً.',
   'tech-title':'المواصفات التقنية','mm-config':'إعداد MetaMask',
   'k-lang':'اللغة','k-src':'المصدر','evm-yes':'نعم — JSON-RPC /rpc · متوافق مع MetaMask',
   'proto-label':'بروتوكول Aequitas V7 — وثائق تقنية',
@@ -3334,7 +3329,7 @@ hi:{
   'node1':'नोड 1 — Railway (प्राथमिक)','node1-desc':'प्राथमिक API · ब्लॉक उत्पादक · UBI वितरण · P2P Bootstrap · PostgreSQL · MetaMask के लिए RPC',
   'node2':'नोड 2 — Render (द्वितीयक)','node2-desc':'द्वितीयक API · ब्लॉक उत्पादक · P2P पीयर · HTTP सिंक · साझा PostgreSQL स्टेट',
   'run-node-title':'अपना नोड चलाएं','run-node-desc':'कोई भी Aequitas नोड चला सकता है — बिना अनुमति, बिना स्टेक। ऑपरेटर दैनिक वितरित स्वैप शुल्क का 40% कमाते हैं।',
-  'bootstrap-title':'नया नोड कनेक्ट करें','bootstrap-desc':'PEER_NODES को बूटस्ट्रैप नोड पते पर सेट करें। आपका नोड स्वचालित रूप से पूर्ण चेन स्टेट सिंक करेगा।',
+  'bootstrap-title':'नया नोड कनेक्ट करें','bootstrap-desc':'PRIMARY_NODE_URL=https://aequitas.digital अपने environment में सेट करें। आपका नोड स्वचालित रूप से पूर्ण चेन स्टेट सिंक करेगा।',
   'tech-title':'तकनीकी विशिष्टताएं','mm-config':'MetaMask कॉन्फ़िगरेशन',
   'k-lang':'भाषा','k-src':'स्रोत','evm-yes':'हाँ — JSON-RPC /rpc · MetaMask संगत',
   'proto-label':'Aequitas V7 प्रोटोकॉल — तकनीकी दस्तावेज़ीकरण',
