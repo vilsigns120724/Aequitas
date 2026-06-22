@@ -1,240 +1,273 @@
-# AEQUITAS — Decentralized Human Currency
+# AEQUITAS — Proof of Humanity Chain
 
+> *"Geld existiert, weil Menschen existieren. Nicht mehr, nicht weniger."*
 > *"Money exists because people exist. Nothing more, nothing less."*
 
-[![Chain](https://img.shields.io/badge/Chain-Aequitas%20Chain%20V6-gold)](https://aequitas-production-9fba.up.railway.app)
-[![Chain ID](https://img.shields.io/badge/Chain%20ID-1926-blue)](https://aequitas-production-9fba.up.railway.app/rpc)
-[![EVM](https://img.shields.io/badge/EVM-Compatible-green)](https://aequitas-production-9fba.up.railway.app/rpc)
+[![Website](https://img.shields.io/badge/Website-aequitas.digital-purple)](https://aequitas.digital)
+[![Chain ID](https://img.shields.io/badge/Chain%20ID-1926-blue)](https://aequitas.digital/rpc)
+[![EVM](https://img.shields.io/badge/EVM-Compatible-green)](https://aequitas.digital/rpc)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+[![Phase](https://img.shields.io/badge/Phase-0%20Live-gold)](https://aequitas.digital)
 
 ---
 
-## What is Aequitas?
+## Was ist Aequitas? / What is Aequitas?
 
-Aequitas is the first monetary system where money supply is directly and mathematically tied to verified human existence.
+Aequitas ist das erste Währungssystem, in dem das Geldangebot direkt und mathematisch an die Existenz verifizierten menschlichen Lebens geknüpft ist.
 
-**Every verified human receives exactly 1,000 AEQ upon registration — unconditionally, equally, permanently.**
+Aequitas is the first monetary system where the money supply is directly and mathematically tied to verified human existence.
 
 ```
-Total Supply = Verified Active Humans × 1,000 AEQ
+Gesamtangebot / Total Supply  =  Verifizierte Menschen × 1.000 AEQ
+                                  Verified Humans       × 1,000 AEQ
 ```
 
-No pre-mine. No founder allocation. No investor round. No early adopter advantage. The first person to register and the billionth person to register receive identical amounts. This is not a policy choice — it is a mathematical law encoded in immutable smart contract code.
+**Kein Pre-Mine. Keine Gründer-Zuteilung. Keine Investorenrunde. Kein Early-Adopter-Vorteil.**
+**No pre-mine. No founder allocation. No investor round. No early-adopter advantage.**
+
+Jede Person, die sich registriert — ob als erste oder als millionste — erhält exakt 1.000 AEQ.
+Every person who registers — whether first or millionth — receives exactly 1,000 AEQ.
+
+Der Gini-Koeffizient von Aequitas liegt bei ~0,08 — verglichen mit ~0,85 bei Bitcoin, dem ungleichsten Währungssystem der Geschichte.
+Aequitas has a Gini coefficient of ~0.08 — compared to ~0.85 for Bitcoin, the most unequal monetary system in history.
 
 ---
 
-## Live Infrastructure
+## Live / Website
 
-| Component | URL |
-|-----------|-----|
-| 🌐 Block Explorer | https://aequitas-production-9fba.up.railway.app |
-| ⛓ RPC Endpoint | https://aequitas-production-9fba.up.railway.app/rpc |
+| | URL |
+|---|---|
+| 🌐 Website & Explorer | https://aequitas.digital |
+| ⛓ RPC Endpoint | https://aequitas.digital/rpc |
 | 🔒 Proof Server | https://aequitas-proof-server-production.up.railway.app |
-| 🔗 Node 2 (Render) | https://aequitas-node-2.onrender.com |
-| ⛓ Bootstrap Node | `/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R` |
-
-## MetaMask Configuration
-
-| Parameter | Value |
-|-----------|-------|
-| Network Name | Aequitas Chain |
-| RPC URL | https://aequitas-production-9fba.up.railway.app/rpc |
-| Chain ID | **1926** |
-| Symbol | AEQ |
-| Block Explorer | https://aequitas-production-9fba.up.railway.app |
+| 📡 Bootstrap Node | `/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R` |
 
 ---
 
-## V6 Smart Contracts (Aequitas Chain — Chain ID 1926)
+## Smart Contracts (Aequitas Chain — Chain ID 1926)
 
 | Contract | Address |
 |----------|---------|
-| AequitasV6 (Main) | `0xA76cA3bf34F2Ae5dFA0608696627e42b81180488` |
-| BioVerifier (Groth16) | `0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2` |
+| **AequitasV7** (Main) | `0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78` |
+| **BioVerifier** (Groth16 ZKP) | `0xc369D27b49DE017d113Bbcb9A1884a9e745B6BE2` |
 | AequitasV5 (Sepolia Legacy) | `0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5` |
 
 ---
 
-## Core Principles
+## MetaMask / Wallet Konfiguration
 
-### 1. Proof of Humanity
-Every AEQ holder must prove they are a unique living human through biometric verification. This is not optional — it is the foundation of the entire system.
+| Parameter | Wert / Value |
+|-----------|-------------|
+| Network Name | Aequitas Chain |
+| RPC URL | https://aequitas.digital/rpc |
+| Chain ID | **1926** |
+| Symbol | AEQ |
+| Decimals | 18 |
+| Block Explorer | https://aequitas.digital |
 
-- Fingerprint processed by Hardware Secure Element (HSE)
-- Raw biometric data **never** leaves the device
-- Groth16 Zero-Knowledge Proof generated on Proof Server
-- Commitment hash stored permanently — no double registration possible
-- **One human, one wallet, forever**
+---
 
-### 2. BlockDAG Architecture
-Aequitas runs on a custom Layer 1 blockchain built from scratch in Go, with BlockDAG consensus:
+## Kernprinzipien / Core Principles
 
-- Multiple blocks can be produced simultaneously by different nodes
-- Blocks are later merged into "merge blocks" with multiple parents
-- Higher throughput, lower latency, better fault tolerance
-- Block time: ~6 seconds average
+### 1. Proof of Humanity — Nachweis der Menschlichkeit
 
-### 3. V6 Economic Model
+Jeder AEQ-Halter muss nachweisen, dass er ein einzigartiger lebender Mensch ist — durch biometrische Verifikation und ein Zero-Knowledge-Proof-System.
 
-#### Proof of Alive
-Inactive wallets are handled gracefully — not punished. After 2 years of inactivity, warnings are sent. After 2.5 years, AEQ moves to personal escrow (not lost). After 4 years of total inactivity, AEQ enters the UBI Pool.
+Every AEQ holder must prove they are a unique living human through biometric verification and Zero-Knowledge Proofs.
 
-#### Guardian System
-Every verified human can appoint one Guardian (another verified human) who can confirm they are still alive — with **zero transaction rights**. Max 3 wards per Guardian. 7-day timelock on assignment prevents forced assignment under duress.
+- 📱 **Android App** → Fingerabdruck via Hardware Secure Element (HSE)
+- 🔒 Rohdaten verlassen das Gerät **niemals** / Raw biometric data **never** leaves the device
+- 🔐 Groth16 ZKP auf dem Proof-Server generiert / Groth16 ZKP generated on Proof Server
+- ⛓ Commitment-Hash dauerhaft on-chain gespeichert / Commitment stored permanently on-chain
+- 👤 **Ein Mensch, eine Wallet, für immer / One human, one wallet, forever**
 
-#### Demurrage
-1% annual fee on any balance **above** fairShare. Money flows to UBI Pool — never deleted. Historical precedent: Wörgl, Austria (1932) reduced unemployment 25% in one year through demurrage currency.
+### 2. Universal Basic Income (UBI) — Universelles Grundeinkommen
 
-#### Wealth Cap
-Hard ceiling enforced from human #1:
-| Phase | Humans | Cap |
-|-------|--------|-----|
-| 0 | 1–100 | 50× fairShare |
-| 1 | 101–1,000 | 20× fairShare |
-| 2 | 1,001–10,000 | 10× fairShare |
-| 3 | 10,001–100,000 | 5× fairShare |
-| 4 | 100,000+ | 3× fairShare |
-
-Excess is instantly redistributed equally to ALL active humans.
-
-#### Universal Basic Income
+UBI aus Protokoll-Ökonomie — ohne Steuern, ohne Regierung, ohne politische Entscheidung.
 UBI from protocol economics — no taxation, no government, no political decision required.
 
-Sources:
-- Transaction fees (0.1%) → 20% to UBI Pool
-- Wealth cap overflow → immediate equal redistribution
-- Demurrage on excess balances
-- Inactive wallet escrow after 4 years
+**Quellen / Sources:**
+- Transaktionsgebühren 0,1% → 20% an UBI-Pool / Transaction fees → 20% to UBI Pool
+- Wealth-Cap-Überschuss → sofortige Gleichverteilung / Wealth cap overflow → equal redistribution
+- Demurrage auf Überschüsse / Demurrage on excess balances
+- Inaktive Wallets nach 4 Jahren / Inactive wallet escrow after 4 years
 
-#### No Algorithmic Inflation
-The **only** event that creates new AEQ: a new verified human registers → 1,000 AEQ created. No mining rewards, no staking rewards, no protocol emissions. Supply is mathematically guaranteed to equal humans × 1,000.
+### 3. Wealth Cap — Vermögensobergrenze
+
+Harte Obergrenze, die ab dem ersten Menschen gilt:
+
+| Phase | Menschen / Humans | Cap |
+|-------|------------------|-----|
+| 0 | 1–100 | 50× fairShare |
+| 1 | 101–1.000 | 20× fairShare |
+| 2 | 1.001–10.000 | 10× fairShare |
+| 3 | 10.001–100.000 | 5× fairShare |
+| 4 | 100.000+ | 3× fairShare |
+
+Überschuss wird sofort gleichmäßig an alle aktiven Menschen verteilt.
+Excess is instantly redistributed equally to all active humans.
+
+### 4. Demurrage — Haltegebühr
+
+1% jährliche Gebühr auf Guthaben **über** dem fairShare. Fließt in den UBI-Pool — wird nie vernichtet.
+1% annual fee on any balance **above** fairShare. Flows to UBI Pool — never destroyed.
+
+Historisches Vorbild: Wörgl, Österreich (1932) — Demurrage-Währung reduzierte die Arbeitslosigkeit um 25% in einem Jahr.
+Historical precedent: Wörgl, Austria (1932) — demurrage currency reduced unemployment by 25% in one year.
+
+### 5. Exchange & Liquidity Pool
+
+Integrierter AMM-DEX (AEQ ↔ tUSD) mit automatischer Preisfindung (x·y=k Formel):
+Built-in AMM DEX (AEQ ↔ tUSD) with automatic price discovery (x·y=k formula):
+
+- 0,1% Swap-Gebühr → 40% Validatoren, 30% LPs, 20% UBI, 10% Treasury
+- Liquidity Provider Shares proportional zur Einlage
+- Preishistorie und Lorenz-Kurve live on-chain
+
+### 6. Keine algorithmische Inflation / No Algorithmic Inflation
+
+Das **einzige** Ereignis das neues AEQ erschafft: ein neuer verifizierter Mensch registriert sich → 1.000 AEQ werden erstellt.
+The **only** event that creates new AEQ: a new verified human registers → 1,000 AEQ created.
+
+Kein Mining. Kein Staking. Keine Protokoll-Emissionen.
+No mining. No staking. No protocol emissions.
 
 ---
 
-## System Architecture
+## Architektur / Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  Android App                        │
-│    Hardware Secure Element · Fingerprint → ZKP      │
-│    Biometric data never leaves device               │
-└──────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                  Android App                            │
+│    Hardware Secure Element · Fingerprint → biohash      │
+│    Biometrische Daten verlassen das Gerät nie           │
+└──────────────────────┬──────────────────────────────────┘
                        │ biometric hash
-┌──────────────────────▼──────────────────────────────┐
-│              Proof Server (Node.js)                 │
-│    Groth16 ZKP Generation · Sybil Protection        │
-│    Proof Storage · Short ID System                  │
-└──────────────────────┬──────────────────────────────┘
-                       │ pA, pB, pC, pubSignals
-┌──────────────────────▼──────────────────────────────┐
-│           Aequitas Layer 1 (Go)                     │
-│    Node 1 (Railway) ←── libp2p ──→ Node 2 (Render)  │
-│    BlockDAG · EVM Engine · JSON-RPC                 │
-│    PostgreSQL (shared persistent state)             │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────▼──────────────────────────────────┐
+│              Proof Server (Node.js)                     │
+│    Groth16 ZKP Generation · Nullifier Binding           │
+│    circom circuits · snarkjs · BN128 curve              │
+└──────────────────────┬──────────────────────────────────┘
+                       │ pA, pB, pC, pubSignals, nullifier
+┌──────────────────────▼──────────────────────────────────┐
+│           Aequitas Layer 1 (Go 1.24)                   │
+│    Node 1 (Railway) ←─ libp2p ─→ Node 2 (Render)       │
+│    BlockDAG Consensus · EVM Engine (go-ethereum)        │
+│    JSON-RPC · Dual-Ledger (Go + EVM)                    │
+│    PostgreSQL (shared persistent state)                 │
+└──────────────────────┬──────────────────────────────────┘
                        │
-┌──────────────────────▼──────────────────────────────┐
-│           AequitasV6 Smart Contract                 │
-│    BioVerifier (Groth16) · Wealth Cap               │
-│    Guardian System · Demurrage · UBI Pool           │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────▼──────────────────────────────────┐
+│           AequitasV7 Smart Contract                     │
+│    BioVerifier (Groth16) · Wealth Cap · Guardian        │
+│    Demurrage · UBI Pool · AMM Exchange                  │
+│    Transfer Fees · Nullifier Binding                    │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Technical Specifications
+## Technische Spezifikationen / Technical Specifications
 
-| Parameter | Value |
-|-----------|-------|
-| Language | Go 1.24 |
-| Consensus | BlockDAG + Proof of Humanity |
-| Block Time | ~6 seconds |
+| Parameter | Wert / Value |
+|-----------|-------------|
+| Sprache / Language | Go 1.24 (Chain) · Node.js (Proof Server) |
+| Konsens / Consensus | BlockDAG + Proof of Humanity |
+| Blockzeit / Block Time | ~6 Sekunden / seconds |
 | Chain ID | 1926 (0x786) |
-| EVM | Yes — go-ethereum engine |
-| ZKP System | Groth16 / snarkjs / circom |
-| ZKP Curve | BN128 (alt-bn128) |
-| Proof Size | ~200 bytes |
-| Verification Time | ~10ms |
-| State Storage | PostgreSQL (persistent) |
-| P2P Protocol | libp2p (Go) |
-| Initial Grant | 1,000 AEQ per human |
-| Transaction Fee | 0.1% |
+| EVM | Ja / Yes — go-ethereum Engine |
+| ZKP-System / ZKP System | Groth16 / snarkjs / circom |
+| Kurve / Curve | BN128 (alt-bn128) |
+| Bio-Hash | keccak256 |
+| P2P-Protokoll / P2P Protocol | libp2p (Go) |
+| State Storage | PostgreSQL |
+| Startguthaben / Initial Grant | 1.000 / 1,000 AEQ |
+| Transaktionsgebühr / Fee | 0,1% / 0.1% |
+| Gini-Ziel / Gini Target | < 0,35 (Skandinavien-Niveau) |
 
 ---
 
-## Repository Structure
+## Repository-Struktur / Repository Structure
 
 ```
 aequitas-chain/
-├── cmd/aequitasd/          — Node binary entry point
+├── cmd/aequitasd/              — Node-Binary Einstiegspunkt / Node binary entry
 ├── x/humanity/keeper/
-│   ├── api.go              — HTTP API server
-│   ├── api_html.go         — Explorer web UI (multilingual)
-│   ├── evm_engine.go       — EVM execution (go-ethereum)
-│   ├── evm_rpc.go          — JSON-RPC handler
-│   ├── evm_storage.go      — Contract storage (PostgreSQL)
-│   ├── evm_v6mirror.go     — V6 state mirror
-│   ├── blockdag.go         — BlockDAG consensus
-│   ├── p2p.go              — libp2p networking
-│   ├── state.go            — Chain state + PostgreSQL
-│   └── register.go         — ZKP registration handler
-├── AequitasV6.sol          — V6 smart contract
-├── AequitasV5.sol          — V5 legacy contract
-├── BioVerifier.sol         — Groth16 ZKP verifier
-├── Aequitas_Whitepaper_v1.0_EN.pdf
-├── Aequitas_Whitepaper_v1.0_DE.pdf
+│   ├── api.go                  — HTTP API Server
+│   ├── api_html.go             — Web-Explorer UI (mehrsprachig / multilingual)
+│   ├── block.go                — BlockDAG Konsens / Consensus
+│   ├── decimal.go              — Präzisions-Arithmetik / Precision arithmetic
+│   ├── evm_engine.go           — EVM-Ausführung (go-ethereum) / EVM execution
+│   ├── evm_rpc.go              — JSON-RPC Handler
+│   ├── evm_storage.go          — Contract-Storage (PostgreSQL)
+│   ├── p2p.go                  — libp2p Networking
+│   ├── register.go             — ZKP Registrierungs-Handler / Registration handler
+│   ├── state.go                — Chain-State + PostgreSQL
+│   └── sync_blocks.go          — Block-Synchronisierung / Block sync
+├── AequitasV7.sol              — V7 Haupt-Contract / Main contract
+├── BioVerifier.sol             — Groth16 ZKP Verifier
+├── WHITEPAPER.md               — Whitepaper (DE + EN)
 └── README.md
 ```
 
 ---
 
-## Registration Flow
+## Registrierungsablauf / Registration Flow
 
-1. **Android App** → fingerprint scan via Hardware Secure Element
-2. **App** → derives biometric hash (never leaves device)
-3. **App** → sends hash to Proof Server → Groth16 ZKP generated
-4. **App** → stores proof on server → gets short Proof ID
-5. **App** → opens MetaMask with `?proofId=xxx`
-6. **Explorer** → loads proof via ID → auto-connects wallet
-7. **Explorer** → submits `/api/register` with ZKP proof
-8. **Node** → verifies ZKP → calls AequitasV6 contract
-9. **Node** → mirrors state to PostgreSQL
-10. **App** → polls until confirmed → shows 1,000 AEQ balance
+```
+1. App          → Fingerabdruck via Hardware Secure Element
+2. App          → Leitet biometric hash ab (verlässt Gerät nie)
+3. App          → Sendet hash an Proof Server → Groth16 ZKP generiert
+4. Proof Server → Gibt pubSignals (commitment, nullifier) zurück
+5. App          → Öffnet MetaMask-Verbindung auf aequitas.digital
+6. Website      → Sendet /api/register mit ZKP-Proof
+7. Node         → Verifiziert ZKP → Prüft Nullifier on-chain (Replay-Schutz)
+8. Node         → Ruft AequitasV7 auf → Synchronisiert Dual-Ledger
+9. Wallet       → Empfängt 1.000 AEQ · App zeigt Bestätigung
+```
+
+---
+
+## Warum Aequitas? / Why Aequitas?
+
+Bitcoins Gini-Koeffizient liegt über 0,85 — höher als jedes Land der Erde. Die Top 1% der Bitcoin-Adressen kontrollieren über 90% aller Bitcoin. Die Kryptowährung, die das Finanzwesen demokratisieren sollte, erschuf die extremste Vermögenskonzentration in der Menschheitsgeschichte.
+
+Bitcoin's estimated Gini coefficient exceeds 0.85 — higher than any country on Earth. The top 1% of Bitcoin addresses control over 90% of all Bitcoin. The cryptocurrency meant to democratize finance created the most extreme wealth concentration in human history.
+
+Aequitas gibt eine Antwort auf die Frage:
+Aequitas answers the question:
+
+> *Was wäre eine Kryptowährung, wenn sie von Grund auf fair für jeden Menschen konzipiert worden wäre?*
+> *What would a cryptocurrency look like if designed from first principles to be fair to every human being?*
+
+Die Antwort ist einfach: **Geld existiert, weil Menschen existieren. Jede Person sollte daher einen gleichen Anteil am Geld haben — allein weil sie ein Mensch ist.**
+
+The answer is simple: **Money exists because people exist. Therefore, every person should have an equal share of money simply by virtue of being human.**
 
 ---
 
 ## Roadmap
 
-| Phase | Status | Description |
-|-------|--------|-------------|
-| 0 | ✅ | Smart contracts, ZKP system, Android app, Proof Server |
-| 0+ | ✅ | Aequitas Layer 1 Chain (Go), BlockDAG, P2P, Block Explorer |
-| V6 | ✅ | Sovereign chain, EVM engine, Proof of Alive, Guardian, Demurrage, UBI, Wealth Cap |
-| 1 | 🔄 | APK release, grant applications, growing human registry |
-| 2 | ⬜ | iOS app, Proof of Alive activation, Guardian system live |
-| 3 | ⬜ | DEX, lending protocol, cross-chain bridges |
-| 4 | ⬜ | Full decentralization, community governance |
-
----
-
-## Why Aequitas?
-
-Bitcoin's estimated Gini coefficient exceeds 0.85 — higher than any country on Earth. The top 1% of Bitcoin addresses control over 90% of all Bitcoin. The cryptocurrency that was supposed to democratize finance created the most extreme wealth concentration in human history.
-
-Aequitas was created to answer: *"What would a cryptocurrency look like if designed from first principles to be fair to every human being?"*
-
-The answer is surprisingly simple: **Money exists because people exist. Therefore, every person should have an equal share of money simply by virtue of being human.**
+| Phase | Status | Beschreibung / Description |
+|-------|--------|---------------------------|
+| 0 | ✅ | Smart Contracts · ZKP · Android App · Proof Server |
+| 0+ | ✅ | Aequitas Layer 1 (Go) · BlockDAG · P2P · Explorer |
+| V7 | ✅ | EVM · Dual-Ledger · Exchange/AMM · Lorenz-Kurve · Gini-Index · UBI · Demurrage |
+| 1 | 🔄 | APK-Release · Community-Wachstum · Grant-Anträge |
+| 2 | ⬜ | iOS App · Proof of Alive Aktivierung · Guardian System live |
+| 3 | ⬜ | Cross-Chain Bridges · Externe DEX-Integration |
+| 4 | ⬜ | Vollständige Dezentralisierung · Community Governance |
 
 ---
 
 ## Links
 
-- 🌐 [Block Explorer](https://aequitas-production-9fba.up.railway.app)
-- 📄 [Whitepaper EN](Aequitas_Whitepaper_v1.0_EN.pdf)
-- 📄 [Whitepaper DE](Aequitas_Whitepaper_v1.0_DE.pdf)
+- 🌐 [Website & Explorer](https://aequitas.digital)
+- 📄 [Whitepaper](WHITEPAPER.md)
 - 💻 [GitHub](https://github.com/hanoi96international-gif/Aequitas)
-- 🔍 [V5 Etherscan](https://sepolia.etherscan.io/address/0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5)
+- 🔍 [V5 Sepolia (Legacy)](https://sepolia.etherscan.io/address/0x4f147d5B3388AF07993CC4fC548502A78Af0B8b5)
 
 ---
 
-*Aequitas launched June 2026 · Phase 0 · Chain ID 1926*
+*Aequitas — gestartet Juni 2026 · Phase 0 Live · Chain ID 1926*
+*Aequitas — launched June 2026 · Phase 0 Live · Chain ID 1926*
