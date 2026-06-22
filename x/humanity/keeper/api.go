@@ -482,7 +482,7 @@ if validTabs[path] {
 	// Inline style beats every CSS rule except JS .style.display override.
 	html = strings.Replace(html,
 		`id="tab-`+path+`" class="tab-content"`,
-		`id="tab-`+path+`" class="tab-content" style="display:block!important;visibility:visible!important;opacity:1!important"`, 1)
+		`id="tab-`+path+`" class="tab-content" style="display:block"`, 1)
 	// Also hide register content when not on register route.
 	html = strings.Replace(html,
 		`id="tab-register" class="tab-content active"`,
