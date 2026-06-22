@@ -391,7 +391,10 @@ func (cs *ChainState) SyncBalancesToEVM(contractAddr string, addrs ...string) {
 		cs.mu.RUnlock()
 		var bal float64
 		if ok {
-			bal = acc.Balance.Float()
+			// P2-12: use effectiveBalance (with demurrage decay) so EVM
+			// storage matches what the user actually holds right now,
+			// not the raw stored value which may be higher than actual.
+			bal = effectiveBalance(acc).Float()
 		}
 		balBig, _ := new(big.Float).SetPrec(256).Mul(
 			new(big.Float).SetFloat64(bal),
@@ -622,13 +625,20 @@ func (cs *ChainState) IsNullifierUsed(nullifier string) bool {
 	return err == nil && wallet != ""
 }
 
+// maxInMemNullifiers caps the in-memory nullifier cache to ~50 MB at 1M entries.
+// P3-7: above this threshold new nullifiers are only written to DB; lookups
+// fall through to the DB automatically via IsNullifierUsed.
+const maxInMemNullifiers = 500_000
+
 func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) {
 	if nullifier == "" {
 		return
 	}
 	walletAddress = strings.ToLower(walletAddress)
 	cs.mu.Lock()
-	cs.nullifiers[nullifier] = walletAddress
+	if len(cs.nullifiers) < maxInMemNullifiers {
+		cs.nullifiers[nullifier] = walletAddress
+	}
 	cs.mu.Unlock()
 	if cs.db == nil {
 		return

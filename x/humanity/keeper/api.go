@@ -46,6 +46,19 @@ go s.syncProofServerStatus()
 return s
 }
 
+// isValidWalletAddr checks 0x-prefixed 40-hex-char Ethereum address format.
+// P3-11: prevents garbage keys from entering cs.accounts map.
+func isValidWalletAddr(addr string) bool {
+	if len(addr) != 42 { return false }
+	if addr[:2] != "0x" && addr[:2] != "0X" { return false }
+	for _, c := range addr[2:] {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *APIServer) syncProofServerStatus() {
 for {
 proofHTTP := &http.Client{Timeout: 8 * time.Second}
@@ -156,9 +169,8 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "node_id":      a.p2pNode.GetNodeID(),
 "uptime":       uptime,
 "block_time":   6,
-"contract_v5":  V5_SEPOLIA_LEGACY_ADDR,
-"contract_v6":  V6_CONTRACT_ADDR,
 "contract_v7":  V7_CONTRACT_ADDR,
+// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
 "bio_verifier": BIO_VERIFIER_ADDR,
 "chain_evm_id": 1926,
 "index":        a.state.CalcAequitasIndex(),
@@ -179,11 +191,22 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 blocks := a.blockchain.GetBlocks()
-start := 0
-if len(blocks) > 50 {
-start = len(blocks) - 50
+// P3-2: support ?limit=N&offset=M for block history paging.
+limit := 50
+offset := 0
+fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
+fmt.Sscanf(r.URL.Query().Get("offset"), "%d", &offset)
+if limit < 1 || limit > 500 { limit = 50 }
+if offset < 0 { offset = 0 }
+// Default: newest blocks (offset from end)
+if r.URL.Query().Get("offset") == "" {
+offset = len(blocks) - limit
+if offset < 0 { offset = 0 }
 }
-json.NewEncoder(w).Encode(blocks[start:])
+end := offset + limit
+if end > len(blocks) { end = len(blocks) }
+if offset >= len(blocks) { offset = len(blocks) }
+json.NewEncoder(w).Encode(blocks[offset:end])
 }
 
 func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {

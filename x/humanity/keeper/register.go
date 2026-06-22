@@ -594,6 +594,9 @@ func loadSlotBig(state *ChainState, addr string, slot int64) *big.Int {
 	return out
 }
 
+// uint256Max is the maximum value for a Solidity uint256 parameter.
+var uint256Max = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+
 func parseUint2(values []string) ([2]*big.Int, error) {
 	var out [2]*big.Int
 	for i := 0; i < 2; i++ {
@@ -601,6 +604,10 @@ func parseUint2(values []string) ([2]*big.Int, error) {
 		_, ok := n.SetString(values[i], 10)
 		if !ok {
 			return out, fmt.Errorf("invalid number at index %d: %s", i, values[i])
+		}
+		// P2-17: reject values that exceed uint256 — ABI-encode would silently truncate them.
+		if n.Sign() < 0 || n.Cmp(uint256Max) > 0 {
+			return out, fmt.Errorf("value at index %d exceeds uint256 range", i)
 		}
 		out[i] = n
 	}

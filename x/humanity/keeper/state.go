@@ -2,6 +2,7 @@ package keeper
 
 import (
 "crypto/sha256"
+"context"
 "database/sql"
 "encoding/hex"
 "encoding/json"
@@ -115,7 +116,9 @@ func (cs *ChainState) beginStateTx() *sql.Tx {
 if cs.db == nil {
 return nil
 }
-tx, err := cs.db.Begin()
+// P0-7: SERIALIZABLE prevents phantom reads that could violate
+// totalSupply = humans * 1000 invariant under concurrent writes.
+tx, err := cs.db.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelSerializable})
 if err != nil {
 fmt.Printf("[DB] Warning: could not begin state tx: %v\n", err)
 return nil
@@ -167,23 +170,29 @@ return cs
 }
 
 func (cs *ChainState) initDB() {
-cs.db.Exec(`CREATE TABLE IF NOT EXISTS evm_contracts (
+	// P3-10: log schema migration errors instead of silently ignoring them.
+	dbExec := func(q string, args ...interface{}) {
+		if _, err := cs.db.Exec(q, args...); err != nil {
+			fmt.Printf("[DB] initDB warning: %v\n", err)
+		}
+	}
+dbExec(`CREATE TABLE IF NOT EXISTS evm_contracts (
 address TEXT PRIMARY KEY,
 bytecode TEXT NOT NULL,
 deployer TEXT,
 deployed_at TIMESTAMP DEFAULT NOW()
 )`)
-cs.db.Exec(`CREATE TABLE IF NOT EXISTS evm_storage (
+dbExec(`CREATE TABLE IF NOT EXISTS evm_storage (
 address TEXT NOT NULL,
 slot TEXT NOT NULL,
 value TEXT NOT NULL,
 PRIMARY KEY (address, slot)
 )`)
-cs.db.Exec(`CREATE TABLE IF NOT EXISTS evm_nonces (
+dbExec(`CREATE TABLE IF NOT EXISTS evm_nonces (
 address TEXT PRIMARY KEY,
 nonce BIGINT DEFAULT 0
 )`)
-cs.db.Exec(`CREATE TABLE IF NOT EXISTS chain_accounts (
+dbExec(`CREATE TABLE IF NOT EXISTS chain_accounts (
 address TEXT PRIMARY KEY,
 balance FLOAT NOT NULL DEFAULT 0,
 is_human BOOLEAN NOT NULL DEFAULT false
@@ -191,22 +200,24 @@ is_human BOOLEAN NOT NULL DEFAULT false
 // tusd_balance added separately (ALTER instead of being in the original
 // CREATE TABLE) so this upgrade doesn't require recreating the table on
 // chains that already have chain_accounts from before this feature.
-cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0`)
+// P2-3 fix: ADD COLUMN before ALTER TYPE — on a fresh DB the column must
+// exist before we can change its type. IF NOT EXISTS makes both safe to run
+// on existing DBs too.
+dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS tusd_balance FLOAT NOT NULL DEFAULT 0`)
+dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS lp_shares FLOAT NOT NULL DEFAULT 0`)
+dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS last_activity_at BIGINT NOT NULL DEFAULT 0`)
+dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS demurrage_14_day_warning_shown BOOLEAN NOT NULL DEFAULT false`)
+dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS faucet_claimed BOOLEAN NOT NULL DEFAULT false`)
+dbExec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 0`)
 // Upgrade balance columns to NUMERIC(20,6) for exact decimal storage.
-// FLOAT loses precision; NUMERIC stores exactly 6 decimal places.
-cs.db.Exec(`ALTER TABLE chain_accounts ALTER COLUMN balance TYPE NUMERIC(20,6) USING balance::NUMERIC(20,6)`)
-cs.db.Exec(`ALTER TABLE chain_accounts ALTER COLUMN tusd_balance TYPE NUMERIC(20,6) USING tusd_balance::NUMERIC(20,6)`)
-cs.db.Exec(`ALTER TABLE chain_accounts ALTER COLUMN lp_shares TYPE NUMERIC(20,6) USING lp_shares::NUMERIC(20,6)`)
-cs.db.Exec(`UPDATE liquidity_pool SET reserve_aeq = ROUND(reserve_aeq::NUMERIC, 6), reserve_tusd = ROUND(reserve_tusd::NUMERIC, 6), total_lp_shares = ROUND(total_lp_shares::NUMERIC, 6) WHERE id = 1`)
-cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS tusd_balance FLOAT NOT NULL DEFAULT 0`)
-cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS lp_shares FLOAT NOT NULL DEFAULT 0`)
-cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS last_activity_at BIGINT NOT NULL DEFAULT 0`)
-cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS demurrage_14_day_warning_shown BOOLEAN NOT NULL DEFAULT false`)
-cs.db.Exec(`ALTER TABLE chain_accounts ADD COLUMN IF NOT EXISTS faucet_claimed BOOLEAN NOT NULL DEFAULT false`)
+dbExec(`ALTER TABLE chain_accounts ALTER COLUMN balance TYPE NUMERIC(20,6) USING balance::NUMERIC(20,6)`)
+dbExec(`ALTER TABLE chain_accounts ALTER COLUMN tusd_balance TYPE NUMERIC(20,6) USING tusd_balance::NUMERIC(20,6)`)
+dbExec(`ALTER TABLE chain_accounts ALTER COLUMN lp_shares TYPE NUMERIC(20,6) USING lp_shares::NUMERIC(20,6)`)
+dbExec(`UPDATE liquidity_pool SET reserve_aeq = ROUND(reserve_aeq::NUMERIC, 6), reserve_tusd = ROUND(reserve_tusd::NUMERIC, 6), total_lp_shares = ROUND(total_lp_shares::NUMERIC, 6) WHERE id = 1`)
 // Links a ZK proof commitment to the wallet that successfully registered
 // with it, so the app can ask "did MY proof get registered, and to which
 // wallet?" instead of guessing from a global, unfiltered list.
-cs.db.Exec(`CREATE TABLE IF NOT EXISTS bio_registrations (
+dbExec(`CREATE TABLE IF NOT EXISTS bio_registrations (
 commitment TEXT PRIMARY KEY,
 wallet_address TEXT NOT NULL,
 tx_hash TEXT,
@@ -217,34 +228,34 @@ registered_at TIMESTAMP DEFAULT NOW()
 // flow where the proof is generated on the website (after MetaMask
 // supplies the real wallet), the app itself never computes a commitment
 // and so can't poll by one. It only ever knows its own bio_hash.
-cs.db.Exec(`ALTER TABLE bio_registrations ADD COLUMN IF NOT EXISTS bio_hash TEXT`)
-cs.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_bio_registrations_bio_hash ON bio_registrations(bio_hash) WHERE bio_hash IS NOT NULL`)
+dbExec(`ALTER TABLE bio_registrations ADD COLUMN IF NOT EXISTS bio_hash TEXT`)
+dbExec(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_bio_registrations_bio_hash ON bio_registrations(bio_hash) WHERE bio_hash IS NOT NULL`)
 // Single-row table holding the AEQ<->tUSD pool reserves. A fixed id=1 row
 // is used instead of a key-value table since there's only ever one pool
 // right now — simpler queries, and trivial to extend to multiple pools
 // later (id column is already there) if more pairs are ever added.
-cs.db.Exec(`CREATE TABLE IF NOT EXISTS liquidity_pool (
+dbExec(`CREATE TABLE IF NOT EXISTS liquidity_pool (
 id INTEGER PRIMARY KEY DEFAULT 1,
 reserve_aeq FLOAT NOT NULL DEFAULT 0,
 reserve_tusd FLOAT NOT NULL DEFAULT 0,
 total_lp_shares FLOAT NOT NULL DEFAULT 0
 )`)
-cs.db.Exec(`ALTER TABLE liquidity_pool ADD COLUMN IF NOT EXISTS total_lp_shares FLOAT NOT NULL DEFAULT 0`)
+dbExec(`ALTER TABLE liquidity_pool ADD COLUMN IF NOT EXISTS total_lp_shares FLOAT NOT NULL DEFAULT 0`)
 // Upgrade liquidity_pool columns to NUMERIC(20,6) for exact decimal storage
 // (same migration applied to chain_accounts columns above). Must run AFTER the
 // ADD COLUMN statements so that the column definitely exists before ALTER TYPE.
-cs.db.Exec(`ALTER TABLE liquidity_pool ALTER COLUMN reserve_aeq TYPE NUMERIC(20,6) USING reserve_aeq::NUMERIC(20,6)`)
-cs.db.Exec(`ALTER TABLE liquidity_pool ALTER COLUMN reserve_tusd TYPE NUMERIC(20,6) USING reserve_tusd::NUMERIC(20,6)`)
-cs.db.Exec(`ALTER TABLE liquidity_pool ALTER COLUMN total_lp_shares TYPE NUMERIC(20,6) USING total_lp_shares::NUMERIC(20,6)`)
+dbExec(`ALTER TABLE liquidity_pool ALTER COLUMN reserve_aeq TYPE NUMERIC(20,6) USING reserve_aeq::NUMERIC(20,6)`)
+dbExec(`ALTER TABLE liquidity_pool ALTER COLUMN reserve_tusd TYPE NUMERIC(20,6) USING reserve_tusd::NUMERIC(20,6)`)
+dbExec(`ALTER TABLE liquidity_pool ALTER COLUMN total_lp_shares TYPE NUMERIC(20,6) USING total_lp_shares::NUMERIC(20,6)`)
 // nullifiers stores the one-way SHA256 derivative of each identity's bioHash.
 // Checked at registration time to prevent the same biometric from registering
 // with a second wallet. The nullifier itself never reveals the bioHash.
-cs.db.Exec(`CREATE TABLE IF NOT EXISTS nullifiers (
+dbExec(`CREATE TABLE IF NOT EXISTS nullifiers (
 nullifier TEXT PRIMARY KEY,
 wallet_address TEXT NOT NULL,
 registered_at TIMESTAMP DEFAULT NOW()
 )`)
-cs.db.Exec(`CREATE TABLE IF NOT EXISTS chain_config (
+dbExec(`CREATE TABLE IF NOT EXISTS chain_config (
 key TEXT PRIMARY KEY,
 value TEXT NOT NULL
 )`)
@@ -1632,76 +1643,51 @@ return hex.EncodeToString(hash[:])
 
 // calcGiniLocked computes the Gini coefficient without acquiring cs.mu.
 // Must only be called while cs.mu is already held (read or write).
-func (cs *ChainState) calcGiniLocked() float64 {
-balances := []float64{}
-for _, acc := range cs.accounts {
-if acc.IsHuman && acc.Balance > 0 { balances = append(balances, effectiveBalance(acc).Float()) }
-}
-n := len(balances)
-if n < 2 { return 0.0 }
-for i := 0; i < n; i++ {
-for j := i + 1; j < n; j++ { if balances[j] < balances[i] { balances[i], balances[j] = balances[j], balances[i] } }
-}
-var sum, numerator float64
-for i, x := range balances { sum += x; numerator += float64(2*i+1-n) * x }
-if sum == 0 { return 0.0 }
-gini := numerator / (float64(n) * sum)
-if gini < 0 { gini = -gini }
-if n > 1 { gini = gini * float64(n) / float64(n-1) }
-if gini > 1.0 { gini = 1.0 }
-return gini
-}
-
-func (cs *ChainState) CalcGini() float64 {
-cs.mu.RLock()
-defer cs.mu.RUnlock()
-if len(cs.accounts) < 2 {
-return 0.0
-}
-balances := []float64{}
-for _, acc := range cs.accounts {
-// Only count registered humans — pool addresses and unregistered
-// wallets holding small fee amounts would skew the distribution.
-if acc.IsHuman && acc.Balance > 0 {
-balances = append(balances, effectiveBalance(acc).Float())
-}
-}
+// calcGiniFromBalances is the single shared implementation used by both
+// calcGiniLocked (inside lock) and CalcGini (acquires lock). P2-1: uses
+// sort.Float64s O(n log n) instead of the old O(n^2) bubble sort.
+func calcGiniFromBalances(balances []float64) float64 {
 n := len(balances)
 if n < 2 {
 return 0.0
 }
-// Sort ascending
-for i := 0; i < n; i++ {
-for j := i + 1; j < n; j++ {
-if balances[j] < balances[i] {
-balances[i], balances[j] = balances[j], balances[i]
-}
-}
-}
-// Gini formula
-sum := 0.0
-for _, b := range balances {
-sum += b
+sort.Float64s(balances)
+var sum, numerator float64
+for i, x := range balances {
+sum += x
+numerator += float64(2*i+1-n) * x
 }
 if sum == 0 {
 return 0.0
-}
-numerator := 0.0
-for i, b := range balances {
-numerator += float64(2*i-n+1) * b
 }
 gini := numerator / (float64(n) * sum)
 if gini < 0 {
 gini = -gini
 }
-// Correct for small-sample bias: the standard formula caps at (n-1)/n,
-// so with 2 people the maximum is 0.5 even with total concentration.
-// Multiplying by n/(n-1) gives the unbiased estimator that reaches 1.0.
+if n > 1 {
 gini = gini * float64(n) / float64(n-1)
+}
 if gini > 1.0 {
 gini = 1.0
 }
 return gini
+}
+
+func (cs *ChainState) calcGiniLocked() float64 {
+var balances []float64
+for _, acc := range cs.accounts {
+if acc.IsHuman && acc.Balance > 0 {
+balances = append(balances, effectiveBalance(acc).Float())
+}
+}
+return calcGiniFromBalances(balances)
+}
+
+func (cs *ChainState) CalcGini() float64 {
+cs.mu.RLock()
+defer cs.mu.RUnlock()
+// P2-1: deduplicated — delegates to calcGiniLocked (which now uses sort.Float64s).
+return cs.calcGiniLocked()
 }
 
 func (cs *ChainState) CalcAequitasIndex() float64 {
