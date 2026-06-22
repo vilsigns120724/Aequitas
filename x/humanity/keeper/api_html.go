@@ -1754,7 +1754,43 @@ en:{
   'expl-charts':'Charts &amp; History','expl-charts-d':'Gini history · Lorenz curve · Wealth Cap bootstrap slider · The story of Aequitas',
   'expl-v7':'Protocol V7 Docs','expl-v7-d':'AequitasV7 contract · 6 mechanisms · ZK proof · wealth cap · demurrage · immutable code',
   'expl-explorer':'Block Explorer','expl-explorer-d':'Live BlockDAG · click any block to see validator, hash, transactions, parent hashes',
-  'expl-network':'Network &amp; Nodes','expl-network-d':'Node topology · run your own node · technical specs · Chain ID 1926'
+    'btn-download-app':'DOWNLOAD AEQUITASBIO APP',
+  'usp-headline':'For the first time in history — everyone starts equal',
+  'usp-sub':'If you own an Android smartphone, you qualify. No bank, no crypto background, no investment needed.',
+  'usp-c1-title':'0.00 Start Investment','usp-c1-desc':'Registration is completely gasless. No ETH, no MATIC, no credit card. The protocol pays all fees on your behalf.',
+  'usp-c2-title':'1,000 AEQ for every human','usp-c2-desc':'Billionaire or subsistence farmer — everyone gets exactly 1,000 AEQ. Not more, not less. Equal start, guaranteed by math.',
+  'usp-c3-title':'Just a smartphone','usp-c3-desc':'No computer, no bank account, no ID document. An Android phone with a fingerprint sensor is all you need to join.',
+  'usp-c4-title':'Daily UBI forever','usp-c4-desc':'Once registered, you receive a daily share of UBI payouts automatically — every day, no action required.',
+  'ubi-hero-title':'UNIVERSAL BASIC INCOME POOL','ubi-hero-sub':'Accumulating — next payout distributed equally to all verified humans in:',
+  'ubi-hero-desc':'Split equally among all verified humans · paid every 24h · pool resets to zero after each payout · no minimum balance required',
+  'ubi-bal-lbl':'current pool balance','ubi-how-fills':'HOW THE UBI POOL FILLS UP',
+  'ubi-see-above':'see countdown above','ubi-timer-above':'⏰ countdown displayed above',
+  'ubi-src-swap':'20% Swap Fees','ubi-src-swap-d':'Every AEQ↔tUSD swap contributes 20% of its 0.1% fee here. More trading activity = faster pool fill.',
+  'ubi-src-dem':'variable Demurrage','ubi-src-dem-d':'Idle AEQ (3+ months inactive) decays at 0.5%/month. The decayed amount enters the 40/30/20/10 split — 20% goes to UBI.',
+  'ubi-src-cap':'variable Wealth Cap Overflow','ubi-src-cap-d':'Wallets exceeding 25+ average balance have the excess confiscated instantly. 20% flows to UBI immediately.',
+  'ubi-pool-desc':'20% of swap fees + demurrage + wealth cap overflow → divided equally among all verified humans every 24 hours. Even with zero trading, demurrage and wealth cap ensure the pool always fills.',
+  'pool-t-timer':'Accumulates — no timer',
+  'pools4-header':'ALL FOUR REDISTRIBUTION POOLS',
+  'swap-title':'🔄 Swap AEQ ↔ tUSD',
+  'swap-sub':'Exchange AEQ for tUSD (a simulated test-dollar) through the native liquidity pool. A 0.1% fee applies only to swaps — ordinary AEQ transfers between people remain completely free.',
+  'swap-faucet-desc':'Claim 1,000 tUSD once to pair with your AEQ — for your first liquidity deposit.',
+  'swap-btn-faucet':'CLAIM TEST tUSD (once)','swap-btn-conn':'🦊 CONNECT METAMASK','swap-btn-go':'🔄 SWAP',
+  'swap-rate-lbl':'Rate','swap-fee-bps':'Fee','swap-out-lbl':'You receive approx.','swap-impact-lbl':'Price Impact',
+  'swap-depth-lbl':'Pool Depth','swap-pool-aeq':'Pool AEQ','swap-pool-tusd':'Pool tUSD','swap-pool-price':'Price',
+  'swap-pool-title':'AMM Liquidity Pool','swap-no-liquidity':'No liquidity yet','swap-details-hdr':'Swap Details',
+  'swap-lp-title':'Your LP Position','swap-lp-share':'Pool Share','swap-lp-withdrawable':'Withdrawable',
+  'swap-lp-youget':'You get approx.','swap-lp-pct-label':'of pool','swap-lps':'LP Shares',
+  'swap-your-aeq':'Your AEQ','swap-your-tusd':'Your tUSD',
+  'swap-addliq-title':'Add Liquidity','swap-addliq-desc':'Deposit AEQ and tUSD to earn 30% of all swap fees proportional to your share.',
+  'swap-btn-addliq':'+ ADD LIQUIDITY','swap-btn-removeliq':'− REMOVE LIQUIDITY',
+  'swap-fee-est':'Estimated fee','swap-log-hint':'// Connect wallet to swap AEQ ↔ tUSD...',
+  'swap-ubi':'20% UBI','swap-validators':'40% Validators','swap-treasury':'10% Treasury',
+  'amm-title':'How the AMM works','amm-text':'Automated Market Maker using the x·y=k formula. Price is determined by pool ratio. Deeper pools = lower price impact per swap.',
+  'pools-addr-title':'Pool Contract Addresses','swap-pools-addr-title':'Pool Addresses','swap-priv-bar':'🔒 Non-custodial · AMM x·y=k · 0.1% fee · Instant settlement · No slippage protection needed at small sizes',
+  'v7-intro-title':'What is AequitasV7?',
+  'v7-intro-text':'AequitasV7 is the single source of truth for the entire Aequitas economy. Every AEQ balance, every human registration, every UBI payout, and every wealth cap enforcement is governed by this one immutable contract.',
+'expl-network':'Network &amp; Nodes','expl-network-d':'Node topology · run your own node · technical specs · Chain ID 1926'
+,'swap-sell-label':'Sell','swap-receive-label':'Receive',
 },
 de:{
   'logo-sub':'MENSCHLICHKEITSNACHWEIS','live':'LIVE',
@@ -1918,6 +1954,7 @@ de:{
   'expl-charts':'Diagramme &amp; Verlauf','expl-charts-d':'Gini-Verlauf · Lorenz-Kurve · Vermögensobergrenze-Bootstrap-Slider · Die Geschichte von Aequitas',
   'expl-v7':'Protokoll V7 Dokumentation','expl-v7-d':'AequitasV7-Contract · 6 Mechanismen · ZK-Beweis · Vermögensobergrenze · Demurrage · unveränderlicher Code',
   'expl-explorer':'Block-Explorer','expl-explorer-d':'Live-BlockDAG · Block anklicken um Validator, Hash, Transaktionen, Eltern-Hashes zu sehen',
+  'swap-sell-label':'Verkaufen','swap-receive-label':'Erhalten',
   'expl-network':'Netzwerk &amp; Nodes','expl-network-d':'Node-Topologie · eigenen Node betreiben · technische Spezifikationen · Chain-ID 1926'
 },
 es:{
@@ -2065,6 +2102,7 @@ es:{
   'expl-charts':'Gráficos e Historial','expl-charts-d':'Historial Gini · curva de Lorenz · slider bootstrap del límite de riqueza · La historia de Aequitas',
   'expl-v7':'Documentación Protocolo V7','expl-v7-d':'Contrato AequitasV7 · 6 mecanismos · prueba ZK · límite de riqueza · demurrage · código inmutable',
   'expl-explorer':'Explorador de Bloques','expl-explorer-d':'BlockDAG en vivo · haz clic en cualquier bloque para ver validador, hash, transacciones, hashes padres',
+  'swap-sell-label':'Vender','swap-receive-label':'Recibir',
   'expl-network':'Red y Nodos','expl-network-d':'Topología de nodos · ejecutar tu propio nodo · especificaciones técnicas · Chain ID 1926'
 },
 ru:{
@@ -2210,7 +2248,8 @@ ru:{
   'expl-charts':'Графики и история','expl-charts-d':'История Джини · кривая Лоренца · ползунок начального загрузчика богатства · История Aequitas',
   'expl-v7':'Документация Протокола V7','expl-v7-d':'Контракт AequitasV7 · 6 механизмов · ZK-доказательство · лимит богатства · демерредж · неизменяемый код',
   'expl-explorer':'Обозреватель блоков','expl-explorer-d':'Живой BlockDAG · нажмите на блок чтобы увидеть валидатора, хэш, транзакции, родительские хэши',
-  'expl-network':'Сеть и узлы','expl-network-d':'Топология узлов · запустить собственный узел · технические характеристики · Chain ID 1926'
+  'swap-sell-label':'Продать','swap-receive-label':'Получить',
+  'gini-calc-title':'Как рассчитывается Индекс Aequitas','gini-calc-text':'Собираются все балансы AEQ. Формула вычисляет среднее абсолютное отклонение нормализованное на n2. Результат 0-1 x 100 = Индекс.','gini-why-title':'Почему Gini','gini-why-text':'Gini учитывает полное распределение среди всех людей в одном числе.','expl-network':'Сеть и узлы','expl-network-d':'Топология узлов · запустить собственный узел · технические характеристики · Chain ID 1926'
 },
 zh:{
   'logo-sub':'人类证明','live':'实时',
@@ -2357,7 +2396,8 @@ zh:{
   'expl-charts':'图表与历史','expl-charts-d':'基尼历史 · 洛伦兹曲线 · 财富上限启动滑块 · Aequitas的故事',
   'expl-v7':'协议V7文档','expl-v7-d':'AequitasV7合约 · 6个机制 · ZK证明 · 财富上限 · 货币持有税 · 不可更改代码',
   'expl-explorer':'区块浏览器','expl-explorer-d':'实时BlockDAG · 点击任意区块查看验证者、哈希、交易、父哈希',
-  'expl-network':'网络与节点','expl-network-d':'节点拓扑 · 运行自己的节点 · 技术规格 · Chain ID 1926'
+  'swap-sell-label':'卖出','swap-receive-label':'接收',
+  'gini-calc-title':'如何计算Aequitas指数','gini-calc-text':'收集所有AEQ余额。公式计算每对余额之间的平均绝对差，结果0-1乘以100=Aequitas指数。','gini-why-title':'为什么选择基尼系数','gini-why-text':'基尼系数捕捉所有已验证人类的完整分布。Aequitas将此数据发布在链上。','expl-network':'网络与节点','expl-network-d':'节点拓扑 · 运行自己的节点 · 技术规格 · Chain ID 1926'
 },
 id:{
   'logo-sub':'BUKTI KEMANUSIAAN','live':'LANGSUNG',
@@ -2496,7 +2536,8 @@ id:{
   'expl-charts':'Grafik &amp; Riwayat','expl-charts-d':'Riwayat Gini · kurva Lorenz · slider bootstrap batas kekayaan · Kisah Aequitas',
   'expl-v7':'Dokumentasi Protokol V7','expl-v7-d':'Kontrak AequitasV7 · 6 mekanisme · bukti ZK · batas kekayaan · demurrage · kode tak berubah',
   'expl-explorer':'Block Explorer','expl-explorer-d':'BlockDAG langsung · klik blok apapun untuk melihat validator, hash, transaksi, hash induk',
-  'expl-network':'Jaringan &amp; Node','expl-network-d':'Topologi node · jalankan node sendiri · spesifikasi teknis · Chain ID 1926'
+  'swap-sell-label':'Jual','swap-receive-label':'Terima',
+  'gini-calc-title':'Bagaimana Indeks Aequitas dihitung','gini-calc-text':'Semua saldo AEQ dikumpulkan. Rumus menghitung perbedaan absolut rata-rata dinormalisasi dengan n2. Hasil 0-1 dikali 100 = Indeks Aequitas.','gini-why-title':'Mengapa Gini','gini-why-text':'Koefisien Gini menangkap distribusi lengkap semua manusia terverifikasi.','expl-network':'Jaringan &amp; Node','expl-network-d':'Topologi node · jalankan node sendiri · spesifikasi teknis · Chain ID 1926'
 },
 it:{
   'logo-sub':'PROVA DI UMANITÀ','live':'LIVE',
@@ -2636,7 +2677,8 @@ it:{
   'expl-charts':'Grafici e Storia','expl-charts-d':'Storia Gini · curva di Lorenz · slider bootstrap limite ricchezza · La storia di Aequitas',
   'expl-v7':'Documentazione Protocollo V7','expl-v7-d':'Contratto AequitasV7 · 6 meccanismi · prova ZK · limite ricchezza · demurrage · codice immutabile',
   'expl-explorer':'Block Explorer','expl-explorer-d':'BlockDAG live · clicca qualsiasi blocco per vedere validatore, hash, transazioni, hash genitori',
-  'expl-network':'Rete e Nodi','expl-network-d':'Topologia nodi · esegui il tuo nodo · specifiche tecniche · Chain ID 1926'
+  'swap-sell-label':'Vendi','swap-receive-label':'Ricevi',
+  'gini-calc-title':'Come si calcola l indice','gini-calc-text':'Vengono raccolti tutti i saldi AEQ. La formula calcola la differenza assoluta media normalizzata per n2. Risultato 0-1 x 100 = Indice Aequitas.','gini-why-title':'Perche Gini','gini-why-text':'Il coefficiente Gini cattura la distribuzione completa in un numero verificabile.','expl-network':'Rete e Nodi','expl-network-d':'Topologia nodi · esegui il tuo nodo · specifiche tecniche · Chain ID 1926'
 },
 tr:{
   'logo-sub':'İNSANLIK KANITI','live':'CANLI',
@@ -2783,6 +2825,7 @@ tr:{
   'expl-charts':'Grafikler ve Tarih','expl-charts-d':'Gini geçmişi · Lorenz eğrisi · servet tavanı bootstrap kaydırıcısı · Aequitas\'ın hikayesi',
   'expl-v7':'Protokol V7 Dokümantasyonu','expl-v7-d':'AequitasV7 sözleşmesi · 6 mekanizma · ZK kanıtı · servet tavanı · demurrage · değiştirilemez kod',
   'expl-explorer':'Blok Gezgini','expl-explorer-d':'Canlı BlockDAG · doğrulayıcıyı, hash\'i, işlemleri, üst hash\'leri görmek için herhangi bir bloğa tıklayın',
+  'swap-sell-label':'Sat','swap-receive-label':'Al',
   'expl-network':'Ağ ve Düğümler','expl-network-d':'Düğüm topolojisi · kendi düğümünü çalıştır · teknik özellikler · Zincir ID 1926'
 },
 fr:{
@@ -2929,6 +2972,7 @@ fr:{
   'expl-charts':'Graphiques &amp; Historique','expl-charts-d':'Historique Gini · courbe de Lorenz · curseur du plafond · L\'histoire d\'Aequitas',
   'expl-v7':'Docs Protocole V7','expl-v7-d':'Contrat AequitasV7 · 6 mécanismes · preuve ZK · plafond · demurrage · code immuable',
   'expl-explorer':'Explorateur de blocs','expl-explorer-d':'BlockDAG en direct · cliquez sur un bloc pour voir validateur, hash, transactions',
+  'swap-sell-label':'Vendre','swap-receive-label':'Recevoir',
   'expl-network':'Réseau &amp; Nœuds','expl-network-d':'Topologie des nœuds · exécuter votre propre nœud · spécifications · Chain ID 1926'
 },
 pt:{
@@ -3075,6 +3119,7 @@ pt:{
   'expl-charts':'Gráficos &amp; Histórico','expl-charts-d':'Histórico Gini · curva de Lorenz · controle do teto · A história da Aequitas',
   'expl-v7':'Docs Protocolo V7','expl-v7-d':'Contrato AequitasV7 · 6 mecanismos · prova ZK · teto · demurrage · código imutável',
   'expl-explorer':'Explorador de Blocos','expl-explorer-d':'BlockDAG ao vivo · clique em qualquer bloco para ver validador, hash, transações',
+  'swap-sell-label':'Vender','swap-receive-label':'Receber',
   'expl-network':'Rede &amp; Nodes','expl-network-d':'Topologia de nodes · executar seu próprio node · especificações · Chain ID 1926'
 },
 ar:{
@@ -3211,6 +3256,7 @@ ar:{
   'expl-charts':'الرسوم البيانية والتاريخ','expl-charts-d':'تاريخ جيني · منحنى لورينز · شريط سقف الثروة · قصة Aequitas',
   'expl-v7':'وثائق البروتوكول V7','expl-v7-d':'عقد AequitasV7 · 6 آليات · دليل ZK · سقف الثروة · تلاشي · كود غير قابل للتغيير',
   'expl-explorer':'مستكشف الكتل','expl-explorer-d':'BlockDAG مباشر · انقر على أي كتلة لرؤية المدقق والهاش والمعاملات',
+  'swap-sell-label':'بيع','swap-receive-label':'استلام',
   'expl-network':'الشبكة والعقد','expl-network-d':'طوبولوجيا العقد · تشغيل عقدتك الخاصة · المواصفات التقنية · Chain ID 1926'
 },
 hi:{
@@ -3347,6 +3393,7 @@ hi:{
   'expl-charts':'चार्ट और इतिहास','expl-charts-d':'जिनी इतिहास · लॉरेंज वक्र · धन सीमा स्लाइडर · Aequitas की कहानी',
   'expl-v7':'प्रोटोकॉल V7 दस्तावेज़','expl-v7-d':'AequitasV7 अनुबंध · 6 तंत्र · ZK प्रमाण · धन सीमा · डेमरेज · अपरिवर्तनीय कोड',
   'expl-explorer':'ब्लॉक एक्सप्लोरर','expl-explorer-d':'लाइव BlockDAG · वैलिडेटर, हैश, ट्रांजेक्शन देखने के लिए किसी भी ब्लॉक पर क्लिक करें',
+  'swap-sell-label':'बेचें','swap-receive-label':'प्राप्त करें',
   'expl-network':'नेटवर्क और नोड्स','expl-network-d':'नोड टोपोलॉजी · अपना नोड चलाएं · तकनीकी विशिष्टताएं · Chain ID 1926'
 }
 };
