@@ -1114,6 +1114,9 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 </div>
 </div>
 
+<!-- closes tab-index (one div was unclosed, tab-network was nested inside it) -->
+</div>
+
 <!-- NETWORK (merged) -->
 <div id="tab-network" class="tab-content">
 <nav class="stabs">
