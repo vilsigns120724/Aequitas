@@ -100,6 +100,7 @@ mux.HandleFunc("/api/wealth-cap", a.handleWealthCap)
 mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
 mux.HandleFunc("/api/nonce", a.handleNonce)
 mux.HandleFunc("/api/peers", a.handlePeers)
+mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
 mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
 mux.HandleFunc("/registered", a.handleRegistered)
@@ -685,11 +686,29 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 })
 }
 
+// handlePeerChallenge issues a one-time challenge that the peer must sign to
+// prove ownership of their signing key (P1-3 validator signature verification).
+// GET /api/peers/challenge?address=0x...
+func (a *APIServer) handlePeerChallenge(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+addr := strings.ToLower(r.URL.Query().Get("address"))
+if !isValidWalletAddr(addr) {
+http.Error(w, `{"error":"invalid address"}`, 400)
+return
+}
+challenge := a.blockchain.IssuePeerChallenge(addr)
+json.NewEncoder(w).Encode(map[string]interface{}{
+"challenge":  challenge,
+"expires_in": 90,
+"instructions": "Sign the challenge string with your signing key and include the hex signature in POST /api/peers/register as 'signature'",
+})
+}
+
 // handlePeerRegister accepts a node registration and returns the current peer
 // list plus all authorized validator addresses. A node that sends its
 // signing_address is automatically added to the authorized validator set so
 // its blocks are accepted without manual AUTHORIZED_VALIDATORS configuration.
-// POST /api/peers/register  body: {"url":"https://...","signing_address":"0x..."}
+// POST /api/peers/register  body: {"url":"https://...","signing_address":"0x...","signature":"0x..."}
 func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -700,6 +719,7 @@ var req struct {
 URL            string `json:"url"`
 SigningAddress string `json:"signing_address"`
 PeerSecret     string `json:"peer_secret"`
+Signature      string `json:"signature"` // P1-3 challenge-response
 }
 r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 json.NewDecoder(r.Body).Decode(&req)
@@ -734,21 +754,35 @@ fmt.Printf("[PEERS] URL rejected (must be public HTTPS): %s\n", req.URL)
 }
 if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && strings.HasPrefix(addr, "0x") && len(addr) == 42 {
 // Authorization: accept if PEER_SECRET matches OR if the address has
-// a registered validator key (individual human-signed credential).
+// a registered validator key (individual human-signed credential) OR
+// if the peer provided a valid challenge-response signature (P1-3).
+sigOK := req.Signature != "" && a.blockchain.VerifyPeerChallenge(addr, req.Signature)
 keys := a.state.GetValidatorKeys()
 keyAuthorized := false
 for _, k := range keys {
 if k["signing_address"] == addr { keyAuthorized = true; break }
 }
-if secretOK || keyAuthorized {
+if secretOK || keyAuthorized || sigOK {
 a.blockchain.AddAuthorizedValidator(addr)
-if !keyAuthorized { fmt.Printf("[PEERS] Auto-authorized validator via secret: %s\n", addr) }
+method := "key"
+if sigOK && !keyAuthorized { method = "challenge-response signature" }
+if secretOK && !keyAuthorized && !sigOK { method = "PEER_SECRET" }
+if !keyAuthorized { fmt.Printf("[PEERS] Auto-authorized validator via %s: %s\n", method, addr) }
+} else if req.Signature == "" {
+fmt.Printf("[PEERS] Validator %s: no signature provided — request /api/peers/challenge first\n", addr)
+} else {
+fmt.Printf("[PEERS] Validator %s: invalid/expired challenge signature\n", addr)
 }
 a.blockchain.mu.RLock()
 validators := make([]string, 0, len(a.blockchain.authorizedValidators))
 for v := range a.blockchain.authorizedValidators { validators = append(validators, v) }
 a.blockchain.mu.RUnlock()
+// P2-9: only return validator list if authorized
+if secretOK || keyAuthorized || sigOK {
 json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": validators})
+} else {
+json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
+}
 return
 }
 json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": []string{}})

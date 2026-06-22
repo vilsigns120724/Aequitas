@@ -1038,7 +1038,19 @@ cs.save()
 
 fmt.Printf("[STATE] ✓ Human registered: %s | Balance: %.2f AEQ\n",
 address, cs.accounts[address].Balance.Float())
+// P1-10: run EVM sync synchronously first, then retry in background.
+// Prevents permanent Go/EVM divergence if the first sync fails.
 cs.syncHumanRegistrationLocked(V7_CONTRACT_ADDR, address)
+addr := address
+go func() {
+for attempt := 1; attempt <= 3; attempt++ {
+time.Sleep(time.Duration(attempt) * 3 * time.Second)
+cs.mu.RLock()
+cs.syncHumanRegistrationLocked(V7_CONTRACT_ADDR, addr)
+cs.mu.RUnlock()
+fmt.Printf("[STATE] EVM sync retry %d for %s\n", attempt, addr)
+}
+}()
 return nil
 }
 
@@ -1611,13 +1623,14 @@ if acc.IsHuman || acc.Balance > 0 || acc.TUsdBalance > 0 || acc.LPShares > 0 {
 // FaucetClaimed and LastActivityAt must be included: two nodes that
 // processed different sets of faucet claims would produce the same
 // balances but handle future UBI distribution differently.
-fmt.Fprintf(&sb, "%s:%.6f:%.6f:%.6f:h=%v:t=%d:fc=%v:",
+// P1-9: LastActivityAt excluded — wall-clock differs between nodes
+// for the same TX, causing StateRoot mismatch and peer block rejection.
+fmt.Fprintf(&sb, "%s:%.6f:%.6f:%.6f:h=%v:fc=%v:",
 a,
 round6(acc.Balance.Float()),
 round6(acc.TUsdBalance.Float()),
 round6(acc.LPShares.Float()),
 acc.IsHuman,
-acc.LastActivityAt,
 acc.FaucetClaimed)
 }
 }

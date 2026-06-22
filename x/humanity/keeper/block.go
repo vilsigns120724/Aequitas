@@ -36,6 +36,12 @@ IsGenesis    bool     `json:"is_genesis,omitempty"`
 	Signature    string   `json:"signature,omitempty"`
 }
 
+// peerChallenge holds a one-time challenge issued to a registering peer.
+type peerChallenge struct {
+	value     string
+	expiresAt int64
+}
+
 type BlockDAG struct {
 blocks                 map[string]*Block
 tips                   map[string]bool
@@ -47,10 +53,12 @@ height                 int64
 pendingTxs             []Transaction
 txMu                   sync.Mutex
 signingKey             *ecdsa.PrivateKey
-authorizedValidators   map[string]bool // Ethereum addresses allowed to propose blocks
-activeSyncPeers        map[string]bool // peers with a running syncWithNode goroutine
+authorizedValidators   map[string]bool  // Ethereum addresses allowed to propose blocks
+activeSyncPeers        map[string]bool  // peers with a running syncWithNode goroutine
 syncPeerMu             sync.Mutex
-warnedUnknownProposers map[string]bool // suppresses repeated "not authorized" log lines
+warnedUnknownProposers map[string]bool  // suppresses repeated "not authorized" log lines
+peerChallenges         map[string]peerChallenge // address → pending challenge (P1-3)
+challengeMu            sync.Mutex
 }
 
 // loadAuthorizedValidators reads the AUTHORIZED_VALIDATORS env var
@@ -72,6 +80,64 @@ func loadAuthorizedValidators() map[string]bool {
 // exported snapshots so peer nodes can verify their authenticity.
 func (dag *BlockDAG) GetSigningKey() *ecdsa.PrivateKey {
 	return dag.signingKey
+}
+
+// P1-3: Challenge-Response Validator Signature Verification ─────────────────
+
+// IssuePeerChallenge generates a one-time challenge for a registering validator.
+// The peer must sign this challenge with their signing key to prove ownership.
+// Challenges expire after 90 seconds.
+func (dag *BlockDAG) IssuePeerChallenge(signingAddr string) string {
+	ts := time.Now().Unix()
+	raw := fmt.Sprintf("aequitas-validator:%s:%d", strings.ToLower(signingAddr), ts)
+	h := sha256.Sum256([]byte(raw))
+	challenge := hex.EncodeToString(h[:])
+	dag.challengeMu.Lock()
+	dag.peerChallenges[strings.ToLower(signingAddr)] = peerChallenge{
+		value:     challenge,
+		expiresAt: ts + 90,
+	}
+	// Prune expired challenges
+	for addr, c := range dag.peerChallenges {
+		if time.Now().Unix() > c.expiresAt {
+			delete(dag.peerChallenges, addr)
+		}
+	}
+	dag.challengeMu.Unlock()
+	return challenge
+}
+
+// VerifyPeerChallenge verifies that signature is a valid secp256k1 signature of
+// the previously issued challenge by the private key corresponding to signingAddr.
+// Returns true only if: challenge exists, is not expired, and ecrecover matches.
+func (dag *BlockDAG) VerifyPeerChallenge(signingAddr, signature string) bool {
+	signingAddr = strings.ToLower(signingAddr)
+	dag.challengeMu.Lock()
+	ch, ok := dag.peerChallenges[signingAddr]
+	if ok {
+		delete(dag.peerChallenges, signingAddr) // one-time use
+	}
+	dag.challengeMu.Unlock()
+	if !ok || time.Now().Unix() > ch.expiresAt {
+		return false
+	}
+	sigBytes, err := hex.DecodeString(strings.TrimPrefix(signature, "0x"))
+	if err != nil || len(sigBytes) != 65 {
+		return false
+	}
+	// Ethereum signed message prefix
+	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(ch.value), ch.value)
+	hash := crypto.Keccak256Hash([]byte(msg))
+	// Normalize recovery id (v=27/28 → 0/1)
+	if sigBytes[64] >= 27 {
+		sigBytes[64] -= 27
+	}
+	pubKey, err := crypto.SigToPub(hash.Bytes(), sigBytes)
+	if err != nil {
+		return false
+	}
+	recovered := strings.ToLower(crypto.PubkeyToAddress(*pubKey).Hex())
+	return recovered == signingAddr
 }
 
 // AddAuthorizedValidator adds an Ethereum address to the set of addresses
@@ -102,6 +168,7 @@ nodeID:                 nodeID,
 authorizedValidators:   loadAuthorizedValidators(),
 activeSyncPeers:        make(map[string]bool),
 warnedUnknownProposers: make(map[string]bool),
+peerChallenges:         make(map[string]peerChallenge),
 }
 if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	if key, err := crypto.HexToECDSA(pk); err == nil {

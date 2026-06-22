@@ -169,18 +169,33 @@ e.chainState.SaveContract(addrStr, runtimeCode, fromStr)
 // Calling SaveNonce a second time would advance the nonce to nonce+2,
 // causing every subsequent tx from the same sender to fail with "nonce too low".
 
-// Persist ALL storage slots from stateDB to PostgreSQL
-// We iterate known slots by checking the stateDB journal
-// For immutable contracts, storage is set during constructor
-// We save slots 0-99 to catch all constructor-set values
-for i := int64(0); i < 100; i++ {
+// P2-8: Persist ALL storage slots from stateDB to PostgreSQL.
+// go-ethereum v1.13.0 StateDB does not expose a public ForEachStorage
+// iterator, so we probe slots explicitly.
+//
+// Strategy: V7 uses two layout zones:
+//  Zone A — simple state variables and fixed arrays: slots 0–199.
+//            All Solidity state variables (totalSupply, mappings' "base"
+//            slots, CAP_MULTIPLIERS[5], THRESHOLDS[5], BIO_VERIFIER …)
+//            are numbered sequentially and well within 200.
+//  Zone B — mapping values live at keccak256(key || slotBase) which are
+//            outside the zone-A range. These are populated by
+//            MigrateEVMFromGoState after every upgrade; no constructor
+//            sets them, so they are always zero at deploy time.
+//
+// Scanning 0–199 costs one GetState call per slot (cheap, in-memory
+// after Commit) and is deterministic regardless of which keys users
+// have registered.
+savedCount := 0
+for i := int64(0); i < 200; i++ {
 slot := common.BigToHash(big.NewInt(i))
 val := sdb.GetState(contractAddr, slot)
 if val != (common.Hash{}) {
 e.chainState.SaveStorageSlot(addrStr, slot.Hex(), val.Hex())
-fmt.Printf("[EVM] Storage slot %d = %s\n", i, val.Hex())
+savedCount++
 }
 }
+fmt.Printf("[EVM] Constructor stored %d non-zero slots (probed 0–199)\n", savedCount)
 
 fmt.Printf("[EVM] ✓ Deployed %s (%d bytes)\n", contractAddr.Hex(), len(runtimeCode))
 return contractAddr, runtimeCode, nil

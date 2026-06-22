@@ -435,7 +435,9 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		acc, ok := cs.accounts[addr]
 		var bal float64
 		if ok {
-			bal = acc.Balance.Float()
+			// P1-4: use effectiveBalance (demurrage-adjusted) so the EVM slot
+			// matches the user's real spendable amount, not the stored pre-decay value.
+			bal = effectiveBalance(acc).Float()
 		}
 		balBig, _ := new(big.Float).SetPrec(256).Mul(
 			new(big.Float).SetFloat64(bal),
