@@ -1286,9 +1286,9 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="nc-title" style="color:var(--gold)" data-i18n="run-node-title">Run Your Own Node — Help Secure the Network</div>
     <div style="font-size:0.67rem;color:var(--muted);line-height:1.9;margin-bottom:16px" data-i18n="run-node-desc">Anyone can run an Aequitas node — no permission, no stake, no application required. Nodes participate in block production, validate the human registry, and synchronize the BlockDAG. Node operators earn a share of protocol fees via the Validators Pool (40% of all swap fees, distributed daily). The more nodes that run, the more decentralized and resilient the network becomes.</div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <button onclick="generateNodeGuidePDF()" style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;cursor:pointer;border:none;font-family:var(--font-body);transition:opacity 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
+      <a id="node-guide-pdf-btn" href="/download/node-guide-en.pdf" download style="display:inline-flex;align-items:center;gap:8px;background:var(--gold);color:#06091A;padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:opacity 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
         📄 Node Operator Guide (PDF)
-      </button>
+      </a>
       <a href="https://github.com/hanoi96international-gif/Aequitas" target="_blank" style="display:inline-flex;align-items:center;gap:8px;background:rgba(139,92,246,0.15);color:var(--purple);border:1px solid rgba(139,92,246,0.3);padding:12px 20px;border-radius:8px;font-size:0.7rem;font-weight:700;text-decoration:none;transition:all 0.2s" onmouseover="this.style.opacity=0.87" onmouseout="this.style.opacity=1">
         🐙 View Source on GitHub
       </a>
@@ -1301,7 +1301,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div>
           <div style="font-size:0.58rem;color:var(--gold);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;display:flex;align-items:center;gap:8px">
             AEQUITAS NODE OPERATOR GUIDE
-            <span style="font-size:0.52rem;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.3);color:var(--gold);padding:2px 8px;border-radius:10px">BETA v0.1</span>
+            <span style="font-size:0.52rem;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.3);color:var(--gold);padding:2px 8px;border-radius:10px">v1.0 · June 2026</span>
           </div>
           <div style="font-size:0.6rem;color:var(--muted);margin-top:4px">Complete step-by-step guide &middot; No prior blockchain experience required &middot; Estimated time: 20&ndash;30 min</div>
         </div>
@@ -1401,7 +1401,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--muted);padding:8px">NODE_KEY</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">32-byte hex string that gives your node a stable P2P identity. Auto-generated if omitted, but changes on every restart (peers temporarily lose your node). To generate one: <span style="font-family:var(--font-mono)">node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"</span></td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">32-byte hex string that gives your node a stable P2P identity. Auto-generated if omitted, but changes on every restart (peers temporarily lose your node). If not set, the node auto-generates one on first start and prints it to stderr. Copy the base64 string from the log line <span style="font-family:var(--font-mono);color:var(--gold)">SAVE THIS AS NODE_KEY ENVIRONMENT VAR:</span> and paste it here to keep a stable peer identity across restarts.</td>
         </tr>
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--muted);padding:8px">IS_PRIMARY_NODE</td>
@@ -1498,7 +1498,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 
       <!-- Step 7: Rewards -->
       <div style="font-size:0.58rem;color:var(--gold);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid rgba(245,166,35,0.2);padding-bottom:6px">Step 7 &mdash; Earning Validator Rewards</div>
-      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:0.62rem;color:var(--muted);line-height:1.9">The Validators Pool collects 40% of all protocol fees (swap fees, demurrage, wealth cap overflow). Every 24 hours the primary node distributes the pool balance to all registered node operator wallets proportionally. The more consistently your node runs, the larger your share.</div>
+      <div style="background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:12px 14px;margin-bottom:12px;font-size:0.62rem;color:var(--muted);line-height:1.9">The Validators Pool collects 40% of all protocol fees (swap fees, demurrage, wealth cap overflow). Every day at <strong style="color:var(--gold)">20:00 Berlin time</strong> (CEST/CET, handles DST automatically) the primary node distributes the pool balance to all registered node operator wallets proportionally. The more consistently your node runs, the larger your share.</div>
       <div style="font-size:0.62rem;color:var(--muted);line-height:2.2;margin-bottom:18px">
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">1.</span><span>Make sure you are registered as a human on Aequitas. If not: install the Android app and complete biometric registration first. You will receive a wallet address and 1,000 AEQ.</span></div>
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:4px"><span style="color:var(--gold);font-weight:700;min-width:16px">2.</span><span>Set <span style="font-family:var(--font-mono);color:var(--neon)">NODE_OPERATOR_WALLET</span> = your Aequitas human wallet address in your Railway Variables</span></div>

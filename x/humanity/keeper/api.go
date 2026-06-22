@@ -105,6 +105,12 @@ mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
 mux.HandleFunc("/registered", a.handleRegistered)
 mux.HandleFunc("/download/app.apk", a.handleAppDownload)
+mux.HandleFunc("/download/node-guide-en.pdf", func(w http.ResponseWriter, r *http.Request) {
+	a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_EN.pdf", "Aequitas_Node_Guide_EN.pdf", "application/pdf")
+})
+mux.HandleFunc("/download/node-guide-de.pdf", func(w http.ResponseWriter, r *http.Request) {
+	a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_DE.pdf", "Aequitas_Node_Guide_DE.pdf", "application/pdf")
+})
 fmt.Println("── Starting EVM RPC ─────────────────────")
 // Use the shared EVMRPCServer (a.evmRPC) so /rpc and /api/register share
 // one nonce map + mutex — creating a second instance here caused separate
@@ -840,4 +846,22 @@ w.Header().Set("Content-Disposition", "attachment; filename=aequitas-app.apk")
 w.Header().Set("Content-Type", "application/vnd.android.package-archive")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 http.ServeContent(w, r, "aequitas-app.apk", fi.ModTime(), f)
+}
+
+func (a *APIServer) handleStaticDownload(w http.ResponseWriter, r *http.Request, path, filename, contentType string) {
+f, err := os.Open(path)
+if err != nil {
+	http.Error(w, "File not found", 404)
+	return
+}
+defer f.Close()
+fi, err := f.Stat()
+if err != nil {
+	http.Error(w, "File error", 500)
+	return
+}
+w.Header().Set("Content-Disposition", "attachment; filename="+filename)
+w.Header().Set("Content-Type", contentType)
+w.Header().Set("Access-Control-Allow-Origin", "*")
+http.ServeContent(w, r, filename, fi.ModTime(), f)
 }
