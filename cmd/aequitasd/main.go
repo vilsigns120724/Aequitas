@@ -184,13 +184,19 @@ time.Sleep(firstDelay)
 chainState.DistributeUBIPool()
 chainState.DistributeValidatorsPool()
 chainState.DistributeLPPool()
-// Then every 24h precisely — store next_ubi_at before each sleep
+// After first distribution, immediately set next_ubi_at = now+24h
+// so the countdown shows correctly (not stuck at 0 until ticker fires).
+chainState.SetNextUBIAt(time.Now().Add(24 * time.Hour).Unix())
+fmt.Printf("[POOLS] ✓ Distribution done — next in 24h\n")
+// Then every 24h precisely
 ticker := time.NewTicker(24 * time.Hour)
 for range ticker.C {
 chainState.SetNextUBIAt(time.Now().Add(24 * time.Hour).Unix())
 chainState.DistributeUBIPool()
 chainState.DistributeValidatorsPool()
 chainState.DistributeLPPool()
+chainState.SetNextUBIAt(time.Now().Add(24 * time.Hour).Unix())
+fmt.Printf("[POOLS] ✓ Distribution done — next in 24h\n")
 }
 }()
 } else {
