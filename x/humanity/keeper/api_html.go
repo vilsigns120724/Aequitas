@@ -3493,9 +3493,10 @@ function startUBITimer(secsRemaining) {
       secs = 86400;
       els.forEach(el => { el.style.color = 'var(--green)'; });
       setTimeout(() => { els.forEach(el => { el.style.color = ''; }); }, 3000);
-      // Refresh pool balances immediately after distribution fires
-      // so users see the pool reset to 0 rather than the pre-payout balance.
-      setTimeout(() => { loadStatus(); loadPoolStatus && loadPoolStatus(); }, 2000);
+      // Refresh only pool balances after distribution — do NOT call loadStatus()
+      // here because loadStatus() calls startUBITimer() which would restart the
+      // timer from 0 again if next_ubi_at hasn't been written yet → 2s reset loop.
+      setTimeout(() => { if (typeof loadPoolStatus === 'function') loadPoolStatus(); }, 3000);
     }
     els.forEach(el => el.textContent = fmt(secs));
   }, 1000);
