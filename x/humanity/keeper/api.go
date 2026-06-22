@@ -169,6 +169,7 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
 "node_id":      a.p2pNode.GetNodeID(),
 "uptime":       uptime,
+"is_primary":   os.Getenv("IS_PRIMARY_NODE") == "true",
 "block_time":   6,
 "contract_v7":  V7_CONTRACT_ADDR,
 // P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
