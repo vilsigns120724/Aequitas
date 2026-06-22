@@ -5209,18 +5209,25 @@ setInterval(loadStatus, 6000);
 setInterval(loadBlocks, 6000);
 setInterval(loadHumans, 10000);
 setInterval(loadPoolStatus, 8000);
-// Redraw charts when visible area changes (fixes blank-on-first-visit)
-if (typeof ResizeObserver !== "undefined") {
-  new ResizeObserver(function() {
-    var as = document.querySelector(".stab-panel.active");
-    if (!as) return;
-    if (as.id === "eqi-score") drawGiniHistoryChart();
-    if (as.id === "eqi-lorenz") drawLorenzCurve();
-    if (document.getElementById("tab-exchange") &&
-        document.getElementById("tab-exchange").classList.contains("active"))
-      drawPriceChart();
-  }).observe(document.body);
-}
+// Observe each canvas individually so charts redraw when they become visible.
+// We observe the canvas containers, not document.body (which fires on every
+// DOM change and would cause constant redraws killing performance).
+(function() {
+  if (typeof ResizeObserver === 'undefined') return;
+  function observeCanvas(canvasId, drawFn) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var ro = new ResizeObserver(function(entries) {
+      for (var e of entries) {
+        if (e.contentRect.width > 0) drawFn();
+      }
+    });
+    ro.observe(canvas);
+  }
+  observeCanvas('gini-history-chart', drawGiniHistoryChart);
+  observeCanvas('lorenz-chart', drawLorenzCurve);
+  observeCanvas('price-chart', drawPriceChart);
+})();
 
 async function registerValidatorKey() {
   var statusEl = document.getElementById('vk-status');
