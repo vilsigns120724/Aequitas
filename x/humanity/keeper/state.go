@@ -301,7 +301,11 @@ return t
 func (cs *ChainState) SecondsUntilNextUBI() int64 {
 last := cs.GetLastUBIAt()
 if last == 0 {
-return 0
+// Never distributed yet. main.go waits 24h from startup for first run.
+// Return 86400 so the UI timer shows the correct 24h countdown
+// instead of 0 (which causes the JS timer to immediately auto-reset to 24h,
+// making it look like the timer jumped from 0 to 24:00:00).
+return int64((24 * time.Hour).Seconds())
 }
 next := time.Unix(last, 0).Add(24 * time.Hour)
 secs := int64(time.Until(next).Seconds())
