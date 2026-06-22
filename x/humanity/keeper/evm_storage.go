@@ -83,9 +83,14 @@ func (cs *ChainState) SaveNonce(address string, nonce uint64) error {
 		return nil
 	}
 	address = strings.ToLower(address)
+	// Compare-and-swap: only advance the nonce, never decrease it.
+	// Two nodes racing to reserve the same nonce would both issue
+	// INSERT … nonce=$2; the second node's UPDATE fires but the
+	// WHERE nonce < $2 clause rejects it, so the DB always holds
+	// the highest reserved nonce.
 	_, err := cs.db.Exec(
 		`INSERT INTO evm_nonces (address, nonce) VALUES ($1, $2)
- ON CONFLICT (address) DO UPDATE SET nonce = $2`,
+ ON CONFLICT (address) DO UPDATE SET nonce = $2 WHERE evm_nonces.nonce < $2`,
 		address, nonce,
 	)
 	return err

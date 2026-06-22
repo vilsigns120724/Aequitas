@@ -319,10 +319,12 @@ acc.LPShares = NewDecimal(lp)
 // Accounts loaded from DB must always use the conditional optimistic-lock
 // UPDATE path in saveAccountToDB. If the version column is NULL in an old
 // row, COALESCE returns 0, which would trigger the INSERT/unconditional
-// path and bypass the conflict check. Normalize to 1 so the conditional
-// path is always taken for rows that provably exist in the DB.
+// path and bypass the conflict check. Normalize to 1 — both in memory AND
+// in the DB row, so UPDATE … WHERE version = 1 actually finds the row.
 if acc.Version == 0 {
 	acc.Version = 1
+	cs.db.Exec(`UPDATE chain_accounts SET version = 1 WHERE lower(address) = $1 AND (version IS NULL OR version = 0)`,
+		strings.ToLower(acc.Address))
 }
 count++
 
@@ -1359,22 +1361,14 @@ if cs.pool.TotalLPShares > 0 {
 // own (including any fees the pool has accumulated since genesis).
 mintedShares = (amountAEQ / cs.pool.ReserveAEQ.Float()) * cs.pool.TotalLPShares.Float()
 } else {
-// The pool has real reserves but zero recorded shares — this
-// happens for reserves that were deposited before LP-share
-// tracking existed (no account was ever credited shares for
-// them). Treat this deposit as if it were bootstrapping a pool
-// that already happens to have this much in it: mint shares for
-// the NEW deposit using the geometric-mean formula, AND retroactively
-// mint the depositor shares for the pool's pre-existing, currently
-// unclaimed reserves too — otherwise those original reserves would
-// permanently sit in the pool with no one able to ever withdraw
-// them, since shares would stay stuck at zero forever (any future
-// deposit would hit this same zero-total-shares branch again).
-newShares := math.Sqrt(amountAEQ * amountTUSD)
-preExistingShares := math.Sqrt(cs.pool.ReserveAEQ.Float() * cs.pool.ReserveTUSD.Float())
-mintedShares = newShares + preExistingShares
-fmt.Printf("[POOL] ⚠ Pool had %.4f AEQ / %.4f tUSD in reserves with zero recorded LP shares (pre-dates share tracking) — crediting depositor %.6f shares for those alongside %.6f shares for this new deposit\n",
-cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float(), preExistingShares, newShares)
+// Pool has reserves but zero LP shares — legacy state from before
+// share-tracking was introduced. Only mint shares for the NEW
+// deposit via geometric mean; do NOT credit pre-existing reserves
+// to the depositor. Doing so would let anyone with a tiny deposit
+// claim practically the entire pool (a drain attack).
+mintedShares = math.Sqrt(amountAEQ * amountTUSD)
+fmt.Printf("[POOL] Pool had %.4f AEQ / %.4f tUSD with no LP shares recorded — minting %.6f shares for new deposit only\n",
+cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float(), mintedShares)
 }
 } else {
 // First-ever deposit: shares = geometric mean of the two amounts

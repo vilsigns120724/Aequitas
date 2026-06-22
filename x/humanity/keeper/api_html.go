@@ -3739,8 +3739,8 @@ async function drawLorenzCurve() {
     ctx.fillStyle='rgba(136,146,164,0.6)'; ctx.font='8.5px Inter';
     ctx.fillText('Diagonal = perfect equality.  Curves bowing down = more inequality.  Shaded area = size of inequality gap.', pad.l, 27);
 
-    // Box 1: Aequitas Gini
-    var bw=180, bh=40;
+    // Box 1: Aequitas Gini — width adapts so both boxes fit inside the chart area
+    var bw=Math.min(180, Math.floor((cW - 12) / 2)), bh=40;
     ctx.fillStyle='rgba(7,11,22,0.97)'; ctx.strokeStyle=gC; ctx.lineWidth=1.5;
     ctx.beginPath(); rr(pad.l, 34, bw, bh, 5); ctx.fill(); ctx.stroke();
     ctx.fillStyle='rgba(136,146,164,0.6)'; ctx.font='7px JetBrains Mono'; ctx.textAlign='center';

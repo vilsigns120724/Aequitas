@@ -483,6 +483,17 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 	if nullifierHex == "" {
 		return "", fmt.Errorf("nullifier required")
 	}
+	// Mirror the V7 contract's binding check: for circuit v2, pubSignals[1]
+	// IS the nullifier output. If the caller's nullifierHex doesn't match
+	// pubSignals[1] the proof and the nullifier are from different sessions,
+	// which would break the "one human, one nullifier" invariant.
+	if pubSignals[1] != nil && pubSignals[1].Sign() > 0 {
+		expected := fmt.Sprintf("%064x", pubSignals[1])
+		provided := strings.ToLower(strings.TrimPrefix(nullifierHex, "0x"))
+		if provided != expected {
+			return "", fmt.Errorf("nullifier mismatch: provided %s != circuit output %s", provided, expected)
+		}
+	}
 	wallet := strings.ToLower(claimedHuman.Hex())
 	if a.state.IsHuman(wallet) {
 		return "", fmt.Errorf("already registered")

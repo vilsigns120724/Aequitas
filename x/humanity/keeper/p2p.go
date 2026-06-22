@@ -55,10 +55,12 @@ if err != nil {
 return nil, err
 }
 encoded := base64.StdEncoding.EncodeToString(keyBytes)
-fmt.Println("════════════════════════════════════════")
-fmt.Println("SAVE THIS AS NODE_KEY ENVIRONMENT VAR:")
-fmt.Println(encoded)
-fmt.Println("════════════════════════════════════════")
+// Print to stderr only — log aggregators (Railway, Render) capture stdout
+// but usually not stderr, keeping the private key out of log storage.
+fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
+fmt.Fprintln(os.Stderr, "SAVE THIS AS NODE_KEY ENVIRONMENT VAR:")
+fmt.Fprintln(os.Stderr, encoded)
+fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
 
 return priv, nil
 }

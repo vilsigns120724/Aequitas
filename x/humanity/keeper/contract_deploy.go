@@ -61,6 +61,11 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 		// wipe, slot 3 is empty, so MigrateEVMFromGoState would read 0 and set
 		// ubiClaimed=0 for everyone (allowing double-claiming). We save slot 3
 		// here and restore it AFTER migration in evm_storage.go.
+		ubiSlot2Key := common.BigToHash(big.NewInt(2)).Hex()
+		ubiSlot2Val, _ := state.LoadStorageSlot(v7Addr, ubiSlot2Key)
+		if ubiSlot2Val != "" {
+			fmt.Printf("[DEPLOY] Saving ubiPool (slot 2) before wipe\n")
+		}
 		ubiSlot3Key := common.BigToHash(big.NewInt(3)).Hex()
 		ubiSlot3Val, _ := state.LoadStorageSlot(v7Addr, ubiSlot3Key)
 		if ubiSlot3Val != "" {
@@ -87,7 +92,12 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 		state.SavePreUpgradeRelationshipSlots(v7Addr)
 		state.db.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, v7Addr)
 		state.db.Exec(`DELETE FROM evm_storage WHERE lower(address) = $1`, v7Addr)
-		// Restore slot 3 immediately after wipe so MigrateEVMFromGoState can read it
+		// Restore slot 2 (ubiPool) and slot 3 (ubiPerHumanAccumulated) immediately
+		// after wipe so MigrateEVMFromGoState can read them. Without slot 2 restore,
+		// the ubiPool balance in V7 is zeroed after every upgrade.
+		if ubiSlot2Val != "" {
+			state.SaveStorageSlot(v7Addr, ubiSlot2Key, ubiSlot2Val)
+		}
 		if ubiSlot3Val != "" {
 			state.SaveStorageSlot(v7Addr, ubiSlot3Key, ubiSlot3Val)
 		}
@@ -135,10 +145,9 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 	} else {
 		fmt.Printf("[DEPLOY] ✓ V7 contract deployed at %s\n", V7_CONTRACT_ADDR)
 	}
-	state.setConfigValue("v7_contract_version", V7ContractVersion)
-
-	// Repopulate EVM storage from Go-state so existing humans, balances,
-	// commitments and nullifiers are visible to direct contract callers
-	// after the storage wipe that accompanied the bytecode upgrade.
+	// Repopulate EVM storage from Go-state BEFORE setting the version marker.
+	// If migration fails mid-way, the marker stays at the old version so the
+	// next startup re-runs the full upgrade instead of treating it as done.
 	state.MigrateEVMFromGoState(V7_CONTRACT_ADDR)
+	state.setConfigValue("v7_contract_version", V7ContractVersion)
 }
