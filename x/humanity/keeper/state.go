@@ -298,17 +298,26 @@ return t
 
 // SecondsUntilNextUBI returns integer seconds until next UBI for the /api/status endpoint.
 // P3-3: uses last_ubi_at from DB, not server uptime, so restarts don't give wrong countdowns.
-func (cs *ChainState) SecondsUntilNextUBI() int64 {
-last := cs.GetLastUBIAt()
-if last == 0 {
-// Never distributed yet. main.go waits 24h from startup for first run.
-// Return 86400 so the UI timer shows the correct 24h countdown
-// instead of 0 (which causes the JS timer to immediately auto-reset to 24h,
-// making it look like the timer jumped from 0 to 24:00:00).
-return int64((24 * time.Hour).Seconds())
+// SetNextUBIAt stores when the scheduler will next trigger pool distributions.
+// Called by main.go immediately after calculating the next run time so the
+// display timer is always in sync with the actual goroutine schedule.
+func (cs *ChainState) SetNextUBIAt(unixTs int64) {
+cs.setConfigValue("next_ubi_at", fmt.Sprintf("%d", unixTs))
 }
-next := time.Unix(last, 0).Add(24 * time.Hour)
-secs := int64(time.Until(next).Seconds())
+
+// SecondsUntilNextUBI returns how many seconds until the next UBI distribution.
+// Reads "next_ubi_at" which main.go writes every time it schedules a run,
+// so the countdown is exact — not estimated from last_ubi_at + 24h.
+func (cs *ChainState) SecondsUntilNextUBI() int64 {
+v := cs.getConfigValue("next_ubi_at")
+if v == "" {
+// Scheduler not yet started (non-primary node or fresh start before
+// first goroutine tick). Show no countdown rather than a wrong value.
+return 0
+}
+var nextAt int64
+fmt.Sscan(v, &nextAt)
+secs := nextAt - time.Now().Unix()
 if secs < 0 {
 return 0
 }

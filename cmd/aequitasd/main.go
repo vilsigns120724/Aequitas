@@ -176,14 +176,18 @@ if firstDelay < 0 {
 firstDelay = 0 // overdue — run immediately
 }
 }
-fmt.Printf("[POOLS] Next distribution in %s\n", firstDelay.Round(time.Minute))
+nextAt := time.Now().Add(firstDelay)
+chainState.SetNextUBIAt(nextAt.Unix())
+fmt.Printf("[POOLS] Next distribution in %s (at %s)\n",
+firstDelay.Round(time.Minute), nextAt.Format("15:04:05"))
 time.Sleep(firstDelay)
 chainState.DistributeUBIPool()
 chainState.DistributeValidatorsPool()
 chainState.DistributeLPPool()
-// Then every 24 h precisely
+// Then every 24h precisely — store next_ubi_at before each sleep
 ticker := time.NewTicker(24 * time.Hour)
 for range ticker.C {
+chainState.SetNextUBIAt(time.Now().Add(24 * time.Hour).Unix())
 chainState.DistributeUBIPool()
 chainState.DistributeValidatorsPool()
 chainState.DistributeLPPool()
