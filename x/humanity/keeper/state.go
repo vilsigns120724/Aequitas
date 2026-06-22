@@ -298,6 +298,32 @@ return t
 
 // SecondsUntilNextUBI returns integer seconds until next UBI for the /api/status endpoint.
 // P3-3: uses last_ubi_at from DB, not server uptime, so restarts don't give wrong countdowns.
+// TryLockDistribution attempts to atomically claim the distribution slot.
+// It uses a PostgreSQL compare-and-swap: updates last_ubi_at to now only if
+// the current value is > 23 hours old (or missing). Returns true if this node
+// won the lock — only then should it actually run the distribution.
+// This replaces the IS_PRIMARY_NODE env-var, which any operator could set.
+func (cs *ChainState) TryLockDistribution() bool {
+if cs.db == nil {
+return true // no DB → single-node mode, always proceed
+}
+threshold := fmt.Sprintf("%d", time.Now().Add(-23*time.Hour).Unix())
+now := fmt.Sprintf("%d", time.Now().Unix())
+// Insert if missing, update if older than threshold
+result, err := cs.db.Exec(
+`INSERT INTO chain_config (key, value) VALUES ('last_ubi_at', $1)
+ON CONFLICT (key) DO UPDATE SET value = $1
+WHERE chain_config.value = '' OR CAST(chain_config.value AS BIGINT) < $2`,
+now, threshold,
+)
+if err != nil {
+fmt.Printf("[POOLS] TryLockDistribution error: %v\n", err)
+return false
+}
+rows, _ := result.RowsAffected()
+return rows > 0
+}
+
 // SetNextUBIAt stores when the scheduler will next trigger pool distributions.
 // Called by main.go immediately after calculating the next run time so the
 // display timer is always in sync with the actual goroutine schedule.

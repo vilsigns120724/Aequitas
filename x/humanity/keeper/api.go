@@ -226,7 +226,9 @@ for _, acc := range accounts {
 if acc.IsHuman {
 humans = append(humans, map[string]interface{}{
 "address": acc.Address,
-"balance": acc.Balance,
+// Use effectiveBalance so the Lorenz curve and Score tab show the same Gini.
+// Raw acc.Balance ignores demurrage decay → different Gini than CalcGini().
+"balance": effectiveBalance(acc).Float(),
 })
 }
 }

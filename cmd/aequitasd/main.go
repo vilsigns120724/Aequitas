@@ -160,17 +160,18 @@ time.Unix(block.Timestamp, 0).Format("15:04:05"),
 }()
 
 fmt.Println("── Starting Daily Pool Distributions ───")
-if os.Getenv("IS_PRIMARY_NODE") == "true" {
-fmt.Println("[POOLS] Primary node — daily distributions at 20:00 Berlin time")
+// IS_PRIMARY_NODE is no longer required. Every node schedules distributions
+// at 20:00 Berlin but uses a PostgreSQL CAS lock (TryLockDistribution) to
+// ensure only ONE node actually executes — the first to atomically claim
+// the lock wins; others see 0 rows updated and skip. This eliminates the
+// IS_PRIMARY_NODE env-var footgun where any operator could accidentally (or
+// maliciously) trigger double distributions by setting IS_PRIMARY_NODE=true.
 go func() {
 berlin, err := time.LoadLocation("Europe/Berlin")
 if err != nil {
-berlin = time.FixedZone("CET", 1*60*60) // fallback: UTC+1
+berlin = time.FixedZone("CET", 2*60*60) // CEST fallback (summer, UTC+2)
 }
 
-// nextDaily20 returns the next 20:00 Berlin time after 'after'.
-// If the last distribution was less than 1 hour ago we skip tonight
-// and schedule tomorrow, preventing a double-payout on restart.
 nextDaily20 := func(after time.Time) time.Time {
 t := after.In(berlin)
 candidate := time.Date(t.Year(), t.Month(), t.Day(), 20, 0, 0, 0, berlin)
@@ -183,7 +184,6 @@ return candidate
 lastAt := chainState.GetLastUBIAt()
 var firstTarget time.Time
 if lastAt > 0 && time.Since(time.Unix(lastAt, 0)) < time.Hour {
-// Distributed very recently (e.g. just now on restart) — skip tonight
 firstTarget = nextDaily20(time.Now().Add(time.Hour))
 } else {
 firstTarget = nextDaily20(time.Now())
@@ -196,19 +196,20 @@ firstTarget.In(berlin).Format("02.01. 15:04:05"), firstDelay.Round(time.Minute))
 
 for {
 time.Sleep(time.Until(firstTarget))
+// Distributed lock: only the node that atomically claims last_ubi_at proceeds.
+if chainState.TryLockDistribution() {
 chainState.DistributeUBIPool()
 chainState.DistributeValidatorsPool()
 chainState.DistributeLPPool()
 fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
-// Schedule next day's 20:00
+} else {
+fmt.Printf("[POOLS] Another node ran distribution first — skipping\n")
+}
 firstTarget = nextDaily20(time.Now())
 chainState.SetNextUBIAt(firstTarget.Unix())
 fmt.Printf("[POOLS] Next distribution at %s Berlin time\n", firstTarget.In(berlin).Format("02.01. 15:04:05"))
 }
 }()
-} else {
-fmt.Println("[POOLS] Not primary node — skipping daily distributions")
-}
 
 // Register this node's operator wallet so it participates in validator
 // pool distributions. Any node that sets NODE_OPERATOR_WALLET gets
