@@ -3416,7 +3416,14 @@ function showStab(parentId, stabId, el) {
 }
 
 function showTab(name, el) {
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  // Remove both the active class AND any inline style="display:block" that the
+  // server injected for direct-URL loads. Without clearing the inline style,
+  // switching tabs via JS leaves the old tab permanently visible because
+  // style="" overrides class-based display:none.
+  document.querySelectorAll('.tab-content').forEach(t => {
+    t.classList.remove('active');
+    t.style.display = '';
+  });
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   const tabContent = document.getElementById('tab-' + name);
   if (!tabContent) return;
@@ -4761,7 +4768,10 @@ function activateTabFromPath(path) {
     if ((t.getAttribute('onclick') || '').includes("'" + name + "'")) tabEl = t;
   });
   if (!tabEl) return;
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => {
+    t.classList.remove('active');
+    t.style.display = ''; // clear server-injected inline style
+  });
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   const tabContent = document.getElementById('tab-' + name);
   if (!tabContent) return;
