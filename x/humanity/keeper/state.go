@@ -285,6 +285,21 @@ fmt.Sscan(v, &t)
 return t
 }
 
+// SecondsUntilNextUBI returns integer seconds until next UBI for the /api/status endpoint.
+// P3-3: uses last_ubi_at from DB, not server uptime, so restarts don't give wrong countdowns.
+func (cs *ChainState) SecondsUntilNextUBI() int64 {
+last := cs.GetLastUBIAt()
+if last == 0 {
+return 0
+}
+next := time.Unix(last, 0).Add(24 * time.Hour)
+secs := int64(time.Until(next).Seconds())
+if secs < 0 {
+return 0
+}
+return secs
+}
+
 // TimeUntilNextUBI returns how long until the next UBI distribution is due.
 // Returns 0 if overdue.
 func (cs *ChainState) TimeUntilNextUBI() time.Duration {
@@ -312,7 +327,10 @@ mergedCount := 0
 for rows.Next() {
 acc := &AccountState{}
 var bal, tusd, lp float64
-rows.Scan(&acc.Address, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown, &acc.FaucetClaimed, &acc.Version)
+if err := rows.Scan(&acc.Address, &bal, &acc.IsHuman, &tusd, &lp, &acc.LastActivityAt, &acc.Demurrage14DayWarningShown, &acc.FaucetClaimed, &acc.Version); err != nil {
+fmt.Printf("[DB] Scan error loading account: %v — skipping row\n", err)
+continue
+}
 acc.Balance = NewDecimal(bal)
 acc.TUsdBalance = NewDecimal(tusd)
 acc.LPShares = NewDecimal(lp)
@@ -456,14 +474,13 @@ WHERE address = $1 AND version = $9`,
 acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version)
 if err == nil {
 if rows, _ := result.RowsAffected(); rows == 0 {
-fmt.Printf("[DB] Conflict: account %s was modified by another node (version %d)\n", acc.Address, acc.Version)
-// Reload from DB to get the current version, then retry
-var dbBal, dbTusd, dbLp float64
+// Conflict: another node wrote a newer version. Reload DB version
+// into memory so the next caller can retry with the correct base.
 var dbVer int64
-if row := cs.db.QueryRow(`SELECT balance, tusd_balance, lp_shares, version FROM chain_accounts WHERE address = $1`, acc.Address); row != nil {
-row.Scan(&dbBal, &dbTusd, &dbLp, &dbVer)
-fmt.Printf("[DB] Remote state: balance=%.2f, version=%d\n", dbBal, dbVer)
-}
+cs.db.QueryRow(`SELECT version FROM chain_accounts WHERE lower(address) = $1`, acc.Address).Scan(&dbVer)
+acc.Version = dbVer // resync in-memory; do NOT increment
+fmt.Printf("[DB] Conflict: account %s modified by another node — local version reset to DB version %d\n", acc.Address, dbVer)
+return // caller must decide whether to retry
 }
 }
 }
@@ -471,7 +488,7 @@ if err != nil {
 fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
 return
 }
-// Update in-memory version to match DB
+// P0-1 fix: only increment version after a confirmed successful write
 acc.Version++
 }
 
@@ -682,9 +699,8 @@ rows.Close()
 if len(nodeShares) == 0 {
 for _, w := range nodes { nodeShares = append(nodeShares, nodeShare{w, 1}); totalBlocks++ }
 }
-poolAcc.Balance = NewDecimal(0)
-cs.saveAccountToDB(poolAcc)
-
+// P0-2: credit recipients BEFORE zeroing the pool so a crash mid-loop
+// leaves money in the pool (re-distributable) rather than losing it.
 for _, ns := range nodeShares {
 wallet := ns.wallet
 share := round6(total * float64(ns.blocks) / float64(totalBlocks))
@@ -698,6 +714,9 @@ touchActivity(acc)
 cs.enforceWealthCapLocked(acc)
 cs.saveAccountToDB(acc)
 }
+// Zero pool only after all recipients are successfully written.
+poolAcc.Balance = NewDecimal(0)
+cs.saveAccountToDB(poolAcc)
 cs.save()
 
 cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(nodes, validatorsPoolAddr)...)
@@ -738,9 +757,7 @@ return
 }
 
 total := poolAcc.Balance.Float()
-poolAcc.Balance = NewDecimal(0)
-cs.saveAccountToDB(poolAcc)
-
+// P0-2: credit holders BEFORE zeroing pool — crash-safe ordering.
 for _, h := range holders {
 share := (h.shares / totalShares) * total
 acc := cs.accounts[h.addr]
@@ -750,6 +767,8 @@ touchActivity(acc)
 cs.enforceWealthCapLocked(acc)
 cs.saveAccountToDB(acc)
 }
+poolAcc.Balance = NewDecimal(0)
+cs.saveAccountToDB(poolAcc)
 cs.save()
 
 holderAddrs := make([]string, len(holders))
@@ -782,19 +801,21 @@ return
 
 total := poolAcc.Balance.Float()
 share := total / float64(len(humanAddrs))
-poolAcc.Balance = NewDecimal(0)
-cs.saveAccountToDB(poolAcc)
-
+// P0-2 + P1-6: credit humans BEFORE zeroing pool AND before last_ubi_at.
+// If we crash after crediting but before zeroing, the pool balance remains
+// and next distribution starts with last_ubi_at still unset → will re-check.
 for _, addr := range humanAddrs {
 acc := cs.accounts[addr]
-cs.settleDemurrageLocked(acc) // settle any pending decay before adding the UBI share
+cs.settleDemurrageLocked(acc)
 acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
-touchActivity(acc) // receiving the daily UBI share counts as activity, like any other incoming AEQ
-cs.enforceWealthCapLocked(acc) // a UBI payout can in principle still push someone over the cap
+touchActivity(acc)
+cs.enforceWealthCapLocked(acc)
 cs.saveAccountToDB(acc)
 }
+poolAcc.Balance = NewDecimal(0)
+cs.saveAccountToDB(poolAcc)
 cs.save()
-
+// last_ubi_at only set after ALL writes succeed (P1-6).
 cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", time.Now().Unix()))
 cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(humanAddrs, ubiPoolAddr)...)
 
@@ -941,8 +962,14 @@ status.ShowSevenDayNotice = true
 } else if daysUntilStart <= 14 {
 if !acc.Demurrage14DayWarningShown {
 status.ShowFourteenDayNotice = true
-acc.Demurrage14DayWarningShown = true
-cs.saveAccountToDB(acc)
+// P3-6: async write so GET request is not blocked by a DB write.
+go func(addr string) {
+cs.mu.Lock(); defer cs.mu.Unlock()
+if a, ok := cs.accounts[addr]; ok && !a.Demurrage14DayWarningShown {
+a.Demurrage14DayWarningShown = true
+cs.saveAccountToDB(a)
+}
+}(address)
 }
 }
 
@@ -1009,6 +1036,11 @@ cs.mu.Lock()
 defer cs.mu.Unlock()
 from = strings.ToLower(from)
 to = strings.ToLower(to)
+// P2-5: reject self-transfers; mirrors AequitasV7.sol behaviour and
+// prevents double-demurrage settlement on the same account object.
+if from == to {
+return fmt.Errorf("self-transfer not allowed")
+}
 
 fromAcc, ok := cs.accounts[from]
 if !ok {
@@ -1350,7 +1382,7 @@ return fmt.Errorf("insufficient tUSD balance")
 var mintedShares float64
 if cs.pool.ReserveAEQ > 0 && cs.pool.ReserveTUSD > 0 {
 expectedTUSD := amountAEQ * (cs.pool.ReserveTUSD.Float() / cs.pool.ReserveAEQ.Float())
-tolerance := expectedTUSD * 0.01 // 1% slack for rounding
+tolerance := expectedTUSD * 0.003 // 0.3% slack — tighter than 1% to prevent price manipulation
 if amountTUSD < expectedTUSD-tolerance || amountTUSD > expectedTUSD+tolerance {
 return fmt.Errorf("deposit ratio does not match pool ratio (expected ~%.4f tUSD for %.4f AEQ)", expectedTUSD, amountAEQ)
 }
@@ -1553,6 +1585,9 @@ return nil
 // Previously only human AEQ balances were included; this allowed different
 // economic states to hash identically, defeating state-root verification.
 func (cs *ChainState) StateRoot() string {
+// P1-1: read last_ubi_at from DB BEFORE acquiring the mutex to avoid
+// holding RLock across a blocking DB query (deadlock / latency risk).
+lastUBIAt := cs.getConfigValue("last_ubi_at")
 cs.mu.RLock()
 addrs := make([]string, 0, len(cs.accounts))
 for a := range cs.accounts { addrs = append(addrs, a) }
@@ -1588,10 +1623,8 @@ for k := range cs.nullifiers { nullKeys = append(nullKeys, k) }
 sort.Strings(nullKeys)
 fmt.Fprintf(&sb, "|n=%d:", len(nullKeys))
 for _, k := range nullKeys { sb.WriteString(k); sb.WriteString(":"); sb.WriteString(cs.nullifiers[k]) }
-// Include last UBI distribution timestamp: two nodes with identical balances
-// but different UBI timestamps would diverge on the next UBI run.
-lastUBI := cs.getConfigValue("last_ubi_at")
-fmt.Fprintf(&sb, "|ubi:%s", lastUBI)
+// Include last UBI distribution timestamp (pre-fetched before RLock — P1-1).
+fmt.Fprintf(&sb, "|ubi:%s", lastUBIAt)
 cs.mu.RUnlock()
 hash := sha256.Sum256([]byte(sb.String()))
 return hex.EncodeToString(hash[:])

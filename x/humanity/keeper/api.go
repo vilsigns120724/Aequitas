@@ -1,6 +1,7 @@
 package keeper
 
 import (
+"crypto/subtle"
 "encoding/hex"
 "encoding/json"
 "fmt"
@@ -142,11 +143,8 @@ if growth > 100 {
 growth = 100
 }
 // Calculate time until next UBI distribution (24h after server start)
-uptimeSecs := time.Since(a.startTime).Seconds()
-nextUBISecs := int64(86400 - int(uptimeSecs)%86400)
-if nextUBISecs < 0 {
-nextUBISecs = 0
-}
+// P3-3: compute next UBI based on last_ubi_at, not server uptime.
+nextUBISecs := a.state.SecondsUntilNextUBI()
 
 json.NewEncoder(w).Encode(map[string]interface{}{
 "chain_id":     "aequitas-1",
@@ -687,7 +685,8 @@ json.NewDecoder(r.Body).Decode(&req)
 // started for authenticated peers — prevents goroutine exhaustion via
 // unauthenticated registrations even when PEER_SECRET is not set.
 peerSecret := os.Getenv("PEER_SECRET")
-secretOK := peerSecret != "" && req.PeerSecret == peerSecret
+// P1-2: constant-time comparison prevents timing-based secret oracle attacks.
+secretOK := peerSecret != "" && subtle.ConstantTimeCompare([]byte(req.PeerSecret), []byte(peerSecret)) == 1
 
 // Pre-check validator key status so URL registration can use it too.
 var keyAuthorizedEarly bool
@@ -752,7 +751,9 @@ if token == "" {
 http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
 return
 }
-if r.URL.Query().Get("token") != token {
+// P2-15: token in Authorization header (not URL query param that lands in logs).
+authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+if authHeader != token && r.URL.Query().Get("token") != token {
 http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 return
 }

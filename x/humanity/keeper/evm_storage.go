@@ -704,10 +704,12 @@ func (cs *ChainState) GetPriceHistory(minutes, limit int) []map[string]interface
 	if minutes > 43200 { minutes = 43200 }
 	if limit < 1 { limit = 1 }
 	if limit > 5000 { limit = 5000 }
+	// P1-11: use ($1 * INTERVAL '1 minute') instead of string concat to
+	// prevent any future SQL-injection if $1 type changes to string.
 	rows, err := cs.db.Query(`
 		SELECT EXTRACT(EPOCH FROM captured_at)::BIGINT, price, reserve_aeq, reserve_tusd
 		FROM price_snapshots
-		WHERE captured_at >= NOW() - ($1 || ' minutes')::INTERVAL
+		WHERE captured_at >= NOW() - ($1 * INTERVAL '1 minute')
 		ORDER BY captured_at ASC
 		LIMIT $2`, minutes, limit)
 	if err != nil {

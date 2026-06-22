@@ -268,7 +268,12 @@ contract AequitasV7 {
         require(owed > 0, "Nothing to claim");
         ubiClaimed[msg.sender] = ubiPerHumanAccumulated;
         balanceOf[msg.sender] += owed;
-        totalSupply += owed;
+        // P0-5 FIX: do NOT increase totalSupply here.
+        // UBI funds were already counted in totalSupply when accumulated into
+        // ubiPool. Incrementing again would violate the invariant
+        // SUM(balanceOf) + ubiPool + SUM(escrowOf) == totalSupply, causing
+        // fairShare() and wealthCap() to drift upward with every claim.
+        // totalSupply += owed;  <-- REMOVED
         lastActivity[msg.sender] = block.timestamp;
         _applyWealthCap(msg.sender);
         emit UBIClaimed(msg.sender, owed);

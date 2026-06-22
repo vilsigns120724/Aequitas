@@ -80,8 +80,11 @@ return nil, nil, err
 // Load all account balances
 for _, acc := range e.chainState.GetAllAccounts() {
 addr := common.HexToAddress(acc.Address)
-decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance.Float())), decimals)
+// P1-7: preserve 6 decimal places by converting Micro-AEQ (int64) to wei.
+// 1 AEQ = 1_000_000 Micro-AEQ = 1e18 wei → 1 Micro-AEQ = 1e12 wei.
+// Previously used int64(acc.Balance.Float()) which truncated decimals.
+microPrecision := new(big.Int).Exp(big.NewInt(10), big.NewInt(12), nil)
+wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), microPrecision)
 sdb.SetBalance(addr, wei)
 sdb.SetNonce(addr, e.chainState.LoadNonce(acc.Address))
 }

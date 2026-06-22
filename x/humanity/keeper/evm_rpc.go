@@ -382,12 +382,22 @@ txHash, senderAddr, tx.To(), len(tx.Data()))
 // Check tx.Nonce() against the stored per-account nonce and atomically
 // reserve it before executing. Without this, the same signed transaction
 // can be replayed repeatedly until the account balance is exhausted.
+// P0-6: pre-load nonce from DB WITHOUT holding the mutex so blocking
+// DB I/O does not stall all other concurrent RPC handlers.
 s.mu.Lock()
 storedNonce := s.nonces[senderAddr]
+s.mu.Unlock()
 if storedNonce == 0 {
+// First time this sender is seen — read from persistent store.
 storedNonce = s.state.LoadNonce(senderAddr)
-s.nonces[senderAddr] = storedNonce
 }
+s.mu.Lock()
+// Re-check: another goroutine may have populated the cache while we
+// were waiting for the DB read above.
+if cached := s.nonces[senderAddr]; cached > storedNonce {
+storedNonce = cached
+}
+s.nonces[senderAddr] = storedNonce
 txNonce := tx.Nonce()
 if txNonce < storedNonce {
 s.mu.Unlock()

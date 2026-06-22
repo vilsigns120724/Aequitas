@@ -88,9 +88,9 @@ func (d *Decimal) UnmarshalJSON(b []byte) error {
 // amountOut = (reserveOut * amountInAfterFee) / (reserveIn + amountInAfterFee)
 // Uses big.Int arithmetic to avoid int64 overflow for large reserves.
 func AMMSwapOut(reserveIn, reserveOut, amountInAfterFee Decimal) Decimal {
-	ri := big.NewInt(int64(reserveIn))
-	ro := big.NewInt(int64(reserveOut))
-	ai := big.NewInt(int64(amountInAfterFee))
+	ri := new(big.Int).SetInt64(int64(reserveIn))
+	ro := new(big.Int).SetInt64(int64(reserveOut))
+	ai := new(big.Int).SetInt64(int64(amountInAfterFee))
 	// numerator = reserveOut * amountIn
 	num := new(big.Int).Mul(ro, ai)
 	// denominator = reserveIn + amountIn
@@ -98,5 +98,11 @@ func AMMSwapOut(reserveIn, reserveOut, amountInAfterFee Decimal) Decimal {
 	if den.Sign() == 0 {
 		return 0
 	}
-	return Decimal(new(big.Int).Div(num, den).Int64())
+	result := new(big.Int).Div(num, den)
+	// P0-4: guard against overflow — result must fit in int64.
+	// If it doesn't, the swap is too large for the current pool size.
+	if result.BitLen() > 63 || result.Sign() < 0 {
+		return 0 // caller will detect zero output and reject the swap
+	}
+	return Decimal(result.Int64())
 }

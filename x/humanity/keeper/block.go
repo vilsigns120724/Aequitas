@@ -8,6 +8,7 @@ import (
 "fmt"
 "os"
 "strings"
+"sort"
 "sync"
 "time"
 
@@ -403,13 +404,8 @@ result := make([]*Block, 0, len(dag.blocks))
 for _, b := range dag.blocks {
 result = append(result, b)
 }
-for i := 0; i < len(result)-1; i++ {
-for j := i + 1; j < len(result); j++ {
-if result[i].Height > result[j].Height {
-result[i], result[j] = result[j], result[i]
-}
-}
-}
+// P3-1: O(n log n) sort instead of O(n^2) bubble sort.
+sort.Slice(result, func(i, j int) bool { return result[i].Height < result[j].Height })
 return result
 }
 
