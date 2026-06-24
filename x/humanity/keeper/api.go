@@ -174,17 +174,24 @@ growth = 100
 // P3-3: compute next UBI based on last_ubi_at, not server uptime.
 nextUBISecs := a.state.SecondsUntilNextUBI()
 
+// Expose signing address so secondary nodes can populate BOOTSTRAP_SIGNER
+// without needing SSH access to the primary node.
+var selfSigningAddr string
+if sk := a.blockchain.GetSigningKey(); sk != nil {
+	selfSigningAddr = strings.ToLower(crypto.PubkeyToAddress(sk.PublicKey).Hex())
+}
 json.NewEncoder(w).Encode(map[string]interface{}{
-"chain_id":     "aequitas-1",
-"version":      "v0.3.0",
-"height":       latest.Height,
-"latest_hash":  latest.Hash,
-"total_humans": a.state.TotalHumans(),
-"total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
-"node_id":      a.p2pNode.GetNodeID(),
-"uptime":       uptime,
-"is_primary":   os.Getenv("IS_PRIMARY_NODE") == "true",
-"block_time":   6,
+"chain_id":        "aequitas-1",
+"version":         "v0.3.0",
+"height":          latest.Height,
+"latest_hash":     latest.Hash,
+"total_humans":    a.state.TotalHumans(),
+"total_supply":    fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
+"node_id":         a.p2pNode.GetNodeID(),
+"signing_address": selfSigningAddr,
+"uptime":          uptime,
+"is_primary":      os.Getenv("IS_PRIMARY_NODE") == "true",
+"block_time":      6,
 "contract_v7":  V7_CONTRACT_ADDR,
 // P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
 "bio_verifier": BIO_VERIFIER_ADDR,
