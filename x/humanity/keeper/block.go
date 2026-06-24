@@ -7,12 +7,14 @@ import (
 "encoding/hex"
 "encoding/json"
 "fmt"
+"math/big"
 "os"
 "strings"
 "sort"
 "sync"
 "time"
 
+"github.com/ethereum/go-ethereum/accounts/abi"
 "github.com/ethereum/go-ethereum/common"
 "github.com/ethereum/go-ethereum/crypto"
 )
@@ -29,6 +31,14 @@ type Transaction struct {
 	// the block — without needing a separate snapshot or state sync.
 	Nullifier  string  `json:"nullifier,omitempty"`
 	Commitment string  `json:"commitment,omitempty"`
+	// ZK proof fields for register_human — enables secondary nodes to
+	// independently verify the proof via BioVerifier without trusting
+	// the validator signature alone. Fields are omitted for non-registration
+	// TXs and for blocks produced by old nodes (backward-compatible).
+	ProofA     []string   `json:"proof_a,omitempty"`   // [2]string big.Int decimal
+	ProofB     [][]string `json:"proof_b,omitempty"`   // [2][2]string big.Int decimal
+	ProofC     []string   `json:"proof_c,omitempty"`   // [2]string big.Int decimal
+	PubSignals []string   `json:"pub_signals,omitempty"` // public signals (decimal)
 }
 
 type Block struct {
@@ -56,6 +66,7 @@ tips                   map[string]bool
 mu                     sync.RWMutex
 keeper                 *Keeper
 state                  *ChainState
+evm                    *EVMEngine       // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
 nodeID                 string
 height                 int64
 pendingTxs             []Transaction
@@ -560,6 +571,19 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				fmt.Printf("[REPLAY] ✗ Rejecting register_human in block #%d: nullifier too short %q\n", block.Height, nullifier)
 				continue
 			}
+			// If proof data is present, verify it via BioVerifier before applying.
+			// This eliminates unconditional trust in the validator ECDSA key for
+			// registration TXs — a compromised validator key cannot inject fake
+			// registrations without also producing a valid Groth16 proof.
+			// Backward-compatible: blocks from old nodes omit proof fields and
+			// fall through to the existing trust-based path below.
+			if len(tx.ProofA) == 2 && len(tx.ProofB) == 2 && len(tx.ProofC) == 2 && len(tx.PubSignals) >= 2 {
+				if !dag.verifyZKProof(tx) {
+					fmt.Printf("[REPLAY] ✗ ZK proof verification failed for %s (block #%d) — skipping\n", wallet, block.Height)
+					continue
+				}
+				fmt.Printf("[REPLAY] ✓ ZK proof verified for %s (block #%d)\n", wallet, block.Height)
+			}
 			if !dag.state.TryClaimNullifier(nullifier, wallet) {
 				continue // already registered
 			}
@@ -657,4 +681,92 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 // is called from AddPeerBlock for every received block.
 func (dag *BlockDAG) ReconstructState(state *ChainState) {
 	fmt.Printf("[CHAIN] State loaded from DB — skipping full block-replay reconstruction\n")
+}
+
+// verifyZKProof reconstructs the Groth16 proof from the TX's decimal string
+// fields and calls the BioVerifier contract via the local EVM engine to check
+// validity. Returns true when the proof is valid, false otherwise.
+// Only called when all four proof fields (ProofA, ProofB, ProofC, PubSignals)
+// are present — blocks from old nodes omit them and fall back to trust-based
+// validation for backward compatibility.
+func (dag *BlockDAG) verifyZKProof(tx Transaction) bool {
+	if dag.evm == nil {
+		fmt.Printf("[REPLAY] ⚠ verifyZKProof: EVM engine not available — skipping proof check\n")
+		return false
+	}
+
+	// Parse ProofA [2]*big.Int
+	if len(tx.ProofA) != 2 || len(tx.ProofC) != 2 || len(tx.PubSignals) < 2 || len(tx.ProofB) != 2 {
+		return false
+	}
+	var pA [2]*big.Int
+	for i := 0; i < 2; i++ {
+		n := new(big.Int)
+		if _, ok := n.SetString(tx.ProofA[i], 10); !ok {
+			fmt.Printf("[REPLAY] ✗ verifyZKProof: invalid ProofA[%d]: %q\n", i, tx.ProofA[i])
+			return false
+		}
+		pA[i] = n
+	}
+
+	// Parse ProofB [2][2]*big.Int
+	var pB [2][2]*big.Int
+	for i := 0; i < 2; i++ {
+		if len(tx.ProofB[i]) != 2 {
+			fmt.Printf("[REPLAY] ✗ verifyZKProof: ProofB[%d] has wrong length\n", i)
+			return false
+		}
+		for j := 0; j < 2; j++ {
+			n := new(big.Int)
+			if _, ok := n.SetString(tx.ProofB[i][j], 10); !ok {
+				fmt.Printf("[REPLAY] ✗ verifyZKProof: invalid ProofB[%d][%d]: %q\n", i, j, tx.ProofB[i][j])
+				return false
+			}
+			pB[i][j] = n
+		}
+	}
+
+	// Parse ProofC [2]*big.Int
+	var pC [2]*big.Int
+	for i := 0; i < 2; i++ {
+		n := new(big.Int)
+		if _, ok := n.SetString(tx.ProofC[i], 10); !ok {
+			fmt.Printf("[REPLAY] ✗ verifyZKProof: invalid ProofC[%d]: %q\n", i, tx.ProofC[i])
+			return false
+		}
+		pC[i] = n
+	}
+
+	// Parse PubSignals [2]*big.Int (only first two are needed by verifyProof)
+	var pubSignals [2]*big.Int
+	for i := 0; i < 2; i++ {
+		n := new(big.Int)
+		if _, ok := n.SetString(tx.PubSignals[i], 10); !ok {
+			fmt.Printf("[REPLAY] ✗ verifyZKProof: invalid PubSignals[%d]: %q\n", i, tx.PubSignals[i])
+			return false
+		}
+		pubSignals[i] = n
+	}
+
+	verifierABI, err := abi.JSON(strings.NewReader(bioVerifierABI))
+	if err != nil {
+		fmt.Printf("[REPLAY] ✗ verifyZKProof: ABI parse failed: %v\n", err)
+		return false
+	}
+	verifyData, err := verifierABI.Pack("verifyProof", pA, pB, pC, pubSignals)
+	if err != nil {
+		fmt.Printf("[REPLAY] ✗ verifyZKProof: ABI encode failed: %v\n", err)
+		return false
+	}
+
+	caller := common.HexToAddress(tx.Wallet)
+	ret, err := dag.evm.CallContract(caller, common.HexToAddress(BIO_VERIFIER_ADDR), verifyData, big.NewInt(0), false)
+	if err != nil {
+		fmt.Printf("[REPLAY] ✗ verifyZKProof: BioVerifier call failed: %v\n", err)
+		return false
+	}
+	if len(ret) != 32 || ret[31] != 1 {
+		return false
+	}
+	return true
 }

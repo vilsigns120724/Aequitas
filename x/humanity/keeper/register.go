@@ -375,12 +375,19 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 			mirrorCommitment = req.PubSignals[0]
 		}
 		if effectiveNullifier != "" {
+			mirrorPAslice := []*big.Int{pA[0], pA[1]}
+			mirrorPCslice := []*big.Int{pC[0], pC[1]}
+			mirrorPSslice := []*big.Int{pubSignals[0], pubSignals[1]}
 			a.blockchain.AddTransaction(Transaction{
 				Type:       "register_human",
 				Wallet:     wallet,
 				TxHash:     txHash,
 				Nullifier:  effectiveNullifier,
 				Commitment: mirrorCommitment,
+				ProofA:     bigIntsToHexStrings(mirrorPAslice),
+				ProofB:     bigInt2x2ToHexStrings(pB),
+				ProofC:     bigIntsToHexStrings(mirrorPCslice),
+				PubSignals: bigIntsToHexStrings(mirrorPSslice),
 			})
 		}
 		return txHash, nil
@@ -507,12 +514,19 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// the idempotency key. A TX with empty nullifier would be silently dropped
 	// by replayRegistrations, hiding the registration from all secondary nodes.
 	if nullifierToStore != "" {
+		pAslice := []*big.Int{pA[0], pA[1]}
+		pCslice := []*big.Int{pC[0], pC[1]}
+		psSlice := []*big.Int{pubSignals[0], pubSignals[1]}
 		a.blockchain.AddTransaction(Transaction{
 			Type:       "register_human",
 			Wallet:     wallet,
 			TxHash:     txHash,
 			Nullifier:  nullifierToStore,
 			Commitment: commitment,
+			ProofA:     bigIntsToHexStrings(pAslice),
+			ProofB:     bigInt2x2ToHexStrings(pB),
+			ProofC:     bigIntsToHexStrings(pCslice),
+			PubSignals: bigIntsToHexStrings(psSlice),
 		})
 	}
 
@@ -714,4 +728,37 @@ func parseUint2x2(values [][]string) ([2][2]*big.Int, error) {
 func mustMarshal(v interface{}) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b
+}
+
+// bigIntsToHexStrings converts a slice of *big.Int to their decimal string
+// representations for JSON serialization in block transactions.
+// Decimal (base-10) is used instead of hex to match the ZK proof wire format
+// used by the client and the Groth16 verifier ABI.
+func bigIntsToHexStrings(vals []*big.Int) []string {
+	out := make([]string, len(vals))
+	for i, v := range vals {
+		if v == nil {
+			out[i] = "0"
+		} else {
+			out[i] = v.Text(10)
+		}
+	}
+	return out
+}
+
+// bigInt2x2ToHexStrings converts a [2][2]*big.Int matrix to [][]string
+// for JSON serialization in block transactions.
+func bigInt2x2ToHexStrings(vals [2][2]*big.Int) [][]string {
+	out := make([][]string, 2)
+	for i := 0; i < 2; i++ {
+		out[i] = make([]string, 2)
+		for j := 0; j < 2; j++ {
+			if vals[i][j] == nil {
+				out[i][j] = "0"
+			} else {
+				out[i][j] = vals[i][j].Text(10)
+			}
+		}
+	}
+	return out
 }

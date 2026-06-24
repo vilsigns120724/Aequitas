@@ -37,6 +37,11 @@ engine, err := NewEVMEngine(state)
 if err != nil {
 fmt.Printf("[EVM] Warning: could not init EVM engine: %v\n", err)
 }
+// Share the EVMEngine with the DAG so replayTransactions can call
+// BioVerifier directly when verifying ZK proofs in register_human TXs.
+if engine != nil {
+dag.evm = engine
+}
 return &EVMRPCServer{
 dag:               dag,
 state:             state,
