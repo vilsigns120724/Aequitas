@@ -77,7 +77,15 @@ time.Sleep(30 * time.Second)
 
 func (a *APIServer) Start(port int) {
 mux := http.NewServeMux()
-mux.HandleFunc("/", a.handleUI)
+mux.HandleFunc("/landing", a.handleLanding)
+mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	// Root path: serve landing page; anything else falls to handleUI
+	if r.URL.Path == "/" {
+		a.handleLanding(w, r)
+		return
+	}
+	a.handleUI(w, r)
+})
 mux.HandleFunc("/api/status", a.handleStatus)
 mux.HandleFunc("/api/blocks", a.handleBlocks)
 mux.HandleFunc("/api/humans", a.handleHumans)
@@ -862,4 +870,10 @@ w.Header().Set("Content-Disposition", "attachment; filename="+filename)
 w.Header().Set("Content-Type", contentType)
 w.Header().Set("Access-Control-Allow-Origin", "*")
 http.ServeContent(w, r, filename, fi.ModTime(), f)
+}
+
+func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	fmt.Fprint(w, landingHTML)
 }
