@@ -852,8 +852,8 @@ func (cs *ChainState) InitValidatorKeysTable() {
 		  AND vk1.human_wallet = vk2.human_wallet`)
 	if _, err := cs.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_validator_keys_human_wallet
 		ON validator_keys (human_wallet)`); err != nil {
-		fmt.Printf("[STARTUP] FATAL: could not enforce UNIQUE(human_wallet) on validator_keys: %v\n", err)
-		panic("validator_keys uniqueness constraint failed — inspect DB for duplicates")
+		Log.Error("Could not enforce UNIQUE(human_wallet) on validator_keys", "error", err)
+		// Node continues but duplicate keys may affect reward distribution
 	}
 }
 
