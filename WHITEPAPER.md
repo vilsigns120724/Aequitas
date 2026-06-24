@@ -121,6 +121,80 @@ Aequitas solves this with biometric verification and Zero-Knowledge Proofs:
 
 ---
 
+### 3.1 Biometrisches 3-Faktor-System / 3-Factor Biometric System
+
+#### DE
+Um echte biologische Einzigartigkeit zu garantieren — vollständig unabhängig vom Gerät — setzt Aequitas auf ein physisches, mehrstufiges Biometrik-System. Die Registrierung erfolgt über ein dediziertes Hardware-Kit, das über die AequitasBio-App kommuniziert.
+
+**Phase 1 — Alle 10 Fingerabdrücke + Lebenderkennung** *(aktiv)*
+- **R503 optischer Fingerabdruckscanner** (GROW, UART-Interface): Alle 10 Finger werden gescannt und zu einem einzigen biometrischen Hash kombiniert. Das verhindert Manipulationen mit künstlichen Fingern — ein fehlendes Muster wird sofort erkannt.
+- **MAX30102 PPG-Sensor**: Photoplethysmographie-Signal (Herzfrequenz via IR/Rot-LED) bestätigt, dass die Person lebendig ist. Verhindert Replay-Attacken mit gespeicherten Abdrücken oder Gipsabgüssen.
+
+| Eigenschaft | Wert |
+|------------|------|
+| Einzigartigkeit Fingerabdruck (einzeln) | 1 von 10⁹ |
+| Alle 10 Finger kombiniert | 1 von 10⁹⁰ (theoretisch) |
+| Liveness-Nachweis | PPG-Pulssignal (MAX30102) |
+
+**Phase 2 — Handvenen-Muster** *(geplant)*
+- **ESP32-CAM + IR-LED (850 nm)**: Infrarot-Durchleuchtung der Hand erzeugt ein eindeutiges Venenmuster aus dem Inneren des Körpers — nicht kopierbar, nicht hinterlegbar, unveränderlich über das gesamte Leben.
+- Das Venenmuster wird als zweiter biometrischer Hash `vein_hash` in das ZK-Commitment einbezogen.
+
+| Eigenschaft | Wert |
+|------------|------|
+| Einzigartigkeit Handvenen | 1 von 10⁷ |
+| Auch für eineiige Zwillinge unterschiedlich | ✅ |
+| Unveränderlich über das Leben | ✅ |
+| Unkopierbares Merkmal (innen) | ✅ |
+
+**Phase 3 — Iris** *(geplant)*
+- **IR-Iris-Modul**: Die menschliche Iris ist der Goldstandard biometrischer Einzigartigkeit — 240+ unabhängige Freiheitsgrade, Kollisionswahrscheinlichkeit 1 von 10⁷⁸. Absolut verschieden bei eineiigen Zwillingen, unveränderlich von Geburt an.
+- Der Iris-Hash wird in den Nullifier einbezogen — damit ist die Identität rein körpergebunden, nicht gerätegebunden.
+
+| Eigenschaft | Wert |
+|------------|------|
+| Einzigartigkeit Iris | 1 von 10⁷⁸ |
+| Eineiige Zwillinge: identisch? | ❌ (absolut verschieden) |
+| Gerätunabhängig | ✅ |
+| Falsch-Positiv-Rate (globaler Vergleich) | < 10⁻⁷⁸ |
+
+#### EN
+To guarantee genuine biological uniqueness — fully independent of the device — Aequitas uses a physical, multi-stage biometric system. Registration takes place via a dedicated hardware kit communicating through the AequitasBio app.
+
+**Phase 1 — All 10 Fingerprints + Liveness** *(active)*
+- **R503 optical fingerprint scanner** (GROW, UART interface): All 10 fingers are scanned and combined into a single biometric hash. This prevents spoofing with artificial fingers — a missing pattern is immediately detected.
+- **MAX30102 PPG sensor**: Photoplethysmography signal (heart rate via IR/red LED) confirms the person is alive. Prevents replay attacks using stored fingerprint images or plaster casts.
+
+| Property | Value |
+|----------|-------|
+| Single fingerprint uniqueness | 1 in 10⁹ |
+| All 10 fingers combined | 1 in 10⁹⁰ (theoretical) |
+| Liveness proof | PPG pulse signal (MAX30102) |
+
+**Phase 2 — Hand Vein Pattern** *(planned)*
+- **ESP32-CAM + 850 nm IR LED**: Infrared illumination of the hand produces a unique vein pattern from inside the body — uncopyable, unstorable, immutable over a lifetime.
+- The vein pattern is added as a second biometric hash `vein_hash` to the ZK commitment.
+
+| Property | Value |
+|----------|-------|
+| Hand vein uniqueness | 1 in 10⁷ |
+| Different for identical twins | ✅ |
+| Immutable over lifetime | ✅ |
+| Uncopyable (internal feature) | ✅ |
+
+**Phase 3 — Iris** *(planned)*
+- **IR iris module**: The human iris is the gold standard of biometric uniqueness — 240+ independent degrees of freedom, collision probability 1 in 10⁷⁸. Completely different even in identical twins, immutable from birth.
+- The iris hash is incorporated into the nullifier — making identity purely body-bound, not device-bound.
+
+| Property | Value |
+|----------|-------|
+| Iris uniqueness | 1 in 10⁷⁸ |
+| Identical twins: same? | ❌ (absolutely different) |
+| Device-independent | ✅ |
+| False-match rate (global comparison) | < 10⁻⁷⁸ |
+
+---
+
 ## 4. Tokenomics & Wirtschaftsmodell / Economic Model
 
 ### 4.1 Geldangebot / Money Supply
@@ -308,11 +382,27 @@ Aequitas nutzt Groth16-Proofs auf der BN128-Kurve — eines der effizientesten Z
 
 **Nullifier-Bindung:** Der ZKP enthält einen eindeutigen Nullifier (`pubSignals[1]`), der kryptographisch an den biometrischen Hash gebunden ist. Derselbe Mensch kann denselben Nullifier nie zweimal verwenden — Sybil-Attacken sind mathematisch ausgeschlossen.
 
-**Was gespeichert wird / What is stored:**
+**Multi-Faktor ZK-Commitment (Phase 3 Zielarchitektur):**
+```
+fingers_hash = keccak256(f₁ ‖ f₂ ‖ … ‖ f₁₀)   -- alle 10 Fingerabdrücke
+commitment   = keccak256(iris_hash ‖ vein_hash ‖ fingers_hash ‖ wallet_address)
+nullifier    = keccak256(iris_hash ‖ vein_hash ‖ domain_separator)
+```
+
+Der Nullifier ist ausschließlich an physische Körpermerkmale gebunden — kein Gerät, keine SIM-Karte, kein Betriebssystem. Eine Person, die ihr Telefon verliert, kann sich mit denselben biometrischen Merkmalen (Iris + Handvenen) neu verifizieren, ohne eine zweite Identität zu erzeugen.
+
+| Phase | Commitment-Faktoren | Nullifier-Faktoren |
+|-------|--------------------|--------------------|
+| 1 (aktiv) | fingers_hash + wallet | fingers_hash + domain |
+| 2 (geplant) | vein_hash + fingers_hash + wallet | vein_hash + fingers_hash + domain |
+| 3 (geplant) | iris_hash + vein_hash + fingers_hash + wallet | iris_hash + vein_hash + domain |
+
+**Was gespeichert wird:**
 - ✅ `commitment` — kryptographischer Hash (nicht rückführbar auf Biometrie)
 - ✅ `nullifier` — eindeutiger Einmal-Nachweis
 - ✅ Wallet-Adresse
 - ❌ Fingerabdruck-Daten — niemals
+- ❌ Venen- oder Iris-Muster — niemals
 - ❌ Name, Adresse, ID — niemals
 - ❌ IP-Adresse — nicht gespeichert
 
@@ -321,11 +411,27 @@ Aequitas uses Groth16 proofs on the BN128 curve — one of the most efficient ZK
 
 **Nullifier Binding:** The ZKP contains a unique nullifier (`pubSignals[1]`), cryptographically bound to the biometric hash. The same human can never use the same nullifier twice — Sybil attacks are mathematically impossible.
 
+**Multi-Factor ZK Commitment (Phase 3 target architecture):**
+```
+fingers_hash = keccak256(f₁ ‖ f₂ ‖ … ‖ f₁₀)   -- all 10 fingerprints
+commitment   = keccak256(iris_hash ‖ vein_hash ‖ fingers_hash ‖ wallet_address)
+nullifier    = keccak256(iris_hash ‖ vein_hash ‖ domain_separator)
+```
+
+The nullifier is bound exclusively to physical body features — no device, no SIM card, no OS. A person who loses their phone can re-verify with the same biometric traits (iris + hand veins) without creating a second identity.
+
+| Phase | Commitment factors | Nullifier factors |
+|-------|--------------------|-------------------|
+| 1 (active) | fingers_hash + wallet | fingers_hash + domain |
+| 2 (planned) | vein_hash + fingers_hash + wallet | vein_hash + fingers_hash + domain |
+| 3 (planned) | iris_hash + vein_hash + fingers_hash + wallet | iris_hash + vein_hash + domain |
+
 **What is stored:**
 - ✅ `commitment` — cryptographic hash (not traceable to biometrics)
 - ✅ `nullifier` — unique one-time proof
 - ✅ Wallet address
 - ❌ Fingerprint data — never
+- ❌ Vein or iris patterns — never
 - ❌ Name, address, ID — never
 - ❌ IP address — not stored
 
@@ -342,7 +448,7 @@ Aequitas ist das erste Währungssystem, das seinen eigenen Gleichheitsgrad live 
 
 **Aequitas-Index:** Kombinierter Score aus Gini, Verteilung, Aktivität und Wachstum.
 
-**Ziel / Target:** Gini < 0,35 (Skandinavien-Niveau)
+**Ziel / Target:** Gini < 0,30 (Skandinavien-Niveau)
 
 | Währung / Currency | Gini |
 |-------------------|------|
@@ -362,7 +468,7 @@ Aequitas is the first monetary system that measures and publishes its own equali
 
 **Aequitas Index:** Combined score from Gini, distribution, activity, and growth.
 
-**Target:** Gini < 0.35 (Scandinavia level)
+**Target:** Gini < 0.30 (Scandinavia level)
 
 ---
 
