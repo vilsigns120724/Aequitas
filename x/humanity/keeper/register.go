@@ -305,14 +305,27 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		}
 	}
 
-	// Encode nullifier as bytes32 — zero value if not provided.
+	// Encode nullifier as bytes32 (big-endian uint256).
+	// v1 nullifiers are SHA256 hex strings ("0xabc..." or "abc...").
+	// v2 nullifiers are pubSignals[1] — a decimal integer string like "17579322874185".
+	// Both must be encoded as big-endian 32-byte integers for the contract.
 	var nullifierBytes [32]byte
 	if effectiveNullifier != "" {
-		nullHex := strings.TrimPrefix(effectiveNullifier, "0x")
-		if len(nullHex) > 64 {
-			nullHex = nullHex[:64]
+		n := new(big.Int)
+		s := strings.TrimPrefix(effectiveNullifier, "0x")
+		if effectiveNullifier != s {
+			// Had "0x" prefix → hex string (v1 circuit)
+			n.SetString(s, 16)
+		} else {
+			// No prefix → try decimal first (v2 circuit), fall back to hex
+			if _, ok := n.SetString(s, 10); !ok {
+				n.SetString(s, 16)
+			}
 		}
-		copy(nullifierBytes[:], common.Hex2Bytes(nullHex))
+		b := n.Bytes()
+		if len(b) <= 32 {
+			copy(nullifierBytes[32-len(b):], b) // right-align (big-endian)
+		}
 	}
 
 	calldata, err := parsedABI.Pack("registerWithSig", pA, pB, pC, pubSignals, claimedHuman, sigBytes, nullifierBytes)
