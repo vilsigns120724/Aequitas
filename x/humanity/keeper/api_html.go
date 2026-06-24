@@ -3449,10 +3449,10 @@ function showStab(parentId, stabId, el) {
 }
 
 function showTab(name, el) {
-  // Remove both the active class AND any inline style="display:block" that the
-  // server injected for direct-URL loads. Without clearing the inline style,
-  // switching tabs via JS leaves the old tab permanently visible because
-  // style="" overrides class-based display:none.
+  // Remove the server-injected data-active attribute so CSS rules like
+  // html[data-active=network] #tab-network {display:block!important} no
+  // longer force the old tab visible after a JS-driven tab switch.
+  document.documentElement.removeAttribute('data-active');
   document.querySelectorAll('.tab-content').forEach(t => {
     t.classList.remove('active');
     t.style.display = '';
@@ -4843,9 +4843,10 @@ function activateTabFromPath(path) {
     if ((t.getAttribute('onclick') || '').includes("'" + name + "'")) tabEl = t;
   });
   if (!tabEl) return;
+  document.documentElement.removeAttribute('data-active');
   document.querySelectorAll('.tab-content').forEach(t => {
     t.classList.remove('active');
-    t.style.display = ''; // clear server-injected inline style
+    t.style.display = '';
   });
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   const tabContent = document.getElementById('tab-' + name);
