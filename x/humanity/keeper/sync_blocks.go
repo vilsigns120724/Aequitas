@@ -154,6 +154,17 @@ if backoff > 60*time.Second { backoff = 60 * time.Second }
 ticker.Reset(backoff)
 continue
 }
+// P2-AUDIT: Reject unreasonably large block lists from peers. A legitimate
+// node syncing 6-second blocks produces at most ~14400 blocks/day; a
+// response with more than 50000 blocks is either a buggy peer or an attack.
+const maxBlocksPerSync = 50000
+if len(blocks) > maxBlocksPerSync {
+fmt.Printf("[HTTP-SYNC] Peer %s returned %d blocks (max %d) -- skipping\n", nodeURL, len(blocks), maxBlocksPerSync)
+backoff *= 2
+if backoff > 60*time.Second { backoff = 60 * time.Second }
+ticker.Reset(backoff)
+continue
+}
 // Reset backoff on success
 if backoff > 6*time.Second { backoff = 6 * time.Second; ticker.Reset(backoff) }
 

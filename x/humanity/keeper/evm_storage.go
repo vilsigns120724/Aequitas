@@ -486,12 +486,15 @@ func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 		return nil, err
 	}
 
+	// P2-AUDIT: Do NOT call LoadNonce per account — that issues N PostgreSQL
+	// queries (one per account) and creates a DoS vector. EVM nonces for
+	// sends are managed by the RPC layer; the legacy StateDB doesn't need
+	// per-account nonces for call execution. Matches the fix in newStateDB.
 	for _, acc := range cs.GetAllAccounts() {
 		addr := common.HexToAddress(acc.Address)
 		decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 		wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), decimals)
 		sdb.SetBalance(addr, wei)
-		sdb.SetNonce(addr, cs.LoadNonce(acc.Address))
 	}
 
 	for _, addrStr := range cs.GetAllContracts() {
@@ -539,9 +542,13 @@ func (cs *ChainState) SaveBioRegistration(commitment, walletAddress, txHash, bio
 			return fmt.Errorf("biometric already registered to %s", existing)
 		}
 	}
+	// P2-AUDIT: Use ON CONFLICT DO NOTHING to protect the first successful
+	// registration from being overwritten by a concurrent/replay registration
+	// with the same commitment. The contract itself enforces commitment uniqueness
+	// on-chain; the DB row is just a mirror for polling — never the authority.
 	_, err := cs.db.Exec(
 		`INSERT INTO bio_registrations (commitment, wallet_address, tx_hash, bio_hash) VALUES ($1, $2, $3, $4)
- ON CONFLICT (commitment) DO UPDATE SET wallet_address = $2, tx_hash = $3, bio_hash = $4`,
+ ON CONFLICT (commitment) DO NOTHING`,
 		commitment, walletAddress, txHash, bioHash,
 	)
 	return err

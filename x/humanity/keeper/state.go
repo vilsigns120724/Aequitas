@@ -277,12 +277,17 @@ cs.InitGiniSnapshotsTable()
 cs.InitPriceSnapshotsTable()}
 
 // setConfigValue persists a key/value pair to chain_config (upsert).
+// P2-AUDIT: Log errors instead of silently ignoring them. A failed write to
+// last_ubi_at would allow double-distribution if the DB is temporarily
+// unavailable — the error must be visible in logs for operators to act on.
 func (cs *ChainState) setConfigValue(key, value string) {
 if cs.db == nil {
 return
 }
-cs.db.Exec(`INSERT INTO chain_config (key, value) VALUES ($1, $2)
-ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value)
+if _, err := cs.db.Exec(`INSERT INTO chain_config (key, value) VALUES ($1, $2)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value); err != nil {
+fmt.Printf("[DB] Warning: setConfigValue(%q) failed: %v\n", key, err)
+}
 }
 
 // getConfigValue reads a key from chain_config, returning "" if missing.
@@ -528,7 +533,12 @@ func (cs *ChainState) save() {
 if cs.useDB {
 return // DB saves immediately in RegisterHuman/Transfer
 }
+// P2-AUDIT: Take a snapshot under RLock before serializing. Without the lock,
+// a concurrent write to cs.accounts (Transfer, RegisterHuman) could produce
+// a partially-modified map view in the JSON output.
+cs.mu.RLock()
 data, _ := json.Marshal(cs.accounts)
+cs.mu.RUnlock()
 os.WriteFile("/tmp/aequitas_state.json", data, 0644)
 }
 
@@ -770,20 +780,13 @@ fmt.Println("[VALIDATORS] No registered node operators — pool left untouched")
 return
 }
 
-cs.mu.Lock()
-defer cs.mu.Unlock()
-
-poolAcc, ok := cs.accounts[validatorsPoolAddr]
-if !ok || poolAcc.Balance <= 0 {
-fmt.Println("[VALIDATORS] Pool is empty — nothing to distribute today")
-return
-}
-
-total := poolAcc.Balance.Float()
-// Query block counts for proportional distribution
+// P1-AUDIT: Query block counts BEFORE acquiring cs.mu. The old code ran this
+// DB query inside the lock, creating the same deadlock risk warned about above
+// for GetRegisteredNodes. Move it here so the lock section is DB-query-free.
 type nodeShare struct{ wallet string; blocks int64 }
 var nodeShares []nodeShare
 var totalBlocks int64
+if cs.db != nil {
 rows, _ := cs.db.Query(`SELECT wallet_address, blocks_produced FROM registered_nodes WHERE wallet_address = ANY($1)`, pq.Array(nodes))
 if rows != nil {
 for rows.Next() {
@@ -795,9 +798,21 @@ totalBlocks += b
 }
 rows.Close()
 }
+}
 if len(nodeShares) == 0 {
 for _, w := range nodes { nodeShares = append(nodeShares, nodeShare{w, 1}); totalBlocks++ }
 }
+
+cs.mu.Lock()
+defer cs.mu.Unlock()
+
+poolAcc, ok := cs.accounts[validatorsPoolAddr]
+if !ok || poolAcc.Balance <= 0 {
+fmt.Println("[VALIDATORS] Pool is empty — nothing to distribute today")
+return
+}
+
+total := poolAcc.Balance.Float()
 // P0-2: credit recipients BEFORE zeroing the pool so a crash mid-loop
 // leaves money in the pool (re-distributable) rather than losing it.
 for _, ns := range nodeShares {
@@ -1712,7 +1727,10 @@ return fmt.Errorf("faucet already claimed")
 }
 
 acc.FaucetClaimed = true
-acc.TUsdBalance = NewDecimal(tusdFaucetAmount)
+// P2-AUDIT: Add to existing balance instead of overwriting — a user who had
+// received tUSD via another path (pool payout, migration) before claiming the
+// faucet would have had their entire tUSD balance zeroed by the old Set.
+acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(tusdFaucetAmount))
 cs.saveAccountToDB(acc)
 cs.save()
 

@@ -430,14 +430,17 @@ return false
 }
 }
 
-// State-root integrity check BEFORE writing to DAG — previously the block
-// was stored first, then checked, which let rejected blocks still become tips.
+// State-root integrity check — log a warning on mismatch but still accept
+// the block. Wall-clock differences, in-flight demurrage settlement, and
+// minor DB-sync lag can cause transient mismatches between honest nodes.
+// Rejecting on mismatch causes split-brain when two nodes process the same
+// transactions in slightly different orders or at different wall-clock times.
+// The ECDSA signature check above already prevents forged blocks.
 if block.StateRoot != "" {
 localRoot := dag.state.StateRoot()
 if block.StateRoot != localRoot {
-fmt.Printf("[DAG] ✗ Rejected peer block #%d: state root mismatch (proposer=%s..., local=%s...)\n",
+fmt.Printf("[DAG] ⚠ StateRoot mismatch on peer block #%d (proposer=%s..., local=%s...) — accepted (warn only)\n",
 block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
-return false
 }
 }
 

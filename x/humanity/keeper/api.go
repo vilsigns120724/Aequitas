@@ -403,8 +403,12 @@ json.NewEncoder(w).Encode(map[string]interface{}{"used": wallet != ""})
 // against the contract's own bookkeeping, but no longer used by the
 // balance-facing endpoints above — see handleBalance for why.
 func (a *APIServer) queryV7Status(wallet string) (float64, bool) {
-evmRPC := NewEVMRPCServer(a.blockchain, a.state)
-if evmRPC.evm == nil {
+// P2-AUDIT: Use the shared evmRPC instance instead of creating a new one per
+// call. Creating a new EVMRPCServer allocates a new EVM engine (including DB
+// initialization) on every invocation — wasteful and bypasses the shared nonce
+// map, which could cause nonce desync if this path ever submits transactions.
+evmRPC := a.evmRPC
+if evmRPC == nil || evmRPC.evm == nil {
 return 0, false
 }
 

@@ -77,6 +77,13 @@ if err := json.Unmarshal(body, &batch); err != nil {
 writeError(w, -32700, "Parse error", nil)
 return
 }
+// P2-AUDIT: Limit batch size to prevent DoS via 1 MB batch of expensive calls.
+// 100 requests per batch is generous for any legitimate client use case.
+const maxBatchSize = 100
+if len(batch) > maxBatchSize {
+writeError(w, -32600, fmt.Sprintf("batch too large: max %d requests, got %d", maxBatchSize, len(batch)), nil)
+return
+}
 var results []interface{}
 for _, raw := range batch {
 result := s.handleSingle(raw)
@@ -382,22 +389,20 @@ txHash, senderAddr, tx.To(), len(tx.Data()))
 // Check tx.Nonce() against the stored per-account nonce and atomically
 // reserve it before executing. Without this, the same signed transaction
 // can be replayed repeatedly until the account balance is exhausted.
-// P0-6: pre-load nonce from DB WITHOUT holding the mutex so blocking
-// DB I/O does not stall all other concurrent RPC handlers.
+//
+// P0-AUDIT: The previous two-lock pattern had a TOCTOU race: two goroutines
+// for the same sender could both read nonce=0 from the map (first lock),
+// both load nonce=0 from DB (DB read outside lock), and then both pass the
+// second lock's check — both reserving nonce 0 and executing the same tx.
+// Fix: hold the mutex for the entire DB-load + check + reserve sequence.
 s.mu.Lock()
+// Populate from DB on first sight to recover correct nonce after restart.
+if s.nonces[senderAddr] == 0 {
+if dbNonce := s.state.LoadNonce(senderAddr); dbNonce > 0 {
+s.nonces[senderAddr] = dbNonce
+}
+}
 storedNonce := s.nonces[senderAddr]
-s.mu.Unlock()
-if storedNonce == 0 {
-// First time this sender is seen — read from persistent store.
-storedNonce = s.state.LoadNonce(senderAddr)
-}
-s.mu.Lock()
-// Re-check: another goroutine may have populated the cache while we
-// were waiting for the DB read above.
-if cached := s.nonces[senderAddr]; cached > storedNonce {
-storedNonce = cached
-}
-s.nonces[senderAddr] = storedNonce
 txNonce := tx.Nonce()
 if txNonce < storedNonce {
 s.mu.Unlock()
@@ -629,6 +634,22 @@ return nil, nil
 }
 var txHash string
 json.Unmarshal(params[0], &txHash)
+txHash = strings.ToLower(txHash)
+
+// P2-AUDIT: Return the real sender and destination stored at submission time
+// instead of always returning the zero address. MetaMask and block explorers
+// use this to display the correct from/to fields for a transaction.
+s.mu.Lock()
+fromAddr := s.txSenders[txHash]
+toAddr := s.txTos[txHash]
+s.mu.Unlock()
+if fromAddr == "" {
+fromAddr = "0x0000000000000000000000000000000000000000"
+}
+var toField interface{} = nil
+if toAddr != "" {
+toField = toAddr
+}
 
 return map[string]interface{}{
 "hash":             txHash,
@@ -636,8 +657,8 @@ return map[string]interface{}{
 "blockHash":        "0x" + strings.Repeat("0", 63) + "1",
 "blockNumber":      "0x1",
 "transactionIndex": "0x0",
-"from":             "0x0000000000000000000000000000000000000000",
-"to":               nil,
+"from":             fromAddr,
+"to":               toField,
 "value":            "0x0",
 "gas":              "0x5B8D80",
 "gasPrice":         "0x0",

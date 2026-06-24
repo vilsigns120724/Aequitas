@@ -654,6 +654,12 @@ func parseUint2x2(values [][]string) ([2][2]*big.Int, error) {
 			if !ok {
 				return out, fmt.Errorf("invalid number at [%d][%d]: %s", i, j, values[i][j])
 			}
+			// P2-AUDIT: Reject values exceeding uint256 — ABI-encode would
+			// silently truncate them, letting attackers pass oversize values
+			// that appear to be valid ZK proof components but are not.
+			if n.Sign() < 0 || n.Cmp(uint256Max) > 0 {
+				return out, fmt.Errorf("value at [%d][%d] exceeds uint256 range", i, j)
+			}
 			out[i][j] = n
 		}
 	}

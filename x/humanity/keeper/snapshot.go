@@ -104,17 +104,19 @@ Version: SnapshotVersion,
 func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) error {
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	// Append snapshot token if configured
-	url := peerURL
+	// P2-AUDIT: Send token in Authorization header instead of URL query parameter.
+	// Tokens in URLs land in server/proxy access logs and browser history,
+	// creating unnecessary credential exposure. Bearer header is already
+	// accepted by handleSnapshot on the server side.
+	req, reqErr := http.NewRequest("GET", peerURL, nil)
+	if reqErr != nil {
+		return fmt.Errorf("request build failed: %w", reqErr)
+	}
 	if token := os.Getenv("SNAPSHOT_TOKEN"); token != "" {
-		if strings.Contains(url, "?") {
-			url += "&token=" + token
-		} else {
-			url += "?token=" + token
-		}
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := client.Get(url)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
@@ -176,28 +178,38 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		fmt.Printf("[SNAPSHOT] ✓ Signature verified (signer: %s)\n", recovered)
 	}
 
-	// Apply accounts
+	// Apply accounts: update in-memory state under lock, then persist to DB
+	// WITHOUT holding the lock — saveAccountToDB issues DB queries which must
+	// not run while cs.mu is held (deadlock risk if the DB driver acquires
+	// internal locks that chain back into any code that needs cs.mu).
+	// P1-AUDIT: Split the lock into two phases: in-memory update (under lock)
+	// and DB write (outside lock). Collect accounts to persist, release lock,
+	// then write them. This eliminates the deadlock window.
+	var accountsToPersist []*AccountState
 	cs.mu.Lock()
 	for _, acc := range snap.Accounts {
 		acc.Address = strings.ToLower(acc.Address)
 		cs.accounts[acc.Address] = acc
-		if cs.db != nil {
-			cs.saveAccountToDB(acc)
-		}
+		accountsToPersist = append(accountsToPersist, acc)
 	}
-	// Apply pool
+	// Apply pool in-memory
 	if snap.Pool != nil {
 		cs.pool = snap.Pool
-		cs.savePoolToDB()
 	}
-	// Apply nullifiers
+	// Apply nullifiers in-memory
 	for nullifier, wallet := range snap.Nullifiers {
 		cs.nullifiers[nullifier] = wallet
 	}
 	cs.mu.Unlock()
 
-	// Persist nullifiers to DB
+	// Persist accounts to DB outside lock
 	if cs.db != nil {
+		for _, acc := range accountsToPersist {
+			cs.saveAccountToDB(acc)
+		}
+		// Persist pool outside lock
+		cs.savePoolToDB()
+		// Persist nullifiers to DB
 		for nullifier, wallet := range snap.Nullifiers {
 			cs.db.Exec(
 				`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT DO NOTHING`,

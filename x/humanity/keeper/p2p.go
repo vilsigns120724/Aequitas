@@ -163,7 +163,11 @@ if err != nil {
 return
 }
 defer s.Close()
-s.Write(data)
+// P3-AUDIT: log write errors so network issues are visible in logs.
+if _, writeErr := s.Write(data); writeErr != nil {
+fmt.Printf("[BLOCK-SYNC] ✗ Failed to send block #%d to %s: %v\n", block.Height, pid.String()[:12], writeErr)
+return
+}
 fmt.Printf("[BLOCK-SYNC] → Sent block #%d to %s\n", block.Height, pid.String()[:12])
 }(peerID)
 }
