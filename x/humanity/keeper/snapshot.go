@@ -99,13 +99,19 @@ Version: SnapshotVersion,
 	return snap
 }
 
-// applySnapshot downloads, verifies, and merges a snapshot into the local state.
-// Safe to call on a node that already has data: accounts are upserted (snapshot
-// wins for balances — primary is authoritative), nullifiers and bio-registrations
-// use ON CONFLICT DO NOTHING so no existing entries are deleted.
-// expectedSignerHex is mandatory when non-empty — a missing or wrong signature
-// causes the import to be rejected entirely.
-func (cs *ChainState) applySnapshot(peerURL, expectedSignerHex string) error {
+// ImportSnapshotFromURL downloads a StateSnapshot from peerURL and applies it
+// to cs. Only imports if the local DB is empty (TotalHumans == 0) to avoid
+// overwriting an already-populated state. Verifies the snapshot signature
+// against expectedSignerHex if non-empty.
+func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) error {
+	if cs.TotalHumans() > 0 {
+		fmt.Printf("[SNAPSHOT] DB already populated (%d humans) — skipping bootstrap import\n", cs.TotalHumans())
+		return nil
+	}
+	return cs.downloadAndApplySnapshot(peerURL, expectedSignerHex)
+}
+
+func (cs *ChainState) downloadAndApplySnapshot(peerURL, expectedSignerHex string) error {
 	client := &http.Client{Timeout: 60 * time.Second}
 
 	req, reqErr := http.NewRequest("GET", peerURL, nil)
@@ -223,30 +229,3 @@ func (cs *ChainState) applySnapshot(peerURL, expectedSignerHex string) error {
 	return nil
 }
 
-// ImportSnapshotFromURL is for initial bootstrap: silently skips if the local
-// DB is already populated so an accidental restart doesn't re-import.
-func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) error {
-	if cs.TotalHumans() > 0 {
-		fmt.Printf("[SNAPSHOT] DB already populated (%d humans) — skipping one-shot bootstrap\n", cs.TotalHumans())
-		return nil
-	}
-	return cs.applySnapshot(peerURL, expectedSignerHex)
-}
-
-// StartPeriodicStateSync starts a background goroutine that merges fresh state
-// from the primary node every interval. This keeps secondary nodes in sync
-// even after new humans register — the initial bootstrap only covers startup.
-// The primary node must have SNAPSHOT_TOKEN set; the secondary must set the
-// same token plus BOOTSTRAP_SIGNER so the snapshot signature is verified.
-func (cs *ChainState) StartPeriodicStateSync(snapshotURL, signerHex string, interval time.Duration) {
-	go func() {
-		fmt.Printf("[STATE-SYNC] Starting periodic state sync from %s every %v\n", snapshotURL, interval)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for range ticker.C {
-			if err := cs.applySnapshot(snapshotURL, signerHex); err != nil {
-				fmt.Printf("[STATE-SYNC] ✗ Sync failed: %v\n", err)
-			}
-		}
-	}()
-}

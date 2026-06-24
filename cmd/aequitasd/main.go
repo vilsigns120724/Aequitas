@@ -84,29 +84,21 @@ fmt.Println()
 
 p2pNode.SetDAG(bc)
 
-	// State sync from primary node.
-	// BOOTSTRAP_SNAPSHOT_URL = primary node's /api/snapshot endpoint.
-	// SNAPSHOT_TOKEN         = must match the primary's SNAPSHOT_TOKEN env var.
-	// BOOTSTRAP_SIGNER       = primary's signing address from /api/status → signing_address.
-	//
-	// On startup: immediate one-shot import if DB is empty (fresh node).
-	// Always:     periodic sync every 10 minutes so new registrations on the
-	//             primary propagate to all secondary nodes automatically.
-	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" {
+	// Bootstrap from a peer snapshot if this is a fresh node (no humans in DB).
+	// Set BOOTSTRAP_SNAPSHOT_URL to the primary node's /api/snapshot endpoint.
+	// Set SNAPSHOT_TOKEN to match the primary node's SNAPSHOT_TOKEN env var.
+	// Set BOOTSTRAP_SIGNER to the primary node's signing address (0x...) to
+	// verify the snapshot's ECDSA signature before importing.
+	// After startup, ongoing state sync happens via block TX replay in AddPeerBlock.
+	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && chainState.TotalHumans() == 0 {
 		expectedSigner := os.Getenv("BOOTSTRAP_SIGNER")
 		if expectedSigner == "" {
-			fmt.Println("[BOOTSTRAP] ✗ BOOTSTRAP_SIGNER not set — state sync disabled. Set it to the value of signing_address from https://aequitas.digital/api/status")
+			fmt.Println("[BOOTSTRAP] ✗ Refused: BOOTSTRAP_SIGNER must be set to the primary node's signing address (0x...)")
 		} else {
-			// Immediate startup import for fresh nodes.
-			if chainState.TotalHumans() == 0 {
-				fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)
-				if err := chainState.ImportSnapshotFromURL(bootstrapURL, expectedSigner); err != nil {
-					fmt.Printf("[BOOTSTRAP] ✗ Import failed: %v\n", err)
-				}
+			fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)
+			if err := chainState.ImportSnapshotFromURL(bootstrapURL, expectedSigner); err != nil {
+				fmt.Printf("[BOOTSTRAP] ✗ Import failed: %v\n", err)
 			}
-			// Periodic sync: keeps secondary nodes current as new humans register
-			// on the primary. Runs every 10 minutes regardless of current state.
-			chainState.StartPeriodicStateSync(bootstrapURL, expectedSigner, 10*time.Minute)
 		}
 	}
 

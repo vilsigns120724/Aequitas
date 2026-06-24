@@ -469,13 +469,31 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// Always save effectiveNullifier (the ZK-derived one when using v2 circuit),
 	// not just req.Nullifier — req.Nullifier may be empty or the old SHA256 value
 	// while effectiveNullifier is the one actually stored on-chain.
-	if effectiveNullifier != "" {
-		a.state.SaveNullifier(effectiveNullifier, wallet)
+	nullifierToStore := effectiveNullifier
+	if nullifierToStore != "" {
+		a.state.SaveNullifier(nullifierToStore, wallet)
 		fmt.Printf("[NULLIFIER] ✓ Stored effectiveNullifier for %s\n", wallet)
 	} else if req.Nullifier != "" {
-		a.state.SaveNullifier(req.Nullifier, wallet)
+		nullifierToStore = req.Nullifier
+		a.state.SaveNullifier(nullifierToStore, wallet)
 		fmt.Printf("[NULLIFIER] ✓ Stored nullifier for %s\n", wallet)
 	}
+
+	// Add a register_human TX to the DAG so secondary nodes learn about this
+	// registration via normal block sync and can apply it to their own state.
+	// Nullifier + Commitment are included so the secondary can replay the full
+	// state change (balance + nullifier + bio-registration) idempotently.
+	commitment := ""
+	if len(req.PubSignals) > 0 {
+		commitment = req.PubSignals[0]
+	}
+	a.blockchain.AddTransaction(Transaction{
+		Type:       "register_human",
+		Wallet:     wallet,
+		TxHash:     txHash,
+		Nullifier:  nullifierToStore,
+		Commitment: commitment,
+	})
 
 	return txHash, nil
 }
