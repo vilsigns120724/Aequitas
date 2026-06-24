@@ -274,7 +274,9 @@ value TEXT NOT NULL
 cs.InitSwapNoncesTable()
 cs.InitValidatorKeysTable()
 cs.InitGiniSnapshotsTable()
-cs.InitPriceSnapshotsTable()}
+cs.InitPriceSnapshotsTable()
+cs.InitGuardianTables()
+}
 
 // setConfigValue persists a key/value pair to chain_config (upsert).
 // P2-AUDIT: Log errors instead of silently ignoring them. A failed write to

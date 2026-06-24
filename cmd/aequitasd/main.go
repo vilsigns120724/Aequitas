@@ -199,6 +199,10 @@ if chainState.TryLockDistribution() {
 chainState.DistributeUBIPool()
 chainState.DistributeValidatorsPool()
 chainState.DistributeLPPool()
+// Move inactive wallets to escrow, then release long-sitting escrow
+// balances to the UBI pool for the next distribution cycle.
+chainState.CheckAndMoveToEscrow()
+chainState.ReleaseEscrowToUBI()
 // Emit a ubi_distribution TX so the block record shows a distribution occurred.
 // Secondary nodes ignore this TX type (their schedulers handle distribution independently).
 bc.AddTransaction(keeper.Transaction{
