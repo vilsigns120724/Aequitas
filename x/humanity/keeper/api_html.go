@@ -4994,7 +4994,9 @@ async function connectWalletAndProve() {
       body: JSON.stringify({ bio: pendingBioHash, salt: salt, wallet: waddr })
     });
     if (!proveResp.ok) {
-      const err = await proveResp.json();
+      let err = {};
+      try { err = await proveResp.json(); } catch(e) { err = { error: 'HTTP ' + proveResp.status }; }
+      addLog('[DEBUG] /api/prove status=' + proveResp.status + ' body=' + JSON.stringify(err).slice(0,120), 'info');
       if (err.registered) {
         addLog('This identity is already registered.', 'ok');
         document.getElementById('btn-reg').disabled = true;
