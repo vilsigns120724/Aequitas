@@ -1893,6 +1893,158 @@ cs.saveAccountToDB(acc)
 }
 }
 
+// -- SECONDARY-NODE REPLAY DELTA METHODS -----------------------------------
+// These methods are called exclusively by replayTransactions on secondary nodes.
+// They apply pre-computed amounts directly, without re-running business logic,
+// to avoid pool-state divergence and floating-point ordering differences.
+
+// ApplyTransferDelta directly adjusts AEQ balances by the net amount that
+// reached the recipient (after any fee that was applied on the primary).
+// Used by secondary nodes replaying transfer TXs from blocks.
+func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount float64) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	from = strings.ToLower(from)
+	to = strings.ToLower(to)
+	fromAcc, ok := cs.accounts[from]
+	if !ok {
+		return fmt.Errorf("from account not found: %s", from)
+	}
+	if fromAcc.Balance.Float() < netAmount {
+		return fmt.Errorf("insufficient balance (have %.6f, need %.6f)", fromAcc.Balance.Float(), netAmount)
+	}
+	fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - netAmount))
+	go cs.saveAccountToDB(fromAcc)
+
+	if _, ok := cs.accounts[to]; !ok {
+		cs.accounts[to] = &AccountState{Address: to}
+	}
+	toAcc := cs.accounts[to]
+	toAcc.Balance = NewDecimal(round6(toAcc.Balance.Float() + netAmount))
+	go cs.saveAccountToDB(toAcc)
+	return nil
+}
+
+// ApplySwapDelta adjusts balances after a swap, using the exact amountIn/amountOut
+// stored in the block TX. aeqToTusd=true: wallet loses amountIn AEQ, gains amountOut tUSD.
+// aeqToTusd=false: wallet loses amountIn tUSD, gains amountOut AEQ.
+// Pool reserves are reloaded from DB on the secondary before each real swap anyway.
+func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64, aeqToTusd bool) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	wallet = strings.ToLower(wallet)
+	acc, ok := cs.accounts[wallet]
+	if !ok {
+		return fmt.Errorf("account not found: %s", wallet)
+	}
+	if aeqToTusd {
+		if acc.Balance.Float() < amountIn {
+			return fmt.Errorf("insufficient AEQ balance")
+		}
+		acc.Balance = NewDecimal(round6(acc.Balance.Float() - amountIn))
+		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + amountOut))
+	} else {
+		if acc.TUsdBalance.Float() < amountIn {
+			return fmt.Errorf("insufficient tUSD balance")
+		}
+		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - amountIn))
+		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountOut))
+	}
+	go cs.saveAccountToDB(acc)
+	return nil
+}
+
+// AddLiquidityDelta applies an add-liquidity operation on secondary nodes using
+// the exact stored amounts. Reloads pool from DB first for consistency.
+func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount float64) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	wallet = strings.ToLower(wallet)
+	acc, ok := cs.accounts[wallet]
+	if !ok {
+		return fmt.Errorf("account not found: %s", wallet)
+	}
+	cs.reloadPoolFromDB()
+	if acc.Balance.Float() < aeqAmount {
+		return fmt.Errorf("insufficient AEQ balance")
+	}
+	if acc.TUsdBalance.Float() < tusdAmount {
+		return fmt.Errorf("insufficient tUSD balance")
+	}
+
+	var mintedShares float64
+	if cs.pool != nil && cs.pool.ReserveAEQ.Float() > 0 && cs.pool.TotalLPShares.Float() > 0 {
+		mintedShares = (aeqAmount / cs.pool.ReserveAEQ.Float()) * cs.pool.TotalLPShares.Float()
+	} else {
+		mintedShares = math.Sqrt(aeqAmount * tusdAmount)
+	}
+
+	acc.Balance = NewDecimal(round6(acc.Balance.Float() - aeqAmount))
+	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - tusdAmount))
+	acc.LPShares = NewDecimal(round6(acc.LPShares.Float() + mintedShares))
+	if cs.pool != nil {
+		cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() + aeqAmount))
+		cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + tusdAmount))
+		cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() + mintedShares))
+		cs.savePoolToDB()
+	}
+	go cs.saveAccountToDB(acc)
+	return nil
+}
+
+// RemoveLiquidityDelta burns sharesToBurn LP shares and returns proportional
+// pool reserves to the wallet, using the secondary's current pool state.
+func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn float64) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	wallet = strings.ToLower(wallet)
+	acc, ok := cs.accounts[wallet]
+	if !ok {
+		return fmt.Errorf("account not found: %s", wallet)
+	}
+	cs.reloadPoolFromDB()
+	if cs.pool == nil || cs.pool.TotalLPShares.Float() <= 0 {
+		return fmt.Errorf("liquidity pool is empty")
+	}
+	if acc.LPShares.Float() < sharesToBurn {
+		return fmt.Errorf("insufficient LP shares")
+	}
+	fraction := sharesToBurn / cs.pool.TotalLPShares.Float()
+	outAEQ := round6(cs.pool.ReserveAEQ.Float() * fraction)
+	outTUSD := round6(cs.pool.ReserveTUSD.Float() * fraction)
+
+	acc.LPShares = NewDecimal(round6(acc.LPShares.Float() - sharesToBurn))
+	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
+	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
+	cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() - outAEQ))
+	cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() - outTUSD))
+	cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
+	cs.savePoolToDB()
+	go cs.saveAccountToDB(acc)
+	return nil
+}
+
+// ApplyFaucetDelta credits faucetAmount tUSD to wallet and marks FaucetClaimed.
+// Used by secondary nodes replaying faucet TXs from blocks.
+func (cs *ChainState) ApplyFaucetDelta(wallet string, faucetAmount float64) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	wallet = strings.ToLower(wallet)
+	if _, ok := cs.accounts[wallet]; !ok {
+		cs.accounts[wallet] = &AccountState{Address: wallet}
+	}
+	acc := cs.accounts[wallet]
+	if acc.FaucetClaimed {
+		return nil // idempotent: already applied
+	}
+	acc.FaucetClaimed = true
+	acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(faucetAmount))
+	go cs.saveAccountToDB(acc)
+	return nil
+}
+
+
+
 
 // V6 Contract State Mirror - persists EVM contract state to PostgreSQL
 func (cs *ChainState) InitV6StateTables() {

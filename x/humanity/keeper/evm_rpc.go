@@ -441,6 +441,15 @@ return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 // Sync updated balances to EVM storage so both ledgers agree.
 s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
 s.mu.Lock(); s.txStatus[txHash] = true; s.mu.Unlock()
+if s.dag != nil {
+	s.dag.AddTransaction(Transaction{
+		Type:   "transfer",
+		Wallet: senderAddr,
+		To:     toAddr,
+		Amount: valueFloat,
+		TxHash: txHash,
+	})
+}
 fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
 return txHash, nil
 }
@@ -464,6 +473,23 @@ return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 }
 s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
 s.mu.Lock(); s.txStatus[txHash] = true; s.mu.Unlock()
+if s.dag != nil {
+	// Record the net amount the recipient receives (gross minus V7 fee)
+	// so secondary nodes can replay with ApplyTransferDelta.
+	v7Fee := calcV7Fee(s.state.GetBalance(senderAddr)+amountFloat, amountFloat,
+		float64(s.state.TotalHumans())*1000.0)
+	netAmt := amountFloat - v7Fee
+	if netAmt < 0 {
+		netAmt = 0
+	}
+	s.dag.AddTransaction(Transaction{
+		Type:   "transfer",
+		Wallet: senderAddr,
+		To:     toAddr,
+		Amount: netAmt,
+		TxHash: txHash,
+	})
+}
 fmt.Printf("[RPC] ✓ Token transfer %.4f AEQ (with V7 fee): %s → %s\n", amountFloat, senderAddr, toAddr)
 return txHash, nil
 }

@@ -199,6 +199,12 @@ if chainState.TryLockDistribution() {
 chainState.DistributeUBIPool()
 chainState.DistributeValidatorsPool()
 chainState.DistributeLPPool()
+// Emit a ubi_distribution TX so the block record shows a distribution occurred.
+// Secondary nodes ignore this TX type (their schedulers handle distribution independently).
+bc.AddTransaction(keeper.Transaction{
+	Type:   "ubi_distribution",
+	Wallet: "0x0000000000000000000000000000000000000000",
+})
 fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
 } else {
 fmt.Printf("[POOLS] Another node ran distribution first — skipping\n")

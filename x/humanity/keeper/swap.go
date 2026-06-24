@@ -142,6 +142,16 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	txType := "swap_aeq_tusd"
+	if req.Direction == "tusd_to_aeq" {
+		txType = "swap_tusd_aeq"
+	}
+	a.blockchain.AddTransaction(Transaction{
+		Type:      txType,
+		Wallet:    wallet,
+		Amount:    req.Amount,
+		AmountOut: amountOut,
+	})
 	json.NewEncoder(w).Encode(SwapResponse{
 		Success:   true,
 		Message:   "swap successful",
@@ -214,6 +224,12 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
+	a.blockchain.AddTransaction(Transaction{
+		Type:      "add_liquidity",
+		Wallet:    wallet,
+		Amount:    req.AmountAEQ,
+		AmountOut: req.AmountTUSD,
+	})
 	json.NewEncoder(w).Encode(AddLiquidityResponse{Success: true, Message: "liquidity added"})
 }
 
@@ -282,6 +298,11 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
+	a.blockchain.AddTransaction(Transaction{
+		Type:   "remove_liquidity",
+		Wallet: wallet,
+		Amount: req.SharesToBurn,
+	})
 	json.NewEncoder(w).Encode(RemoveLiquidityResponse{
 		Success:    true,
 		Message:    "liquidity removed",
@@ -378,6 +399,11 @@ func (a *APIServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.blockchain.AddTransaction(Transaction{
+		Type:   "faucet",
+		Wallet: wallet,
+		Amount: tusdFaucetAmount,
+	})
 	json.NewEncoder(w).Encode(FaucetResponse{Success: true, Message: "faucet claimed", Granted: tusdFaucetAmount})
 }
 

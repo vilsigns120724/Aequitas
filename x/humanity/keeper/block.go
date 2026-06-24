@@ -20,7 +20,9 @@ import (
 type Transaction struct {
 	Type       string  `json:"type"`
 	Wallet     string  `json:"wallet"`
+	To         string  `json:"to,omitempty"`          // transfer destination
 	Amount     float64 `json:"amount,omitempty"`
+	AmountOut  float64 `json:"amount_out,omitempty"`  // swap output amount
 	TxHash     string  `json:"tx_hash"`
 	// Nullifier and Commitment are set on register_human TXs so secondary
 	// nodes can apply the registration to their local state when they receive
@@ -432,7 +434,7 @@ return false
 // inject unrecognised state-change commands into the audit log.
 for _, tx := range block.Transactions {
 switch tx.Type {
-case "", "register_human", "transfer", "swap", "add_liquidity", "remove_liquidity", "faucet":
+case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution":
 // known / empty — OK
 default:
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
@@ -471,7 +473,7 @@ dag.height = block.Height
 // Replay register_human TXs outside the DAG lock to avoid holding it
 // during DB writes. The nullifier uniqueness check makes this idempotent.
 if len(block.Transactions) > 0 {
-	go dag.replayRegistrations(block)
+	go dag.replayTransactions(block)
 }
 
 fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, len(dag.tips))
@@ -530,63 +532,122 @@ tips = append(tips, hash)
 return tips
 }
 
-// replayRegistrations applies register_human TXs from a peer block to the
-// local state. This is safe because:
-//   - The block's ECDSA signature was already verified against an authorized
-//     validator before this function is reached.
-//   - The nullifier uniqueness check makes the operation idempotent: if a
-//     human was already registered (e.g. on the primary and then synced via
-//     a previous block), the insert is a no-op.
-//   - ZK proof re-verification is not needed: we trust authorized validators
-//     to have verified the proof when they accepted the registration — the
-//     same trust assumption as in any blockchain system.
+// replayTransactions applies all TX types from a peer block to the local
+// state. The block's ECDSA signature was already verified against an
+// authorized validator before this function is reached.
 //
-// This is the mechanism that keeps secondary nodes in sync: every registration
-// on the primary produces a block TX; secondary nodes replay it and their state
-// converges, eliminating StateRoot mismatches.
-func (dag *BlockDAG) replayRegistrations(block *Block) {
+// Design principle: secondary nodes apply the STORED amounts directly
+// rather than re-running business logic. This avoids divergence from
+// pool-state differences, floating-point order sensitivity, and
+// demurrage timing differences between nodes.
+func (dag *BlockDAG) replayTransactions(block *Block) {
 	for _, tx := range block.Transactions {
-		if tx.Type != "register_human" {
-			continue
-		}
 		wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
-		nullifier := strings.TrimSpace(tx.Nullifier)
-		commitment := strings.TrimSpace(tx.Commitment)
-		if wallet == "" || nullifier == "" {
-			fmt.Printf("[REPLAY] ⚠ Skipping register_human in block #%d: missing wallet or nullifier (older node version?)\n", block.Height)
-			continue
+		switch tx.Type {
+
+		case "register_human":
+			nullifier := strings.TrimSpace(tx.Nullifier)
+			commitment := strings.TrimSpace(tx.Commitment)
+			if wallet == "" || nullifier == "" {
+				fmt.Printf("[REPLAY] ⚠ Skipping register_human in block #%d: missing wallet or nullifier (older node version?)\n", block.Height)
+				continue
+			}
+			if len(wallet) != 42 || wallet[:2] != "0x" {
+				fmt.Printf("[REPLAY] ✗ Rejecting register_human in block #%d: malformed wallet %q\n", block.Height, wallet)
+				continue
+			}
+			if len(nullifier) < 16 {
+				fmt.Printf("[REPLAY] ✗ Rejecting register_human in block #%d: nullifier too short %q\n", block.Height, nullifier)
+				continue
+			}
+			if !dag.state.TryClaimNullifier(nullifier, wallet) {
+				continue // already registered
+			}
+			if err := dag.state.RegisterHuman(wallet); err != nil {
+				fmt.Printf("[REPLAY] ✗ RegisterHuman %s: %v (nullifier recorded, balance NOT credited)\n", wallet, err)
+				continue
+			}
+			if commitment != "" {
+				_ = dag.state.SaveBioRegistration(commitment, wallet, tx.TxHash, "")
+			}
+			fmt.Printf("[REPLAY] ✓ Applied register_human for %s (block #%d)\n", wallet, block.Height)
+
+		case "transfer":
+			to := strings.ToLower(strings.TrimSpace(tx.To))
+			if wallet == "" || to == "" || tx.Amount <= 0 {
+				fmt.Printf("[REPLAY] ⚠ Skipping transfer in block #%d: missing fields\n", block.Height)
+				continue
+			}
+			if err := dag.state.ApplyTransferDelta(wallet, to, tx.Amount); err != nil {
+				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d)\n", wallet, to, tx.Amount, err, block.Height)
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Applied transfer %.6f AEQ: %s->%s (block #%d)\n", tx.Amount, wallet, to, block.Height)
+
+		case "swap_aeq_tusd":
+			if wallet == "" || tx.Amount <= 0 || tx.AmountOut <= 0 {
+				fmt.Printf("[REPLAY] ⚠ Skipping swap_aeq_tusd in block #%d: missing fields\n", block.Height)
+				continue
+			}
+			if err := dag.state.ApplySwapDelta(wallet, tx.Amount, tx.AmountOut, true); err != nil {
+				fmt.Printf("[REPLAY] ✗ swap_aeq_tusd %s: %v (block #%d)\n", wallet, err, block.Height)
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Applied swap_aeq_tusd %.6f AEQ->%.6f tUSD for %s (block #%d)\n", tx.Amount, tx.AmountOut, wallet, block.Height)
+
+		case "swap_tusd_aeq":
+			if wallet == "" || tx.Amount <= 0 || tx.AmountOut <= 0 {
+				fmt.Printf("[REPLAY] ⚠ Skipping swap_tusd_aeq in block #%d: missing fields\n", block.Height)
+				continue
+			}
+			if err := dag.state.ApplySwapDelta(wallet, tx.Amount, tx.AmountOut, false); err != nil {
+				fmt.Printf("[REPLAY] ✗ swap_tusd_aeq %s: %v (block #%d)\n", wallet, err, block.Height)
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Applied swap_tusd_aeq %.6f tUSD->%.6f AEQ for %s (block #%d)\n", tx.Amount, tx.AmountOut, wallet, block.Height)
+
+		case "add_liquidity":
+			if wallet == "" || tx.Amount <= 0 || tx.AmountOut <= 0 {
+				fmt.Printf("[REPLAY] ⚠ Skipping add_liquidity in block #%d: missing fields\n", block.Height)
+				continue
+			}
+			if err := dag.state.AddLiquidityDelta(wallet, tx.Amount, tx.AmountOut); err != nil {
+				fmt.Printf("[REPLAY] ✗ add_liquidity %s: %v (block #%d)\n", wallet, err, block.Height)
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Applied add_liquidity %.6f AEQ + %.6f tUSD for %s (block #%d)\n", tx.Amount, tx.AmountOut, wallet, block.Height)
+
+		case "remove_liquidity":
+			if wallet == "" || tx.Amount <= 0 {
+				fmt.Printf("[REPLAY] ⚠ Skipping remove_liquidity in block #%d: missing fields\n", block.Height)
+				continue
+			}
+			if err := dag.state.RemoveLiquidityDelta(wallet, tx.Amount); err != nil {
+				fmt.Printf("[REPLAY] ✗ remove_liquidity %s: %v (block #%d)\n", wallet, err, block.Height)
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Applied remove_liquidity %.6f shares for %s (block #%d)\n", tx.Amount, wallet, block.Height)
+
+		case "faucet":
+			if wallet == "" || tx.Amount <= 0 {
+				fmt.Printf("[REPLAY] ⚠ Skipping faucet in block #%d: missing fields\n", block.Height)
+				continue
+			}
+			if err := dag.state.ApplyFaucetDelta(wallet, tx.Amount); err != nil {
+				fmt.Printf("[REPLAY] ✗ faucet %s: %v (block #%d)\n", wallet, err, block.Height)
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Applied faucet %.6f tUSD for %s (block #%d)\n", tx.Amount, wallet, block.Height)
+
+		case "ubi_distribution":
+			// UBI distribution is gated by TryLockDistribution() -- the same DB CAS
+			// that the primary uses. If the secondary already ran it (or the primary
+			// already claimed the lock), this is a no-op, which is correct.
+			fmt.Printf("[REPLAY] UBI distribution TX in block #%d -- local scheduler handles distribution independently\n", block.Height)
+
+		default:
+			// empty string or other unknown types are silently ignored
 		}
-		// Basic format guards: wallet must be a 42-char 0x address, nullifier
-		// must be a non-trivial hex string. These reject obviously malformed TXs
-		// that a compromised validator might inject without a valid ZK proof.
-		if len(wallet) != 42 || wallet[:2] != "0x" {
-			fmt.Printf("[REPLAY] ✗ Rejecting register_human in block #%d: malformed wallet %q\n", block.Height, wallet)
-			continue
-		}
-		if len(nullifier) < 16 {
-			fmt.Printf("[REPLAY] ✗ Rejecting register_human in block #%d: nullifier too short %q\n", block.Height, nullifier)
-			continue
-		}
-		// TryClaimNullifier atomically inserts the nullifier into the DB.
-		// Returns false if already present — eliminates the TOCTOU window
-		// between a separate check and insert (no concurrent double-credit possible).
-		// Nullifier is persisted BEFORE RegisterHuman so that a crash between
-		// the two calls leaves the nullifier recorded, preventing replay on restart.
-		if !dag.state.TryClaimNullifier(nullifier, wallet) {
-			continue // already registered
-		}
-		// Nullifier is now committed. Credit the balance.
-		if err := dag.state.RegisterHuman(wallet); err != nil {
-			// Nullifier is already in DB — the wallet cannot re-register.
-			// Balance correction requires manual intervention, but double-credit
-			// is impossible.
-			fmt.Printf("[REPLAY] ✗ RegisterHuman %s: %v (nullifier recorded, balance NOT credited)\n", wallet, err)
-			continue
-		}
-		if commitment != "" {
-			_ = dag.state.SaveBioRegistration(commitment, wallet, tx.TxHash, "")
-		}
-		fmt.Printf("[REPLAY] ✓ Applied register_human for %s (block #%d)\n", wallet, block.Height)
 	}
 }
 
