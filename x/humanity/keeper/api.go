@@ -187,10 +187,12 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "velocity":     50,
 "phase":        a.state.CalcPhase(),
 "fee_bps":      10,
-"pool_validators": fmt.Sprintf("%.4f", a.state.GetBalance("0x78c1c143e395b181f13bcb6868ff53aa86c3d2ba")),
-"pool_lp":         fmt.Sprintf("%.4f", a.state.GetBalance("0xc181c3a4d09444b99089ae0f56c1e7f4c20d01eb")),
-"pool_ubi":        fmt.Sprintf("%.4f", a.state.GetBalance("0x4a9b8f99f0d8cff0e510fef502100571203b054a")),
-"pool_treasury":   fmt.Sprintf("%.4f", a.state.GetBalance("0x2273894fb781978d54e767f9fba2dcb33d93eb15")),
+// P2-FIX: use the pool address constants from state.go instead of duplicating
+// the raw strings here. If addresses ever change, only one place needs updating.
+"pool_validators": fmt.Sprintf("%.4f", a.state.GetBalance(validatorsPoolAddr)),
+"pool_lp":         fmt.Sprintf("%.4f", a.state.GetBalance(lpPoolAddr)),
+"pool_ubi":        fmt.Sprintf("%.4f", a.state.GetBalance(ubiPoolAddr)),
+"pool_treasury":   fmt.Sprintf("%.4f", a.state.GetBalance(treasuryPoolAddr)),
 "ubi_next_payout_secs": nextUBISecs,
 })
 }
@@ -756,7 +758,10 @@ if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" &&
 // Authorization: accept if PEER_SECRET matches OR if the address has
 // a registered validator key (individual human-signed credential) OR
 // if the peer provided a valid challenge-response signature (P1-3).
-sigOK := req.Signature != "" && a.blockchain.VerifyPeerChallenge(addr, req.Signature)
+// P2-FIX: VerifyPeerChallenge is one-time-use (deletes the
+	// challenge on first call). sigOKEarly consumed it already above;
+	// calling VerifyPeerChallenge again would always return false.
+	sigOK := sigOKEarly && strings.ToLower(strings.TrimSpace(req.SigningAddress)) == addr
 keys := a.state.GetValidatorKeys()
 keyAuthorized := false
 for _, k := range keys {

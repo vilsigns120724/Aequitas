@@ -2,6 +2,7 @@ package keeper
 
 import (
 "crypto/ecdsa"
+"crypto/rand"
 "crypto/sha256"
 "encoding/hex"
 "encoding/json"
@@ -104,7 +105,11 @@ func (dag *BlockDAG) GetSigningKey() *ecdsa.PrivateKey {
 // Challenges expire after 90 seconds.
 func (dag *BlockDAG) IssuePeerChallenge(signingAddr string) string {
 	ts := time.Now().Unix()
-	raw := fmt.Sprintf("aequitas-validator:%s:%d", strings.ToLower(signingAddr), ts)
+	// P3-FIX: add 16 random bytes so two challenges issued for the same
+	// address in the same second always produce different values.
+	var nonce [16]byte
+	rand.Read(nonce[:]) //nolint:errcheck — crypto/rand never returns an error on supported platforms
+	raw := fmt.Sprintf("aequitas-validator:%s:%d:%s", strings.ToLower(signingAddr), ts, hex.EncodeToString(nonce[:]))
 	h := sha256.Sum256([]byte(raw))
 	challenge := hex.EncodeToString(h[:])
 	dag.challengeMu.Lock()

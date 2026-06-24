@@ -240,7 +240,8 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 	// usedNullifiers (slot 8): nullifier → wallet
 	rows, err := cs.db.Query(`SELECT nullifier, wallet_address FROM nullifiers`)
 	if err == nil {
-		defer rows.Close()
+		// P2-FIX: explicit Close instead of defer — defer fires at function
+		// return, keeping both DB cursors open simultaneously during migration.
 		for rows.Next() {
 			var nullifier, wallet string
 			rows.Scan(&nullifier, &wallet)
@@ -249,12 +250,12 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 			walletHash := common.BigToHash(common.HexToAddress(wallet).Big())
 			cs.SaveStorageSlot(contractAddr, nullSlot.Hex(), walletHash.Hex())
 		}
+		rows.Close()
 	}
 
 	// usedCommitments (slot 7) + commitmentOf (slot 9): from bio_registrations
 	rows2, err2 := cs.db.Query(`SELECT commitment, wallet_address FROM bio_registrations`)
 	if err2 == nil {
-		defer rows2.Close()
 		for rows2.Next() {
 			var commitment, wallet string
 			rows2.Scan(&commitment, &wallet)
@@ -274,6 +275,7 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 				cs.SaveStorageSlot(contractAddr, commitSlot9.Hex(), common.BigToHash(commitBig).Hex())
 			}
 		}
+		rows2.Close()
 	}
 
 	// lastActivity (slot 10) + lastDemurrage (slot 11): from chain_accounts
@@ -492,9 +494,19 @@ func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 	// per-account nonces for call execution. Matches the fix in newStateDB.
 	for _, acc := range cs.GetAllAccounts() {
 		addr := common.HexToAddress(acc.Address)
+		// P1-FIX: acc.Balance is a Decimal (int64 micro-units). Use .Float()
+		// to get the AEQ float value before converting to wei. Using
+		// int64(acc.Balance) directly would re-interpret micro-AEQ as whole-AEQ
+		// and multiply by 1e18 a second time, overstating balances by 1e6×.
 		decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-		wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), decimals)
-		sdb.SetBalance(addr, wei)
+		balWei, _ := new(big.Float).SetPrec(256).Mul(
+			new(big.Float).SetFloat64(acc.Balance.Float()),
+			new(big.Float).SetInt(decimals),
+		).Int(nil)
+		if balWei == nil {
+			balWei = new(big.Int)
+		}
+		sdb.SetBalance(addr, balWei)
 	}
 
 	for _, addrStr := range cs.GetAllContracts() {

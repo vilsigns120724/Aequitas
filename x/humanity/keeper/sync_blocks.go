@@ -177,7 +177,12 @@ dag.mu.RUnlock()
 if !exists && dag.AddPeerBlock(block) { added++ }
 }
 if added > 0 {
-fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d\n", added, nodeURL, len(dag.tips))
+	// P2-FIX: dag.tips is a map protected by dag.mu; reading it
+	// without any lock is a data race. Snapshot count under RLock.
+	dag.mu.RLock()
+	tipCount := len(dag.tips)
+	dag.mu.RUnlock()
+fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d\n", added, nodeURL, tipCount)
 }
 } // end for range ticker.C
 } // end syncWithNode

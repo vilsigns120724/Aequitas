@@ -73,7 +73,8 @@ Version: SnapshotVersion,
 	if cs.db != nil {
 		rows, err := cs.db.Query(`SELECT commitment, wallet_address FROM bio_registrations`)
 		if err == nil {
-			defer rows.Close()
+			// P2-FIX: use explicit Close() not defer — defer fires at function return
+			// (after the signing step), keeping the DB connection occupied unnecessarily.
 			for rows.Next() {
 				var commitment, wallet string
 				rows.Scan(&commitment, &wallet)
@@ -82,6 +83,7 @@ Version: SnapshotVersion,
 					WalletAddress: wallet,
 				})
 			}
+			rows.Close()
 		}
 	}
 

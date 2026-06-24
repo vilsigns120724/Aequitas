@@ -287,15 +287,21 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		if existingWallet := a.state.GetWalletByBioHash(req.BioHash); existingWallet != "" {
 			return "", fmt.Errorf("biometric already registered to %s", existingWallet)
 		}
-		// Application-level nullifier binding: verify the nullifier is correctly
-		// derived from the biometric hash via SHA256(bioHash+":aequitas-ubi-v1").
-		// This prevents a client from submitting a valid ZK proof with an
-		// arbitrary nullifier — the server independently recomputes and checks.
-		h := sha256.Sum256([]byte(req.BioHash + ":aequitas-ubi-v1"))
-		expectedNullifier := hex.EncodeToString(h[:])
-		actualNullifier := strings.ToLower(strings.TrimPrefix(effectiveNullifier, "0x"))
-		if expectedNullifier != actualNullifier {
-			return "", fmt.Errorf("nullifier does not match biometric hash derivation")
+		// P1-FIX: SHA256-derivation only applies to v1 circuit (nullifier=SHA256(bioHash)).
+		// v2 circuit nullifiers are ZK-bound (pubSignals[1]) and NOT SHA256(bioHash).
+		// Applying this check to a v2 ZKNullifier always fails, rejecting valid v2
+		// registrations that arrive with a bioHash for duplicate-detection purposes.
+		if req.CircuitVersion < 2 || req.ZKNullifier == "" {
+			// Application-level nullifier binding: verify the nullifier is correctly
+			// derived from the biometric hash via SHA256(bioHash+":aequitas-ubi-v1").
+			// This prevents a client from submitting a valid ZK proof with an
+			// arbitrary nullifier — the server independently recomputes and checks.
+			h := sha256.Sum256([]byte(req.BioHash + ":aequitas-ubi-v1"))
+			expectedNullifier := hex.EncodeToString(h[:])
+			actualNullifier := strings.ToLower(strings.TrimPrefix(effectiveNullifier, "0x"))
+			if expectedNullifier != actualNullifier {
+				return "", fmt.Errorf("nullifier does not match biometric hash derivation")
+			}
 		}
 	}
 

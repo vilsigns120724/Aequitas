@@ -83,12 +83,21 @@ return nil, nil, err
 // in the RPC layer separately; the EVM itself does not need per-account nonces
 // for call execution (only for CREATE). Removing SetNonce here has no effect
 // on the correctness of contract calls or view calls.
-microPrecision := new(big.Int).Exp(big.NewInt(10), big.NewInt(12), nil)
+weiPerAEQNew := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 for _, acc := range e.chainState.GetAllAccounts() {
 addr := common.HexToAddress(acc.Address)
-// 1 AEQ = 1_000_000 Micro-AEQ = 1e18 wei → 1 Micro-AEQ = 1e12 wei.
-wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), microPrecision)
-sdb.SetBalance(addr, wei)
+// P1-FIX: acc.Balance is a Decimal (int64 micro-units, 1 AEQ = 1e6 micro).
+// Use .Float() to get the real AEQ value, then convert to wei (×1e18).
+// The previous code used big.NewInt(int64(acc.Balance)) which treated the
+// raw micro-unit integer as whole-AEQ, producing balances 1e6× too high.
+balWeiNew, _ := new(big.Float).SetPrec(256).Mul(
+	new(big.Float).SetFloat64(acc.Balance.Float()),
+	new(big.Float).SetInt(weiPerAEQNew),
+).Int(nil)
+if balWeiNew == nil {
+	balWeiNew = new(big.Int)
+}
+sdb.SetBalance(addr, balWeiNew)
 }
 
 // Load all contract bytecodes and storage
@@ -456,8 +465,7 @@ count++
 // Persist usedNullifiers (slot 8): bytes32→address mapping. Previously only
 // usedCommitments was persisted; nullifiers were lost on StateDB reload,
 // allowing the same biometric to re-register after a node restart.
-_, _, nullifier := extractTouchedEntitiesWithNullifier(addr, nil) // need calldata
-_ = nullifier // calldata not available here — nullifiers persisted via SaveNullifier in register.go
+// P2-FIX: dead code removed — nullifiers are synced via the DB scan below
 // Alternative: persist ALL non-zero bytes32-keyed entries from slot 8 by
 // scanning the nullifiers table and writing them all.
 if e.chainState.db != nil {
@@ -465,12 +473,19 @@ rows, err := e.chainState.db.Query(`SELECT nullifier, wallet_address FROM nullif
 if err == nil {
 for rows.Next() {
 var nullHex, wallet string
-rows.Scan(&nullHex, &wallet)
+// P2-FIX: check scan error to avoid processing a partially-read row.
+if scanErr := rows.Scan(&nullHex, &wallet); scanErr != nil {
+fmt.Printf("[EVM] Warning: nullifier scan error: %v\n", scanErr)
+continue
+}
 nullKey := common.HexToHash(strings.TrimPrefix(nullHex, "0x"))
 nullSlot := mappingSlotBytes32(nullKey, 8)
 walletHash := common.BigToHash(common.HexToAddress(wallet).Big())
 e.chainState.SaveStorageSlot(addrStr, nullSlot.Hex(), walletHash.Hex())
 count++
+}
+if rowsErr := rows.Err(); rowsErr != nil {
+fmt.Printf("[EVM] Warning: nullifier rows iteration error: %v\n", rowsErr)
 }
 rows.Close()
 }

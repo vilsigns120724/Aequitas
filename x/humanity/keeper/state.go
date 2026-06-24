@@ -478,12 +478,18 @@ fmt.Println()
 
 // Load nullifiers into memory so IsNullifierUsed is O(1) without a DB hit.
 if nrows, nerr := cs.db.Query("SELECT nullifier, wallet_address FROM nullifiers"); nerr == nil {
-defer nrows.Close()
+// defer replaced by explicit Close at end of block
 for nrows.Next() {
 var nul, wal string
-nrows.Scan(&nul, &wal)
+	// P2-FIX: check scan error to skip malformed rows.
+	if scanErr := nrows.Scan(&nul, &wal); scanErr != nil {
+		fmt.Printf("[DB] Warning: nullifier scan error: %v\n", scanErr)
+		continue
+	}
+	if nul == "" { continue }
 cs.nullifiers[nul] = wal
 }
+	nrows.Close()
 fmt.Printf("✓ Loaded %d nullifiers from PostgreSQL\n", len(cs.nullifiers))
 }
 
@@ -817,6 +823,12 @@ total := poolAcc.Balance.Float()
 // leaves money in the pool (re-distributable) rather than losing it.
 for _, ns := range nodeShares {
 wallet := ns.wallet
+// P2-FIX: validate wallet address before crediting — a malformed
+// entry in registered_nodes would insert a garbage key into cs.accounts.
+if len(wallet) != 42 || wallet[:2] != "0x" {
+fmt.Printf("[VALIDATORS] Skipping invalid wallet address: %q\n", wallet)
+continue
+}
 share := round6(total * float64(ns.blocks) / float64(totalBlocks))
 if _, ok := cs.accounts[wallet]; !ok {
 cs.accounts[wallet] = &AccountState{Address: wallet}
@@ -1172,6 +1184,11 @@ cs.mu.Lock()
 defer cs.mu.Unlock()
 from = strings.ToLower(from)
 to = strings.ToLower(to)
+// P1-FIX: reject NaN/Inf amounts — these would corrupt balances via
+// NewDecimal which uses math.Round (NaN/Inf propagate silently).
+if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
+return fmt.Errorf("invalid transfer amount: %v", amount)
+}
 // P2-5: reject self-transfers; mirrors AequitasV7.sol behaviour and
 // prevents double-demurrage settlement on the same account object.
 if from == to {
@@ -1957,7 +1974,7 @@ return
 }
 cs.db.Exec(
 `INSERT INTO v6_humans (address, commitment) VALUES ($1, $2)
- ON CONFLICT (address) DO UPDATE SET commitment = $2, updated_at = NOW()`,
+ ON CONFLICT (address) DO UPDATE SET commitment = $2, last_activity = NOW()`,
 address, commitment,
 )
 }
