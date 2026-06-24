@@ -396,7 +396,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div class="expl-name" data-i18n="expl-economy">UBI &amp; Redistribution Pools</div>
         <div class="expl-desc" data-i18n="expl-economy-d">Daily UBI countdown · 4 on-chain pools · demurrage · Protocol Phases</div>
       </div>
-      <div class="expl-card" onclick="goTab('index','eqi-charts')">
+      <div class="expl-card" onclick="goTab('index','eqi-lorenz')">
         <div class="expl-icon">📈</div>
         <div class="expl-name" data-i18n="expl-charts">Charts &amp; History</div>
         <div class="expl-desc" data-i18n="expl-charts-d">Gini history · Lorenz curve · Wealth Cap bootstrap slider · The story of Aequitas</div>
@@ -1132,7 +1132,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <div class="nstat"><span class="ndot"></span><span data-i18n="node1">Node 1 — Railway (Primary)</span></div>
         <div class="nurl">aequitas-production-9fba.up.railway.app</div>
         <div class="ndesc" data-i18n="node1-desc">Primary API · Block producer · UBI distribution · P2P bootstrap · PostgreSQL · RPC for MetaMask</div>
-        <div style="margin-top:6px;font-size:0.57rem;color:rgba(0,255,209,0.5)">IS_PRIMARY_NODE=true · Daily pool distributions</div>
+        <div style="margin-top:6px;font-size:0.57rem;color:rgba(0,255,209,0.5)">DB-Lock (TryLockDistribution) · Daily pool distributions at 20:00 Berlin</div>
       </div>
       <div class="nbox">
         <div class="nstat"><span class="ndot"></span><span data-i18n="node2">Node 2 — Render (Secondary)</span></div>
@@ -1402,7 +1402,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--muted);padding:8px">IS_PRIMARY_NODE</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Leave unset or false. Only the official Aequitas primary node should set this to true. Setting it to true on a secondary node causes double pool distributions &mdash; do not do this.</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">No longer needed. Distribution is now coordinated via a PostgreSQL CAS lock (TryLockDistribution) — every node schedules at 20:00 Berlin time but only the first to win the DB lock runs the distribution. Leave unset on all nodes.</td>
         </tr>
         <tr>
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">RESET_STATE</td>
@@ -1833,9 +1833,9 @@ de:{
   'no-humans':'Noch keine Menschen registriert.\n\nLade die Aequitas Android App herunter und sei der erste Mensch auf der Chain!',
   'reg-stats':'Registrierungsstatistiken','total-humans':'Gesamtmenschen',
   'idx-title':'Aequitas-Index — Echtzeit-Wirtschaftsgleichheits-Score',
-  'idx-desc':'Der Aequitas-Index wird aus dem <strong style="color:var(--teal)">Gini-Koeffizienten</strong> abgeleitet — dem internationalen Standard zur Messung wirtschaftlicher Ungleichheit, genutzt von Weltbank, OECD und UN. Er erfasst die vollständige Bilanzverteilung aller verifizierten Menschen gleichzeitig. <strong style="color:var(--neon)">0 = perfekte Gleichheit</strong> (jede Wallet hält gleich viel AEQ). <strong style="color:var(--red)">100 = totale Konzentration</strong> (eine Wallet hält alles). Bitcoin-Gini ≈ 0,85 (Index 85) · Südafrika (Weltrekord) ≈ 0,63 · Skandinavien ≈ 0,27 · Aequitas-Langzeitziel: Gini unter 0,35 (Index unter 35) — vergleichbar mit den gleichheitsstärksten Industrieländern, automatisch durchgesetzt durch den Vermögensobergrenze-Mechanismus.',
+  'idx-desc':'Der Aequitas-Index wird aus dem <strong style="color:var(--teal)">Gini-Koeffizienten</strong> abgeleitet — dem internationalen Standard zur Messung wirtschaftlicher Ungleichheit, genutzt von Weltbank, OECD und UN. Er erfasst die vollständige Bilanzverteilung aller verifizierten Menschen gleichzeitig. <strong style="color:var(--neon)">0 = perfekte Gleichheit</strong> (jede Wallet hält gleich viel AEQ). <strong style="color:var(--red)">100 = totale Konzentration</strong> (eine Wallet hält alles). Bitcoin-Gini ≈ 0,85 (Index 85) · Südafrika (Weltrekord) ≈ 0,63 · Skandinavien ≈ 0,27 · Aequitas-Langzeitziel: Gini unter 0,30 (Index unter 30) — vergleichbar mit den gleichheitsstärksten Industrieländern, automatisch durchgesetzt durch den Vermögensobergrenze-Mechanismus.',
   'gini-what-title':'Was ist der Gini-Koeffizient?',
-  'gini-what-text':'Entwickelt vom italienischen Statistiker Corrado Gini (1912). Misst die Vermögensverteilung durch Vergleich mit einer perfekt gleichen Verteilung — visualisiert als Lorenz-Kurve. Skala: 0 (alle halten gleich viel) bis 1 (eine Person hält alles). Genutzt von Weltbank, OECD, UN. Referenzwerte: Bitcoin ≈ 0,85 · Südafrika (Weltrekord) ≈ 0,63 · USA ≈ 0,41 · Deutschland ≈ 0,31 · Schweden ≈ 0,27 · Aequitas-Langzeitziel: Gini unter 0,35 — vergleichbar mit Skandinavien und Deutschland, durchgesetzt durch den Vermögensdeckel (Bootstrap: gleitender Deckel 5×→25× pro Mensch).',
+  'gini-what-text':'Entwickelt vom italienischen Statistiker Corrado Gini (1912). Misst die Vermögensverteilung durch Vergleich mit einer perfekt gleichen Verteilung — visualisiert als Lorenz-Kurve. Skala: 0 (alle halten gleich viel) bis 1 (eine Person hält alles). Genutzt von Weltbank, OECD, UN. Referenzwerte: Bitcoin ≈ 0,85 · Südafrika (Weltrekord) ≈ 0,63 · USA ≈ 0,41 · Deutschland ≈ 0,31 · Schweden ≈ 0,27 · Aequitas-Langzeitziel: Gini unter 0,30 — vergleichbar mit Skandinavien und Deutschland, durchgesetzt durch den Vermögensdeckel (Bootstrap: gleitender Deckel 5×→25× pro Mensch).',
   'gini-calc-title':'Wie wird der Aequitas-Index berechnet?',
   'gini-calc-text':'Alle AEQ-Salden verifizierter Menschen werden erfasst. Die Formel berechnet die mittlere absolute Differenz zwischen allen Saldo-Paaren, normiert durch Bevölkerungsgröße im Quadrat (n²) und Durchschnittssaldo (x̄). Ergebnis 0–1 multipliziert mit 100 = Aequitas-Index. Aktualisiert On-Chain nach jeder Registrierung, jedem monatlichen Demurrage-Lauf, jeder Pool-Ausschüttung und jedem Vermögensobergrenze-Ereignis — via Keeper-Aufruf updateGini().',
   'gini-why-title':'Warum Gini — und nicht eine einfachere Kennzahl?',
@@ -2195,9 +2195,9 @@ ru:{
   'cap-title':'4. ЛИМИТ БОГАТСТВА — Математическое Обеспечение Справедливости','cap-box':'Bootstrap-лимит: max(5,min(N,25))× текущий средний баланс<br>1–4 людей: 5× · +1× за человека · 25+: 25× навсегда<br>Применяется ко всем адресам кроме 4 протокольных пулов<br>Избыток AEQ мгновенно перераспределяется · Без ручного вмешательства',
   'ubi-title':'5. УНИВЕРСАЛЬНЫЙ БАЗОВЫЙ ДОХОД — Ежедневное Перераспределение','ubi-box':'Источники: Комиссии свопов (20%) · Превышение лимита богатства · Демередж · Эскроу после 4 лет<br><br>Ежедневно: весь пул UBI делится поровну между всеми зарегистрированными людьми. Пул сбрасывается и сразу наполняется снова.',
   'inf-title':'6. НИКАКОЙ АЛГОРИТМИЧЕСКОЙ ИНФЛЯЦИИ — Фиксированная Формула','inf-box':'ЕДИНСТВЕННОЕ событие создающее новый AEQ: регистрируется новый верифицированный человек.<br><br>Общий Объём = Верифицированные Люди × 1 000 AEQ<br><br>Это не политика — обеспечивается протоколом. AEQ — единственная криптовалюта где объём определяется исключительно числом верифицированных живых людей.',
-  'phases-desc':'Границы фаз определяют вехи роста сети. Мультипликатор лимита богатства в настоящее время зафиксирован на 25× (константа кода Go: wealthCapMultiplier = 25.0) — автоматическая корректировка по фазам запланирована как будущее обновление протокола.',
-  'p0':'Bootstrap · &lt;100 людей · Лимит богатства: 25× средний баланс · Активен сейчас',
-  'p1':'Рост · 100–10 000 людей · Лимит богатства: 25× (планируемое снижение: 20×)',
+  'phases-desc':'В Фазе 0 лимит богатства использует скользящий Bootstrap-множитель: max(5, min(N, 25))× средний баланс. При 1–4 людях: 5× средний. Каждый новый человек прибавляет 1×. При 25+ людях: фиксируется навсегда на 25×. Фаза 1+ сохраняет 25× фиксированным. Переходы автоматические — без голосования, без административных ключей.',
+  'p0':'Bootstrap · &lt;100 людей · Лимит богатства: max(5,min(N,25))× средний · Скользит 5×→25× до 25-го человека · Сейчас активен',
+  'p1':'Рост · 100–10 000 людей · Лимит богатства: 25× средний баланс',
   'p2':'Стабильность · 10 000–1M людей · Лимит богатства: 25× (планируемое снижение: 10×)',
   'p3':'Зрелость · 1M+ людей · Лимит богатства: 25× (планируемое снижение: 5×)',
   'wealth-cap-explain':'Лимит богатства в настоящее время установлен на 25× среднего баланса AEQ всех верифицированных людей. Это фиксированная константа в живом коде Go. Поскольку значение всегда относительно текущего среднего, лимит автоматически масштабируется по мере роста сети.',
@@ -3637,10 +3637,10 @@ async function drawGiniHistoryChart() {
       // Track
       ctx.fillStyle='rgba(255,255,255,0.06)';
       ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,r); ctx.fill();
-      // Zone colors: green 0-35, amber 35-70, red 70-100
-      var zones=[[0,0.30,'rgba(0,255,100,0.5)'],[0.30,0.60,'rgba(245,158,11,0.5)'],[0.60,1.0,'rgba(239,68,68,0.5)']];
+      // Zone colors: green 0-0.30, amber 0.30-0.70, red 0.70-1.0 (Gini 0–1 scale)
+      var zones=[[0,0.30,'rgba(0,255,100,0.5)'],[0.30,0.70,'rgba(245,158,11,0.5)'],[0.70,1.0,'rgba(239,68,68,0.5)']];
       zones.forEach(function(z){
-        var x1=bx+bw*z[0]/100, x2=bx+bw*z[1]/100;
+        var x1=bx+bw*z[0], x2=bx+bw*z[1];
         ctx.fillStyle=z[2]; ctx.fillRect(x1,by,x2-x1,bh);
       });
       // Fill up to current value
@@ -3648,8 +3648,8 @@ async function drawGiniHistoryChart() {
       var grd=ctx.createLinearGradient(bx,0,bx+fill,0);
       grd.addColorStop(0,'rgba(0,255,200,0.9)'); grd.addColorStop(0.5,'rgba(245,158,11,0.9)'); grd.addColorStop(1,'rgba(239,68,68,0.9)');
       ctx.fillStyle=grd; ctx.beginPath(); ctx.roundRect(bx,by,fill,bh,r); ctx.fill();
-      // Target marker at 35
-      var tx=bx+bw*0.30/1.0;
+      // Target marker at 0.30 (Gini target)
+      var tx=bx+bw*0.30;
       ctx.strokeStyle='rgba(0,255,209,0.9)'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.moveTo(tx,by-6); ctx.lineTo(tx,by+bh+6); ctx.stroke();
       ctx.fillStyle='rgba(0,255,209,0.9)'; ctx.font='bold 9px JetBrains Mono,monospace'; ctx.textAlign='center';
@@ -3657,18 +3657,18 @@ async function drawGiniHistoryChart() {
       // Pointer
       var px=bx+bw*g0/1.0;
       ctx.fillStyle='#fff'; ctx.beginPath(); ctx.moveTo(px,by-2); ctx.lineTo(px-5,by-10); ctx.lineTo(px+5,by-10); ctx.fill();
-      // Labels: 0, 35, 70, 100
-      [[0,'0'],[0.30,'0.30'],[0.60,'0.60'],[1,'1.0']].forEach(function(l){
+      // Labels: 0, 0.30, 0.70, 1.0 (Gini 0–1 scale)
+      [[0,'0'],[0.30,'0.30'],[0.70,'0.70'],[1,'1.0']].forEach(function(l){
         ctx.fillStyle='rgba(200,168,76,0.5)'; ctx.font='9px JetBrains Mono,monospace'; ctx.textAlign='center';
-        ctx.fillText(l[1], bx+bw*l[0]/100, by+bh+14);
+        ctx.fillText(l[1], bx+bw*l[0], by+bh+14);
       });
       // Big value
       ctx.fillStyle='rgba(200,168,76,0.95)'; ctx.font='bold 28px JetBrains Mono,monospace'; ctx.textAlign='center';
       ctx.fillText('Gini: ' + g0.toFixed(4), W/2, by-26);
-      // Description
-      var label = g0<35?'Excellent — below target':'g0'<70?'Above target':'Critical — maximum inequality';
-      if(g0<35) label='Below target — excellent equality';
-      else if(g0<70) label='Above target — redistribution active';
+      // Description (g0 is 0–1 Gini scale, target is < 0.30)
+      var label;
+      if(g0<0.30) label='Below target — excellent equality';
+      else if(g0<0.70) label='Above target — redistribution active';
       else label='Critical — protocol at maximum intervention';
       ctx.font='11px Inter,sans-serif'; ctx.fillStyle='rgba(200,200,200,0.6)';
       ctx.fillText(label, W/2, by+bh+28);
@@ -3693,8 +3693,8 @@ async function drawGiniHistoryChart() {
       ctx.fillStyle='rgba(200,168,76,0.75)'; ctx.font='10px JetBrains Mono,monospace'; ctx.textAlign='right';
       ctx.fillText(v+'', pad.l-6, y+4);
     }
-    // target 35 line
-    const targetY = toY(35);
+    // target 0.30 line (idx = gini*100, so toY(30) = Gini 0.30)
+    const targetY = toY(30);
     ctx.save(); ctx.shadowColor='rgba(0,255,209,0.7)'; ctx.shadowBlur=5;
     ctx.strokeStyle='rgba(0,255,209,0.55)'; ctx.lineWidth=1.5; ctx.setLineDash([6,5]);
     ctx.beginPath(); ctx.moveTo(pad.l,targetY); ctx.lineTo(W-pad.r,targetY); ctx.stroke();
@@ -4775,7 +4775,7 @@ function activateTabFromPath(path) {
   // Activate stab-panel: use URL slug if present, otherwise first panel
   const stabMap = {
     explorer:  {blocks:'sep-blocks', humans:'sep-humans'},
-    index:     {score:'eqi-score', distribution:'eqi-lorenz', economy:'eqi-economy', charts:'eqi-charts'},
+    index:     {score:'eqi-score', distribution:'eqi-lorenz', economy:'eqi-economy', story:'eqi-story'},
     network:   {overview:'net-overview', node:'net-runnode', protocol:'net-protocol'},
     exchange:  {swap:'exch-swap', liquidity:'exch-liquidity'}
   };
