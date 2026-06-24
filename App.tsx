@@ -10,8 +10,8 @@ import RNFS from 'react-native-fs';
 // now happens on the website after MetaMask connects with the real wallet.
 // Kept here only as documentation of the server address.
 // const PROOF_SERVER = "https://aequitas-proof-server-production.up.railway.app";
-const WEBAPP       = "https://aequitas-production-9fba.up.railway.app";
-const METAMASK_DAPP = "https://metamask.app.link/dapp/aequitas-production-9fba.up.railway.app";
+const WEBAPP       = "https://aequitas.digital";
+const METAMASK_DAPP = "https://metamask.app.link/dapp/aequitas.digital";
 const FIELD_SIZE   = BigInt("21888242871839275222246405745257275088548364400416034343698204186575808495617");
 const rnBiometrics = new ReactNativeBiometrics();
 // Stored in the app's private sandboxed document directory — not
@@ -297,7 +297,7 @@ export default function App() {
 
       // Check 1: ask the proof server directly if this bio hash is blocked
       try {
-        const proofCheckResp = await fetch('https://aequitas-proof-server-production.up.railway.app/check', {
+        const proofCheckResp = await fetch('https://aequitas.digital/proof/check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ bio: hashNum.toString() })
@@ -379,7 +379,7 @@ export default function App() {
     addLog('Connect wallet and complete registration there', 'info');
     addLog('Return here after registration', 'info');
 
-    const dappUrl = `aequitas-production-9fba.up.railway.app/?bioHash=${hashNum.toString()}#register`;
+    const dappUrl = `aequitas.digital/?bioHash=${hashNum.toString()}#register`;
     Linking.openURL(`https://metamask.app.link/dapp/${dappUrl}`).catch(() => {
       Linking.openURL(`https://${dappUrl}`);
     });
