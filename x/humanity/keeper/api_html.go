@@ -3743,15 +3743,21 @@ async function drawLorenzCurve() {
   var canvas = document.getElementById('lorenz-chart');
   if (!canvas || !canvas.offsetParent) return;
   canvas.width = canvas.offsetWidth;
+  var W = canvas.width;
+  // Mobile: legend goes below chart → taller canvas; desktop: legend right
+  var isMobile = W < 480;
+  canvas.height = isMobile ? 540 : 460;
   var ctx = canvas.getContext('2d');
-  var W = canvas.width, H = canvas.height;
+  var H = canvas.height;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#070B16'; ctx.fillRect(0, 0, W, H);
 
-  // Layout: 82px top header, right legend panel (responsive), 62px bottom axis
-  // Narrow canvases (<520px, e.g. mobile) get a 140px panel to keep chart visible.
-  var legendW = W < 520 ? 140 : 252;
-  var pad = {l:62, r:legendW, t:82, b:62};
+  // Mobile layout: no right panel, legend drawn below chart
+  // Desktop layout: 252px right legend panel, 82px top header
+  var legendW = isMobile ? 0 : 252;
+  var pad = isMobile
+    ? {l:36, r:8,  t:54, b:44}   // mobile: full-width chart
+    : {l:62, r:legendW, t:82, b:62}; // desktop
   var cW = W - pad.l - pad.r;
   var cH = H - pad.t - pad.b;
   function px(f) { return pad.l + cW * f; }
@@ -3796,33 +3802,45 @@ async function drawLorenzCurve() {
     })();
     var gC = gini<0.30?'#34D399':'#F0B429';
 
-    // ── HEADER (0..82px): title + two info boxes ───────────────────────────
-    ctx.fillStyle='rgba(232,237,245,0.88)'; ctx.font='bold 11px Inter'; ctx.textAlign='left';
-    ctx.fillText('LORENZ CURVE — WEALTH DISTRIBUTION', pad.l, 14);
-    ctx.fillStyle='rgba(136,146,164,0.6)'; ctx.font='8.5px Inter';
-    ctx.fillText('Diagonal = perfect equality.  Curves bowing down = more inequality.  Shaded area = size of inequality gap.', pad.l, 27);
-
-    // Box 1: Aequitas Gini — width adapts so both boxes fit inside the chart area
-    var bw=Math.min(180, Math.floor((cW - 12) / 2)), bh=40;
-    ctx.fillStyle='rgba(7,11,22,0.97)'; ctx.strokeStyle=gC; ctx.lineWidth=1.5;
-    ctx.beginPath(); rr(pad.l, 34, bw, bh, 5); ctx.fill(); ctx.stroke();
-    ctx.fillStyle='rgba(136,146,164,0.6)'; ctx.font='7px JetBrains Mono'; ctx.textAlign='center';
-    ctx.fillText('AEQUITAS GINI COEFFICIENT', pad.l+bw/2, 46);
-    ctx.fillStyle=gC; ctx.font='bold 17px JetBrains Mono';
-    ctx.fillText(gini.toFixed(4), pad.l+58, 65);
-    ctx.fillStyle='rgba(200,200,200,0.65)'; ctx.font='9px JetBrains Mono'; ctx.textAlign='left';
-    ctx.fillText('= '+gini.toFixed(4), pad.l+105, 65);
-
-    // Box 2: World Average
-    var b2x=pad.l+bw+12;
-    ctx.fillStyle='rgba(7,11,22,0.97)'; ctx.strokeStyle='rgba(167,139,250,0.7)'; ctx.lineWidth=1.5;
-    ctx.beginPath(); rr(b2x, 34, bw, bh, 5); ctx.fill(); ctx.stroke();
-    ctx.fillStyle='rgba(136,146,164,0.6)'; ctx.font='7px JetBrains Mono'; ctx.textAlign='center';
-    ctx.fillText('WORLD AVERAGE GINI 2024', b2x+bw/2, 46);
-    ctx.fillStyle='rgba(167,139,250,0.9)'; ctx.font='bold 17px JetBrains Mono';
-    ctx.fillText('38.0%', b2x+58, 65);
-    ctx.fillStyle='rgba(200,200,200,0.65)'; ctx.font='9px JetBrains Mono'; ctx.textAlign='left';
-    ctx.fillText('= 0.380', b2x+108, 65);
+    // ── HEADER ─────────────────────────────────────────────────────────────
+    if(isMobile) {
+      // Mobile: compact single-line header + one info bar
+      ctx.fillStyle='rgba(232,237,245,0.85)'; ctx.font='bold 10px Inter'; ctx.textAlign='left';
+      ctx.fillText('LORENZ CURVE', pad.l, 13);
+      ctx.fillStyle='rgba(136,146,164,0.55)'; ctx.font='8px Inter';
+      ctx.fillText('Diagonal = perfect equality. Below = inequality.', pad.l, 25);
+      // Single compact bar: Aequitas vs World
+      var barW = W - pad.l - pad.r - 2;
+      ctx.fillStyle='rgba(7,11,22,0.97)'; ctx.strokeStyle=gC; ctx.lineWidth=1;
+      ctx.beginPath(); rr(pad.l, 30, barW, 20, 4); ctx.fill(); ctx.stroke();
+      ctx.font='bold 9px JetBrains Mono'; ctx.textAlign='left';
+      ctx.fillStyle=gC; ctx.fillText('Aequitas: '+gini.toFixed(4), pad.l+8, 43);
+      ctx.fillStyle='rgba(167,139,250,0.85)'; ctx.fillText('| World avg: 0.38', pad.l+100, 43);
+    } else {
+      // Desktop: full title + two info boxes
+      ctx.fillStyle='rgba(232,237,245,0.88)'; ctx.font='bold 11px Inter'; ctx.textAlign='left';
+      ctx.fillText('LORENZ CURVE — WEALTH DISTRIBUTION', pad.l, 14);
+      ctx.fillStyle='rgba(136,146,164,0.6)'; ctx.font='8.5px Inter';
+      ctx.fillText('Diagonal = perfect equality.  Curves bowing down = more inequality.  Shaded area = size of inequality gap.', pad.l, 27);
+      var bw=Math.min(180, Math.floor((cW - 12) / 2)), bh=40;
+      ctx.fillStyle='rgba(7,11,22,0.97)'; ctx.strokeStyle=gC; ctx.lineWidth=1.5;
+      ctx.beginPath(); rr(pad.l, 34, bw, bh, 5); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='rgba(136,146,164,0.6)'; ctx.font='7px JetBrains Mono'; ctx.textAlign='center';
+      ctx.fillText('AEQUITAS GINI COEFFICIENT', pad.l+bw/2, 46);
+      ctx.fillStyle=gC; ctx.font='bold 17px JetBrains Mono';
+      ctx.fillText(gini.toFixed(4), pad.l+58, 65);
+      ctx.fillStyle='rgba(200,200,200,0.65)'; ctx.font='9px JetBrains Mono'; ctx.textAlign='left';
+      ctx.fillText('= '+gini.toFixed(4), pad.l+105, 65);
+      var b2x=pad.l+bw+12;
+      ctx.fillStyle='rgba(7,11,22,0.97)'; ctx.strokeStyle='rgba(167,139,250,0.7)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); rr(b2x, 34, bw, bh, 5); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='rgba(136,146,164,0.6)'; ctx.font='7px JetBrains Mono'; ctx.textAlign='center';
+      ctx.fillText('WORLD AVERAGE GINI 2024', b2x+bw/2, 46);
+      ctx.fillStyle='rgba(167,139,250,0.9)'; ctx.font='bold 17px JetBrains Mono';
+      ctx.fillText('38.0%', b2x+58, 65);
+      ctx.fillStyle='rgba(200,200,200,0.65)'; ctx.font='9px JetBrains Mono'; ctx.textAlign='left';
+      ctx.fillText('= 0.380', b2x+108, 65);
+    }
 
     // ── GRID ──────────────────────────────────────────────────────────────
     ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
@@ -3832,17 +3850,25 @@ async function drawLorenzCurve() {
     }
 
     // ── AXIS ──────────────────────────────────────────────────────────────
-    ctx.fillStyle='rgba(136,146,164,0.7)'; ctx.font='10px JetBrains Mono';
-    var tl=['0%','25%','50%','75%','100%'];
-    for(var i=0;i<=4;i++){
-      ctx.textAlign='center'; ctx.fillText(tl[i],px(i/4),pad.t+cH+18);
-      ctx.textAlign='right';  ctx.fillText(tl[i],pad.l-6,py(i/4)+4);
+    var axFontSz = isMobile ? 8 : 10;
+    ctx.fillStyle='rgba(136,146,164,0.7)'; ctx.font=axFontSz+'px JetBrains Mono';
+    // On mobile only show 0%, 50%, 100% to save space
+    var tl = isMobile ? ['0%','50%','100%'] : ['0%','25%','50%','75%','100%'];
+    var tlIdx = isMobile ? [0,2,4] : [0,1,2,3,4];
+    for(var i=0;i<tl.length;i++){
+      ctx.textAlign='center'; ctx.fillText(tl[i],px(tlIdx[i]/4),pad.t+cH+16);
+      ctx.textAlign='right';  ctx.fillText(tl[i],pad.l-(isMobile?4:6),py(tlIdx[i]/4)+4);
     }
-    ctx.save();ctx.translate(12,pad.t+cH/2);ctx.rotate(-Math.PI/2);
-    ctx.fillStyle='rgba(155,114,246,0.7)';ctx.font='10px Inter';ctx.textAlign='center';
-    ctx.fillText('Cumulative % of AEQ wealth',0,0);ctx.restore();
-    ctx.fillStyle='rgba(155,114,246,0.6)';ctx.font='10px Inter';ctx.textAlign='center';
-    ctx.fillText('% of Population (poorest left → richest right)',px(0.5),pad.t+cH+36);
+    if(!isMobile) {
+      ctx.save();ctx.translate(12,pad.t+cH/2);ctx.rotate(-Math.PI/2);
+      ctx.fillStyle='rgba(155,114,246,0.7)';ctx.font='10px Inter';ctx.textAlign='center';
+      ctx.fillText('Cumulative % of AEQ wealth',0,0);ctx.restore();
+      ctx.fillStyle='rgba(155,114,246,0.6)';ctx.font='10px Inter';ctx.textAlign='center';
+      ctx.fillText('% of Population (poorest left → richest right)',px(0.5),pad.t+cH+36);
+    } else {
+      ctx.fillStyle='rgba(155,114,246,0.5)';ctx.font='8px Inter';ctx.textAlign='center';
+      ctx.fillText('Population % →',px(0.5),pad.t+cH+30);
+    }
 
     // ── 50% GUIDE LINE ─────────────────────────────────────────────────────
     ctx.beginPath();ctx.moveTo(px(0.5),pad.t);ctx.lineTo(px(0.5),pad.t+cH);
@@ -3900,66 +3926,82 @@ async function drawLorenzCurve() {
       ctx.strokeStyle='rgba(0,0,0,0.6)';ctx.lineWidth=1;ctx.stroke();
     });
 
-    // ── RIGHT PANEL: clean stacked legend ─────────────────────────────────
-    // Items sorted most equal → least equal
+    // ── LEGEND ────────────────────────────────────────────────────────────
     var legendItems = [
-      {label:'Perfect Equality', gStr:'G = 0%',   owns:'50% own 50%', color:'rgba(155,114,246,0.85)', bold:false, tag:'ideal'},
-      {label:'Aequitas',         gStr:'G = '+gini.toFixed(4), owns:'50% own '+(aqY50*100).toFixed(1)+'%', color:'#F0B429', bold:true, tag:'this chain'}
+      {label:'Aequitas',         gStr:gini.toFixed(4), color:'#F0B429', bold:true},
+      {label:'Perfect Equality', gStr:'0.00',          color:'rgba(155,114,246,0.9)', bold:false}
     ];
     refs.slice().sort(function(a,b){return a.g-b.g;}).forEach(function(ref){
-      var y50=Math.pow(0.5,1+2*ref.g);
-      legendItems.push({label:ref.label, gStr:'G = '+ref.g.toFixed(2), owns:'50% own '+Math.round(y50*100)+'%', color:ref.lc, bold:false, tag:ref.tag});
+      legendItems.push({label:ref.label, gStr:ref.g.toFixed(2), color:ref.lc, bold:false});
     });
 
-    var lx = pad.l + cW + 14;
-    var lw = pad.r - 20;
-    var itemH = Math.min(40, cH / legendItems.length);
-    var totalH = itemH * legendItems.length;
-    var startY = pad.t + (cH - totalH) / 2 + itemH / 2;
-
-    legendItems.forEach(function(item, idx){
-      var cy = startY + idx * itemH;
-
-      // Color bar left indicator
-      ctx.fillStyle = item.bold ? item.color : item.color;
-      ctx.globalAlpha = item.bold ? 1.0 : 0.85;
-      ctx.fillRect(lx, cy - Math.min(itemH*0.38, 14), 3, Math.min(itemH*0.76, 28));
-      ctx.globalAlpha = 1.0;
-
-      // Country / label name
-      ctx.fillStyle = item.color;
-      ctx.font = (item.bold ? 'bold ' : '') + '11px Inter';
-      ctx.textAlign = 'left';
-      ctx.fillText(item.label, lx + 9, cy - 2);
-
-      // Gini value (larger, prominent)
-      ctx.fillStyle = item.bold ? item.color : 'rgba(232,237,245,0.88)';
-      ctx.font = (item.bold ? 'bold ' : '') + '11.5px JetBrains Mono';
-      ctx.fillText(item.gStr, lx + 9, cy + 11);
-
-      // Ownership note (small, only if room)
-      if(itemH >= 32) {
-        ctx.fillStyle = 'rgba(136,146,164,0.55)';
-        ctx.font = '8px Inter';
-        ctx.fillText(item.owns + '  —  ' + item.tag, lx + 9, cy + 22);
-      }
-
-      // Dot at x=50% in the chart
+    // Dots at x=50% in chart (both mobile and desktop)
+    legendItems.forEach(function(item){
       var dotY;
-      if(item.bold) {
-        dotY = py(aqY50);
-      } else if(item.label === 'Perfect Equality') {
-        dotY = py(0.5);
-      } else {
-        var refMatch = refs.filter(function(r){return r.label===item.label;})[0];
-        dotY = refMatch ? py(Math.pow(0.5,1+2*refMatch.g)) : null;
+      if(item.bold) { dotY = py(aqY50); }
+      else if(item.label==='Perfect Equality') { dotY = py(0.5); }
+      else {
+        var rm = refs.filter(function(r){return r.label===item.label;})[0];
+        dotY = rm ? py(Math.pow(0.5,1+2*rm.g)) : null;
       }
-      if(dotY !== null && dotY !== undefined) {
-        ctx.beginPath();ctx.arc(px(0.5), dotY, item.bold?5:3.5, 0, 2*Math.PI);
-        ctx.fillStyle = item.color; ctx.fill();
+      if(dotY != null) {
+        ctx.beginPath(); ctx.arc(px(0.5), dotY, item.bold?5:3, 0, 2*Math.PI);
+        ctx.fillStyle=item.color; ctx.fill();
         if(item.bold){ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=1;ctx.stroke();}
       }
     });
+
+    if(isMobile) {
+      // ── MOBILE LEGEND: compact 2-column grid below chart ──────────────
+      var legTop = pad.t + cH + 44;
+      var colW = Math.floor((W - pad.l - pad.r) / 2);
+      var rowH = 26;
+      legendItems.forEach(function(item, idx){
+        var col = idx % 2, row = Math.floor(idx / 2);
+        var lx2 = pad.l + col * colW;
+        var ly2 = legTop + row * rowH;
+        // color dot
+        ctx.beginPath(); ctx.arc(lx2+6, ly2+7, 5, 0, 2*Math.PI);
+        ctx.fillStyle = item.color; ctx.fill();
+        // label
+        ctx.fillStyle = item.bold ? item.color : 'rgba(232,237,245,0.85)';
+        ctx.font = (item.bold ? 'bold ' : '') + '9px Inter';
+        ctx.textAlign='left';
+        ctx.fillText(item.label, lx2+16, ly2+8);
+        // gini
+        ctx.fillStyle = 'rgba(136,146,164,0.7)';
+        ctx.font = '8.5px JetBrains Mono';
+        ctx.fillText('G='+item.gStr, lx2+16, ly2+19);
+      });
+    } else {
+      // ── DESKTOP LEGEND: stacked right panel ───────────────────────────
+      var lx = pad.l + cW + 14;
+      var lw = pad.r - 20;
+      var itemH = Math.min(40, cH / legendItems.length);
+      var totalH = itemH * legendItems.length;
+      var startY = pad.t + (cH - totalH) / 2 + itemH / 2;
+      legendItems.forEach(function(item, idx){
+        var cy = startY + idx * itemH;
+        ctx.globalAlpha = item.bold ? 1.0 : 0.85;
+        ctx.fillStyle = item.color;
+        ctx.fillRect(lx, cy - Math.min(itemH*0.38,14), 3, Math.min(itemH*0.76,28));
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = item.color;
+        ctx.font = (item.bold?'bold ':'')+' 11px Inter'; ctx.textAlign='left';
+        ctx.fillText(item.label, lx+9, cy-2);
+        ctx.fillStyle = item.bold ? item.color : 'rgba(232,237,245,0.88)';
+        ctx.font = (item.bold?'bold ':'')+' 11.5px JetBrains Mono';
+        ctx.fillText('G='+item.gStr, lx+9, cy+11);
+        if(itemH>=32){
+          ctx.fillStyle='rgba(136,146,164,0.5)'; ctx.font='8px Inter';
+          var rm2 = refs.filter(function(r){return r.label===item.label;})[0];
+          var owns = item.bold ? '50% own '+(aqY50*100).toFixed(1)+'%'
+            : item.label==='Perfect Equality' ? '50% own 50%'
+            : rm2 ? '50% own '+Math.round(Math.pow(0.5,1+2*rm2.g)*100)+'%' : '';
+          if(owns) ctx.fillText(owns, lx+9, cy+22);
+        }
+      });
+    }
 
     // ── BOTTOM NOTE ────────────────────────────────────────────────────────
     var noteY = pad.t + cH + 50;
