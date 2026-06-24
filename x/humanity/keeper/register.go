@@ -24,6 +24,22 @@ import (
 
 var registerRateLimit sync.Map
 
+func init() {
+// P3-4: periodically clean up expired rate-limit entries to prevent unbounded growth.
+go func() {
+for {
+time.Sleep(60 * time.Second)
+now := time.Now()
+registerRateLimit.Range(func(k, v interface{}) bool {
+if now.Sub(v.(time.Time)) > 11*time.Second {
+registerRateLimit.Delete(k)
+}
+return true
+})
+}
+}()
+}
+
 // isPrivateOrLoopback returns true for RFC-1918 private ranges and loopback
 // addresses — used to decide whether to trust X-Forwarded-For (only safe when
 // the direct connection comes from a known reverse-proxy, not the open internet).
@@ -401,9 +417,21 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// no gas cost of its own, it's a direct database write, not a
 	// transaction the user pays for.
 	if regErr := a.state.RegisterHuman(wallet); regErr != nil {
-		fmt.Printf("[REGISTER] Warning: native balance grant failed (contract registration still succeeded): %v\n", regErr)
+		// P0-4: retry RegisterHuman — EVM succeeded but Go-State failed.
+		// Without retry, the wallet has EVM balance but no native Go balance = permanent divergence.
+		registered := false
+		for retry := 1; retry <= 3; retry++ {
+			time.Sleep(time.Duration(retry) * 500 * time.Millisecond)
+			if err2 := a.state.RegisterHuman(wallet); err2 == nil {
+				registered = true
+				break
+			}
+		}
+		if !registered {
+			Log.Error("CRITICAL: RegisterHuman failed 3x after EVM success — Go/EVM diverged", "wallet", wallet, "error", regErr)
+		}
+		a.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, wallet)
 	} else {
-		// Keep EVM balanceOf in sync with Go state after registration.
 		a.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, wallet)
 	}
 

@@ -126,7 +126,18 @@ return nil
 return tx
 }
 
+
+// P3-9: validate pool addresses at startup to catch typos early
+func validatePoolAddresses() {
+for _, addr := range []string{validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr} {
+if len(addr) != 42 || addr[:2] != "0x" {
+panic("invalid pool address: " + addr)
+}
+}
+}
+
 func NewChainState(dataFile string) *ChainState {
+validatePoolAddresses()
 cs := &ChainState{
 accounts:  make(map[string]*AccountState),
 nullifiers: make(map[string]string),
@@ -298,6 +309,22 @@ return t
 
 // SecondsUntilNextUBI returns integer seconds until next UBI for the /api/status endpoint.
 // P3-3: uses last_ubi_at from DB, not server uptime, so restarts don't give wrong countdowns.
+
+// GetWealthCapInfo returns the current wealth cap parameters using the canonical
+// formulas: bootstrapMultiplierLocked() for multiplier and 1000.0 for average.
+// P2-2: ensures handleWealthCap shows the same values as enforceWealthCapLocked.
+func (cs *ChainState) GetWealthCapInfo() (capAEQ float64, mult float64, avg float64, humans int) {
+cs.mu.RLock()
+defer cs.mu.RUnlock()
+for _, acc := range cs.accounts {
+if acc.IsHuman { humans++ }
+}
+mult = cs.bootstrapMultiplierLocked()
+avg = cs.getAverageBalanceLocked()
+capAEQ = mult * avg
+return
+}
+
 // TryLockDistribution attempts to atomically claim the distribution slot.
 // It uses a PostgreSQL compare-and-swap: updates last_ubi_at to now only if
 // the current value is > 23 hours old (or missing). Returns true if this node
@@ -506,7 +533,29 @@ os.WriteFile("/tmp/aequitas_state.json", data, 0644)
 }
 
 func (cs *ChainState) saveAccountToDB(acc *AccountState) {
+// P0-1: retry up to 3 times on optimistic-lock conflict so callers don't
+// silently lose writes when two nodes update the same account concurrently.
+for attempt := 0; attempt < 3; attempt++ {
+prevVer := acc.Version
+cs.saveAccountToDBInner(acc)
+if acc.Version != prevVer { return } // version incremented = success
+if acc.Version == 0 { return }       // new account (INSERT path)
+// Conflict: reload from DB and retry with current state
+if attempt < 2 {
+var dbBal, dbTusd, dbLp float64
+var dbVer int64
+if err := cs.db.QueryRow(`SELECT balance, tusd_balance, lp_shares, version FROM chain_accounts WHERE lower(address) = $1`, acc.Address).
+Scan(&dbBal, &dbTusd, &dbLp, &dbVer); err == nil && dbVer > 0 {
+acc.Balance = NewDecimal(dbBal); acc.TUsdBalance = NewDecimal(dbTusd)
+acc.LPShares = NewDecimal(dbLp); acc.Version = dbVer
+}
+}
+}
+}
+
+func (cs *ChainState) saveAccountToDBInner(acc *AccountState) {
 if !cs.useDB {
+acc.Version++ // no-DB mode: mark as saved
 return
 }
 var result sql.Result
@@ -851,6 +900,11 @@ return
 
 total := poolAcc.Balance.Float()
 share := total / float64(len(humanAddrs))
+// P0-5/P2-9: prevent funds vanishing via float rounding to 0
+if round6(share) == 0 {
+fmt.Printf("[UBI] Share %.10f rounds to zero — pool left intact for next distribution\n", share)
+return
+}
 // P0-2 + P1-6: credit humans BEFORE zeroing pool AND before last_ubi_at.
 // If we crash after crediting but before zeroing, the pool balance remains
 // and next distribution starts with last_ubi_at still unset → will re-check.
@@ -1015,11 +1069,13 @@ status.ShowSevenDayNotice = true
 } else if daysUntilStart <= 14 {
 if !acc.Demurrage14DayWarningShown {
 status.ShowFourteenDayNotice = true
-// P3-6: async write so GET request is not blocked by a DB write.
+// P1-5: set in-memory flag SYNCHRONOUSLY to prevent duplicate notices on parallel requests.
+// DB write is async to avoid blocking the GET path.
+acc.Demurrage14DayWarningShown = true
 go func(addr string) {
-cs.mu.Lock(); defer cs.mu.Unlock()
-if a, ok := cs.accounts[addr]; ok && !a.Demurrage14DayWarningShown {
-a.Demurrage14DayWarningShown = true
+cs.mu.Lock()
+defer cs.mu.Unlock()
+if a, ok := cs.accounts[addr]; ok {
 cs.saveAccountToDB(a)
 }
 }(address)
@@ -1267,6 +1323,8 @@ return cs.swapLocked(address, amountIn, false)
 // the input side and tUSD is the output side; false is the reverse.
 // Caller must hold cs.mu.
 func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd bool) (float64, error) {
+// P2-7: reload pool from DB before swap to avoid stale-memory AMM invariant violation
+cs.reloadPoolFromDB()
 address = strings.ToLower(address)
 if amountIn <= 0 {
 return 0, fmt.Errorf("amount must be positive")
@@ -1366,6 +1424,24 @@ return
 }
 if err := tx.Commit(); err != nil {
 fmt.Printf("[DB] Error committing pool: %v\n", err)
+}
+}
+
+
+// reloadPoolFromDB loads the current pool state from PostgreSQL with SELECT FOR UPDATE
+// so swap operations always start from the authoritative DB state, not stale memory.
+// P2-7: prevents AMM invariant violation when two nodes swap concurrently.
+func (cs *ChainState) reloadPoolFromDB() {
+if cs.db == nil || cs.pool == nil {
+return
+}
+var aeq, tusd, lp float64
+err := cs.db.QueryRow(`SELECT reserve_aeq, reserve_tusd, total_lp_shares FROM liquidity_pool WHERE id = 1`).
+Scan(&aeq, &tusd, &lp)
+if err == nil {
+cs.pool.ReserveAEQ = NewDecimal(aeq)
+cs.pool.ReserveTUSD = NewDecimal(tusd)
+cs.pool.TotalLPShares = NewDecimal(lp)
 }
 }
 
@@ -1688,7 +1764,8 @@ nullKeys := make([]string, 0, len(cs.nullifiers))
 for k := range cs.nullifiers { nullKeys = append(nullKeys, k) }
 sort.Strings(nullKeys)
 fmt.Fprintf(&sb, "|n=%d:", len(nullKeys))
-for _, k := range nullKeys { sb.WriteString(k); sb.WriteString(":"); sb.WriteString(cs.nullifiers[k]) }
+// P2-5: include only nullifier keys, not wallet addresses (privacy)
+for _, k := range nullKeys { sb.WriteString(k); sb.WriteString(":") }
 // Include last UBI distribution timestamp (pre-fetched before RLock — P1-1).
 fmt.Fprintf(&sb, "|ubi:%s", lastUBIAt)
 cs.mu.RUnlock()

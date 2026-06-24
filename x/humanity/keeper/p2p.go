@@ -98,12 +98,14 @@ n.dag = dag
 // handleStream — status messages
 func (n *P2PNode) handleStream(s network.Stream) {
 defer s.Close()
-buf := make([]byte, 1024)
-count, err := s.Read(buf)
-if err != nil {
+// P3-6: use LimitReader (64KB) instead of fixed 1024-byte buffer.
+// A 1024-byte hard limit silently truncates longer messages; LimitReader
+// lets us read the full message while still bounding resource usage.
+data, err := io.ReadAll(io.LimitReader(s, 64*1024))
+if err != nil || len(data) == 0 {
 return
 }
-msg := string(buf[:count])
+msg := string(data)
 fmt.Printf("[P2P] Message from %s: %s\n", s.Conn().RemotePeer().String()[:12], msg)
 response := fmt.Sprintf("AEQUITAS_NODE|humans=%d|chainid=aequitas-1", n.keeper.TotalHumans())
 s.Write([]byte(response))

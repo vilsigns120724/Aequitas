@@ -132,10 +132,16 @@ dag.syncWithNode(peerURL)
 }
 
 func (dag *BlockDAG) syncWithNode(nodeURL string) {
-ticker := time.NewTicker(6 * time.Second)
+// P3-1: exponential backoff on error — doubles up to 60s, resets on success.
+backoff := 6 * time.Second
+ticker := time.NewTicker(backoff)
+defer ticker.Stop()
 for range ticker.C {
 resp, err := httpSyncClient.Get(nodeURL + "/api/blocks")
 if err != nil {
+backoff *= 2
+if backoff > 60*time.Second { backoff = 60 * time.Second }
+ticker.Reset(backoff)
 continue
 }
 body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
@@ -143,29 +149,27 @@ resp.Body.Close()
 
 var blocks []*Block
 if err := json.Unmarshal(body, &blocks); err != nil {
+backoff *= 2
+if backoff > 60*time.Second { backoff = 60 * time.Second }
+ticker.Reset(backoff)
 continue
 }
-// Sort ascending by height so parents are always processed before
-// their children — this is critical for the parent-existence check
-// to pass during initial catch-up after a restart.
-sort.Slice(blocks, func(i, j int) bool {
-return blocks[i].Height < blocks[j].Height
-})
+// Reset backoff on success
+if backoff > 6*time.Second { backoff = 6 * time.Second; ticker.Reset(backoff) }
+
+sort.Slice(blocks, func(i, j int) bool { return blocks[i].Height < blocks[j].Height })
 added := 0
 for _, block := range blocks {
 dag.mu.RLock()
 _, exists := dag.blocks[block.Hash]
 dag.mu.RUnlock()
-if !exists && dag.AddPeerBlock(block) {
-added++
-}
+if !exists && dag.AddPeerBlock(block) { added++ }
 }
 if added > 0 {
-fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d\n",
-added, nodeURL, len(dag.tips))
+fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d\n", added, nodeURL, len(dag.tips))
 }
-}
-}
+} // end for range ticker.C
+} // end syncWithNode
 
 // ─── PEER DISCOVERY ──────────────────────────────────────────────────────────
 

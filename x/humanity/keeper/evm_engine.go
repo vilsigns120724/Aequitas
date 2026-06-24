@@ -57,7 +57,7 @@ CanTransfer: func(_ vm.StateDB, _ common.Address, _ *big.Int) bool { return true
 Transfer:    func(_ vm.StateDB, _, _ common.Address, _ *big.Int) {},
 GetHash:     func(_ uint64) common.Hash { return common.Hash{} },
 Coinbase:    common.Address{},
-BlockNumber: big.NewInt(int64(now / 6)), // ~6s blocks on Aequitas Chain
+BlockNumber: big.NewInt(1), // P2-8: fixed — AequitasV7 uses block.timestamp not block.number; wall-clock is non-deterministic between nodes
 Time:        now,
 Difficulty:  big.NewInt(0),
 GasLimit:    30_000_000,
@@ -77,16 +77,18 @@ if err != nil {
 return nil, nil, err
 }
 
-// Load all account balances
+// Load all account balances.
+// P0-2: Do NOT call LoadNonce per account — that triggers N PostgreSQL queries
+// (one per account) and creates a DoS vector. EVM nonces for sends are managed
+// in the RPC layer separately; the EVM itself does not need per-account nonces
+// for call execution (only for CREATE). Removing SetNonce here has no effect
+// on the correctness of contract calls or view calls.
+microPrecision := new(big.Int).Exp(big.NewInt(10), big.NewInt(12), nil)
 for _, acc := range e.chainState.GetAllAccounts() {
 addr := common.HexToAddress(acc.Address)
-// P1-7: preserve 6 decimal places by converting Micro-AEQ (int64) to wei.
 // 1 AEQ = 1_000_000 Micro-AEQ = 1e18 wei → 1 Micro-AEQ = 1e12 wei.
-// Previously used int64(acc.Balance.Float()) which truncated decimals.
-microPrecision := new(big.Int).Exp(big.NewInt(10), big.NewInt(12), nil)
 wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), microPrecision)
 sdb.SetBalance(addr, wei)
-sdb.SetNonce(addr, e.chainState.LoadNonce(acc.Address))
 }
 
 // Load all contract bytecodes and storage
@@ -298,7 +300,8 @@ touchedAddrs, touchedCommitments := extractTouchedEntities(from, data)
 _, _, calldataNullifier := extractTouchedEntitiesWithNullifier(from, data)
 e.dumpAndPersistStorageWithNullifier(root, db, to, touchedAddrs, touchedCommitments, calldataNullifier)
 }
-e.syncBalancesFromDB(sdb)
+// P0-3: Go-State is authoritative. Removed syncBalancesFromDB — it overwrote
+// correct Go-state with stale EVM-memory values causing balance divergence.
 
 fmt.Printf("[EVM] Call result: %d bytes: %x\n", len(ret), ret)
 return ret, nil

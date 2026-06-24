@@ -61,6 +61,21 @@ peerChallenges         map[string]peerChallenge // address → pending challenge
 challengeMu            sync.Mutex
 }
 
+
+// genesisTimestamp reads the genesis_time from genesis.json if present,
+// falling back to the hardcoded date. P2-11: avoid hardcoded timestamp.
+func genesisTimestamp() int64 {
+if data, err := os.ReadFile("genesis.json"); err == nil {
+var g struct { GenesisTime string `json:"genesis_time"` }
+if json.Unmarshal(data, &g) == nil && g.GenesisTime != "" {
+if t, err := time.Parse(time.RFC3339, g.GenesisTime); err == nil {
+return t.Unix()
+}
+}
+}
+return time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC).Unix()
+}
+
 // loadAuthorizedValidators reads the AUTHORIZED_VALIDATORS env var
 // (comma-separated Ethereum addresses). Used to reject peer blocks from
 // unknown signers so no one can inject arbitrary blocks into the DAG.
@@ -190,7 +205,7 @@ return dag
 func (dag *BlockDAG) createGenesisBlock() {
 genesis := &Block{
 Height:       0,
-Timestamp:    time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC).Unix(),
+Timestamp:    genesisTimestamp(), // P2-11: reads from genesis.json when available
 ParentHashes: []string{},
 Proposer:     "genesis",
 Humans:       dag.state.TotalHumans(),
@@ -364,6 +379,10 @@ if block.Signature != "" && !block.IsGenesis {
 	// Proposer must be in the authorized validator set. Without this check
 	// anyone can generate an Ethereum key, sign a block, and feed it in.
 	if !dag.authorizedValidators[proposer] {
+		// P3-2: cap to prevent unbounded memory growth from forged proposer addresses
+		if len(dag.warnedUnknownProposers) > 500 {
+			dag.warnedUnknownProposers = make(map[string]bool)
+		}
 		if !dag.warnedUnknownProposers[proposer] {
 			dag.warnedUnknownProposers[proposer] = true
 			fmt.Printf("[DAG] ✗ Proposer %s is not an authorized validator — add to AUTHORIZED_VALIDATORS env var to accept its blocks\n", proposer)

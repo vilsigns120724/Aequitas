@@ -20,7 +20,11 @@ import (
 // It includes accounts, pool reserves, nullifiers, and bio-registration
 // commitments — sufficient to validate new registrations, swaps, and
 // transfers without access to the primary database.
+// Version marks the snapshot schema version. P3-11: lets importers detect schema changes.
+const SnapshotVersion = 1
+
 type StateSnapshot struct {
+Version int `json:"version"`
 	Timestamp        int64                     `json:"timestamp"`
 	Accounts         []*AccountState           `json:"accounts"`
 	Pool             *PoolState                `json:"pool"`
@@ -55,6 +59,7 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey) *StateSnapsho
 	cs.mu.RUnlock()
 
 	snap := &StateSnapshot{
+Version: SnapshotVersion,
 		Timestamp:  time.Now().Unix(),
 		Accounts:   accounts,
 		Pool:       &pool,

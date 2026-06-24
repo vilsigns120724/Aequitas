@@ -39,7 +39,16 @@ func (d Decimal) Sub(other Decimal) Decimal { return d - other }
 
 // MulFloat multiplies by a float64 (e.g. for rate/fee calculations), rounding.
 func (d Decimal) MulFloat(f float64) Decimal {
-	return Decimal(math.Round(float64(d) * f))
+	// P3-10: guard against int64 overflow when f > 1 and d is large
+	result := math.Round(float64(d) * f)
+	const maxD = float64(math.MaxInt64)
+	if result > maxD {
+		return Decimal(math.MaxInt64)
+	}
+	if result < -maxD {
+		return Decimal(math.MinInt64)
+	}
+	return Decimal(result)
 }
 
 // DivDecimal divides two Decimals and returns a Decimal result (not a ratio).

@@ -489,7 +489,7 @@ func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 	for _, acc := range cs.GetAllAccounts() {
 		addr := common.HexToAddress(acc.Address)
 		decimals := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-		wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance.Float())), decimals)
+		wei := new(big.Int).Mul(big.NewInt(int64(acc.Balance)), decimals)
 		sdb.SetBalance(addr, wei)
 		sdb.SetNonce(addr, cs.LoadNonce(acc.Address))
 	}

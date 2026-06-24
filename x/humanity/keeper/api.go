@@ -581,21 +581,12 @@ func (a *APIServer) handleWealthCap(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 w.Header().Set("Cache-Control", "no-cache")
-accs := a.state.GetAllAccounts()
-var total float64
-n := 0
-for _, acc := range accs {
-if acc.IsHuman { total += acc.Balance.Float(); n++ }
-}
-avg := 0.0
-if n > 0 { avg = total / float64(n) }
-mult := 5.0
-if n > 5 { mult = float64(n) }
-if mult > 25 { mult = 25 }
-capAEQ := mult * avg
+// P2-2: use GetWealthCapInfo which internally calls bootstrapMultiplierLocked()
+// and getAverageBalanceLocked() — the SAME functions enforceWealthCapLocked uses.
+// The old implementation had its own formula that diverged from the enforcement logic.
+capAEQ, mult, avg, n := a.state.GetWealthCapInfo()
 json.NewEncoder(w).Encode(map[string]interface{}{
-"cap_aeq": capAEQ, "multiplier": mult, "average_aeq": avg,
-"humans": n, "total_supply": total,
+"cap_aeq": capAEQ, "multiplier": mult, "average_aeq": avg, "humans": n,
 })
 }
 
@@ -740,18 +731,14 @@ peerSecret := os.Getenv("PEER_SECRET")
 // P1-2: constant-time comparison prevents timing-based secret oracle attacks.
 secretOK := peerSecret != "" && subtle.ConstantTimeCompare([]byte(req.PeerSecret), []byte(peerSecret)) == 1
 
-// Pre-check validator key status so URL registration can use it too.
-var keyAuthorizedEarly bool
-if earlyAddr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); earlyAddr != "" {
-for _, k := range a.state.GetValidatorKeys() {
-if k["signing_address"] == earlyAddr { keyAuthorizedEarly = true; break }
-}
-}
+// P1-2: compute sigOK early so it can gate URL registration.
+// A known validator address (keyAuthorizedEarly) alone is NOT sufficient —
+// anyone can read validator addresses from /api/blocks. Require PEER_SECRET
+// match OR a valid challenge-response signature to prove private-key ownership.
+sigOKEarly := req.Signature != "" && req.SigningAddress != "" &&
+a.blockchain.VerifyPeerChallenge(strings.ToLower(req.SigningAddress), req.Signature)
 if req.URL != "" && isAllowedPeerURL(req.URL) {
-// Allow URL registration if PEER_SECRET matches OR the signing address
-// has an individually registered validator key. Without this, a node
-// with a valid key could not connect via peer discovery.
-if secretOK || keyAuthorizedEarly {
+if secretOK || sigOKEarly {
 GlobalPeerRegistry.Register(req.URL)
 fmt.Printf("[PEERS] Registered: %s\n", req.URL)
 a.blockchain.startSyncForPeer(req.URL)
