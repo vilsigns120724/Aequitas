@@ -99,17 +99,15 @@ Version: SnapshotVersion,
 	return snap
 }
 
-// ImportSnapshotFromURL downloads a StateSnapshot from peerURL and applies it
-// to cs. Only imports if the local DB is empty (TotalHumans == 0) to avoid
-// overwriting an already-populated state. Verifies the snapshot signature
-// against expectedSignerHex if non-empty.
-func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) error {
+// applySnapshot downloads, verifies, and merges a snapshot into the local state.
+// Safe to call on a node that already has data: accounts are upserted (snapshot
+// wins for balances — primary is authoritative), nullifiers and bio-registrations
+// use ON CONFLICT DO NOTHING so no existing entries are deleted.
+// expectedSignerHex is mandatory when non-empty — a missing or wrong signature
+// causes the import to be rejected entirely.
+func (cs *ChainState) applySnapshot(peerURL, expectedSignerHex string) error {
 	client := &http.Client{Timeout: 60 * time.Second}
 
-	// P2-AUDIT: Send token in Authorization header instead of URL query parameter.
-	// Tokens in URLs land in server/proxy access logs and browser history,
-	// creating unnecessary credential exposure. Bearer header is already
-	// accepted by handleSnapshot on the server side.
 	req, reqErr := http.NewRequest("GET", peerURL, nil)
 	if reqErr != nil {
 		return fmt.Errorf("request build failed: %w", reqErr)
@@ -127,7 +125,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		return fmt.Errorf("snapshot server returned HTTP %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20)) // 50 MB cap
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20))
 	if err != nil {
 		return fmt.Errorf("read failed: %w", err)
 	}
@@ -138,18 +136,14 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	}
 
 	now := time.Now().Unix()
-	// Reject future-dated snapshots — could be injected by a compromised peer.
 	if snap.Timestamp > now+60 {
 		return fmt.Errorf("snapshot timestamp is in the future (%d seconds ahead)", snap.Timestamp-now)
 	}
-	// Reject stale snapshots older than 24 hours.
 	if now-snap.Timestamp > 86400 {
 		return fmt.Errorf("snapshot is too old (%d seconds)", now-snap.Timestamp)
 	}
 
-	// When BOOTSTRAP_SIGNER is configured, a valid signature is MANDATORY.
-	// Importing without a valid signature is rejected — an attacker cannot
-	// bypass verification by stripping the signature field.
+	// Signature verification is mandatory when BOOTSTRAP_SIGNER is configured.
 	if expectedSignerHex != "" {
 		if snap.Signature == "" {
 			return fmt.Errorf("snapshot has no signature but BOOTSTRAP_SIGNER is set — import rejected")
@@ -180,13 +174,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		fmt.Printf("[SNAPSHOT] ✓ Signature verified (signer: %s)\n", recovered)
 	}
 
-	// Apply accounts: update in-memory state under lock, then persist to DB
-	// WITHOUT holding the lock — saveAccountToDB issues DB queries which must
-	// not run while cs.mu is held (deadlock risk if the DB driver acquires
-	// internal locks that chain back into any code that needs cs.mu).
-	// P1-AUDIT: Split the lock into two phases: in-memory update (under lock)
-	// and DB write (outside lock). Collect accounts to persist, release lock,
-	// then write them. This eliminates the deadlock window.
+	// Apply in-memory under lock, then persist outside lock to avoid deadlock.
 	var accountsToPersist []*AccountState
 	cs.mu.Lock()
 	for _, acc := range snap.Accounts {
@@ -194,31 +182,25 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		cs.accounts[acc.Address] = acc
 		accountsToPersist = append(accountsToPersist, acc)
 	}
-	// Apply pool in-memory
 	if snap.Pool != nil {
 		cs.pool = snap.Pool
 	}
-	// Apply nullifiers in-memory
 	for nullifier, wallet := range snap.Nullifiers {
 		cs.nullifiers[nullifier] = wallet
 	}
 	cs.mu.Unlock()
 
-	// Persist accounts to DB outside lock
 	if cs.db != nil {
 		for _, acc := range accountsToPersist {
 			cs.saveAccountToDB(acc)
 		}
-		// Persist pool outside lock
 		cs.savePoolToDB()
-		// Persist nullifiers to DB
 		for nullifier, wallet := range snap.Nullifiers {
 			cs.db.Exec(
 				`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
 				nullifier, strings.ToLower(wallet),
 			)
 		}
-		// Persist bio_registrations
 		for _, br := range snap.BioRegistrations {
 			cs.db.Exec(
 				`INSERT INTO bio_registrations (commitment, wallet_address, bio_hash) VALUES ($1, $2, $3)
@@ -234,10 +216,37 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		}
 	}
 
-	// Rebuild EVM storage from the imported Go-state
 	cs.MigrateEVMFromGoState(V7_CONTRACT_ADDR)
 
-	fmt.Printf("[SNAPSHOT] ✓ Imported %d accounts, %d nullifiers, %d bio-registrations\n",
+	fmt.Printf("[SNAPSHOT] ✓ Applied %d accounts, %d nullifiers, %d bio-registrations\n",
 		len(snap.Accounts), len(snap.Nullifiers), len(snap.BioRegistrations))
 	return nil
+}
+
+// ImportSnapshotFromURL is for initial bootstrap: silently skips if the local
+// DB is already populated so an accidental restart doesn't re-import.
+func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) error {
+	if cs.TotalHumans() > 0 {
+		fmt.Printf("[SNAPSHOT] DB already populated (%d humans) — skipping one-shot bootstrap\n", cs.TotalHumans())
+		return nil
+	}
+	return cs.applySnapshot(peerURL, expectedSignerHex)
+}
+
+// StartPeriodicStateSync starts a background goroutine that merges fresh state
+// from the primary node every interval. This keeps secondary nodes in sync
+// even after new humans register — the initial bootstrap only covers startup.
+// The primary node must have SNAPSHOT_TOKEN set; the secondary must set the
+// same token plus BOOTSTRAP_SIGNER so the snapshot signature is verified.
+func (cs *ChainState) StartPeriodicStateSync(snapshotURL, signerHex string, interval time.Duration) {
+	go func() {
+		fmt.Printf("[STATE-SYNC] Starting periodic state sync from %s every %v\n", snapshotURL, interval)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := cs.applySnapshot(snapshotURL, signerHex); err != nil {
+				fmt.Printf("[STATE-SYNC] ✗ Sync failed: %v\n", err)
+			}
+		}
+	}()
 }
