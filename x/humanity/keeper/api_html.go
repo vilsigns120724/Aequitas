@@ -1658,7 +1658,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 </div>
 
 <script>
-const PS = 'https://aequitas-proof-server-production.up.railway.app';
+const PS = ''; // proof calls proxied via /api/prove on this node (avoids browser CORS)
 const CID = '0x786';
 const V7_CONTRACT = '0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78';
 let waddr = '', proofData = null, curLang = 'en';
@@ -4916,7 +4916,7 @@ function checkProofParams() {
     document.querySelectorAll('.tab')[0].click();
     setTimeout(() => connectWalletAndProve(), 600);
   } else if (proofId) {
-    fetch(PS + '/get/' + proofId).then(r => r.json()).then(pd => {
+    fetch('/api/prove/get/' + proofId).then(r => r.json()).then(pd => {
       proofData = pd;
       document.getElementById('pbox').style.display = 'block';
       document.getElementById('pval').textContent = 'Proof ID: ' + proofId + ' — Connect wallet to register';
@@ -4988,7 +4988,7 @@ async function connectWalletAndProve() {
     const FIELD_SIZE = BigInt("21888242871839275222246405745257275088548364400416034343698204186575808495617");
     const salt = (saltBig % FIELD_SIZE).toString();
 
-    const proveResp = await fetch(PS + '/prove', {
+    const proveResp = await fetch('/api/prove', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bio: pendingBioHash, salt: salt, wallet: waddr })

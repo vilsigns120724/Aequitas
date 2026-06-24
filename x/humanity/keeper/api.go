@@ -1,6 +1,7 @@
 package keeper
 
 import (
+"bytes"
 "crypto/subtle"
 "encoding/hex"
 "encoding/json"
@@ -109,9 +110,17 @@ mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
 mux.HandleFunc("/api/nonce", a.handleNonce)
 mux.HandleFunc("/api/peers", a.handlePeers)
 mux.HandleFunc("/api/signing-address", a.handleSigningAddress)
+mux.HandleFunc("/api/prove", a.handleProveProxy)
+mux.HandleFunc("/api/prove/get/", a.handleProveGetProxy)
+mux.HandleFunc("/api/proof/check", a.handleProofCheckProxy)
 mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
 mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
+mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
+mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
+mux.HandleFunc("/api/guardian", a.handleGetGuardian)
+mux.HandleFunc("/api/escrow", a.handleGetEscrow)
+mux.HandleFunc("/api/recover-escrow", a.handleRecoverEscrow)
 mux.HandleFunc("/registered", a.handleRegistered)
 mux.HandleFunc("/download/app.apk", a.handleAppDownload)
 mux.HandleFunc("/download/node-guide-en.pdf", func(w http.ResponseWriter, r *http.Request) {
@@ -802,6 +811,63 @@ return
 json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": []string{}})
 }
 
+const proofServerURL = "https://aequitas-proof-server-production.up.railway.app"
+
+// handleProveProxy proxies POST /api/prove to the proof server backend-side,
+// bypassing browser CORS restrictions. The proof server does not include
+// Access-Control-Allow-Origin, so browser fetches fail. By proxying through
+// the chain node (same origin as the website), CORS is not an issue.
+func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+if r.Method == "OPTIONS" { w.WriteHeader(200); return }
+if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
+body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+if err != nil { http.Error(w, `{"error":"read error"}`, 500); return }
+resp, err := (&http.Client{Timeout: 120 * time.Second}).Post(
+	proofServerURL+"/prove", "application/json", bytes.NewReader(body))
+if err != nil { http.Error(w, `{"error":"proof server unreachable"}`, 502); return }
+defer resp.Body.Close()
+respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+w.WriteHeader(resp.StatusCode)
+w.Write(respBody)
+}
+
+// handleProveGetProxy proxies GET /api/prove/get/{id} to the proof server.
+func (a *APIServer) handleProveGetProxy(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+id := strings.TrimPrefix(r.URL.Path, "/api/prove/get/")
+if id == "" { http.Error(w, `{"error":"missing id"}`, 400); return }
+resp, err := (&http.Client{Timeout: 30 * time.Second}).Get(proofServerURL + "/get/" + id)
+if err != nil { http.Error(w, `{"error":"proof server unreachable"}`, 502); return }
+defer resp.Body.Close()
+respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+w.WriteHeader(resp.StatusCode)
+w.Write(respBody)
+}
+
+// handleProofCheckProxy proxies POST /api/proof/check to the proof server.
+func (a *APIServer) handleProofCheckProxy(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+if r.Method == "OPTIONS" { w.WriteHeader(200); return }
+if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
+body, err := io.ReadAll(io.LimitReader(r.Body, 16<<10))
+if err != nil { http.Error(w, `{"error":"read error"}`, 500); return }
+resp, err := (&http.Client{Timeout: 30 * time.Second}).Post(
+	proofServerURL+"/check", "application/json", bytes.NewReader(body))
+if err != nil { http.Error(w, `{"error":"proof server unreachable"}`, 502); return }
+defer resp.Body.Close()
+respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<10))
+w.WriteHeader(resp.StatusCode)
+w.Write(respBody)
+}
+
 // handlePeers returns the list of all known peer nodes.
 // GET /api/peers
 func (a *APIServer) handlePeers(w http.ResponseWriter, r *http.Request) {
@@ -898,4 +964,171 @@ func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	fmt.Fprint(w, landingHTML)
+}
+
+// ─── GUARDIAN ENDPOINTS ────────────────────────────────────────────────────────
+
+// handleSetGuardian POST /api/set-guardian
+// Body: {"wallet":"0x...","guardian":"0x...","signature":"0x..."}
+// Signature must be personal_sign("Aequitas: set guardian {guardian_address}", wallet_key).
+func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" { w.WriteHeader(200); return }
+	if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var req struct {
+		Wallet    string `json:"wallet"`
+		Guardian  string `json:"guardian"`
+		Signature string `json:"signature"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, 400); return
+	}
+	wallet := strings.ToLower(strings.TrimSpace(req.Wallet))
+	guardian := strings.ToLower(strings.TrimSpace(req.Guardian))
+	if !isValidWalletAddr(wallet) || !isValidWalletAddr(guardian) {
+		http.Error(w, `{"error":"invalid wallet or guardian address"}`, 400); return
+	}
+	// Verify signature: wallet signs "Aequitas: set guardian {guardian_address}"
+	msg := "Aequitas: set guardian " + guardian
+	if err := verifyPersonalSign(msg, req.Signature, wallet); err != nil {
+		http.Error(w, `{"error":"invalid signature: `+err.Error()+`"}`, 400); return
+	}
+	now := time.Now().Unix()
+	if err := a.state.SetGuardian(wallet, guardian, now); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, 400); return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  true,
+		"wallet":   wallet,
+		"guardian": guardian,
+		"set_at":   now,
+	})
+}
+
+// handleConfirmAlive POST /api/confirm-alive
+// Body: {"wallet":"0x...","signature":"0x..."}
+// Caller must be the guardian of wallet.
+// Signature = personal_sign("Aequitas: confirm alive {wallet_address}", guardian_key).
+func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" { w.WriteHeader(200); return }
+	if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var req struct {
+		Wallet    string `json:"wallet"`
+		Signature string `json:"signature"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, 400); return
+	}
+	wallet := strings.ToLower(strings.TrimSpace(req.Wallet))
+	if !isValidWalletAddr(wallet) {
+		http.Error(w, `{"error":"invalid wallet address"}`, 400); return
+	}
+	// Look up who the guardian is.
+	guardianAddr, _, err := a.state.GetGuardian(wallet)
+	if err != nil || guardianAddr == "" {
+		http.Error(w, `{"error":"no guardian set for this wallet"}`, 404); return
+	}
+	guardianAddr = strings.ToLower(guardianAddr)
+	// Signature is by the guardian.
+	msg := "Aequitas: confirm alive " + wallet
+	if sigErr := verifyPersonalSign(msg, req.Signature, guardianAddr); sigErr != nil {
+		http.Error(w, `{"error":"invalid guardian signature: `+sigErr.Error()+`"}`, 400); return
+	}
+	if confirmErr := a.state.ConfirmAlive(wallet); confirmErr != nil {
+		http.Error(w, `{"error":"`+confirmErr.Error()+`"}`, 400); return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"wallet":    wallet,
+		"guardian":  guardianAddr,
+		"confirmed": time.Now().Unix(),
+	})
+}
+
+// handleGetGuardian GET /api/guardian?wallet=0x...
+// Returns {"wallet":"0x...","guardian":"0x...","set_at":timestamp} or 404.
+func (a *APIServer) handleGetGuardian(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
+	if !isValidWalletAddr(wallet) {
+		http.Error(w, `{"error":"invalid wallet address"}`, 400); return
+	}
+	guardian, setAt, err := a.state.GetGuardian(wallet)
+	if err != nil || guardian == "" {
+		http.Error(w, `{"error":"no guardian found"}`, 404); return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"wallet":   wallet,
+		"guardian": strings.ToLower(guardian),
+		"set_at":   setAt,
+	})
+}
+
+// ─── ESCROW ENDPOINTS ─────────────────────────────────────────────────────────
+
+// handleGetEscrow GET /api/escrow?wallet=0x...
+// Returns escrow amount and moved_at timestamp, or 404 if no escrow.
+func (a *APIServer) handleGetEscrow(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
+	if !isValidWalletAddr(wallet) {
+		http.Error(w, `{"error":"invalid wallet address"}`, 400); return
+	}
+	amount, movedAt, err := a.state.GetEscrow(wallet)
+	if err != nil || amount == 0 {
+		http.Error(w, `{"error":"no escrow found for this wallet"}`, 404); return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"wallet":   wallet,
+		"amount":   amount,
+		"moved_at": movedAt,
+	})
+}
+
+// handleRecoverEscrow POST /api/recover-escrow
+// Body: {"wallet":"0x...","signature":"0x..."}
+// Signature = personal_sign("Aequitas: recover escrow {wallet_address}", wallet_key).
+func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" { w.WriteHeader(200); return }
+	if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var req struct {
+		Wallet    string `json:"wallet"`
+		Signature string `json:"signature"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, 400); return
+	}
+	wallet := strings.ToLower(strings.TrimSpace(req.Wallet))
+	if !isValidWalletAddr(wallet) {
+		http.Error(w, `{"error":"invalid wallet address"}`, 400); return
+	}
+	msg := "Aequitas: recover escrow " + wallet
+	if err := verifyPersonalSign(msg, req.Signature, wallet); err != nil {
+		http.Error(w, `{"error":"invalid signature: `+err.Error()+`"}`, 400); return
+	}
+	if err := a.state.RecoverFromEscrow(wallet); err != nil {
+		http.Error(w, `{"error":"`+err.Error()+`"}`, 400); return
+	}
+	newBalance := a.state.GetBalance(wallet)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":     true,
+		"wallet":      wallet,
+		"new_balance": newBalance,
+	})
 }
