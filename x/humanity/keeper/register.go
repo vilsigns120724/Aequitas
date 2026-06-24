@@ -367,6 +367,22 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		if effectiveNullifier != "" {
 			a.state.SaveNullifier(effectiveNullifier, wallet)
 		}
+		// Mirror path must also emit a block TX so secondary nodes learn about
+		// this registration. Without this, secondaries never see mirror-path
+		// registrations and their nullifier tables diverge, enabling double-spend.
+		mirrorCommitment := ""
+		if len(req.PubSignals) > 0 {
+			mirrorCommitment = req.PubSignals[0]
+		}
+		if effectiveNullifier != "" {
+			a.blockchain.AddTransaction(Transaction{
+				Type:       "register_human",
+				Wallet:     wallet,
+				TxHash:     txHash,
+				Nullifier:  effectiveNullifier,
+				Commitment: mirrorCommitment,
+			})
+		}
 		return txHash, nil
 	}
 
@@ -487,13 +503,18 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	if len(req.PubSignals) > 0 {
 		commitment = req.PubSignals[0]
 	}
-	a.blockchain.AddTransaction(Transaction{
-		Type:       "register_human",
-		Wallet:     wallet,
-		TxHash:     txHash,
-		Nullifier:  nullifierToStore,
-		Commitment: commitment,
-	})
+	// Only emit block TX when we have a nullifier — secondary nodes use it as
+	// the idempotency key. A TX with empty nullifier would be silently dropped
+	// by replayRegistrations, hiding the registration from all secondary nodes.
+	if nullifierToStore != "" {
+		a.blockchain.AddTransaction(Transaction{
+			Type:       "register_human",
+			Wallet:     wallet,
+			TxHash:     txHash,
+			Nullifier:  nullifierToStore,
+			Commitment: commitment,
+		})
+	}
 
 	return txHash, nil
 }

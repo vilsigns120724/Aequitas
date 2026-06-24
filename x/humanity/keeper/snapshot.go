@@ -103,15 +103,15 @@ Version: SnapshotVersion,
 // to cs. Only imports if the local DB is empty (TotalHumans == 0) to avoid
 // overwriting an already-populated state. Verifies the snapshot signature
 // against expectedSignerHex if non-empty.
+// ImportSnapshotFromURL downloads a StateSnapshot and merges it into local state.
+// The import is additive: existing accounts, nullifiers and bio-registrations
+// are not overwritten, so it is safe to call on partially-populated state
+// (e.g. after a crash mid-import) without regressing balances.
 func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) error {
-	if cs.TotalHumans() > 0 {
-		fmt.Printf("[SNAPSHOT] DB already populated (%d humans) — skipping bootstrap import\n", cs.TotalHumans())
-		return nil
+	local := cs.TotalHumans()
+	if local > 0 {
+		fmt.Printf("[SNAPSHOT] Merging into existing state (%d humans local) — adding missing entries\n", local)
 	}
-	return cs.downloadAndApplySnapshot(peerURL, expectedSignerHex)
-}
-
-func (cs *ChainState) downloadAndApplySnapshot(peerURL, expectedSignerHex string) error {
 	client := &http.Client{Timeout: 60 * time.Second}
 
 	req, reqErr := http.NewRequest("GET", peerURL, nil)
@@ -181,18 +181,25 @@ func (cs *ChainState) downloadAndApplySnapshot(peerURL, expectedSignerHex string
 	}
 
 	// Apply in-memory under lock, then persist outside lock to avoid deadlock.
+	// Existing accounts are NOT overwritten — only missing ones are added.
+	// This makes the import safe to call on partially-populated state without
+	// regressing balances that have advanced via UBI/demurrage since the snapshot.
 	var accountsToPersist []*AccountState
 	cs.mu.Lock()
 	for _, acc := range snap.Accounts {
 		acc.Address = strings.ToLower(acc.Address)
-		cs.accounts[acc.Address] = acc
-		accountsToPersist = append(accountsToPersist, acc)
+		if _, exists := cs.accounts[acc.Address]; !exists {
+			cs.accounts[acc.Address] = acc
+			accountsToPersist = append(accountsToPersist, acc)
+		}
 	}
-	if snap.Pool != nil {
+	if snap.Pool != nil && cs.pool == nil {
 		cs.pool = snap.Pool
 	}
 	for nullifier, wallet := range snap.Nullifiers {
-		cs.nullifiers[nullifier] = wallet
+		if _, exists := cs.nullifiers[nullifier]; !exists {
+			cs.nullifiers[nullifier] = wallet
+		}
 	}
 	cs.mu.Unlock()
 

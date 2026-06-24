@@ -651,6 +651,38 @@ func (cs *ChainState) IsNullifierUsed(nullifier string) bool {
 // fall through to the DB automatically via IsNullifierUsed.
 const maxInMemNullifiers = 500_000
 
+// TryClaimNullifier atomically inserts the nullifier and returns true if it
+// was newly inserted (this caller owns the registration), false if it already
+// existed (another goroutine or a previous replay already claimed it).
+// Using a DB-level INSERT … ON CONFLICT eliminates the TOCTOU window between
+// IsNullifierUsed and SaveNullifier — no separate mutex required.
+func (cs *ChainState) TryClaimNullifier(nullifier, walletAddress string) bool {
+	if nullifier == "" {
+		return false
+	}
+	walletAddress = strings.ToLower(walletAddress)
+	if cs.db != nil {
+		res, err := cs.db.Exec(
+			`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT (nullifier) DO NOTHING`,
+			nullifier, walletAddress,
+		)
+		if err != nil {
+			fmt.Printf("[NULLIFIER] TryClaimNullifier DB error: %v\n", err)
+			return false
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return false // already existed
+		}
+	}
+	// Insert succeeded (or no DB) — update in-memory cache.
+	cs.mu.Lock()
+	if len(cs.nullifiers) < maxInMemNullifiers {
+		cs.nullifiers[nullifier] = walletAddress
+	}
+	cs.mu.Unlock()
+	return true
+}
+
 func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) {
 	if nullifier == "" {
 		return

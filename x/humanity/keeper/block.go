@@ -553,18 +553,36 @@ func (dag *BlockDAG) replayRegistrations(block *Block) {
 		nullifier := strings.TrimSpace(tx.Nullifier)
 		commitment := strings.TrimSpace(tx.Commitment)
 		if wallet == "" || nullifier == "" {
+			fmt.Printf("[REPLAY] ⚠ Skipping register_human in block #%d: missing wallet or nullifier (older node version?)\n", block.Height)
 			continue
 		}
-		// Idempotent: skip if this nullifier is already recorded.
-		if dag.state.IsNullifierUsed(nullifier) {
+		// Basic format guards: wallet must be a 42-char 0x address, nullifier
+		// must be a non-trivial hex string. These reject obviously malformed TXs
+		// that a compromised validator might inject without a valid ZK proof.
+		if len(wallet) != 42 || wallet[:2] != "0x" {
+			fmt.Printf("[REPLAY] ✗ Rejecting register_human in block #%d: malformed wallet %q\n", block.Height, wallet)
 			continue
 		}
-		// Apply: credit 1000 AEQ, record nullifier, record bio-registration.
+		if len(nullifier) < 16 {
+			fmt.Printf("[REPLAY] ✗ Rejecting register_human in block #%d: nullifier too short %q\n", block.Height, nullifier)
+			continue
+		}
+		// TryClaimNullifier atomically inserts the nullifier into the DB.
+		// Returns false if already present — eliminates the TOCTOU window
+		// between a separate check and insert (no concurrent double-credit possible).
+		// Nullifier is persisted BEFORE RegisterHuman so that a crash between
+		// the two calls leaves the nullifier recorded, preventing replay on restart.
+		if !dag.state.TryClaimNullifier(nullifier, wallet) {
+			continue // already registered
+		}
+		// Nullifier is now committed. Credit the balance.
 		if err := dag.state.RegisterHuman(wallet); err != nil {
-			fmt.Printf("[REPLAY] ✗ RegisterHuman %s: %v\n", wallet, err)
+			// Nullifier is already in DB — the wallet cannot re-register.
+			// Balance correction requires manual intervention, but double-credit
+			// is impossible.
+			fmt.Printf("[REPLAY] ✗ RegisterHuman %s: %v (nullifier recorded, balance NOT credited)\n", wallet, err)
 			continue
 		}
-		dag.state.SaveNullifier(nullifier, wallet)
 		if commitment != "" {
 			_ = dag.state.SaveBioRegistration(commitment, wallet, tx.TxHash, "")
 		}

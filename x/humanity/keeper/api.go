@@ -108,6 +108,7 @@ mux.HandleFunc("/api/wealth-cap", a.handleWealthCap)
 mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
 mux.HandleFunc("/api/nonce", a.handleNonce)
 mux.HandleFunc("/api/peers", a.handlePeers)
+mux.HandleFunc("/api/signing-address", a.handleSigningAddress)
 mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
 mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
@@ -174,12 +175,6 @@ growth = 100
 // P3-3: compute next UBI based on last_ubi_at, not server uptime.
 nextUBISecs := a.state.SecondsUntilNextUBI()
 
-// Expose signing address so secondary nodes can populate BOOTSTRAP_SIGNER
-// without needing SSH access to the primary node.
-var selfSigningAddr string
-if sk := a.blockchain.GetSigningKey(); sk != nil {
-	selfSigningAddr = strings.ToLower(crypto.PubkeyToAddress(sk.PublicKey).Hex())
-}
 json.NewEncoder(w).Encode(map[string]interface{}{
 "chain_id":        "aequitas-1",
 "version":         "v0.3.0",
@@ -188,7 +183,6 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 "total_humans":    a.state.TotalHumans(),
 "total_supply":    fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
 "node_id":         a.p2pNode.GetNodeID(),
-"signing_address": selfSigningAddr,
 "uptime":          uptime,
 "is_primary":      os.Getenv("IS_PRIMARY_NODE") == "true",
 "block_time":      6,
@@ -814,6 +808,27 @@ func (a *APIServer) handlePeers(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
+}
+
+// handleSigningAddress returns this node's signing address, protected by
+// SNAPSHOT_TOKEN. Secondary node operators need this for BOOTSTRAP_SIGNER.
+// Not exposed in /api/status to avoid leaking validator addresses publicly.
+func (a *APIServer) handleSigningAddress(w http.ResponseWriter, r *http.Request) {
+w.Header().Set("Content-Type", "application/json")
+w.Header().Set("Access-Control-Allow-Origin", "*")
+token := os.Getenv("SNAPSHOT_TOKEN")
+if token != "" {
+	authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if authHeader != token && r.URL.Query().Get("token") != token {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+}
+var addr string
+if sk := a.blockchain.GetSigningKey(); sk != nil {
+	addr = strings.ToLower(crypto.PubkeyToAddress(sk.PublicKey).Hex())
+}
+json.NewEncoder(w).Encode(map[string]string{"signing_address": addr})
 }
 
 // handleSnapshot exports the full Go-state as a signed JSON snapshot.
