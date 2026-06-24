@@ -1658,7 +1658,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 </div>
 
 <script>
-const PS = ''; // proof calls proxied via /api/prove on this node (avoids browser CORS)
+const PS = '/api'; // proof calls proxied via /api/prove on this node (avoids browser CORS)
 const CID = '0x786';
 const V7_CONTRACT = '0x20D271028f32577FCd07b4583A8e0E4eBBdB4F78';
 let waddr = '', proofData = null, curLang = 'en';
