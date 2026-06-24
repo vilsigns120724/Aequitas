@@ -768,8 +768,8 @@ return wallets
 func (cs *ChainState) IncrementBlockCount(proposerAddr string) {
 if cs.db == nil || proposerAddr == "" { return }
 proposerAddr = strings.ToLower(proposerAddr)
-// Only increment if this address is a registered node operator
-res, _ := cs.db.Exec(`UPDATE registered_nodes SET blocks_produced = blocks_produced + 1 WHERE lower(signing_address) = lower($1)`, proposerAddr)
+res, err := cs.db.Exec(`UPDATE registered_nodes SET blocks_produced = blocks_produced + 1 WHERE lower(signing_address) = lower($1)`, proposerAddr)
+if err != nil || res == nil { return }
 if n, _ := res.RowsAffected(); n == 0 {
 cs.db.Exec(`UPDATE registered_nodes SET blocks_produced = blocks_produced + 1 WHERE lower(wallet_address) = lower($1)`, proposerAddr)
 }
