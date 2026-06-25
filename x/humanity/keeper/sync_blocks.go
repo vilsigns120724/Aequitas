@@ -263,9 +263,10 @@ if dag.signingKey != nil {
 signerAddr = strings.ToLower(crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex())
 }
 body, _ := json.Marshal(map[string]string{
-"url":             selfURL,
-"signing_address": signerAddr,
-"peer_secret":     os.Getenv("PEER_SECRET"),
+"url":                  selfURL,
+"signing_address":      signerAddr,
+"peer_secret":          os.Getenv("PEER_SECRET"),
+"node_operator_wallet": strings.ToLower(os.Getenv("NODE_OPERATOR_WALLET")),
 })
 resp, err := httpSyncClient.Post(
 primaryURL+"/api/peers/register", "application/json", bytes.NewReader(body))

@@ -741,10 +741,11 @@ w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 if r.Method == "OPTIONS" { w.WriteHeader(200); return }
 var req struct {
-URL            string `json:"url"`
-SigningAddress string `json:"signing_address"`
-PeerSecret     string `json:"peer_secret"`
-Signature      string `json:"signature"` // P1-3 challenge-response
+URL                 string `json:"url"`
+SigningAddress      string `json:"signing_address"`
+PeerSecret          string `json:"peer_secret"`
+Signature           string `json:"signature"` // P1-3 challenge-response
+NodeOperatorWallet  string `json:"node_operator_wallet"`
 }
 r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 json.NewDecoder(r.Body).Decode(&req)
@@ -787,11 +788,23 @@ for _, k := range keys {
 if k["signing_address"] == addr { keyAuthorized = true; break }
 }
 if secretOK || keyAuthorized || sigOK {
+// Only registered humans may operate validator nodes.
+// Check NODE_OPERATOR_WALLET is a registered human on this chain.
+nodeWallet := strings.ToLower(strings.TrimSpace(req.NodeOperatorWallet))
+if nodeWallet == "" {
+	// Fall back to checking signing address itself (legacy nodes without the field)
+	nodeWallet = addr
+}
+if !a.state.IsHuman(nodeWallet) {
+	fmt.Printf("[PEERS] Rejected %s: NODE_OPERATOR_WALLET %s is not a registered human\n", addr, nodeWallet)
+	http.Error(w, `{"error":"NODE_OPERATOR_WALLET is not a registered human — register first via the AequitasBio app"}`, http.StatusForbidden)
+	return
+}
 a.blockchain.AddAuthorizedValidator(addr)
 method := "key"
 if sigOK && !keyAuthorized { method = "challenge-response signature" }
 if secretOK && !keyAuthorized && !sigOK { method = "PEER_SECRET" }
-if !keyAuthorized { fmt.Printf("[PEERS] Auto-authorized validator via %s: %s\n", method, addr) }
+if !keyAuthorized { fmt.Printf("[PEERS] Auto-authorized validator via %s: %s (wallet: %s)\n", method, addr, nodeWallet) }
 } else if req.Signature == "" {
 fmt.Printf("[PEERS] Validator %s: no signature provided — request /api/peers/challenge first\n", addr)
 } else {
