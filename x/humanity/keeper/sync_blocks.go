@@ -10,7 +10,6 @@ import (
 "net/http"
 "net/url"
 "os"
-"sort"
 "strings"
 "sync"
 "time"
@@ -142,44 +141,24 @@ dag.syncWithNode(peerURL)
 }()
 }
 
-func (dag *BlockDAG) syncWithNode(nodeURL string) {
-// P3-1: exponential backoff on error — doubles up to 60s, resets on success.
-backoff := 6 * time.Second
-ticker := time.NewTicker(backoff)
-defer ticker.Stop()
-for range ticker.C {
+func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 resp, err := httpSyncClient.Get(nodeURL + "/api/blocks")
 if err != nil {
-backoff *= 2
-if backoff > 60*time.Second { backoff = 60 * time.Second }
-ticker.Reset(backoff)
-continue
+fmt.Printf("[HTTP-SYNC] ✗ Could not reach %s: %v\n", nodeURL, err)
+return false
 }
 body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 resp.Body.Close()
-
 var blocks []*Block
 if err := json.Unmarshal(body, &blocks); err != nil {
-backoff *= 2
-if backoff > 60*time.Second { backoff = 60 * time.Second }
-ticker.Reset(backoff)
-continue
+fmt.Printf("[HTTP-SYNC] ✗ Bad response from %s: %v\n", nodeURL, err)
+return false
 }
-// P2-AUDIT: Reject unreasonably large block lists from peers. A legitimate
-// node syncing 6-second blocks produces at most ~14400 blocks/day; a
-// response with more than 50000 blocks is either a buggy peer or an attack.
 const maxBlocksPerSync = 50000
 if len(blocks) > maxBlocksPerSync {
 fmt.Printf("[HTTP-SYNC] Peer %s returned %d blocks (max %d) -- skipping\n", nodeURL, len(blocks), maxBlocksPerSync)
-backoff *= 2
-if backoff > 60*time.Second { backoff = 60 * time.Second }
-ticker.Reset(backoff)
-continue
+return false
 }
-// Reset backoff on success
-if backoff > 6*time.Second { backoff = 6 * time.Second; ticker.Reset(backoff) }
-
-sort.Slice(blocks, func(i, j int) bool { return blocks[i].Height < blocks[j].Height })
 added := 0
 for _, block := range blocks {
 dag.mu.RLock()
@@ -188,14 +167,30 @@ dag.mu.RUnlock()
 if !exists && dag.AddPeerBlock(block) { added++ }
 }
 if added > 0 {
-	// P2-FIX: dag.tips is a map protected by dag.mu; reading it
-	// without any lock is a data race. Snapshot count under RLock.
-	dag.mu.RLock()
-	tipCount := len(dag.tips)
-	dag.mu.RUnlock()
+dag.mu.RLock()
+tipCount := len(dag.tips)
+dag.mu.RUnlock()
 fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d\n", added, nodeURL, tipCount)
 }
-} // end for range ticker.C
+return true
+}
+
+func (dag *BlockDAG) syncWithNode(nodeURL string) {
+// Try immediately on first call — no initial delay.
+backoff := 6 * time.Second
+dag.doSyncOnce(nodeURL)
+ticker := time.NewTicker(backoff)
+defer ticker.Stop()
+for range ticker.C {
+if !dag.doSyncOnce(nodeURL) {
+backoff *= 2
+if backoff > 30*time.Second { backoff = 30 * time.Second } // max 30s not 60s
+ticker.Reset(backoff)
+continue
+}
+// Reset backoff on success
+if backoff > 6*time.Second { backoff = 6 * time.Second; ticker.Reset(backoff) }
+	} // end for range ticker.C
 } // end syncWithNode
 
 // ─── PEER DISCOVERY ──────────────────────────────────────────────────────────
