@@ -105,10 +105,25 @@ const maxSyncPeers = 20
 
 // startSyncForPeer starts a long-running syncWithNode goroutine for peerURL.
 // No-op if already syncing that URL or if the peer cap is reached.
+// syncPeersWhitelist is loaded once from SYNC_PEERS_WHITELIST env var
+// (comma-separated URLs). When non-empty, only whitelisted peers are synced.
+var syncPeersWhitelist = func() map[string]bool {
+	m := make(map[string]bool)
+	for _, u := range strings.Split(os.Getenv("SYNC_PEERS_WHITELIST"), ",") {
+		u = strings.TrimRight(strings.TrimSpace(u), "/")
+		if u != "" { m[u] = true }
+	}
+	return m
+}()
+
 func (dag *BlockDAG) startSyncForPeer(peerURL string) {
 peerURL = strings.TrimRight(peerURL, "/")
 if !isAllowedPeerURL(peerURL) {
 fmt.Printf("[PEERS] Rejected peer URL (must be public HTTPS): %s\n", peerURL)
+return
+}
+if len(syncPeersWhitelist) > 0 && !syncPeersWhitelist[peerURL] {
+fmt.Printf("[PEERS] Skipping %s (not in SYNC_PEERS_WHITELIST)\n", peerURL)
 return
 }
 dag.syncPeerMu.Lock()
