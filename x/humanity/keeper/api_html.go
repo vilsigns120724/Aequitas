@@ -4330,7 +4330,7 @@ function openBlock(hash) {
     txs.forEach(tx => {
       html += '<div class="bdc-tx">TYPE: ' + sanitize(tx.type || '?') +
         '<br>WALLET: ' + sanitize(tx.wallet || '—') +
-        (tx.amount ? '<br>AMOUNT: ' + tx.amount + ' AEQ' : '') +
+        (tx.amount ? '<br>AMOUNT: ' + sanitize(String(tx.amount)) + ' AEQ' : '') +
         (tx.tx_hash ? '<br>TX HASH: ' + sanitize(tx.tx_hash) : '') +
         '</div>';
     });
@@ -4918,7 +4918,7 @@ function activateTabFromPath(path) {
   const stabSlug = parts[1] || '';
   // Backwards-compat: /swap -> /exchange
   if (name === 'swap') name = 'exchange';
-  if (!name || !tabNames.includes(name)) return;
+  if (!name || !tabNames.includes(name)) name = 'register'; // default to register tab for root path
   let tabEl = null;
   document.querySelectorAll('.tab').forEach(t => {
     if ((t.getAttribute('onclick') || '').includes("'" + name + "'")) tabEl = t;
@@ -5052,7 +5052,7 @@ async function connectWalletAndProve() {
     const br = await fetch('/api/balance?wallet=' + waddr);
     const bd = await br.json();
     if (bd.is_human) {
-      addLog('Already registered! Balance: ' + bd.balance + ' AEQ', 'ok');
+      addLog('Already registered! Balance: ' + sanitize(String(bd.balance || 0)) + ' AEQ', 'ok');
       document.getElementById('btn-reg').disabled = true;
       document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
       return;
@@ -5130,7 +5130,7 @@ async function connectWallet() {
       const br = await fetch('/api/balance?wallet=' + waddr);
       const bd = await br.json();
       if (bd.is_human) {
-        addLog('Already registered! Balance: ' + bd.balance + ' AEQ', 'ok');
+        addLog('Already registered! Balance: ' + sanitize(String(bd.balance || 0)) + ' AEQ', 'ok');
         document.getElementById('btn-reg').disabled = true;
         document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
       } else if (proofData) {
@@ -5279,7 +5279,7 @@ window.ethereum && window.ethereum.on('accountsChanged', function(a) {
       if (bd.is_human) {
         document.getElementById('btn-reg').disabled = true;
         document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
-        addLog('Already registered! Balance: ' + bd.balance + ' AEQ', 'ok');
+        addLog('Already registered! Balance: ' + sanitize(String(bd.balance || 0)) + ' AEQ', 'ok');
       } else {
         document.getElementById('btn-reg').disabled = !proofData;
         if (proofData) document.getElementById('btn-reg').textContent = 'PROOF READY — CLICK TO REGISTER';

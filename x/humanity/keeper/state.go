@@ -958,6 +958,19 @@ fmt.Println("[UBI] No registered humans yet — pool left untouched")
 return
 }
 
+// E3-FIX for UBI: settle demurrage for ALL humans FIRST. settleDemurrageLocked
+// credits 20% of each human's decay to ubiPoolAddr. Reading the pool balance
+// BEFORE this loop would miss those credits; zeroing AFTER distributes them.
+// Same fix applied to DistributeLPPool.
+for _, addr := range humanAddrs {
+cs.settleDemurrageLocked(cs.accounts[addr])
+}
+// NOW read pool balance — includes any demurrage credits just added.
+poolAcc, ok = cs.accounts[ubiPoolAddr]
+if !ok || poolAcc.Balance <= 0 {
+fmt.Println("[UBI] Pool empty after demurrage settlement — nothing to distribute")
+return
+}
 total := poolAcc.Balance.Float()
 share := total / float64(len(humanAddrs))
 // P0-5/P2-9: prevent funds vanishing via float rounding to 0
@@ -966,11 +979,8 @@ fmt.Printf("[UBI] Share %.10f rounds to zero — pool left intact for next distr
 return
 }
 // P0-2 + P1-6: credit humans BEFORE zeroing pool AND before last_ubi_at.
-// If we crash after crediting but before zeroing, the pool balance remains
-// and next distribution starts with last_ubi_at still unset → will re-check.
 for _, addr := range humanAddrs {
 acc := cs.accounts[addr]
-cs.settleDemurrageLocked(acc)
 acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 touchActivity(acc)
 cs.enforceWealthCapLocked(acc)
@@ -1288,7 +1298,9 @@ fee := calcV7Fee(fromAcc.Balance.Float(), amount, totalSupply)
 // to humans * 1000). Redirect 100% of fee to UBI pool instead of the
 // V7-contract's 20%/80% split — this preserves the supply invariant
 // and ensures all fees benefit the community rather than disappearing.
-ubiContrib := round6(fee) // 100% to UBI (was 20%; burn portion kept in supply)
+// E-FIX: compute net first, derive ubi as remainder - preserves supply invariant
+	netToRecipient := round6(amount - fee)
+	ubiContrib := amount - netToRecipient
 
 fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - amount))
 touchActivity(fromAcc)
@@ -1298,7 +1310,7 @@ if _, ok := cs.accounts[to]; !ok {
 cs.accounts[to] = &AccountState{Address: to}
 }
 cs.settleDemurrageLocked(cs.accounts[to])
-cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + amount - fee))
+cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + netToRecipient))
 touchActivity(cs.accounts[to])
 cs.enforceWealthCapLocked(cs.accounts[to])
 cs.saveAccountToDB(cs.accounts[to])
@@ -2069,9 +2081,19 @@ func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn float64) 
 	if acc.LPShares.Float() < sharesToBurn {
 		return fmt.Errorf("insufficient LP shares")
 	}
+	// Mirror F17 + F18 caps from primary RemoveLiquidity
+	if sharesToBurn > cs.pool.TotalLPShares.Float() {
+		sharesToBurn = cs.pool.TotalLPShares.Float()
+		if sharesToBurn <= 0 {
+			return fmt.Errorf("pool total LP shares is zero")
+		}
+	}
 	fraction := sharesToBurn / cs.pool.TotalLPShares.Float()
+	if fraction > 1.0 { fraction = 1.0 }
 	outAEQ := round6(cs.pool.ReserveAEQ.Float() * fraction)
 	outTUSD := round6(cs.pool.ReserveTUSD.Float() * fraction)
+	if outAEQ > cs.pool.ReserveAEQ.Float() { outAEQ = cs.pool.ReserveAEQ.Float() }
+	if outTUSD > cs.pool.ReserveTUSD.Float() { outTUSD = cs.pool.ReserveTUSD.Float() }
 
 	acc.LPShares = NewDecimal(round6(acc.LPShares.Float() - sharesToBurn))
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))

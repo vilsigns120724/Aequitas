@@ -210,7 +210,8 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 			accountsToPersist = append(accountsToPersist, acc)
 		}
 	}
-	if snap.Pool != nil && cs.pool == nil {
+	// FIX: cs.pool is never nil after NewChainState() — check for empty reserves instead
+	if snap.Pool != nil && (cs.pool == nil || (cs.pool.ReserveAEQ.Float() == 0 && cs.pool.ReserveTUSD.Float() == 0)) {
 		cs.pool = snap.Pool
 	}
 	for nullifier, wallet := range snap.Nullifiers {

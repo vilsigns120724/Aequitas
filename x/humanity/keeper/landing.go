@@ -118,6 +118,9 @@ footer{border-top:1px solid var(--border);padding:40px 24px;text-align:center}
 footer p{font-size:0.75rem;color:var(--muted)}
 footer p span{color:var(--purple)}
 
+/* ── GINI SECTION ────────────────────────────────────────────── */
+@media(max-width:700px){.gini-section-grid{grid-template-columns:1fr!important}}
+
 /* ── MOBILE TOUCH TARGETS ────────────────────────────────────── */
 @media(max-width:480px){
 .btn-primary,.btn-secondary{padding:16px 24px;font-size:0.9rem;width:100%;justify-content:center;border-radius:12px}
@@ -285,7 +288,7 @@ section{padding:60px 20px}
       </div>
     </div>
   </div>
-  @media(max-width:700px){.gini-section-grid{grid-template-columns:1fr!important}}
+
 </section>
 
 <!-- TOKENOMICS -->

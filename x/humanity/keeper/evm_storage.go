@@ -547,6 +547,9 @@ func NewPersistentStateDB(cs *ChainState) (*state.StateDB, error) {
 // under the new flow) can poll for its registration — see
 // GetWalletByBioHash below.
 func (cs *ChainState) SaveBioRegistration(commitment, walletAddress, txHash, bioHash string) error {
+	if commitment == "" {
+		return fmt.Errorf("empty commitment rejected")
+	}
 	if cs.db == nil {
 		return nil
 	}

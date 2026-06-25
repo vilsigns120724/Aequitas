@@ -79,7 +79,7 @@ return nil, err
 // public IPs because the minimal resolver doesn't handle PTR/A lookups
 // for already-resolved addresses the same way on all platforms.
 if ip := net.ParseIP(host); ip != nil {
-if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsMulticast() {
 	return nil, fmt.Errorf("connection to private/loopback IP rejected: %s", host)
 }
 d := &net.Dialer{Timeout: 10 * time.Second}
@@ -92,7 +92,7 @@ return nil, fmt.Errorf("DNS lookup failed for %s", host)
 }
 for _, ip := range ips {
 parsed := net.ParseIP(ip)
-if parsed == nil || parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast() {
+if parsed == nil || parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast() || parsed.IsMulticast() {
 	return nil, fmt.Errorf("DNS resolved to private/loopback address %s for host %s", ip, host)
 }
 }
@@ -317,7 +317,7 @@ return false
 
 // Literal IP: allow HTTP or HTTPS as long as the IP is public.
 if ip := net.ParseIP(host); ip != nil {
-return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast()
+return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast() && !ip.IsMulticast()
 }
 
 // Hostname: require HTTPS to prevent DNS-rebinding attacks.
@@ -332,7 +332,7 @@ return false
 }
 for _, addr := range addrs {
 ip := net.ParseIP(addr)
-if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsMulticast() {
 return false
 }
 }
