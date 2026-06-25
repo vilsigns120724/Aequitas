@@ -53,10 +53,6 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .tab{padding:16px 16px;font-size:0.65rem;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:0.5px;font-weight:600;white-space:nowrap;transition:all 0.2s;flex-shrink:0}
 .tab:hover{color:var(--purple)}.tab.active{color:var(--purple);border-bottom-color:var(--purple);background:rgba(155,114,246,0.08)}
 .tab-content{display:none;position:relative;z-index:1}.tab-content.active{display:block}
-html[data-active=network]  #tab-network {display:block!important}
-html[data-active=explorer] #tab-explorer{display:block!important}
-html[data-active=exchange] #tab-exchange{display:block!important}
-html[data-active=index]    #tab-index   {display:block!important}
 .hero{padding:20px 20px 0;position:relative;z-index:1}
 .section-label{font-size:0.6rem;color:var(--muted);letter-spacing:3px;text-transform:uppercase;margin-bottom:14px;font-weight:600}
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:#E0D9D0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
@@ -3527,15 +3523,11 @@ function showStab(parentId, stabId, el) {
 }
 
 function showTab(name, el) {
-  // Remove the server-injected data-active attribute so CSS rules like
-  // html[data-active=network] #tab-network {display:block!important} no
-  // longer force the old tab visible after a JS-driven tab switch.
-  document.documentElement.removeAttribute('data-active');
-  document.querySelectorAll('.tab-content').forEach(t => {
+  document.querySelectorAll('.tab-content').forEach(function(t) {
     t.classList.remove('active');
-    t.style.display = '';
+    t.style.display = ''; // clear any server-injected inline style
   });
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
   const tabContent = document.getElementById('tab-' + name);
   if (!tabContent) return;
   tabContent.classList.add('active');
@@ -4999,12 +4991,11 @@ function activateTabFromPath(path) {
     if ((t.getAttribute('onclick') || '').includes("'" + name + "'")) tabEl = t;
   });
   if (!tabEl) return;
-  document.documentElement.removeAttribute('data-active');
-  document.querySelectorAll('.tab-content').forEach(t => {
+  document.querySelectorAll('.tab-content').forEach(function(t) {
     t.classList.remove('active');
-    t.style.display = '';
+    t.style.display = ''; // clear any server-injected inline style
   });
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
   const tabContent = document.getElementById('tab-' + name);
   if (!tabContent) return;
   tabContent.classList.add('active');
