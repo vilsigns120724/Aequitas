@@ -307,6 +307,12 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 		if !ok {
 			continue
 		}
+		// F13-FIX: re-check LastActivityAt under write lock — between the
+		// candidate scan and here, the account may have been touched by a
+		// Transfer/Swap/ConfirmAlive call, which would update LastActivityAt.
+		if acc.LastActivityAt > threshold {
+			continue // no longer inactive
+		}
 		bal := round6(effectiveBalance(acc).Float())
 		if bal <= 0 {
 			continue

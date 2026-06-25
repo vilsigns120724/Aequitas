@@ -625,15 +625,18 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
-// Protected by SNAPSHOT_TOKEN when set. If SNAPSHOT_TOKEN is not set,
-// the endpoint is accessible publicly — the signed message is scoped
-// to validator registration only and cannot be replayed elsewhere.
-if token := os.Getenv("SNAPSHOT_TOKEN"); token != "" {
-	auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if subtle.ConstantTimeCompare([]byte(auth), []byte(token)) != 1 {
-		http.Error(w, `{"error":"unauthorized — set Authorization: Bearer <SNAPSHOT_TOKEN>"}`, 401)
-		return
-	}
+// F12-FIX: Require SNAPSHOT_TOKEN unconditionally. Previously the endpoint
+// was open when SNAPSHOT_TOKEN was not set. An open endpoint leaks that the
+// node is running and allows unauthenticated challenge generation.
+token := os.Getenv("SNAPSHOT_TOKEN")
+if token == "" {
+	http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured on this node"}`, http.StatusForbidden)
+	return
+}
+auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+if subtle.ConstantTimeCompare([]byte(auth), []byte(token)) != 1 {
+	http.Error(w, `{"error":"unauthorized — set Authorization: Bearer <SNAPSHOT_TOKEN>"}`, 401)
+	return
 }
 humanWallet := strings.ToLower(r.URL.Query().Get("wallet"))
 if humanWallet == "" || !strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {

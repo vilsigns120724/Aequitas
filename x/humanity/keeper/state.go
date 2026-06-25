@@ -1662,6 +1662,15 @@ return 0, 0, fmt.Errorf("account not found")
 if acc.LPShares.Float() < sharesToBurn {
 return 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)", acc.LPShares.Float(), sharesToBurn)
 }
+// F17-FIX: guard against TotalLPShares corruption (< actual shares).
+// Capping fraction to 1.0 above prevents over-withdrawal from reserves,
+// but TotalLPShares -= sharesToBurn would go negative. Clamp sharesToBurn.
+if sharesToBurn > cs.pool.TotalLPShares.Float() {
+sharesToBurn = cs.pool.TotalLPShares.Float()
+if sharesToBurn <= 0 {
+	return 0, 0, fmt.Errorf("pool total LP shares is zero or negative")
+}
+}
 
 fraction := sharesToBurn / cs.pool.TotalLPShares.Float()
 	if fraction > 1.0 { fraction = 1.0 } // cap: TotalLPShares corruption guard
@@ -1958,14 +1967,14 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount float64) err
 		return fmt.Errorf("insufficient balance (have %.6f, need %.6f)", fromAcc.Balance.Float(), netAmount)
 	}
 	fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - netAmount))
-	go cs.saveAccountToDB(fromAcc)
+	cs.saveAccountToDB(fromAcc)
 
 	if _, ok := cs.accounts[to]; !ok {
 		cs.accounts[to] = &AccountState{Address: to}
 	}
 	toAcc := cs.accounts[to]
 	toAcc.Balance = NewDecimal(round6(toAcc.Balance.Float() + netAmount))
-	go cs.saveAccountToDB(toAcc)
+	cs.saveAccountToDB(toAcc)
 	return nil
 }
 
@@ -1994,7 +2003,7 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - amountIn))
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountOut))
 	}
-	go cs.saveAccountToDB(acc)
+	cs.saveAccountToDB(acc)
 	return nil
 }
 
@@ -2039,7 +2048,7 @@ func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lp
 		cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() + mintedShares))
 		cs.savePoolToDB()
 	}
-	go cs.saveAccountToDB(acc)
+	cs.saveAccountToDB(acc)
 	return nil
 }
 
@@ -2075,7 +2084,7 @@ func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn float64) 
 	cs.pool.ReserveTUSD = NewDecimal(newReserveTUSD)
 cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
 	cs.savePoolToDB()
-	go cs.saveAccountToDB(acc)
+	cs.saveAccountToDB(acc)
 	return nil
 }
 
@@ -2092,12 +2101,12 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64) {
 			continue
 		}
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountPerHuman))
-		go cs.saveAccountToDB(acc)
+		cs.saveAccountToDB(acc)
 	}
 	// Zero the UBI pool on secondary (it was zeroed on primary after distribution)
 	if ubiAcc, ok := cs.accounts[ubiPoolAddr]; ok {
 		ubiAcc.Balance = NewDecimal(0)
-		go cs.saveAccountToDB(ubiAcc)
+		cs.saveAccountToDB(ubiAcc)
 	}
 }
 
@@ -2116,7 +2125,7 @@ func (cs *ChainState) ApplyFaucetDelta(wallet string, faucetAmount float64) erro
 	}
 	acc.FaucetClaimed = true
 	acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(faucetAmount))
-	go cs.saveAccountToDB(acc)
+	cs.saveAccountToDB(acc)
 	return nil
 }
 

@@ -115,7 +115,15 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	if local > 0 {
 		fmt.Printf("[SNAPSHOT] Merging into existing state (%d humans local) — adding missing entries\n", local)
 	}
-	client := &http.Client{Timeout: 60 * time.Second}
+	// F18-FIX: use redirect-blocking client with IP validation to prevent
+	// SSRF if BOOTSTRAP_SNAPSHOT_URL is set to a private/cloud-metadata IP.
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Transport: &http.Transport{DialContext: pinningDialer},
+	}
 
 	req, reqErr := http.NewRequest("GET", peerURL, nil)
 	if reqErr != nil {
