@@ -471,22 +471,20 @@ amountBig := new(big.Int).SetBytes(tx.Data()[36:68])
 decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
 amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountBig), decimals).Float64()
 
-// Read sender balance BEFORE transfer so calcV7Fee gets the pre-transfer
-// balance (same as what the V7 contract's _calcFee sees on-chain).
-preSenderBalance := s.state.GetBalance(senderAddr)
-// Use TransferWithV7Fee to match V7's _calcFee() semantics:
-// 0.1% base + concentration surcharge, 20% to UBI pool, 80% burned.
+// E2-FIX: Measure the EXACT net amount the recipient receives by reading
+// their balance before and after TransferWithV7Fee. TransferWithV7Fee
+// settles demurrage internally, so the pre-transfer balance-based fee
+// calculation diverges from the actual fee applied. The balance delta
+// is ground truth and eliminates the discrepancy on secondary nodes.
+preRecipientBalance := s.state.GetBalance(toAddr)
 if err := s.state.TransferWithV7Fee(senderAddr, toAddr, amountFloat); err != nil {
 return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 }
+postRecipientBalance := s.state.GetBalance(toAddr)
 s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
 s.mu.Lock(); s.txStatus[txHash] = true; s.mu.Unlock()
 if s.dag != nil {
-	// Record the net amount the recipient receives (gross minus V7 fee)
-	// so secondary nodes can replay with ApplyTransferDelta.
-	v7Fee := calcV7Fee(preSenderBalance, amountFloat,
-		float64(s.state.TotalHumans())*1000.0)
-	netAmt := amountFloat - v7Fee
+	netAmt := round6(postRecipientBalance - preRecipientBalance)
 	if netAmt < 0 {
 		netAmt = 0
 	}

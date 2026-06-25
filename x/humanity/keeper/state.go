@@ -1284,7 +1284,11 @@ if acc.IsHuman { humans++ }
 }
 totalSupply := float64(humans) * 1000.0
 fee := calcV7Fee(fromAcc.Balance.Float(), amount, totalSupply)
-ubiContrib := round6(fee * 0.20)
+// E1-FIX: In the Go-state ledger, AEQ cannot be burned (supply is tied
+// to humans * 1000). Redirect 100% of fee to UBI pool instead of the
+// V7-contract's 20%/80% split — this preserves the supply invariant
+// and ensures all fees benefit the community rather than disappearing.
+ubiContrib := round6(fee) // 100% to UBI (was 20%; burn portion kept in supply)
 
 fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - amount))
 touchActivity(fromAcc)
@@ -1308,8 +1312,8 @@ cs.saveAccountToDB(cs.accounts[ubiPoolAddr])
 }
 cs.save()
 
-fmt.Printf("[STATE] ✓ TransferV7 %.6f AEQ (fee=%.6f burn=%.6f ubi=%.6f): %s → %s\n",
-amount, fee, fee-ubiContrib, ubiContrib, from, to)
+fmt.Printf("[STATE] ✓ TransferV7 %.6f AEQ (fee=%.6f → UBI): %s → %s\n",
+amount, fee, from, to)
 cs.syncBalanceLocked(V7_CONTRACT_ADDR, from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
 return nil
 }
