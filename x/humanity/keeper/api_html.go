@@ -4203,10 +4203,22 @@ async function loadBlocks() {
     if (!blocks || !blocks.length) { list.innerHTML = '<div class="empty">No blocks yet</div>'; return; }
     allBlocks = blocks;
     document.getElementById('block-count').textContent = blocks.length + ' blocks';
+    const blockMap = {};
+    blocks.forEach(function(bk){ blockMap[bk.hash] = bk; });
     list.innerHTML = blocks.slice().reverse().map(b => {
       const merge = b.parent_hashes && b.parent_hashes.length > 1;
       const hasTx = b.transactions && b.transactions.length > 0;
       const validator = b.proposer ? short(b.proposer, 6, 4) : '—';
+      // For MERGE blocks: show unique parent proposers so all contributing nodes are visible
+      let parentNodes = '';
+      if (merge && b.parent_hashes) {
+        const parentProps = [...new Set(b.parent_hashes
+          .map(function(h){ const pb = blockMap[h]; return pb && pb.proposer ? short(pb.proposer, 6, 4) : null; })
+          .filter(Boolean))];
+        if (parentProps.length > 0) {
+          parentNodes = ' ← ' + parentProps.map(function(p){ return '<span style="color:var(--purple)">' + sanitize(p) + '</span>'; }).join(', ');
+        }
+      }
       return '<div class="block-item" onclick="openBlock(\'' + sanitize(b.hash) + '\')">' +
         '<div class="block-num">#' + b.height + '</div>' +
         '<div><div class="block-hash">' + short(b.hash) +
@@ -4214,7 +4226,7 @@ async function loadBlocks() {
           (hasTx ? ' <span class="bt">TX</span>' : '') +
           '</div>' +
           '<div class="block-parents">' + (b.parent_hashes ? b.parent_hashes.length + ' parent(s)' : '') +
-          ' · node: <span style="color:var(--teal)">' + validator + '</span></div>' +
+          ' · <span style="color:var(--teal)">' + validator + '</span>' + parentNodes + '</div>' +
         '</div>' +
         '<div class="block-right"><div class="block-humans">' + (b.humans || 0) + ' humans</div>' +
         '<div class="block-time">' + timeAgo(b.timestamp) + '</div></div>' +
@@ -4231,7 +4243,11 @@ function openBlock(hash) {
   // All peer-supplied block fields go through sanitize() before innerHTML
   // to prevent XSS — an authorized validator can sign arbitrary content
   // in parent_hashes, state_root, and proposer.
-  const parentList = (b.parent_hashes || []).map(function(h){ return '<div style="margin-bottom:2px">' + sanitize(h) + '</div>'; }).join('') || '—';
+  const parentList = (b.parent_hashes || []).map(function(h){
+    const pb = allBlocks.find(function(x){ return x.hash === h; });
+    const pProp = pb && pb.proposer ? ' <span style="color:var(--purple);font-size:0.5rem">(' + short(pb.proposer,6,4) + ')</span>' : '';
+    return '<div style="margin-bottom:2px">' + sanitize(h) + pProp + '</div>';
+  }).join('') || '—';
   const isMerge = b.parent_hashes && b.parent_hashes.length > 1;
   let html = '';
   html += '<div class="bdc-row"><div class="bdc-k">Height</div><div class="bdc-v">#' + sanitize(String(b.height)) + (b.is_genesis ? ' <span class="bm">GENESIS</span>' : '') + '</div></div>';
