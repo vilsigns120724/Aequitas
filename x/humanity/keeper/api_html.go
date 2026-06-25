@@ -106,6 +106,38 @@ html[data-active=index]    #tab-index   {display:block!important}
 .bm{background:rgba(139,92,246,0.1);color:var(--purple);font-size:0.53rem;padding:2px 6px;border-radius:4px;border:1px solid rgba(139,92,246,0.2)}
 .bt{background:rgba(0,255,209,0.08);color:var(--neon);font-size:0.53rem;padding:2px 6px;border-radius:4px;border:1px solid rgba(0,255,209,0.15)}
 .empty{padding:40px;text-align:center;color:var(--muted);font-size:0.7rem;line-height:2.5}
+/* ── Etherscan-style explorer ─────────────────────────────────────────────── */
+.exp-search{display:flex;gap:8px;padding:14px 20px;background:var(--card2);border-bottom:1px solid var(--border)}
+.exp-search input{flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);border-radius:8px;padding:10px 14px;color:var(--text);font-size:0.7rem;font-family:var(--font-mono);outline:none;transition:border-color 0.2s}
+.exp-search input:focus{border-color:var(--purple);background:rgba(155,114,246,0.04)}
+.exp-search input::placeholder{color:var(--muted)}
+.exp-search button{background:linear-gradient(135deg,var(--purple),var(--teal));color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:0.68rem;font-weight:700;cursor:pointer;letter-spacing:0.5px;white-space:nowrap;transition:opacity 0.2s}
+.exp-search button:hover{opacity:0.85}
+.exp-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin:16px 20px 0}
+@media(max-width:600px){.exp-stats{grid-template-columns:repeat(2,1fr)}}
+.exp-stat{background:var(--card2);padding:14px 16px}
+.exp-stat-lbl{font-size:0.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;font-weight:600}
+.exp-stat-val{font-size:1.15rem;font-weight:800;color:var(--text);font-family:var(--font-mono);line-height:1}
+.exp-stat-sub{font-size:0.5rem;color:var(--muted);margin-top:4px;line-height:1.4}
+.exp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 20px 24px}
+@media(max-width:860px){.exp-grid{grid-template-columns:1fr}}
+.exp-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
+.exp-panel-hdr{background:var(--card2);padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.exp-panel-title{font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:8px;color:var(--text)}
+.exp-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;flex:1}
+.exp-table{width:100%;border-collapse:collapse;min-width:280px}
+.exp-table thead th{font-size:0.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap;background:rgba(0,0,0,0.12)}
+.exp-table tbody td{font-size:0.65rem;padding:9px 12px;border-bottom:1px solid rgba(255,255,255,0.03);vertical-align:middle;font-family:var(--font-mono)}
+.exp-table tbody tr.exp-tr{transition:background 0.12s;cursor:pointer}
+.exp-table tbody tr.exp-tr:hover{background:rgba(155,114,246,0.08)}
+.exp-table tbody tr.exp-tr:last-child td{border-bottom:none}
+.exp-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:0.54rem;font-weight:700;letter-spacing:0.3px;font-family:var(--font-body)}
+.exp-badge-merge{background:rgba(155,114,246,0.12);color:var(--purple);border:1px solid rgba(155,114,246,0.3)}
+.exp-badge-std{background:rgba(34,211,238,0.07);color:var(--teal);border:1px solid rgba(34,211,238,0.18)}
+.exp-badge-tx{background:rgba(52,211,153,0.07);color:var(--neon);border:1px solid rgba(52,211,153,0.18)}
+.exp-muted{color:var(--muted)!important}
+.exp-addr{color:var(--teal)!important}
+.exp-empty{padding:28px;text-align:center;color:var(--muted);font-size:0.68rem;font-family:var(--font-body)!important}
 .right-col{display:flex;flex-direction:column;gap:12px;position:relative;z-index:1}
 .ic{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
 .ic-title{font-size:0.6rem;color:var(--purple);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;font-weight:600}
@@ -428,82 +460,73 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <div class="stab" onclick="showStab('tab-explorer','sep-humans',this)">👥 Humans</div>
 </nav>
 <div id="sep-blocks" class="stab-panel active">
-<div class="hero">
-  <div class="section-label" data-i18n="live-stats">Live Chain Statistics</div>
-  <div class="stats-grid">
-    <div class="stat c-blue"><div class="stat-accent"></div><div class="stat-icon">🔗</div><div class="stat-lbl" data-i18n="s-height">Block Height</div><div class="stat-val" id="s-height">—</div><div class="stat-sub" data-i18n="s-height-sub">New block every ~6s · BlockDAG · Parallel production</div></div>
-    <div class="stat c-green"><div class="stat-accent"></div><div class="stat-icon">🧬</div><div class="stat-lbl" data-i18n="s-humans">Verified Humans</div><div class="stat-val" id="s-humans">—</div><div class="stat-sub" data-i18n="s-humans-sub">Biometric ZKP · One person, one wallet, forever</div></div>
-    <div class="stat c-gold"><div class="stat-accent"></div><div class="stat-icon">🪙</div><div class="stat-lbl" data-i18n="s-supply">Total Supply</div><div class="stat-val" id="s-supply">—</div><div class="stat-sub" data-i18n="s-supply-sub">Always = Humans × 1,000 AEQ</div></div>
-    <div class="stat c-purple"><div class="stat-accent"></div><div class="stat-icon">⚖</div><div class="stat-lbl" data-i18n="s-index">Aequitas Index</div><div class="stat-val" id="s-index">—</div><div class="stat-sub" data-i18n="s-index-sub">0 = perfect equality · 100 = max inequality</div></div>
-    <div class="stat c-teal"><div class="stat-accent"></div><div class="stat-icon">⚡</div><div class="stat-lbl" data-i18n="s-uptime">Uptime</div><div class="stat-val" id="s-uptime" style="font-size:1rem">—</div><div class="stat-sub" data-i18n="s-uptime-sub">Node v0.3.0 · Railway (Primary) + Contabo VPS (Secondary) · PostgreSQL</div></div>
+<!-- hidden elements needed by loadStatus() -->
+<span id="s-index" style="display:none"></span>
+<!-- Search bar -->
+<div class="exp-search">
+  <input type="text" id="exp-search-input" placeholder="Search by Block # or Hash..." onkeydown="if(event.key==='Enter')expSearch()">
+  <button onclick="expSearch()">Search</button>
+</div>
+<!-- Compact stats row -->
+<div class="exp-stats">
+  <div class="exp-stat">
+    <div class="exp-stat-lbl" data-i18n="s-height">Latest Block</div>
+    <div class="exp-stat-val" id="s-height">—</div>
+    <div class="exp-stat-sub">~6s · BlockDAG · Parallel production</div>
   </div>
-  <div class="info-banner">
-    <div>
-      <div class="ib-icon">🧬</div>
-      <div class="ib-title" data-i18n="ib-poh">Proof of Humanity</div>
-      <div class="ib-text" data-i18n="ib-poh-t">Every AEQ holder must cryptographically prove they are a unique living human. No bots, no corporations, no AI, no duplicates. Biometric data never leaves your device — only a mathematical proof of uniqueness is transmitted. This means AEQ is the first currency that is exclusively human.</div>
+  <div class="exp-stat">
+    <div class="exp-stat-lbl" data-i18n="s-humans">Verified Humans</div>
+    <div class="exp-stat-val" id="s-humans">—</div>
+    <div class="exp-stat-sub">Biometric ZKP · one per person</div>
+  </div>
+  <div class="exp-stat">
+    <div class="exp-stat-lbl" data-i18n="s-supply">Total Supply</div>
+    <div class="exp-stat-val" id="s-supply">—</div>
+    <div class="exp-stat-sub">Always = Humans × 1,000 AEQ</div>
+  </div>
+  <div class="exp-stat">
+    <div class="exp-stat-lbl" data-i18n="s-uptime">Uptime</div>
+    <div class="exp-stat-val" id="s-uptime" style="font-size:0.75rem">—</div>
+    <div class="exp-stat-sub">Railway (Primary) + Contabo VPS</div>
+  </div>
+</div>
+<!-- Two-panel explorer grid -->
+<div class="exp-grid">
+  <!-- Latest Blocks -->
+  <div class="exp-panel">
+    <div class="exp-panel-hdr">
+      <div class="exp-panel-title"><span class="sec-dot"></span>Latest Blocks</div>
+      <div class="sec-count" id="block-count">—</div>
     </div>
-    <div>
-      <div class="ib-icon">⚖</div>
-      <div class="ib-title" data-i18n="ib-fair">Radically Fair Distribution</div>
-      <div class="ib-text" data-i18n="ib-fair-t">Every verified human receives exactly 1,000 AEQ upon registration — no more, no less. No pre-mine, no founder allocation, no investor rounds. The total supply always and exactly equals the number of verified humans multiplied by 1,000. This is enforced mathematically, not by policy.</div>
+    <div class="exp-table-wrap">
+      <table class="exp-table">
+        <thead><tr><th>Block #</th><th>Age</th><th>Txns</th><th>Proposer</th><th>Type</th></tr></thead>
+        <tbody id="blocks-list"><tr><td colspan="5" class="exp-empty">Loading blocks...</td></tr></tbody>
+      </table>
     </div>
-    <div>
-      <div class="ib-icon">🔗</div>
-      <div class="ib-title" data-i18n="ib-dag">BlockDAG Architecture</div>
-      <div class="ib-text" data-i18n="ib-dag-t">Unlike traditional blockchains where only one block can exist per height, Aequitas uses a Directed Acyclic Graph (DAG) structure. Multiple blocks can be produced simultaneously by different nodes and later merged into the DAG. This enables higher throughput, lower latency, and eliminates single-node bottlenecks. Merge events are marked with a special badge in the explorer below.</div>
+  </div>
+  <!-- Latest Transactions -->
+  <div class="exp-panel">
+    <div class="exp-panel-hdr">
+      <div class="exp-panel-title"><span class="sec-dot" style="background:var(--teal);box-shadow:0 0 8px var(--teal)"></span>Latest Transactions</div>
+      <div class="sec-count" id="tx-count">—</div>
     </div>
-    <div>
-      <div class="ib-icon">⛽</div>
-      <div class="ib-title" data-i18n="ib-gas">Truly Gasless</div>
-      <div class="ib-text" data-i18n="ib-gas-t">All registrations and AEQ transfers cost absolutely nothing. No ETH, BNB, or MATIC required. No credit card, no bank account, no prior cryptocurrency needed. The relayer covers all transaction costs on behalf of users. If you are a human with a smartphone, you can participate — regardless of your economic situation.</div>
+    <div class="exp-table-wrap">
+      <table class="exp-table">
+        <thead><tr><th>Hash / Wallet</th><th>Block</th><th>Type</th><th>Amount</th></tr></thead>
+        <tbody id="txns-list"><tr><td colspan="4" class="exp-empty">Loading transactions...</td></tr></tbody>
+      </table>
     </div>
   </div>
 </div>
-<div class="main-grid">
-  <div class="section">
-    <div class="sec-head"><div class="sec-title"><span class="sec-dot"></span><span data-i18n="recent-blocks">Recent Blocks</span></div><div class="sec-count" id="block-count">—</div></div>
-    <div class="sec-desc" data-i18n="blocks-desc">Each row represents one block in the Aequitas BlockDAG. MERGE = this block has multiple parents, meaning two blocks were produced in parallel and later merged — the core feature of BlockDAG. TX = this block contains a human registration transaction. Block time averages ~6 seconds.</div>
-    <div id="blocks-list"><div class="empty" data-i18n="loading">Loading blocks...</div></div>
-  </div>
-  <!-- Block detail overlay -->
-  <div class="block-detail-overlay" id="block-detail-overlay" onclick="if(event.target===this)closeBlock()">
-    <div class="bdc">
-      <div class="bdc-hdr">
-        <div style="font-size:0.75rem;font-weight:700;color:var(--purple);font-family:var(--font-mono)" id="bdc-title">Block #—</div>
-        <div class="bdc-close" onclick="closeBlock()">✕ Close</div>
-      </div>
-      <div id="bdc-content"></div>
+<!-- Block detail overlay -->
+<div class="block-detail-overlay" id="block-detail-overlay" onclick="if(event.target===this)closeBlock()">
+  <div class="bdc">
+    <div class="bdc-hdr">
+      <div style="font-size:0.75rem;font-weight:700;color:var(--purple);font-family:var(--font-mono)" id="bdc-title">Block #—</div>
+      <div class="bdc-close" onclick="closeBlock()">✕ Close</div>
     </div>
-  </div>
-  <div class="right-col">
-    <div class="ic">
-      <div class="ic-title" data-i18n="net-info">Network Info</div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-chain">Chain Name</span><span class="ic-val go">Aequitas Chain</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-chainid">Chain ID</span><span class="ic-val b">1926 (0x786)</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-symbol">Symbol</span><span class="ic-val go">AEQ</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-btime">Block Time</span><span class="ic-val">~6 seconds</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-cons">Consensus</span><span class="ic-val p">BlockDAG + PoH</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-nodes">Active Nodes</span><span class="ic-val g">2 Online</span></div>
-      <div class="ic-row"><span class="ic-key">ZKP System</span><span class="ic-val p">Groth16 / BN128</span></div>
-      <div class="ic-row"><span class="ic-key">EVM Compatible</span><span class="ic-val g">Yes (Chain ID 1926)</span></div>
-      <div class="ic-row"><span class="ic-key" data-i18n="k-storage">Storage</span><span class="ic-val g">PostgreSQL</span></div>
-      <div class="ic-row"><span class="ic-key">P2P</span><span class="ic-val">libp2p (Go)</span></div>
-    </div>
-    <div class="mm-card">
-      <div class="mm-title" data-i18n="add-mm">ADD TO METAMASK</div>
-      <div style="font-size:0.6rem;color:var(--muted);margin-bottom:10px;line-height:1.7">Add Aequitas Chain to MetaMask to view your AEQ balance and interact with the network directly from your browser or mobile wallet.</div>
-      <div class="mm-row"><span class="mm-key" data-i18n="k-chain">Network Name</span><span class="mm-val">Aequitas Chain</span></div>
-      <div class="mm-row"><span class="mm-key">RPC URL</span><span class="mm-val" style="font-size:0.5rem">aequitas.digital/rpc</span></div>
-      <div class="mm-row"><span class="mm-key" data-i18n="k-chainid">Chain ID</span><span class="mm-val">1926</span></div>
-      <div class="mm-row"><span class="mm-key" data-i18n="k-symbol">Symbol</span><span class="mm-val">AEQ</span></div>
-      <div class="mm-row"><span class="mm-key" data-i18n="k-dec">Decimals</span><span class="mm-val">18</span></div>
-      <button class="mm-btn" onclick="addToMetaMask()" data-i18n="btn-add-mm">+ ADD AEQUITAS NETWORK</button>
-    </div>
-    <div class="phil-card">
-      <div class="phil-quote" data-i18n="phil">"Money exists because people exist.<br>Nothing more, nothing less."</div>
-      <div class="phil-sub" data-i18n="phil-sub">— THE AEQUITAS PRINCIPLE —</div>
-    </div>
+    <div id="bdc-content"></div>
   </div>
 </div>
 </div>
@@ -4255,87 +4278,139 @@ async function loadBlocks() {
   try {
     const blocks = await (await fetch('/api/blocks')).json();
     const list = document.getElementById('blocks-list');
-    if (!blocks || !blocks.length) { list.innerHTML = '<div class="empty">No blocks yet</div>'; return; }
+    const txList = document.getElementById('txns-list');
+    if (!blocks || !blocks.length) {
+      if (list) list.innerHTML = '<tr><td colspan="5" class="exp-empty">No blocks yet</td></tr>';
+      if (txList) txList.innerHTML = '<tr><td colspan="4" class="exp-empty">No transactions yet</td></tr>';
+      return;
+    }
     allBlocks = blocks;
-    const blockMap = {};
-    blocks.forEach(function(bk){ blockMap[bk.hash] = bk; });
-    // Deduplicate by height: keep only the block with the most parents per height.
-    // In BlockDAG, multiple nodes produce parallel blocks at the same height.
-    // The merge block (most parents) is the canonical one to display.
+    // Deduplicate by height: keep the block with the most parents (the merge block)
     const byHeight = {};
     blocks.forEach(function(b) {
       const h = b.height;
       const pc = (b.parent_hashes || []).length;
       if (!byHeight[h] || pc > (byHeight[h].parent_hashes || []).length) byHeight[h] = b;
     });
-    const dedupedBlocks = Object.values(byHeight).sort(function(a,b){ return b.height - a.height; });
+    const dedupedBlocks = Object.values(byHeight).sort(function(a, b) { return b.height - a.height; });
     document.getElementById('block-count').textContent = dedupedBlocks.length + ' blocks';
-    list.innerHTML = dedupedBlocks.map(b => {
-      const merge = b.parent_hashes && b.parent_hashes.length > 1;
-      const hasTx = b.transactions && b.transactions.length > 0;
-      const validator = b.proposer ? short(b.proposer, 6, 4) : '—';
-      // For MERGE blocks: show unique parent proposers so all contributing nodes are visible
-      let parentNodes = '';
-      if (merge && b.parent_hashes) {
-        const parentProps = [...new Set(b.parent_hashes
-          .map(function(h){ const pb = blockMap[h]; return pb && pb.proposer ? short(pb.proposer, 6, 4) : null; })
-          .filter(Boolean))];
-        if (parentProps.length > 0) {
-          parentNodes = ' ← ' + parentProps.map(function(p){ return '<span style="color:var(--purple)">' + sanitize(p) + '</span>'; }).join(', ');
-        }
+    // Render blocks table rows (latest 30)
+    if (list) {
+      list.innerHTML = dedupedBlocks.slice(0, 30).map(function(b) {
+        const merge = b.parent_hashes && b.parent_hashes.length > 1;
+        const txCount = (b.transactions || []).length;
+        const proposer = b.proposer ? short(b.proposer, 6, 4) : '—';
+        const typeBadge = merge
+          ? '<span class="exp-badge exp-badge-merge">MERGE</span>'
+          : '<span class="exp-badge exp-badge-std">STD</span>';
+        const txBadge = txCount > 0
+          ? '<span class="exp-badge exp-badge-tx">' + txCount + '</span>'
+          : '<span class="exp-muted">0</span>';
+        return '<tr class="exp-tr" onclick="openBlock(\'' + sanitize(b.hash) + '\')">' +
+          '<td style="color:var(--purple);font-weight:700">#' + b.height + '</td>' +
+          '<td class="exp-muted" style="font-size:0.6rem">' + sanitize(timeAgo(b.timestamp)) + '</td>' +
+          '<td>' + txBadge + '</td>' +
+          '<td class="exp-addr" style="font-size:0.6rem">' + sanitize(proposer) + '</td>' +
+          '<td>' + typeBadge + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    // Collect all transactions across blocks, newest first
+    if (txList) {
+      const allTxs = [];
+      dedupedBlocks.forEach(function(b) {
+        (b.transactions || []).forEach(function(tx) {
+          allTxs.push({ tx: tx, blockHeight: b.height, blockHash: b.hash });
+        });
+      });
+      const txCountEl = document.getElementById('tx-count');
+      if (txCountEl) txCountEl.textContent = allTxs.length + ' txns';
+      if (allTxs.length === 0) {
+        txList.innerHTML = '<tr><td colspan="4" class="exp-empty">No transactions yet</td></tr>';
+      } else {
+        txList.innerHTML = allTxs.slice(0, 30).map(function(item) {
+          const tx = item.tx;
+          const ref = tx.tx_hash || tx.wallet || '—';
+          const shortRef = ref.length > 14 ? ref.slice(0, 8) + '…' + ref.slice(-4) : ref;
+          const amt = (tx.amount && parseFloat(tx.amount) > 0) ? sanitize((+tx.amount).toFixed(4)) + ' AEQ' : '<span class="exp-muted">—</span>';
+          const typeColor = tx.type === 'register_human' ? 'var(--gold)' : tx.type === 'transfer' ? 'var(--teal)' : tx.type === 'swap' ? 'var(--purple)' : 'var(--muted)';
+          return '<tr class="exp-tr" onclick="openBlock(\'' + sanitize(item.blockHash) + '\')">' +
+            '<td style="color:var(--teal);font-size:0.59rem">' + sanitize(shortRef) + '</td>' +
+            '<td style="color:var(--purple);font-weight:700">#' + item.blockHeight + '</td>' +
+            '<td style="color:' + typeColor + ';font-size:0.59rem">' + sanitize(tx.type || '—') + '</td>' +
+            '<td style="font-size:0.62rem">' + amt + '</td>' +
+            '</tr>';
+        }).join('');
       }
-      return '<div class="block-item" onclick="openBlock(\'' + sanitize(b.hash) + '\')">' +
-        '<div class="block-num">#' + b.height + '</div>' +
-        '<div><div class="block-hash">' + short(b.hash) +
-          (merge ? ' <span class="bm">MERGE</span>' : '') +
-          (hasTx ? ' <span class="bt">TX</span>' : '') +
-          '</div>' +
-          '<div class="block-parents">' + (b.parent_hashes ? b.parent_hashes.length + ' parent(s)' : '') +
-          ' · <span style="color:var(--teal)">' + validator + '</span>' + parentNodes + '</div>' +
-        '</div>' +
-        '<div class="block-right"><div class="block-humans">' + (b.humans || 0) + ' humans</div>' +
-        '<div class="block-time">' + timeAgo(b.timestamp) + '</div></div>' +
-        '</div>';
-    }).join('');
+    }
   } catch (e) {}
 }
 
+function expSearch() {
+  const q = ((document.getElementById('exp-search-input') || {}).value || '').trim();
+  if (!q || !allBlocks.length) return;
+  const byNum = allBlocks.find(function(b) { return String(b.height) === q; });
+  if (byNum) { openBlock(byNum.hash); return; }
+  const ql = q.toLowerCase();
+  const byHash = allBlocks.find(function(b) { return b.hash && b.hash.toLowerCase().startsWith(ql); });
+  if (byHash) { openBlock(byHash.hash); return; }
+  const msgEl = document.getElementById('exp-search-input');
+  if (msgEl) { msgEl.style.borderColor = 'var(--red)'; setTimeout(function() { msgEl.style.borderColor = ''; }, 1500); }
+}
+
 function openBlock(hash) {
-  const b = allBlocks.find(x => x.hash === hash);
+  const b = allBlocks.find(function(x) { return x.hash === hash; });
   if (!b) return;
   document.getElementById('bdc-title').textContent = 'Block #' + b.height;
   const ts = new Date(b.timestamp * 1000);
-  // All peer-supplied block fields go through sanitize() before innerHTML
-  // to prevent XSS — an authorized validator can sign arbitrary content
-  // in parent_hashes, state_root, and proposer.
-  const parentList = (b.parent_hashes || []).map(function(h){
-    const pb = allBlocks.find(function(x){ return x.hash === h; });
-    const pProp = pb && pb.proposer ? ' <span style="color:var(--purple);font-size:0.5rem">(' + short(pb.proposer,6,4) + ')</span>' : '';
-    return '<div style="margin-bottom:2px">' + sanitize(h) + pProp + '</div>';
-  }).join('') || '—';
   const isMerge = b.parent_hashes && b.parent_hashes.length > 1;
-  let html = '';
-  html += '<div class="bdc-row"><div class="bdc-k">Height</div><div class="bdc-v">#' + sanitize(String(b.height)) + (b.is_genesis ? ' <span class="bm">GENESIS</span>' : '') + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Full Hash</div><div class="bdc-v" style="font-size:0.55rem">' + sanitize(b.hash || '') + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Timestamp</div><div class="bdc-v">' + sanitize(ts.toUTCString()) + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Node P2P ID</div><div class="bdc-v" style="color:var(--teal);word-break:break-all;font-size:0.54rem">' + sanitize(b.proposer || '—') + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k" style="color:var(--muted);font-size:0.54rem">i</div><div class="bdc-v" style="color:var(--muted);font-size:0.52rem">Signing address of the block producer (Ethereum address derived from RELAYER_PRIVATE_KEY)</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Humans</div><div class="bdc-v">' + sanitize(String(b.humans || 0)) + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Type</div><div class="bdc-v">' + (isMerge ? '<span class="bm">MERGE BLOCK</span> &mdash; ' + sanitize(String(b.parent_hashes.length)) + ' parents merged' : 'Standard block &mdash; 1 parent') + '</div></div>';
-  html += '<div class="bdc-row"><div class="bdc-k">Parent(s)</div><div class="bdc-v" style="font-size:0.55rem">' + parentList + '</div></div>';
-  if (b.state_root) html += '<div class="bdc-row"><div class="bdc-k">State Root</div><div class="bdc-v" style="font-size:0.55rem">' + sanitize(b.state_root) + '</div></div>';
+  // All peer-supplied block fields go through sanitize() before innerHTML
+  // to prevent XSS — an authorized validator can sign arbitrary content.
+  const parentList = (b.parent_hashes || []).map(function(h) {
+    const pb = allBlocks.find(function(x) { return x.hash === h; });
+    const pProp = pb && pb.proposer ? ' <span style="color:var(--purple);font-size:0.5rem">(' + sanitize(short(pb.proposer, 6, 4)) + ')</span>' : '';
+    return '<div style="margin-bottom:3px;font-size:0.54rem;word-break:break-all">' + sanitize(h) + pProp + '</div>';
+  }).join('') || '<span style="color:var(--muted)">None (genesis)</span>';
   const txs = b.transactions || [];
+  let html = '';
+  html += '<div class="bdc-row"><div class="bdc-k">Height</div><div class="bdc-v">'
+    + '<span style="color:var(--purple);font-weight:700">#' + sanitize(String(b.height)) + '</span>'
+    + (b.is_genesis ? ' <span class="bm">GENESIS</span>' : '')
+    + (isMerge ? ' <span class="bm">MERGE</span>' : '') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Timestamp</div><div class="bdc-v">'
+    + sanitize(ts.toUTCString()) + ' <span style="color:var(--muted)">(' + sanitize(timeAgo(b.timestamp)) + ')</span></div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Transactions</div><div class="bdc-v"><span style="color:var(--neon);font-weight:700">'
+    + txs.length + '</span> in this block</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Humans in Chain</div><div class="bdc-v">' + sanitize(String(b.humans || 0)) + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Type</div><div class="bdc-v">'
+    + (isMerge
+      ? '<span class="exp-badge exp-badge-merge">MERGE BLOCK</span> &mdash; ' + sanitize(String(b.parent_hashes.length)) + ' parents merged'
+      : '<span class="exp-badge exp-badge-std">STANDARD</span> &mdash; 1 parent') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Proposer</div><div class="bdc-v" style="color:var(--teal);word-break:break-all;font-size:0.54rem">'
+    + sanitize(b.proposer || '—') + '</div></div>';
+  html += '<div class="bdc-row"><div class="bdc-k">Block Hash</div><div class="bdc-v" style="font-size:0.52rem;word-break:break-all">'
+    + sanitize(b.hash || '') + '</div></div>';
+  if (b.state_root) {
+    html += '<div class="bdc-row"><div class="bdc-k">State Root</div><div class="bdc-v" style="font-size:0.52rem;word-break:break-all">'
+      + sanitize(b.state_root) + '</div></div>';
+  }
+  html += '<div class="bdc-row"><div class="bdc-k">Parent Hash(es)</div><div class="bdc-v">' + parentList + '</div></div>';
   if (txs.length > 0) {
     html += '<div class="bdc-tx-hdr">Transactions (' + txs.length + ')</div>';
-    txs.forEach(tx => {
-      html += '<div class="bdc-tx">TYPE: ' + sanitize(tx.type || '?') +
-        '<br>WALLET: ' + sanitize(tx.wallet || '—') +
-        (tx.amount ? '<br>AMOUNT: ' + sanitize(String(tx.amount)) + ' AEQ' : '') +
-        (tx.tx_hash ? '<br>TX HASH: ' + sanitize(tx.tx_hash) : '') +
-        '</div>';
+    txs.forEach(function(tx) {
+      const typeColor = tx.type === 'register_human' ? 'var(--gold)' : tx.type === 'transfer' ? 'var(--teal)' : tx.type === 'swap' ? 'var(--purple)' : 'var(--neon)';
+      html += '<div class="bdc-tx">'
+        + '<div style="display:flex;justify-content:space-between;margin-bottom:5px">'
+        + '<span style="color:' + typeColor + ';font-weight:700;font-family:var(--font-body);font-size:0.65rem">' + sanitize(tx.type || '?') + '</span>'
+        + (tx.amount && parseFloat(tx.amount) > 0 ? '<span style="color:var(--neon)">' + sanitize((+tx.amount).toFixed(6)) + ' AEQ</span>' : '')
+        + '</div>'
+        + (tx.wallet ? '<div style="color:var(--muted)">WALLET: <span style="color:var(--text)">' + sanitize(tx.wallet) + '</span></div>' : '')
+        + (tx.to ? '<div style="color:var(--muted)">TO: <span style="color:var(--teal)">' + sanitize(tx.to) + '</span></div>' : '')
+        + (tx.tx_hash ? '<div style="color:var(--muted)">TX: <span style="color:var(--purple)">' + sanitize(tx.tx_hash) + '</span></div>' : '')
+        + '</div>';
     });
   } else {
-    html += '<div class="bdc-row"><div class="bdc-k">Transactions</div><div class="bdc-v" style="color:var(--muted)">None</div></div>';
+    html += '<div class="bdc-row"><div class="bdc-k">Transactions</div><div class="bdc-v" style="color:var(--muted)">Empty block</div></div>';
   }
   document.getElementById('bdc-content').innerHTML = html;
   document.getElementById('block-detail-overlay').classList.add('open');
@@ -4562,8 +4637,8 @@ function updateFeeEstimate() {
       }
       const rateEl = document.getElementById('swap-rate-display');
       if (rateEl) rateEl.textContent = aeqToTusd
-        ? ('1 AEQ = ' + (est.amountOut / amt).toFixed(4) + ' tUSD')
-        : ('1 tUSD = ' + (est.amountOut / amt).toFixed(4) + ' AEQ');
+        ? ('1 AEQ = ' + (amtAfterFee > 0 ? est.amountOut / amtAfterFee : 0).toFixed(4) + ' tUSD')
+        : ('1 tUSD = ' + (amtAfterFee > 0 ? est.amountOut / amtAfterFee : 0).toFixed(4) + ' AEQ');
       if (impact >= 5) {
         warnEl.innerHTML = '⚠ High price impact (' + impact.toFixed(2) + '%). Consider a smaller amount.';
         warnEl.style.display = 'block';
@@ -4745,7 +4820,7 @@ async function claimFaucet() {
     const data = await resp.json();
     if (data.success) {
       swapLog('✓ Claimed ' + data.granted + ' test-tUSD', 'ok');
-      document.getElementById('swap-bal-tusd').textContent = fmt(data.granted) + ' tUSD';
+      await refreshSwapBalances();
     } else {
       swapLog('✗ Faucet claim failed: ' + sanitize(data.message), 'err');
       document.getElementById('swap-btn-faucet').disabled = false;
