@@ -545,10 +545,11 @@ var knownPublicSelectors = map[string]bool{
 "06fdde03": true, // name
 "95d89b41": true, // symbol
 "313ce567": true, // decimals
-// NOTE: registerWithSig (33f4167a) is intentionally NOT listed here.
+// NOTE: registerWithSig (13b81eb0) is intentionally NOT listed here.
 // Public callers must use /api/register which updates BOTH EVM and Go-state.
 // A raw /rpc call to registerWithSig would update only the EVM contract,
 // leaving RegisterHuman, bio_registrations, bio_hashes, and Go-balance unset.
+// Selector: registerWithSig(uint256[2],uint256[2][2],uint256[2],uint256[2],address,bytes,bytes32)
 }
 if tx.To() != nil && len(tx.Data()) >= 4 {
 sel := hex.EncodeToString(tx.Data()[:4])
@@ -557,7 +558,7 @@ if isV7 && !knownPublicSelectors[sel] {
 // Special case: registerWithSig is only allowed when the signer is the
 // relayer itself (i.e. called internally by /api/register). External wallets
 // must go through /api/register so Go-state is updated atomically.
-if sel == "33f4167a" {
+if sel == "13b81eb0" {
 // Derive relayer from RELAYER_ADDRESS; fallback to signing key address
 relayerAddr := strings.ToLower(os.Getenv("RELAYER_ADDRESS"))
 if relayerAddr == "" && s.dag != nil && s.dag.GetSigningKey() != nil {
