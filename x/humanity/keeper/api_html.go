@@ -4257,10 +4257,20 @@ async function loadBlocks() {
     const list = document.getElementById('blocks-list');
     if (!blocks || !blocks.length) { list.innerHTML = '<div class="empty">No blocks yet</div>'; return; }
     allBlocks = blocks;
-    document.getElementById('block-count').textContent = blocks.length + ' blocks';
     const blockMap = {};
     blocks.forEach(function(bk){ blockMap[bk.hash] = bk; });
-    list.innerHTML = blocks.slice().reverse().map(b => {
+    // Deduplicate by height: keep only the block with the most parents per height.
+    // In BlockDAG, multiple nodes produce parallel blocks at the same height.
+    // The merge block (most parents) is the canonical one to display.
+    const byHeight = {};
+    blocks.forEach(function(b) {
+      const h = b.height;
+      const pc = (b.parent_hashes || []).length;
+      if (!byHeight[h] || pc > (byHeight[h].parent_hashes || []).length) byHeight[h] = b;
+    });
+    const dedupedBlocks = Object.values(byHeight).sort(function(a,b){ return b.height - a.height; });
+    document.getElementById('block-count').textContent = dedupedBlocks.length + ' blocks';
+    list.innerHTML = dedupedBlocks.map(b => {
       const merge = b.parent_hashes && b.parent_hashes.length > 1;
       const hasTx = b.transactions && b.transactions.length > 0;
       const validator = b.proposer ? short(b.proposer, 6, 4) : '—';
