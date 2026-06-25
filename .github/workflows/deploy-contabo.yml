@@ -15,6 +15,8 @@ jobs:
           username: root
           key: ${{ secrets.CONTABO_SSH_KEY }}
           port: 22
+          fingerprint: "AAAAB3NzaC1yc2EAAAADAQABAAABgQDMqOKYOGoIgOgs1Q+E1X2CLRuaBNl/cv3RrLDkiSlJGuLxMTgSjhODIu15BJieKDYsB4Nt7hsFNwQSyrht9SLCoDoF+riZozG7gEroH5EDrnuV5fhzGJnh0tLytMHfZMQCSQv/inqI3p0BuXrZ1TuBJaR9kacuJsKWqRLk0EakfSPIi7JliTHKu8PbxewmhgUoFKy6usfZ8vuowmhL6/awletBMjXqXnzKZGLlR78KVV/GTUGsgSjVS/TDZF4f74i0Zsht9WlD0mdF+DWc6GWYUwTmdMQGD7s2qGaTATBC+/u/CW+Ti0kqd+xbYPzObAVHm7q4HjuIBdGhYkOyDXN5NjgMIcGlVbWnslIK47r1r50scuFlwIu7qrjMFI2aESEa6GhVtieB7btMx3R/jN2SR8lqhPgaiYekYdkCXNjouMrFNt6HADCUgJlGpXVsbDQ5KJBd4vBpGxA4O7HV/4bXY4GKaEO2atxD0+TytbD9IQG/smFSi1Wf/uFG3IsBkxc="
           script: /root/deploy.sh
           script_stop: true
-          timeout: 300s
+          timeout: 600s
+          command_timeout: 600s
