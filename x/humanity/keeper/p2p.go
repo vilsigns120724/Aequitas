@@ -186,7 +186,11 @@ selfID := n.host.ID().String()
 if selfID != "12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R" {
 fmt.Println("── Connecting to Bootstrap Node ─────────")
 if err := n.ConnectToPeer(BootstrapNode); err != nil {
-fmt.Printf("✗ Bootstrap connection failed: %v\n", err)
+// P2P bootstrap is best-effort — HTTP block sync is the primary
+// mechanism. Failure here is expected when port 4001 is firewalled
+// (e.g. Railway, Docker without -p 4001:4001) and does not prevent
+// the node from syncing blocks or producing correctly.
+fmt.Printf("⚠ P2P bootstrap unreachable (HTTP sync still works): %v\n", err)
 } else {
 fmt.Println("✓ Connected to Aequitas Bootstrap Node")
 }
