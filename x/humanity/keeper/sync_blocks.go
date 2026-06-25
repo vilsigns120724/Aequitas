@@ -224,6 +224,10 @@ fmt.Printf("[PEERS] Static peer: %s\n", peer)
 if primaryURL != "" && primaryURL != selfURL {
 fmt.Printf("[PEERS] Primary: %s\n", primaryURL)
 dag.registerAndDiscover(selfURL, primaryURL)
+// The primary never includes itself in its own peer list (/api/peers
+// only contains registered secondary nodes). Start syncing from it
+// directly so secondary nodes always receive primary blocks.
+dag.startSyncForPeer(primaryURL)
 } else {
 fmt.Println("[PEERS] Primary node — accepting registrations from peers")
 }
