@@ -75,6 +75,18 @@ host, port, err := net.SplitHostPort(addr)
 if err != nil {
 return nil, err
 }
+// Literal IP: skip DNS entirely and connect directly.
+// net.LookupHost("173.x.x.x") can fail on Alpine/Docker even for valid
+// public IPs because the minimal resolver doesn't handle PTR/A lookups
+// for already-resolved addresses the same way on all platforms.
+if ip := net.ParseIP(host); ip != nil {
+if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+	return nil, fmt.Errorf("connection to private/loopback IP rejected: %s", host)
+}
+d := &net.Dialer{Timeout: 10 * time.Second}
+return d.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+}
+// Hostname: resolve DNS and verify every IP is public (DNS-rebinding guard).
 ips, err := net.LookupHost(host)
 if err != nil || len(ips) == 0 {
 return nil, fmt.Errorf("DNS lookup failed for %s", host)
@@ -82,10 +94,9 @@ return nil, fmt.Errorf("DNS lookup failed for %s", host)
 for _, ip := range ips {
 parsed := net.ParseIP(ip)
 if parsed == nil || parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast() {
-return nil, fmt.Errorf("DNS resolved to private/loopback address %s for host %s", ip, host)
+	return nil, fmt.Errorf("DNS resolved to private/loopback address %s for host %s", ip, host)
 }
 }
-// Pin to first resolved IP so no second lookup can redirect to a private address.
 d := &net.Dialer{Timeout: 10 * time.Second}
 return d.DialContext(ctx, network, net.JoinHostPort(ips[0], port))
 }
