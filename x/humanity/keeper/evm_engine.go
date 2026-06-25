@@ -366,17 +366,13 @@ if len(data) < 4 {
 return addrs, commits, nil
 }
 sel := fmt.Sprintf("%x", data[:4])
-if sel == "33f4167a" && len(data) >= 4+32*6+20+32+32 {
-// Last static param before signature offset is the nullifier (bytes32).
-// ABI layout: 4 + pA(64) + pB(128) + pC(64) + pubSignals(64) + claimedHuman(32)
-// = 4+352 = 356; signature is dynamic, nullifier is the last fixed param
-// Dynamic offset for signature is at 356, actual nullifier at the LAST 32 bytes
-// of fixed params: 4+2*32+4*32+2*32+2*32+32 = 4+352 = 356, so nullifier at 356
-if len(data) >= 356+32 {
+// ABI layout for registerWithSig(uint256[2],uint256[2][2],uint256[2],uint256[2],address,bytes,bytes32):
+// selector(4) + pA(64) + pB(128) + pC(64) + pubSignals(64) + claimedHuman(32) + sig_offset(32) + nullifier(32)
+// = 4 + 64 + 128 + 64 + 64 + 32 + 32 + 32 = 420 bytes minimum
+if sel == "13b81eb0" && len(data) >= 420 {
 var nullifier [32]byte
-copy(nullifier[:], data[356:388])
+copy(nullifier[:], data[388:420]) // bytes32 nullifier is at offset 388
 return addrs, commits, &nullifier
-}
 }
 return addrs, commits, nil
 }
@@ -388,7 +384,10 @@ return []common.Address{from}, nil
 
 selector := fmt.Sprintf("%x", data[:4])
 switch selector {
-case "33f4167a": // registerWithSig(uint256[2],uint256[2][2],uint256[2],uint256[2],address,bytes)
+case "13b81eb0": // registerWithSig(uint256[2],uint256[2][2],uint256[2],uint256[2],address,bytes,bytes32)
+// ABI offsets (measured from byte 4, i.e. after selector):
+//   pA(64) + pB(128) + pC(64) + pubSignals(64) = 320 bytes → claimedHuman at 4+320 = 324
+//   pubSignals[0] (commitment) at 4+256 = 260
 addrs := []common.Address{from}
 var commitments []*big.Int
 if len(data) >= 324+32 {

@@ -117,7 +117,7 @@ p2pNode.SetDAG(bc)
 	// sync from itself and generate spurious hash-mismatch rejections.
 	selfURL := os.Getenv("SELF_URL")
 	if selfURL == "" {
-		selfURL = "https://aequitas-production-9fba.up.railway.app" // legacy default for Railway
+		selfURL = "https://aequitas.digital" // default; override with SELF_URL env var
 	}
 	bc.StartHTTPBlockSync(selfURL)
 	p2pNode.Start()
