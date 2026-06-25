@@ -1427,7 +1427,7 @@ if amountOut >= cs.pool.ReserveTUSD.Float() {
 return 0, fmt.Errorf("swap too large for pool liquidity")
 }
 cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() + amountInAfterFee))
-cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() - amountOut))
+cs.pool.ReserveTUSD = NewDecimal(max(0.0, round6(cs.pool.ReserveTUSD.Float() - amountOut)))
 acc.Balance = NewDecimal(round6(acc.Balance.Float() - amountIn))
 acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + amountOut))
 } else {
@@ -1436,7 +1436,7 @@ if amountOut >= cs.pool.ReserveAEQ.Float() {
 return 0, fmt.Errorf("swap too large for pool liquidity")
 }
 cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + amountInAfterFee))
-cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() - amountOut))
+cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(cs.pool.ReserveAEQ.Float() - amountOut)))
 acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - amountIn))
 acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountOut))
 }
@@ -1668,8 +1668,12 @@ acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
 acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
 touchActivity(acc) // receiving AEQ back from the pool counts as using it
 cs.enforceWealthCapLocked(acc)
-cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() - outAEQ))
-cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() - outTUSD))
+newReserveAEQ := round6(cs.pool.ReserveAEQ.Float() - outAEQ)
+	newReserveTUSD := round6(cs.pool.ReserveTUSD.Float() - outTUSD)
+	if newReserveAEQ < 0 { newReserveAEQ = 0 }
+	if newReserveTUSD < 0 { newReserveTUSD = 0 }
+	cs.pool.ReserveAEQ = NewDecimal(newReserveAEQ)
+	cs.pool.ReserveTUSD = NewDecimal(newReserveTUSD)
 cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
 
 cs.saveAccountToDB(acc)
@@ -2056,9 +2060,13 @@ func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn float64) 
 	acc.LPShares = NewDecimal(round6(acc.LPShares.Float() - sharesToBurn))
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
 	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
-	cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() - outAEQ))
-	cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() - outTUSD))
-	cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
+	newReserveAEQ := round6(cs.pool.ReserveAEQ.Float() - outAEQ)
+	newReserveTUSD := round6(cs.pool.ReserveTUSD.Float() - outTUSD)
+	if newReserveAEQ < 0 { newReserveAEQ = 0 }
+	if newReserveTUSD < 0 { newReserveTUSD = 0 }
+	cs.pool.ReserveAEQ = NewDecimal(newReserveAEQ)
+	cs.pool.ReserveTUSD = NewDecimal(newReserveTUSD)
+cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
 	cs.savePoolToDB()
 	go cs.saveAccountToDB(acc)
 	return nil
