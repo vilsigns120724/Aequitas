@@ -563,7 +563,13 @@ func notifyProofServer(bioHashKey, wallet string) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-chain-token", token)
-	proofClient := &http.Client{Timeout: 10 * time.Second}
+	// C3-FIX: use redirect-blocking client to prevent SSRF via PROOF_SERVER_URL.
+	proofClient := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	resp, err := proofClient.Do(req)
 	if err != nil {
 		fmt.Printf("[REGISTER] Warning: proof-server /store-bio call failed: %v\n", err)

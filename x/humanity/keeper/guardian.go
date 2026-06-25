@@ -92,8 +92,7 @@ func (cs *ChainState) SetGuardian(wallet, guardian string, _ int64) error {
 	}
 
 	if cs.db == nil {
-		// No-DB mode: skip persistence but still validate basics.
-		return nil
+		return fmt.Errorf("guardian operations require a database — run with DATABASE_URL set")
 	}
 
 	// Check 7-day timelock: if guardian was already set, block change.

@@ -35,7 +35,9 @@ peers  []peer.AddrInfo
 func loadOrCreateKey() (crypto.PrivKey, error) {
 if keyStr := os.Getenv("NODE_KEY"); keyStr != "" {
 keyBytes, err := base64.StdEncoding.DecodeString(keyStr)
-if err == nil {
+if err != nil {
+fmt.Printf("⚠ NODE_KEY is set but invalid base64: %v — generating new key\n", err)
+} else {
 priv, err := crypto.UnmarshalPrivateKey(keyBytes)
 if err == nil {
 fmt.Println("✓ Node key loaded from environment")

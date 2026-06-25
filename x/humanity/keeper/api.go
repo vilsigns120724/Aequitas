@@ -61,9 +61,13 @@ func isValidWalletAddr(addr string) bool {
 }
 
 func (a *APIServer) syncProofServerStatus() {
+proofBase := os.Getenv("PROOF_SERVER_URL")
+if proofBase == "" {
+proofBase = "https://aequitas-proof-server-production.up.railway.app"
+}
 for {
 proofHTTP := &http.Client{Timeout: 8 * time.Second}
-resp, err := proofHTTP.Get("https://aequitas-proof-server-production.up.railway.app/health")
+resp, err := proofHTTP.Get(proofBase + "/health")
 if err == nil {
 body, _ := io.ReadAll(resp.Body)
 resp.Body.Close()
@@ -626,7 +630,7 @@ w.Header().Set("Access-Control-Allow-Origin", "*")
 // to validator registration only and cannot be replayed elsewhere.
 if token := os.Getenv("SNAPSHOT_TOKEN"); token != "" {
 	auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if auth != token {
+	if subtle.ConstantTimeCompare([]byte(auth), []byte(token)) != 1 {
 		http.Error(w, `{"error":"unauthorized — set Authorization: Bearer <SNAPSHOT_TOKEN>"}`, 401)
 		return
 	}
@@ -787,12 +791,13 @@ keyAuthorized := false
 for _, k := range keys {
 if k["signing_address"] == addr { keyAuthorized = true; break }
 }
-if secretOK || keyAuthorized || sigOK {
-// Only registered humans may operate validator nodes.
-// Check NODE_OPERATOR_WALLET is a registered human on this chain.
+// C1-FIX: keyAuthorized alone is NOT sufficient — any party knowing a
+// validator's signing address could trigger authorization without proving
+// key possession. Require PEER_SECRET or challenge-response signature.
+// keyAuthorized only enriches the log message.
+if secretOK || sigOK {
 nodeWallet := strings.ToLower(strings.TrimSpace(req.NodeOperatorWallet))
 if nodeWallet == "" {
-	// Fall back to checking signing address itself (legacy nodes without the field)
 	nodeWallet = addr
 }
 if !a.state.IsHuman(nodeWallet) {
@@ -801,10 +806,12 @@ if !a.state.IsHuman(nodeWallet) {
 	return
 }
 a.blockchain.AddAuthorizedValidator(addr)
-method := "key"
-if sigOK && !keyAuthorized { method = "challenge-response signature" }
-if secretOK && !keyAuthorized && !sigOK { method = "PEER_SECRET" }
-if !keyAuthorized { fmt.Printf("[PEERS] Auto-authorized validator via %s: %s (wallet: %s)\n", method, addr, nodeWallet) }
+method := "PEER_SECRET"
+if sigOK { method = "challenge-response signature" }
+if keyAuthorized { method += " (registered key)" }
+fmt.Printf("[PEERS] Auto-authorized validator via %s: %s (wallet: %s)\n", method, addr, nodeWallet)
+} else if keyAuthorized {
+fmt.Printf("[PEERS] Validator %s: known key but no authentication proof — request /api/peers/challenge first\n", addr)
 } else if req.Signature == "" {
 fmt.Printf("[PEERS] Validator %s: no signature provided — request /api/peers/challenge first\n", addr)
 } else {
@@ -854,7 +861,11 @@ func (a *APIServer) handleProveGetProxy(w http.ResponseWriter, r *http.Request) 
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 id := strings.TrimPrefix(r.URL.Path, "/api/prove/get/")
-if id == "" { http.Error(w, `{"error":"missing id"}`, 400); return }
+// C5-FIX: prevent path traversal
+if id == "" || strings.Contains(id, "..") || strings.ContainsAny(id, "/?#") {
+	http.Error(w, `{"error":"invalid id"}`, 400)
+	return
+}
 resp, err := (&http.Client{Timeout: 30 * time.Second}).Get(proofServerURL + "/get/" + id)
 if err != nil { http.Error(w, `{"error":"proof server unreachable"}`, 502); return }
 defer resp.Body.Close()
@@ -902,7 +913,7 @@ if token == "" {
 	return
 }
 authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-if authHeader != token {
+if subtle.ConstantTimeCompare([]byte(authHeader), []byte(token)) != 1 {
 	http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 	return
 }
@@ -927,7 +938,7 @@ return
 }
 // P2-15: token in Authorization header (not URL query param that lands in logs).
 authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-if authHeader != token && r.URL.Query().Get("token") != token {
+if subtle.ConstantTimeCompare([]byte(authHeader), []byte(token)) != 1 {
 http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 return
 }

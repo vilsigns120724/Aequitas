@@ -345,7 +345,7 @@ func (cs *ChainState) TryLockDistribution() bool {
 if cs.db == nil {
 return true // no DB → single-node mode, always proceed
 }
-threshold := fmt.Sprintf("%d", time.Now().Add(-23*time.Hour).Unix())
+threshold := fmt.Sprintf("%d", time.Now().Add(-23*time.Hour-55*time.Minute).Unix()) // F5-FIX: grace period, still < 24h
 now := fmt.Sprintf("%d", time.Now().Unix())
 // Insert if missing, update if older than threshold
 result, err := cs.db.Exec(
@@ -551,7 +551,14 @@ return // DB saves immediately in RegisterHuman/Transfer
 cs.mu.RLock()
 data, _ := json.Marshal(cs.accounts)
 cs.mu.RUnlock()
-os.WriteFile("/tmp/aequitas_state.json", data, 0644)
+// D8-FIX: atomic write via temp-file + rename to prevent partial file
+// corruption if the process crashes mid-write.
+tmpPath := "/tmp/aequitas_state.json.tmp"
+if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+fmt.Printf("[STATE] Warning: failed to write state: %v\n", err)
+return
+}
+os.Rename(tmpPath, "/tmp/aequitas_state.json")
 }
 
 func (cs *ChainState) saveAccountToDB(acc *AccountState) {
@@ -836,6 +843,7 @@ fmt.Printf("[VALIDATORS] Skipping invalid wallet address: %q\n", wallet)
 continue
 }
 share := round6(total * float64(ns.blocks) / float64(totalBlocks))
+if share <= 0 { continue } // E4-FIX: skip rounding-to-zero to preserve pool
 if _, ok := cs.accounts[wallet]; !ok {
 cs.accounts[wallet] = &AccountState{Address: wallet}
 }
@@ -864,13 +872,8 @@ func (cs *ChainState) DistributeLPPool() {
 cs.mu.Lock()
 defer cs.mu.Unlock()
 
-poolAcc, ok := cs.accounts[lpPoolAddr]
-if !ok || poolAcc.Balance <= 0 {
-fmt.Println("[LP] Pool is empty — nothing to distribute today")
-return
-}
-
-// Collect all LP holders and their share counts
+// Collect all LP holders and their share counts BEFORE settling demurrage,
+// so we know who participates.
 type lpHolder struct {
 addr   string
 shares float64
@@ -888,19 +891,43 @@ fmt.Println("[LP] No LP holders — pool left untouched")
 return
 }
 
-total := poolAcc.Balance.Float()
-// P0-2: credit holders BEFORE zeroing pool — crash-safe ordering.
+// E3 fix: settle demurrage for ALL LP holders FIRST. settleDemurrageLocked
+// credits demurrage fees to pool addresses (including lpPoolAddr), so the
+// pool balance may increase during this loop. Reading poolAcc.Balance before
+// this loop would miss those newly-credited fees, and zeroing the pool at
+// the end would then destroy them.
 for _, h := range holders {
-share := (h.shares / totalShares) * total
 acc := cs.accounts[h.addr]
 cs.settleDemurrageLocked(acc)
+}
+
+// NOW read the pool balance — it includes any demurrage credits just added.
+poolAcc, ok := cs.accounts[lpPoolAddr]
+if !ok || poolAcc.Balance <= 0 {
+fmt.Println("[LP] Pool is empty — nothing to distribute today")
+return
+}
+
+total := poolAcc.Balance.Float()
+// P0-2: credit holders BEFORE zeroing pool — crash-safe ordering.
+// E4 fix: track total distributed so we don't zero the pool if all shares
+// rounded to zero (which would destroy micro-AEQ silently).
+var totalDistributed float64
+for _, h := range holders {
+share := round6((h.shares / totalShares) * total)
+totalDistributed += share
+acc := cs.accounts[h.addr]
 acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 touchActivity(acc)
 cs.enforceWealthCapLocked(acc)
 cs.saveAccountToDB(acc)
 }
+if totalDistributed > 0 {
 poolAcc.Balance = NewDecimal(0)
 cs.saveAccountToDB(poolAcc)
+} else {
+fmt.Printf("[LP] All shares rounded to zero (%.9f AEQ total) — pool preserved\n", total)
+}
 cs.save()
 
 holderAddrs := make([]string, len(holders))
