@@ -30,14 +30,16 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 	// without code there, proof verification reverts even when V7 itself exists.
 	bioAddr := strings.ToLower(BIO_VERIFIER_ADDR)
 	existingBio, err := state.LoadContract(bioAddr)
-	if err != nil || len(existingBio) == 0 {
-		bioCode, decodeErr := hex.DecodeString(BioVerifierRuntimeBytecode)
-		if decodeErr != nil {
-			fmt.Printf("[DEPLOY] ERROR: failed to decode BioVerifier bytecode: %v\n", decodeErr)
-		} else if saveErr := state.SaveContract(bioAddr, bioCode, deployerAddr); saveErr != nil {
+	expectedBio, decErr := hex.DecodeString(BioVerifierRuntimeBytecode)
+	bioNeedsUpdate := err != nil || len(existingBio) == 0 ||
+		(decErr == nil && hex.EncodeToString(existingBio) != BioVerifierRuntimeBytecode)
+	if bioNeedsUpdate {
+		if decErr != nil {
+			fmt.Printf("[DEPLOY] ERROR: failed to decode BioVerifier bytecode: %v\n", decErr)
+		} else if saveErr := state.SaveContract(bioAddr, expectedBio, deployerAddr); saveErr != nil {
 			fmt.Printf("[DEPLOY] ERROR: failed to save BioVerifier bytecode: %v\n", saveErr)
 		} else {
-			fmt.Printf("[DEPLOY] BioVerifier restored at %s (%d bytes)\n", BIO_VERIFIER_ADDR, len(bioCode))
+			fmt.Printf("[DEPLOY] BioVerifier deployed/updated at %s (%d bytes)\n", BIO_VERIFIER_ADDR, len(expectedBio))
 		}
 	} else {
 		fmt.Printf("[DEPLOY] BioVerifier already deployed at %s (%d bytes)\n", BIO_VERIFIER_ADDR, len(existingBio))
