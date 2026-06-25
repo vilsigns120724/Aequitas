@@ -153,6 +153,11 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method != "POST" {
+		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "POST required"})
+		return
+	}
+
 	ip := clientIP(r)
 	now := time.Now()
 	if last, ok := registerRateLimit.Load(ip); ok && now.Sub(last.(time.Time)) < 10*time.Second {
@@ -161,11 +166,6 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	registerRateLimit.Store(ip, now)
-
-	if r.Method != "POST" {
-		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "POST required"})
-		return
-	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, 256<<10) // 256 KB — ZK proofs are large
 	body, _ := io.ReadAll(r.Body)
@@ -377,9 +377,6 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		} else if req.BioHash != "" {
 			a.state.SaveBioHash(req.BioHash, wallet)
 		}
-		if effectiveNullifier != "" {
-			a.state.SaveNullifier(effectiveNullifier, wallet)
-		}
 		// Mirror path must also emit a block TX so secondary nodes learn about
 		// this registration. Without this, secondaries never see mirror-path
 		// registrations and their nullifier tables diverge, enabling double-spend.
@@ -505,14 +502,13 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// Always save effectiveNullifier (the ZK-derived one when using v2 circuit),
 	// not just req.Nullifier — req.Nullifier may be empty or the old SHA256 value
 	// while effectiveNullifier is the one actually stored on-chain.
+	// TryClaimNullifier (called in RegisterHuman flow) already writes the nullifier
+	// atomically. SaveNullifier here would overwrite the in-memory cache with a
+	// potentially stale value from a concurrent race winner. Use effectiveNullifier
+	// only for the block TX, not for a second write.
 	nullifierToStore := effectiveNullifier
-	if nullifierToStore != "" {
-		a.state.SaveNullifier(nullifierToStore, wallet)
-		fmt.Printf("[NULLIFIER] ✓ Stored effectiveNullifier for %s\n", wallet)
-	} else if req.Nullifier != "" {
+	if nullifierToStore == "" {
 		nullifierToStore = req.Nullifier
-		a.state.SaveNullifier(nullifierToStore, wallet)
-		fmt.Printf("[NULLIFIER] ✓ Stored nullifier for %s\n", wallet)
 	}
 
 	// Add a register_human TX to the DAG so secondary nodes learn about this
@@ -588,10 +584,17 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 	// pubSignals[1] the proof and the nullifier are from different sessions,
 	// which would break the "one human, one nullifier" invariant.
 	if pubSignals[1] != nil && pubSignals[1].Sign() > 0 {
-		expected := fmt.Sprintf("%064x", pubSignals[1])
-		provided := strings.ToLower(strings.TrimPrefix(nullifierHex, "0x"))
-		if provided != expected {
-			return "", fmt.Errorf("nullifier mismatch: provided %s != circuit output %s", provided, expected)
+		// Compare numerically — effectiveNullifier for v2 circuit is a decimal
+		// string ("17579322874185"), not hex. String comparison would always fail.
+		providedBig := new(big.Int)
+		s := strings.TrimPrefix(nullifierHex, "0x")
+		if nullifierHex != s {
+			providedBig.SetString(s, 16) // had 0x prefix → hex
+		} else if _, ok := providedBig.SetString(s, 10); !ok {
+			providedBig.SetString(s, 16) // no prefix → try decimal, then hex
+		}
+		if providedBig.Cmp(pubSignals[1]) != 0 {
+			return "", fmt.Errorf("nullifier mismatch: provided %s != circuit output %s", nullifierHex, pubSignals[1].Text(10))
 		}
 	}
 	wallet := strings.ToLower(claimedHuman.Hex())

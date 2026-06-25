@@ -4996,7 +4996,6 @@ async function connectWalletAndProve() {
     if (!proveResp.ok) {
       let err = {};
       try { err = await proveResp.json(); } catch(e) { err = { error: 'HTTP ' + proveResp.status }; }
-      addLog('[DEBUG] /api/prove status=' + proveResp.status + ' body=' + JSON.stringify(err).slice(0,120), 'info');
       if (err.registered) {
         addLog('This identity is already registered.', 'ok');
         document.getElementById('btn-reg').disabled = true;

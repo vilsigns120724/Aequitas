@@ -883,12 +883,14 @@ func (a *APIServer) handleSigningAddress(w http.ResponseWriter, r *http.Request)
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 token := os.Getenv("SNAPSHOT_TOKEN")
-if token != "" {
-	authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if authHeader != token && r.URL.Query().Get("token") != token {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-		return
-	}
+if token == "" {
+	http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
+	return
+}
+authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+if authHeader != token {
+	http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+	return
 }
 var addr string
 if sk := a.blockchain.GetSigningKey(); sk != nil {

@@ -144,6 +144,10 @@ nullifiers: make(map[string]string),
 }
 
 // Try PostgreSQL first
+if os.Getenv("RESET_STATE") == "true" && os.Getenv("DATABASE_URL") != "" {
+fmt.Println("⚠ RESET_STATE=true is set but DATABASE_URL is active — DB is NOT wiped by this flag.")
+fmt.Println("  To reset a DB-backed node, run DELETE queries directly in the PostgreSQL console.")
+}
 dbURL := os.Getenv("DATABASE_URL")
 if dbURL != "" {
 // Add sslmode if not present

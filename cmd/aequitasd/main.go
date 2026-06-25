@@ -174,7 +174,9 @@ nextDaily20 := func(after time.Time) time.Time {
 t := after.In(berlin)
 candidate := time.Date(t.Year(), t.Month(), t.Day(), 20, 0, 0, 0, berlin)
 if !after.Before(candidate) {
-candidate = candidate.Add(24 * time.Hour)
+// Use AddDate to get exactly 20:00 next day regardless of DST transitions.
+// Add(24h) would be 1h off on the two DST changeover nights per year.
+candidate = time.Date(t.Year(), t.Month(), t.Day()+1, 20, 0, 0, 0, berlin)
 }
 return candidate
 }

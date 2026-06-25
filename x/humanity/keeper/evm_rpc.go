@@ -471,6 +471,9 @@ amountBig := new(big.Int).SetBytes(tx.Data()[36:68])
 decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
 amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountBig), decimals).Float64()
 
+// Read sender balance BEFORE transfer so calcV7Fee gets the pre-transfer
+// balance (same as what the V7 contract's _calcFee sees on-chain).
+preSenderBalance := s.state.GetBalance(senderAddr)
 // Use TransferWithV7Fee to match V7's _calcFee() semantics:
 // 0.1% base + concentration surcharge, 20% to UBI pool, 80% burned.
 if err := s.state.TransferWithV7Fee(senderAddr, toAddr, amountFloat); err != nil {
@@ -481,7 +484,7 @@ s.mu.Lock(); s.txStatus[txHash] = true; s.mu.Unlock()
 if s.dag != nil {
 	// Record the net amount the recipient receives (gross minus V7 fee)
 	// so secondary nodes can replay with ApplyTransferDelta.
-	v7Fee := calcV7Fee(s.state.GetBalance(senderAddr)+amountFloat, amountFloat,
+	v7Fee := calcV7Fee(preSenderBalance, amountFloat,
 		float64(s.state.TotalHumans())*1000.0)
 	netAmt := amountFloat - v7Fee
 	if netAmt < 0 {

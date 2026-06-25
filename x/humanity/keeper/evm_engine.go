@@ -471,6 +471,7 @@ count++
 if e.chainState.db != nil {
 rows, err := e.chainState.db.Query(`SELECT nullifier, wallet_address FROM nullifiers`)
 if err == nil {
+defer rows.Close()
 for rows.Next() {
 var nullHex, wallet string
 // P2-FIX: check scan error to avoid processing a partially-read row.

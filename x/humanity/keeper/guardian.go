@@ -72,7 +72,10 @@ func (cs *ChainState) InitGuardianTables() {
 //   - 7-day timelock since last guardian change for this wallet
 //
 // The caller (API handler) is responsible for signature verification.
-func (cs *ChainState) SetGuardian(wallet, guardian string, setAt int64) error {
+func (cs *ChainState) SetGuardian(wallet, guardian string, _ int64) error {
+	// Always use server time for the timelock — ignoring the caller-supplied
+	// timestamp prevents a caller from passing a future value to bypass the lock.
+	setAt := time.Now().Unix()
 	wallet = strings.ToLower(wallet)
 	guardian = strings.ToLower(guardian)
 
@@ -214,9 +217,11 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	// Credit balance back to the wallet.
+	// Credit balance back. If the account was lost from memory (e.g. after a
+	// state reset), recreate it as a human — escrow only exists for registered
+	// humans, so restoring it as non-human would break the supply invariant.
 	if _, ok := cs.accounts[wallet]; !ok {
-		cs.accounts[wallet] = &AccountState{Address: wallet}
+		cs.accounts[wallet] = &AccountState{Address: wallet, IsHuman: true}
 	}
 	acc := cs.accounts[wallet]
 	cs.settleDemurrageLocked(acc)
@@ -250,26 +255,30 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 	threshold := time.Now().Unix() - inactivityEscrowSeconds
 	now := time.Now().Unix()
 
-	// Collect candidates: humans inactive past the threshold with non-zero balance.
-	cs.mu.RLock()
+	// Phase 1: collect candidates from in-memory state under RLock (no DB calls).
 	type candidate struct {
 		addr    string
 		balance float64
 	}
-	var candidates []candidate
+	var preCandiates []string
+	cs.mu.RLock()
 	for addr, acc := range cs.accounts {
-		if !acc.IsHuman {
-			continue
-		}
-		if acc.LastActivityAt == 0 || acc.LastActivityAt > threshold {
-			continue
-		}
-		// Use effective (demurrage-adjusted) balance so we move the real current value.
+		if !acc.IsHuman { continue }
+		if acc.LastActivityAt == 0 || acc.LastActivityAt > threshold { continue }
 		bal := effectiveBalance(acc).Float()
-		if bal <= 0 {
-			continue
-		}
-		// Don't move to escrow if already in escrow.
+		if bal <= 0 { continue }
+		preCandiates = append(preCandiates, addr)
+	}
+	cs.mu.RUnlock()
+
+	if len(preCandiates) == 0 {
+		return
+	}
+
+	// Phase 2: filter out already-escrowed wallets via DB (outside RLock).
+	type candidateBalance struct{ addr string; balance float64 }
+	var candidates []candidateBalance
+	for _, addr := range preCandiates {
 		var existing float64
 		scanErr := cs.db.QueryRow(
 			`SELECT amount FROM escrow_accounts WHERE wallet_address = $1`, addr,
@@ -277,9 +286,15 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 		if scanErr == nil && existing > 0 {
 			continue // already escrowed
 		}
-		candidates = append(candidates, candidate{addr, bal})
+		// Re-read balance under no lock (best-effort; confirmed under write lock below).
+		cs.mu.RLock()
+		acc, ok := cs.accounts[addr]
+		var bal float64
+		if ok { bal = effectiveBalance(acc).Float() }
+		cs.mu.RUnlock()
+		if bal <= 0 { continue }
+		candidates = append(candidates, candidateBalance{addr, bal})
 	}
-	cs.mu.RUnlock()
 
 	if len(candidates) == 0 {
 		return
@@ -342,8 +357,6 @@ func (cs *ChainState) ReleaseEscrowToUBI() {
 		fmt.Printf("[ESCROW] ReleaseEscrowToUBI query error: %v\n", err)
 		return
 	}
-	defer rows.Close()
-
 	type escrowEntry struct {
 		addr   string
 		amount float64
@@ -355,7 +368,7 @@ func (cs *ChainState) ReleaseEscrowToUBI() {
 			entries = append(entries, e)
 		}
 	}
-	rows.Close()
+	rows.Close() // explicit close before acquiring cs.mu to avoid holding DB connection under lock
 
 	if len(entries) == 0 {
 		return
