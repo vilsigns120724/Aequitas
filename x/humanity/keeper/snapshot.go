@@ -77,7 +77,10 @@ Version: SnapshotVersion,
 			// (after the signing step), keeping the DB connection occupied unnecessarily.
 			for rows.Next() {
 				var commitment, wallet string
-				rows.Scan(&commitment, &wallet)
+				if scanErr := rows.Scan(&commitment, &wallet); scanErr != nil {
+					fmt.Printf("[SNAPSHOT] Warning: bio_registrations scan error: %v\n", scanErr)
+					continue
+				}
 				snap.BioRegistrations = append(snap.BioRegistrations, SnapshotBioRegistration{
 					Commitment:    commitment,
 					WalletAddress: wallet,
@@ -145,8 +148,14 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	if snap.Timestamp > now+60 {
 		return fmt.Errorf("snapshot timestamp is in the future (%d seconds ahead)", snap.Timestamp-now)
 	}
-	if now-snap.Timestamp > 86400 {
-		return fmt.Errorf("snapshot is too old (%d seconds)", now-snap.Timestamp)
+	maxAge := int64(86400) // 24 hours default
+	if v := os.Getenv("SNAPSHOT_MAX_AGE_SECONDS"); v != "" {
+		if n, err := fmt.Sscanf(v, "%d", &maxAge); n != 1 || err != nil {
+			maxAge = 86400
+		}
+	}
+	if now-snap.Timestamp > maxAge {
+		return fmt.Errorf("snapshot is too old (%d seconds, max %d) — set SNAPSHOT_MAX_AGE_SECONDS to override", now-snap.Timestamp, maxAge)
 	}
 
 	// Signature verification is mandatory when BOOTSTRAP_SIGNER is configured.

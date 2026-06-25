@@ -538,9 +538,11 @@ var knownPublicSelectors = map[string]bool{
 // transfer(address,uint256) — intercepted above and routed through Go-state
 "a9059cbb": true,
 // Read-only ERC-20 calls: safe to forward to EVM
-"095ea7b3": true, // approve
+// NOTE: approve (095ea7b3) removed — it writes EVM state (allowance mapping)
+// but the V7 contract has no transferFrom, making approve/allowance a dead
+// flow. Keeping it in the allow-list is misleading.
 "70a08231": true, // balanceOf
-"dd62ed3e": true, // allowance
+"dd62ed3e": true, // allowance (read-only view)
 "18160ddd": true, // totalSupply
 "06fdde03": true, // name
 "95d89b41": true, // symbol

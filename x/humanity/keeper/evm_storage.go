@@ -244,7 +244,10 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 		// return, keeping both DB cursors open simultaneously during migration.
 		for rows.Next() {
 			var nullifier, wallet string
-			rows.Scan(&nullifier, &wallet)
+			if scanErr := rows.Scan(&nullifier, &wallet); scanErr != nil {
+				fmt.Printf("[EVM] Warning: nullifier scan error in MigrateEVM: %v\n", scanErr)
+				continue
+			}
 			nullKey := common.HexToHash(strings.TrimPrefix(nullifier, "0x"))
 			nullSlot := mappingSlotBytes32(nullKey, 8)
 			walletHash := common.BigToHash(common.HexToAddress(wallet).Big())
