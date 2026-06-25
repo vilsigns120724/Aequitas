@@ -525,36 +525,10 @@ if path == "swap" {
 	http.Redirect(w, r, "/exchange", http.StatusMovedPermanently)
 	return
 }
-// For non-register tabs, swap the active class server-side so the correct
-// tab is visible on direct URL load — purely class-based, no !important needed.
-validTabs := map[string]bool{"explorer": true, "index": true, "network": true, "exchange": true}
-if validTabs[path] {
-	html := explorerHTML
-	// Activate the correct tab button.
-	html = strings.Replace(html,
-		`class="tab active" onclick="showTab('register',this)"`,
-		`class="tab" onclick="showTab('register',this)"`, 1)
-	// Exchange tab has extra onclick code — try both forms.
-	if path == "exchange" {
-		html = strings.Replace(html,
-			`class="tab" onclick="showTab('exchange',this);`,
-			`class="tab active" onclick="showTab('exchange',this);`, 1)
-	} else {
-		html = strings.Replace(html,
-			`class="tab" onclick="showTab('`+path+`',this)"`,
-			`class="tab active" onclick="showTab('`+path+`',this)"`, 1)
-	}
-	// Make the correct tab content visible via CSS active class (not inline style).
-	html = strings.Replace(html,
-		`id="tab-`+path+`" class="tab-content"`,
-		`id="tab-`+path+`" class="tab-content active"`, 1)
-	// Hide register content.
-	html = strings.Replace(html,
-		`id="tab-register" class="tab-content active"`,
-		`id="tab-register" class="tab-content"`, 1)
-	fmt.Fprint(w, html)
-	return
-}
+// All paths serve the same HTML — client-side JS handles tab activation
+// from window.location.pathname immediately on DOMContentLoaded.
+// This avoids all server-side HTML manipulation and the race conditions
+// it creates between server-injected classes and JS-driven tab switching.
 fmt.Fprint(w, explorerHTML)
 }
 

@@ -5033,15 +5033,13 @@ function activateTabFromPath(path) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+// Activate the correct tab immediately — runs synchronously before first paint
+// because this script tag is at the bottom of <body> (HTML already parsed).
+activateTabFromPath(window.location.pathname);
+
+document.addEventListener('DOMContentLoaded', function() {
   const amtInput = document.getElementById('swap-amount');
   if (amtInput) amtInput.addEventListener('input', updateFeeEstimate);
-
-  // Activate correct tab on initial load based on URL path
-  activateTabFromPath(window.location.pathname);
-  // Belt-and-suspenders: re-run after first paint in case any async init
-  // (MetaMask restore, pool fetch) overwrites the tab state
-  requestAnimationFrame(() => activateTabFromPath(window.location.pathname));
 });
 
 // Back/forward navigation: restore the tab that matches the URL
