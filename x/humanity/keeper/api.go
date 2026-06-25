@@ -9,7 +9,7 @@ import (
 "html"
 "io"
 "math/big"
-"net"
+
 "net/http"
 "os"
 "strings"
@@ -620,15 +620,16 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 // GET /api/sign-validator-challenge?wallet=0x...
 func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
-// Block requests that arrive through a proxy — X-Forwarded-For or
-// X-Real-IP being set means a proxy sits in front, potentially making
-// a non-local request appear to come from 127.0.0.1.
-if r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("X-Real-IP") != "" {
-http.Error(w, `{"error":"only accessible directly from localhost (no proxy)"}`, 403); return
-}
-host, _, err := net.SplitHostPort(r.RemoteAddr)
-if err != nil || (host != "127.0.0.1" && host != "::1") {
-http.Error(w, `{"error":"only accessible from localhost"}`, 403); return
+w.Header().Set("Access-Control-Allow-Origin", "*")
+// Protected by SNAPSHOT_TOKEN when set. If SNAPSHOT_TOKEN is not set,
+// the endpoint is accessible publicly — the signed message is scoped
+// to validator registration only and cannot be replayed elsewhere.
+if token := os.Getenv("SNAPSHOT_TOKEN"); token != "" {
+	auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if auth != token {
+		http.Error(w, `{"error":"unauthorized — set Authorization: Bearer <SNAPSHOT_TOKEN>"}`, 401)
+		return
+	}
 }
 humanWallet := strings.ToLower(r.URL.Query().Get("wallet"))
 if humanWallet == "" || !strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
