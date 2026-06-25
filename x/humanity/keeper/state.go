@@ -1664,8 +1664,11 @@ return 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)", ac
 }
 
 fraction := sharesToBurn / cs.pool.TotalLPShares.Float()
+	if fraction > 1.0 { fraction = 1.0 } // cap: TotalLPShares corruption guard
 outAEQ := cs.pool.ReserveAEQ.Float() * fraction
 outTUSD := cs.pool.ReserveTUSD.Float() * fraction
+	if outAEQ > cs.pool.ReserveAEQ.Float() { outAEQ = cs.pool.ReserveAEQ.Float() }
+	if outTUSD > cs.pool.ReserveTUSD.Float() { outTUSD = cs.pool.ReserveTUSD.Float() }
 
 acc.LPShares = NewDecimal(round6(acc.LPShares.Float() - sharesToBurn))
 acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
