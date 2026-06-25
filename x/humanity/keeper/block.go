@@ -1,4 +1,4 @@
-package keeper
+﻿package keeper
 
 import (
 "crypto/ecdsa"
@@ -80,6 +80,7 @@ syncPeerMu             sync.Mutex
 warnedUnknownProposers map[string]bool  // suppresses repeated "not authorized" log lines
 peerChallenges         map[string]peerChallenge // address → pending challenge (P1-3)
 challengeMu            sync.Mutex
+replayQueue            chan *Block       // serialized replay channel — ensures TX ordering across blocks
 }
 
 
@@ -209,7 +210,16 @@ authorizedValidators:   loadAuthorizedValidators(),
 activeSyncPeers:        make(map[string]bool),
 warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
+replayQueue:            make(chan *Block, 1000),
 }
+// Single consumer goroutine ensures blocks are replayed in the order received.
+// This preserves TX dependencies (e.g. register_human in block N must be
+// applied before a transfer in block N+1 that references the same wallet).
+go func() {
+	for b := range dag.replayQueue {
+		dag.replayTransactions(b)
+	}
+}()
 if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	if key, err := crypto.HexToECDSA(pk); err == nil {
 		dag.signingKey = key
@@ -483,11 +493,18 @@ if block.Height > dag.height {
 dag.height = block.Height
 }
 
-// Replay TXs outside the DAG lock (to avoid holding it during DB writes)
-// but synchronously to preserve TX ordering within a block — a transfer
-// must not execute before its preceding registration in the same block.
+// Replay TXs outside the DAG lock via the serialized replay queue.
+// The single consumer goroutine ensures blocks are replayed in order,
+// preserving TX dependencies across blocks (e.g. register_human in
+// block N before a transfer in block N+1 for the same wallet).
 if len(block.Transactions) > 0 {
-	go func(b *Block) { dag.replayTransactions(b) }(block)
+	select {
+	case dag.replayQueue <- block:
+	default:
+		// Queue full — process synchronously in a goroutine to avoid
+		// dropping TXs (better than losing them entirely).
+		go dag.replayTransactions(block)
+	}
 }
 
 fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, len(dag.tips))

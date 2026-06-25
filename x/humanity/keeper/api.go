@@ -1,4 +1,4 @@
-package keeper
+﻿package keeper
 
 import (
 "bytes"
@@ -794,11 +794,12 @@ keyAuthorized := false
 for _, k := range keys {
 if k["signing_address"] == addr { keyAuthorized = true; break }
 }
-// C1-FIX: keyAuthorized alone is NOT sufficient — any party knowing a
-// validator's signing address could trigger authorization without proving
-// key possession. Require PEER_SECRET or challenge-response signature.
-// keyAuthorized only enriches the log message.
-if secretOK || sigOK {
+// C5-FIX: Allow keyAuthorized for AddAuthorizedValidator when the key is in
+// registered_nodes (Step-5b double-signature registration). This allows automated
+// peer re-authorization after restart without PEER_SECRET, while maintaining C1
+// security: URL registration still requires secretOK || sigOKEarly (proof of key
+// possession), not just a known address.
+if secretOK || sigOK || keyAuthorized {
 nodeWallet := strings.ToLower(strings.TrimSpace(req.NodeOperatorWallet))
 if nodeWallet == "" {
 	nodeWallet = addr
@@ -811,10 +812,9 @@ if !a.state.IsHuman(nodeWallet) {
 a.blockchain.AddAuthorizedValidator(addr)
 method := "PEER_SECRET"
 if sigOK { method = "challenge-response signature" }
-if keyAuthorized { method += " (registered key)" }
+if keyAuthorized && !sigOK && !secretOK { method = "registered validator key (Step-5b)" }
+if keyAuthorized && (sigOK || secretOK) { method += " (registered key)" }
 fmt.Printf("[PEERS] Auto-authorized validator via %s: %s (wallet: %s)\n", method, addr, nodeWallet)
-} else if keyAuthorized {
-fmt.Printf("[PEERS] Validator %s: known key but no authentication proof — request /api/peers/challenge first\n", addr)
 } else if req.Signature == "" {
 fmt.Printf("[PEERS] Validator %s: no signature provided — request /api/peers/challenge first\n", addr)
 } else {

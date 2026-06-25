@@ -1,4 +1,4 @@
-package keeper
+﻿package keeper
 
 import (
 "encoding/hex"
@@ -471,23 +471,17 @@ amountBig := new(big.Int).SetBytes(tx.Data()[36:68])
 decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
 amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountBig), decimals).Float64()
 
-// E2-FIX: Measure the EXACT net amount the recipient receives by reading
-// their balance before and after TransferWithV7Fee. TransferWithV7Fee
-// settles demurrage internally, so the pre-transfer balance-based fee
-// calculation diverges from the actual fee applied. The balance delta
-// is ground truth and eliminates the discrepancy on secondary nodes.
-preRecipientBalance := s.state.GetBalance(toAddr)
-if err := s.state.TransferWithV7Fee(senderAddr, toAddr, amountFloat); err != nil {
+// E2-FIX: TransferWithV7Fee now returns the exact net amount credited to the
+// recipient (computed inside the lock), eliminating the TOCTOU race where
+// preRecipientBalance/postRecipientBalance were read outside the lock and
+// concurrent transfers to the same recipient could produce wrong netAmt.
+netAmt, err := s.state.TransferWithV7Fee(senderAddr, toAddr, amountFloat)
+if err != nil {
 return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 }
-postRecipientBalance := s.state.GetBalance(toAddr)
 s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
 s.mu.Lock(); s.txStatus[txHash] = true; s.mu.Unlock()
 if s.dag != nil {
-	netAmt := round6(postRecipientBalance - preRecipientBalance)
-	if netAmt < 0 {
-		netAmt = 0
-	}
 	s.dag.AddTransaction(Transaction{
 		Type:   "transfer",
 		Wallet: senderAddr,

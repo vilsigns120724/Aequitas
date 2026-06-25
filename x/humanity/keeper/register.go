@@ -238,6 +238,13 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	}
 	relayerAddr := crypto.PubkeyToAddress(relayerKey.PublicKey)
 
+	// Guard: relayer wallet cannot register as human. This prevents the relayer
+	// from submitting a ZK proof for a device it controls and self-crediting
+	// the 1,000 AEQ registration grant without genuine biometric proof.
+	if strings.ToLower(wallet) == strings.ToLower(relayerAddr.Hex()) {
+		return "", fmt.Errorf("relayer wallet cannot register as human — use a separate wallet")
+	}
+
 	parsedABI, err := abi.JSON(strings.NewReader(registerWithSigABI))
 	if err != nil {
 		return "", fmt.Errorf("abi parse failed: %w", err)

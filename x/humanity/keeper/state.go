@@ -1272,7 +1272,7 @@ return nil
 //   Concentration surcharge if sender holds ≥1/5/10% of total supply
 //   20% of fee → UBI pool, 80% burned (removed from supply)
 // Without this, Go-ledger and V7-contract diverge on every user transfer.
-func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) error {
+func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) (float64, error) {
 cs.mu.Lock()
 defer cs.mu.Unlock()
 from = strings.ToLower(from)
@@ -1280,11 +1280,11 @@ to = strings.ToLower(to)
 
 fromAcc, ok := cs.accounts[from]
 if !ok {
-return fmt.Errorf("insufficient balance")
+return 0, fmt.Errorf("insufficient balance")
 }
 cs.settleDemurrageLocked(fromAcc)
 if fromAcc.Balance.Float() < amount {
-return fmt.Errorf("insufficient balance")
+return 0, fmt.Errorf("insufficient balance")
 }
 
 // Compute total supply inline to avoid re-entering the mutex.
@@ -1327,7 +1327,7 @@ cs.save()
 fmt.Printf("[STATE] ✓ TransferV7 %.6f AEQ (fee=%.6f → UBI): %s → %s\n",
 amount, fee, from, to)
 cs.syncBalanceLocked(V7_CONTRACT_ADDR, from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
-return nil
+return netToRecipient, nil
 }
 
 // calcV7Fee mirrors AequitasV7.sol's _calcFee():
@@ -1663,14 +1663,41 @@ address = strings.ToLower(address)
 if sharesToBurn <= 0 {
 return 0, 0, fmt.Errorf("shares must be positive")
 }
-if cs.pool == nil || cs.pool.TotalLPShares <= 0 {
-return 0, 0, fmt.Errorf("liquidity pool is empty")
+if cs.pool == nil {
+return 0, 0, fmt.Errorf("liquidity pool not initialized")
 }
 
 acc, ok := cs.accounts[address]
 if !ok {
 return 0, 0, fmt.Errorf("account not found")
 }
+
+// F17-BOUNDARY: If TotalLPShares rounds to 0 but the user still has LP shares
+// (dust rounding edge case), allow them to drain the entire pool — they are
+// the last LP and the pool is effectively theirs.
+if cs.pool.TotalLPShares <= 0 {
+if acc.LPShares.Float() > 0 {
+	outAEQ := cs.pool.ReserveAEQ.Float()
+	outTUSD := cs.pool.ReserveTUSD.Float()
+	acc.LPShares = NewDecimal(0)
+	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
+	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
+	touchActivity(acc)
+	cs.enforceWealthCapLocked(acc)
+	cs.pool.ReserveAEQ = NewDecimal(0)
+	cs.pool.ReserveTUSD = NewDecimal(0)
+	cs.pool.TotalLPShares = NewDecimal(0)
+	cs.saveAccountToDB(acc)
+	cs.savePoolToDB()
+	cs.save()
+	cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
+	go cs.SavePriceSnapshot()
+	fmt.Printf("[POOL] ✓ %s drained final dust position → %.4f AEQ + %.4f tUSD\n", address, outAEQ, outTUSD)
+	return outAEQ, outTUSD, nil
+}
+return 0, 0, fmt.Errorf("liquidity pool is empty")
+}
+
 if acc.LPShares.Float() < sharesToBurn {
 return 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)", acc.LPShares.Float(), sharesToBurn)
 }
