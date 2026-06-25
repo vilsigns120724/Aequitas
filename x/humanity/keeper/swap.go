@@ -219,16 +219,19 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
+	sharesBefore, _ := a.state.GetLPShares(wallet)
 	if err := a.state.AddLiquidity(wallet, req.AmountAEQ, req.AmountTUSD); err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
+	sharesAfter, _ := a.state.GetLPShares(wallet)
 	a.blockchain.AddTransaction(Transaction{
 		Type:      "add_liquidity",
 		Wallet:    wallet,
 		Amount:    req.AmountAEQ,
 		AmountOut: req.AmountTUSD,
+		LPShares:  sharesAfter - sharesBefore,
 	})
 	json.NewEncoder(w).Encode(AddLiquidityResponse{Success: true, Message: "liquidity added"})
 }

@@ -20,12 +20,14 @@ import (
 )
 
 type Transaction struct {
-	Type       string  `json:"type"`
-	Wallet     string  `json:"wallet"`
-	To         string  `json:"to,omitempty"`          // transfer destination
-	Amount     float64 `json:"amount,omitempty"`
-	AmountOut  float64 `json:"amount_out,omitempty"`  // swap output amount
-	TxHash     string  `json:"tx_hash"`
+	Type            string  `json:"type"`
+	Wallet          string  `json:"wallet"`
+	To              string  `json:"to,omitempty"`               // transfer destination
+	Amount          float64 `json:"amount,omitempty"`
+	AmountOut       float64 `json:"amount_out,omitempty"`       // swap output amount
+	AmountPerHuman  float64 `json:"amount_per_human,omitempty"` // for ubi_distribution
+	LPShares        float64 `json:"lp_shares,omitempty"`        // for add_liquidity
+	TxHash          string  `json:"tx_hash"`
 	// Nullifier and Commitment are set on register_human TXs so secondary
 	// nodes can apply the registration to their local state when they receive
 	// the block — without needing a separate snapshot or state sync.
@@ -636,7 +638,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				fmt.Printf("[REPLAY] ⚠ Skipping add_liquidity in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.AddLiquidityDelta(wallet, tx.Amount, tx.AmountOut); err != nil {
+			if err := dag.state.AddLiquidityDelta(wallet, tx.Amount, tx.AmountOut, tx.LPShares); err != nil {
 				fmt.Printf("[REPLAY] ✗ add_liquidity %s: %v (block #%d)\n", wallet, err, block.Height)
 				continue
 			}
@@ -665,10 +667,13 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 			fmt.Printf("[REPLAY] ✓ Applied faucet %.6f tUSD for %s (block #%d)\n", tx.Amount, wallet, block.Height)
 
 		case "ubi_distribution":
-			// UBI distribution is gated by TryLockDistribution() -- the same DB CAS
-			// that the primary uses. If the secondary already ran it (or the primary
-			// already claimed the lock), this is a no-op, which is correct.
-			fmt.Printf("[REPLAY] UBI distribution TX in block #%d -- local scheduler handles distribution independently\n", block.Height)
+			if tx.AmountPerHuman > 0 {
+				dag.state.ApplyUBIDelta(tx.AmountPerHuman)
+				fmt.Printf("[REPLAY] ✓ Applied UBI distribution %.6f AEQ/human (block #%d)\n", tx.AmountPerHuman, block.Height)
+			} else {
+				// Legacy TX from an older node version — no AmountPerHuman stored.
+				fmt.Printf("[REPLAY] UBI distribution TX in block #%d — no amount_per_human field, skipping (old node format)\n", block.Height)
+			}
 
 		default:
 			// empty string or other unknown types are silently ignored

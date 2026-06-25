@@ -1961,8 +1961,10 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 }
 
 // AddLiquidityDelta applies an add-liquidity operation on secondary nodes using
-// the exact stored amounts. Reloads pool from DB first for consistency.
-func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount float64) error {
+// the exact stored amounts. lpShares is the number of LP shares minted on the
+// primary node; if > 0 it is used directly instead of recomputing, eliminating
+// pool-state drift between nodes. Reloads pool from DB first for consistency.
+func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lpShares float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	wallet = strings.ToLower(wallet)
@@ -1978,8 +1980,13 @@ func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount flo
 		return fmt.Errorf("insufficient tUSD balance")
 	}
 
+	// Use the stored LP shares from the primary node when available.
+	// Fall back to recomputing (from pool state or geometric mean) for
+	// blocks produced by old nodes that don't include the lp_shares field.
 	var mintedShares float64
-	if cs.pool != nil && cs.pool.ReserveAEQ.Float() > 0 && cs.pool.TotalLPShares.Float() > 0 {
+	if lpShares > 0 {
+		mintedShares = lpShares
+	} else if cs.pool != nil && cs.pool.ReserveAEQ.Float() > 0 && cs.pool.TotalLPShares.Float() > 0 {
 		mintedShares = (aeqAmount / cs.pool.ReserveAEQ.Float()) * cs.pool.TotalLPShares.Float()
 	} else {
 		mintedShares = math.Sqrt(aeqAmount * tusdAmount)
@@ -2028,6 +2035,28 @@ func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn float64) 
 	cs.savePoolToDB()
 	go cs.saveAccountToDB(acc)
 	return nil
+}
+
+// ApplyUBIDelta credits amountPerHuman AEQ to every registered human on this node.
+// Used by secondary nodes replaying ubi_distribution TXs from blocks.
+func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64) {
+	if amountPerHuman <= 0 {
+		return
+	}
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	for _, acc := range cs.accounts {
+		if !acc.IsHuman {
+			continue
+		}
+		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountPerHuman))
+		go cs.saveAccountToDB(acc)
+	}
+	// Zero the UBI pool on secondary (it was zeroed on primary after distribution)
+	if ubiAcc, ok := cs.accounts[ubiPoolAddr]; ok {
+		ubiAcc.Balance = NewDecimal(0)
+		go cs.saveAccountToDB(ubiAcc)
+	}
 }
 
 // ApplyFaucetDelta credits faucetAmount tUSD to wallet and marks FaucetClaimed.

@@ -198,6 +198,10 @@ for {
 time.Sleep(time.Until(firstTarget))
 // Distributed lock: only the node that atomically claims last_ubi_at proceeds.
 if chainState.TryLockDistribution() {
+// Read UBI pool balance and human count BEFORE distribution so the
+// TX carries the exact per-human share for secondary node replay.
+preUBIBalance := chainState.GetBalance("0x4a9b8f99f0d8cff0e510fef502100571203b054a")
+totalHumans := chainState.TotalHumans()
 chainState.DistributeUBIPool()
 chainState.DistributeValidatorsPool()
 chainState.DistributeLPPool()
@@ -205,11 +209,16 @@ chainState.DistributeLPPool()
 // balances to the UBI pool for the next distribution cycle.
 chainState.CheckAndMoveToEscrow()
 chainState.ReleaseEscrowToUBI()
-// Emit a ubi_distribution TX so the block record shows a distribution occurred.
-// Secondary nodes ignore this TX type (their schedulers handle distribution independently).
+// Emit a ubi_distribution TX so secondary nodes can replay the exact
+// per-human UBI credit via ApplyUBIDelta instead of running the
+// distribution logic independently (which diverges if state differs).
+var amountPerHuman float64
+if totalHumans > 0 { amountPerHuman = preUBIBalance / float64(totalHumans) }
 bc.AddTransaction(keeper.Transaction{
-	Type:   "ubi_distribution",
-	Wallet: "0x0000000000000000000000000000000000000000",
+	Type:           "ubi_distribution",
+	Wallet:         "0x0000000000000000000000000000000000000000",
+	Amount:         preUBIBalance,
+	AmountPerHuman: amountPerHuman,
 })
 fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
 } else {
