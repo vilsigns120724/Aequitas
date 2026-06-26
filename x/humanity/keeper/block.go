@@ -626,13 +626,31 @@ return true
 // package already define min4()/min4b() specifically to avoid shadowing
 // the built-in, so we follow that same convention here by not shadowing it.
 
+// LatestBlock returns a single representative tip for display purposes
+// (e.g. /api/status's "latest_hash"/"height"). With more than one validator
+// producing concurrently, it's normal and expected to have multiple tips at
+// the same max height for brief windows until the next block merges them —
+// that's the DAG working as intended, not a fork.
+//
+// FIX: this used to pick whichever same-height tip happened to be visited
+// first during Go's randomized map iteration — never replaced on a height
+// TIE (only on strictly greater height) — so two nodes that both genuinely
+// held the exact same set of tips could still report two DIFFERENT
+// "latest_hash" values purely because their map iteration order differed.
+// That's a misleading status signal, not an actual ledger divergence
+// (StateRoot is computed from the full account/pool/nullifier state via
+// replay, independent of which tip this function reports) — but it made
+// "are these nodes in sync" impossible to answer just by comparing
+// /api/status output, confirmed in production. Tie-break deterministically
+// on hash so any two nodes holding the identical tip set always agree on
+// which one to report, regardless of map iteration order.
 func (dag *BlockDAG) LatestBlock() *Block {
 dag.mu.RLock()
 defer dag.mu.RUnlock()
 var latest *Block
 for hash := range dag.tips {
 b := dag.blocks[hash]
-if latest == nil || b.Height > latest.Height {
+if latest == nil || b.Height > latest.Height || (b.Height == latest.Height && b.Hash < latest.Hash) {
 latest = b
 }
 }
