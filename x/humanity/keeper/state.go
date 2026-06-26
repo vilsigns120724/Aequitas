@@ -2284,6 +2284,11 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 			cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(cs.pool.ReserveAEQ.Float()-amountOut)))
 		}
 		cs.savePoolToDB()
+		// Distribute swap fee to the 4 tokenomics pools (40% validators /
+		// 30% LP / 20% UBI / 10% treasury) — mirrors swapLocked() on primary.
+		// Without this the fee-pool addresses stay at 0 on secondaries,
+		// causing StateRoot divergence (pool addresses are included in the hash).
+		cs.distributeSwapFee(fee, aeqToTusd)
 	}
 	return nil
 }
