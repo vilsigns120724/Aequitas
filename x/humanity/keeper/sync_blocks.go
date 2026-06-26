@@ -194,6 +194,15 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		}
 		addedThisPage := 0
 		for _, block := range blocks {
+			// FIX: genesis is always created locally and AddPeerBlock always
+			// rejects a peer-supplied genesis (by design — see its own
+			// comment). Without this skip, every single sync cycle forever
+			// re-attempts and re-logs "Rejected peer genesis", since it's
+			// never marked as "exists" and so never short-circuits like a
+			// normal already-known block would.
+			if block.IsGenesis {
+				continue
+			}
 			dag.mu.RLock()
 			_, exists := dag.blocks[block.Hash]
 			dag.mu.RUnlock()

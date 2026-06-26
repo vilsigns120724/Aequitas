@@ -382,6 +382,22 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 	fmt.Println("[DB-RESET]   Leaving it set will WIPE the DB again on every future restart.")
 }
 
+// tableNameFromDelete extracts the table name from a "DELETE FROM <table>"
+// or "DELETE FROM <table> WHERE ..." statement, returning "" for anything
+// else (e.g. UPDATE statements, which should always run unconditionally
+// since they only ever target tables initDB guarantees exist upfront).
+func tableNameFromDelete(stmt string) string {
+	const prefix = "DELETE FROM "
+	if !strings.HasPrefix(stmt, prefix) {
+		return ""
+	}
+	rest := stmt[len(prefix):]
+	if idx := strings.IndexByte(rest, ' '); idx >= 0 {
+		return rest[:idx]
+	}
+	return rest
+}
+
 // clearRegistrationsFromDB removes all human registration data without wiping
 // the full DB. Triggered by CLEAR_REGISTRATIONS=true env var. Clears:
 // nullifiers, bio_registrations, chain_accounts (is_human+balance), EVM
@@ -436,7 +452,22 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		// snapshot" log line reappearing after every reset.
 		`DELETE FROM evm_upgrade_relationship_slots WHERE address = '` + v7Addr + `'`,
 	}
+	// FIX: bio_hashes and evm_upgrade_relationship_slots are only ever
+	// created lazily (by SaveBioHash / SavePreUpgradeRelationshipSlots) —
+	// unlike nullifiers/bio_registrations/chain_accounts, which initDB
+	// always creates upfront. On a node whose DB has never gone through a
+	// registration or a contract-version upgrade, those two tables
+	// genuinely don't exist yet, and DELETE FROM a nonexistent table prints
+	// a scary "relation does not exist" warning that looks like a real
+	// problem but is actually a harmless no-op. Skip cleanly instead.
 	for _, stmt := range stmts {
+		tableName := tableNameFromDelete(stmt)
+		if tableName != "" {
+			var exists bool
+			if err := cs.db.QueryRow(`SELECT to_regclass($1) IS NOT NULL`, "public."+tableName).Scan(&exists); err == nil && !exists {
+				continue
+			}
+		}
 		if _, err := cs.db.Exec(stmt); err != nil {
 			fmt.Printf("[CLEAR-REG] Warning: %v\n", err)
 		}
