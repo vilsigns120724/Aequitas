@@ -8,6 +8,7 @@ import (
 "net/url"
 "os"
 "os/signal"
+"strings"
 "syscall"
 "time"
 _ "time/tzdata" // embed IANA timezone DB so Europe/Berlin works on Alpine without system tzdata
@@ -164,20 +165,43 @@ fmt.Println("── Share this address to join network ───")
 fmt.Printf("%s\n", multiaddr)
 fmt.Println()
 
-fmt.Println("── Starting Block Production ────────────")
-go func() {
-ticker := time.NewTicker(BLOCK_TIME)
-for range ticker.C {
-block := bc.ProduceBlock()
-			p2pNode.BroadcastBlock(block)
-fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
-block.Height,
-block.Hash[:16],
-block.Humans,
-time.Unix(block.Timestamp, 0).Format("15:04:05"),
-)
+// FIX: every node — primary AND secondary — used to run this ticker
+// unconditionally. A secondary's ProduceBlock() builds on whatever its own
+// current tip is (which may itself be a previous self-produced block) and
+// broadcasts via p2pNode.BroadcastBlock — but P2P between these nodes does
+// not actually work in this deployment ("P2P bootstrap unreachable" is a
+// permanent, not transient, condition on Railway). That broadcast silently
+// goes nowhere: the primary never receives it, so it never becomes part of
+// the canonical chain anyone else agrees on. Meanwhile the secondary's own
+// local dag.tips gets replaced by its own dead-end block instead of the
+// next HTTP-synced primary block, so its local chain permanently diverges
+// from the primary's at the SAME height with a DIFFERENT hash forever —
+// confirmed in production (primary and secondary both reporting height 88
+// with two completely different block hashes, neither a fork of the
+// other). A pure HTTP-sync follower has no way to contribute a block
+// anyone else will ever see, so it should not originate one — same
+// PRIMARY_NODE_URL signal already used by StartPeerDiscovery to decide
+// "am I the primary" (sync_blocks.go) is reused here for consistency.
+primaryNodeURLEnv := strings.TrimRight(os.Getenv("PRIMARY_NODE_URL"), "/")
+isPrimaryNode := primaryNodeURLEnv == "" || primaryNodeURLEnv == strings.TrimRight(selfURL, "/")
+if isPrimaryNode {
+	fmt.Println("── Starting Block Production ────────────")
+	go func() {
+	ticker := time.NewTicker(BLOCK_TIME)
+	for range ticker.C {
+	block := bc.ProduceBlock()
+				p2pNode.BroadcastBlock(block)
+	fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
+	block.Height,
+	block.Hash[:16],
+	block.Humans,
+	time.Unix(block.Timestamp, 0).Format("15:04:05"),
+	)
+	}
+	}()
+} else {
+	fmt.Println("── Secondary node: following primary via HTTP sync, not producing own blocks ────────────")
 }
-}()
 
 fmt.Println("── Starting Daily Pool Distributions ───")
 // IS_PRIMARY_NODE is no longer required. Every node schedules distributions

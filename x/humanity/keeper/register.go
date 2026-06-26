@@ -593,13 +593,32 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// Always save effectiveNullifier (the ZK-derived one when using v2 circuit),
 	// not just req.Nullifier — req.Nullifier may be empty or the old SHA256 value
 	// while effectiveNullifier is the one actually stored on-chain.
-	// TryClaimNullifier (called in RegisterHuman flow) already writes the nullifier
-	// atomically. SaveNullifier here would overwrite the in-memory cache with a
-	// potentially stale value from a concurrent race winner. Use effectiveNullifier
-	// only for the block TX, not for a second write.
 	nullifierToStore := effectiveNullifier
 	if nullifierToStore == "" {
 		nullifierToStore = req.Nullifier
+	}
+	// FIX: the comment that used to sit here claimed "TryClaimNullifier
+	// (called in RegisterHuman flow) already writes the nullifier
+	// atomically" — that's false. RegisterHuman(wallet) takes no nullifier
+	// argument and never touches the nullifiers table; nothing on this
+	// (non-mirror, successful) path ever wrote to Go-state's nullifiers
+	// table or cs.nullifiers in-memory map. Only the mirror fallback
+	// (persistRegisterWithSigMirror) and secondary-node replay
+	// (replayTransactions, via TryClaimNullifier) ever populated it —
+	// meaning the PRIMARY's own direct registrations were silently absent
+	// from its own nullifiers bookkeeping forever, while every SECONDARY
+	// that replayed the same registration correctly added it. Since
+	// StateRoot() hashes the sorted set of nullifier keys, this guaranteed
+	// a permanent StateRoot mismatch between primary and any secondary for
+	// every single block following any successful direct registration —
+	// confirmed in production (registration-debug showed nullifier_exists:
+	// false on the primary despite chain_is_human/balance being correct).
+	// The EVM contract has already proven this nullifier is unique
+	// on-chain (registerWithSig reverts otherwise), so a plain insert here
+	// (not a re-claim) is correct — it mirrors what replay does on every
+	// secondary.
+	if nullifierToStore != "" {
+		a.state.SaveNullifier(nullifierToStore, wallet)
 	}
 
 	// Add a register_human TX to the DAG so secondary nodes learn about this
