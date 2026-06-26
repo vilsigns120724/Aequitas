@@ -141,10 +141,10 @@ func (dag *BlockDAG) startSyncForPeer(peerURL string) {
 	}()
 }
 
-// fetchBlocksPage fetches one ascending-order page of blocks from nodeURL
-// via the existing ?offset=&limit= pagination on /api/blocks.
-func (dag *BlockDAG) fetchBlocksPage(nodeURL string, offset, limit int) ([]*Block, error) {
-	resp, err := httpSyncClient.Get(fmt.Sprintf("%s/api/blocks?offset=%d&limit=%d", nodeURL, offset, limit))
+// fetchBlocksSince fetches up to `limit` blocks with Height > minHeight from
+// nodeURL, via the height-based ?min_height=&limit= pagination on /api/blocks.
+func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, limit int) ([]*Block, error) {
+	resp, err := httpSyncClient.Get(fmt.Sprintf("%s/api/blocks?min_height=%d&limit=%d", nodeURL, minHeight, limit))
 	if err != nil {
 		return nil, err
 	}
@@ -157,40 +157,41 @@ func (dag *BlockDAG) fetchBlocksPage(nodeURL string, offset, limit int) ([]*Bloc
 	return blocks, nil
 }
 
-// doSyncOnce walks nodeURL's block history in ascending order, starting
-// from however many blocks we already have locally (offset = dag.TotalBlocks()),
-// fetching pageSize-sized pages until it catches up to the peer's current
+// doSyncOnce walks nodeURL's block history forward from our own current
+// height, fetching pageSize-sized pages until it catches up to the peer's
 // tip. Returns false on a network/decode error (used by syncWithNode to
 // back off), true otherwise — including the normal "nothing new" case.
 //
-// FIX: this used to fetch only the newest 50 blocks (the /api/blocks
-// default with no query params), every single poll, forever. AddPeerBlock
-// tolerates a missing parent only while len(dag.blocks) <= 10 (the
-// "initial sync" loophole) — beyond that, any block whose parent isn't
-// already known is rejected outright. A node that starts (or falls)  more
-// than ~50 blocks behind the peer — the normal case for any fresh
-// secondary, or one that was offline for more than a few minutes — could
-// therefore never close the gap: every poll fetched the exact same "newest
-// 50" window, permanently missing everything older. Walking forward through
-// history in large explicit-offset pages keeps the parent chain built up
-// contiguously regardless of how far behind we start, instead of relying on
-// that one-time tolerance window.
+// FIX: this used to page via ?offset=dag.TotalBlocks() — i.e. treat "how
+// many blocks do I have" as a position into the PEER's own array. That only
+// works as long as both sides accumulate the exact same number of entries
+// at the exact same pace, which breaks the moment more than one validator
+// produces concurrently (the normal, intended BlockDAG case): each side
+// merges multi-parent siblings at its own pace, so the two nodes' local
+// block COUNTS drift apart from each other even when both are otherwise
+// healthy. A node whose count fell out of step with the peer's array
+// position kept requesting the same already-fully-known window forever —
+// confirmed in production: a node stuck ~640 blocks behind never advanced,
+// growing its own isolated, never-reconciled side chain instead. HEIGHT is
+// the one frontier marker that stays meaningful regardless of how many
+// duplicate-height siblings either side has — paging by "give me everything
+// above the highest height I've already got" can't get stuck the same way.
 func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	const pageSize = 500
 	const maxPagesPerCall = 2000 // hard cap: 1,000,000 blocks per call — headroom, not unbounded
 	totalAdded := 0
 	for page := 0; page < maxPagesPerCall; page++ {
-		offset := dag.TotalBlocks()
-		blocks, err := dag.fetchBlocksPage(nodeURL, offset, pageSize)
+		minHeight := dag.Height()
+		blocks, err := dag.fetchBlocksSince(nodeURL, minHeight, pageSize)
 		if err != nil {
-			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (offset=%d) from %s: %v\n", offset, nodeURL, err)
+			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (min_height=%d) from %s: %v\n", minHeight, nodeURL, err)
 			if page == 0 {
 				return false // never even got a first page — treat as a failed sync attempt
 			}
 			break // got at least one page this call; report what we added
 		}
 		if len(blocks) == 0 {
-			break // caught up — peer has nothing more at this offset
+			break // caught up — peer has nothing newer than our height
 		}
 		addedThisPage := 0
 		for _, block := range blocks {
@@ -214,12 +215,13 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		if len(blocks) < pageSize {
 			break // last page (peer's tip is within this page)
 		}
-		if addedThisPage == 0 {
-			// Fetched a full page but none of it could be added (e.g. all
-			// rejected for missing parents past the tolerance window) — more
-			// pages at a growing offset won't help, stop instead of looping
-			// forever on the same effective spot.
-			fmt.Printf("[HTTP-SYNC] ⚠ Page at offset=%d added 0 of %d blocks — stopping sync from %s for this cycle\n", offset, len(blocks), nodeURL)
+		if dag.Height() <= minHeight {
+			// Fetched a full page (peer has more above this height) but our
+			// own height didn't move — e.g. every block in the page was
+			// rejected (bad signature/parent) or already known under a
+			// different lookup. Looping again would request the exact same
+			// min_height and get the exact same page forever.
+			fmt.Printf("[HTTP-SYNC] ⚠ Page above height %d added %d of %d blocks but height did not advance — stopping sync from %s for this cycle\n", minHeight, addedThisPage, len(blocks), nodeURL)
 			break
 		}
 	}

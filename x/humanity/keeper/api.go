@@ -254,14 +254,49 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	blocks := a.blockchain.GetBlocks()
-	// P3-2: support ?limit=N&offset=M for block history paging.
 	limit := 50
-	offset := 0
 	fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
-	fmt.Sscanf(r.URL.Query().Get("offset"), "%d", &offset)
 	if limit < 1 || limit > 500 {
 		limit = 50
 	}
+
+	// FIX: ?min_height=N returns the first `limit` blocks with Height > N,
+	// regardless of their position in the underlying array. The old
+	// ?offset=M&limit= pagination indexed into the LOCAL GetBlocks() array
+	// by raw position — which silently broke once multiple validators
+	// produce concurrently (the normal, expected BlockDAG case): two nodes
+	// accumulate a DIFFERENT number of same-height sibling entries (each
+	// node merges at a different pace), so "how many blocks do I have" is
+	// no longer a meaningful position into "how many blocks does the peer
+	// have at the height I actually need next." A syncing node calling
+	// ?offset=dag.TotalBlocks() ended up requesting a position that didn't
+	// correspond to its actual sync frontier at all — confirmed in
+	// production: a node stuck ~640 blocks behind kept re-fetching pages
+	// that were "already known" (0 new) forever, never advancing, while
+	// continuing to grow its own isolated, never-reconciled side chain.
+	// Height is the one frontier marker that stays meaningful across
+	// however many duplicate-height siblings either side has accumulated.
+	if minHeightStr := r.URL.Query().Get("min_height"); minHeightStr != "" {
+		var minHeight int64
+		fmt.Sscanf(minHeightStr, "%d", &minHeight)
+		result := make([]*Block, 0, limit)
+		for _, b := range blocks {
+			if b.Height > minHeight {
+				result = append(result, b)
+				if len(result) >= limit {
+					break
+				}
+			}
+		}
+		json.NewEncoder(w).Encode(result)
+		return
+	}
+
+	// Legacy ?limit=N&offset=M array-position paging — kept for the
+	// explorer UI's "browse history" feature, which doesn't need sync
+	// correctness, only a stable page of whatever currently exists.
+	offset := 0
+	fmt.Sscanf(r.URL.Query().Get("offset"), "%d", &offset)
 	if offset < 0 {
 		offset = 0
 	}
