@@ -48,17 +48,29 @@ ShanghaiTime:        &shanghai,
 }
 }
 
-func blockContext() vm.BlockContext {
-// Use real wall-clock time so Solidity block.timestamp-based checks
-// (Escrow timelocks, Guardian delays, inactivity rules) work correctly.
-now := uint64(time.Now().Unix())
+// blockContext takes an explicit ts (unix seconds) instead of reading
+// time.Now() internally. Every CallContract/DeployContract invocation now
+// captures its own timestamp ONCE at the call site and passes it through,
+// rather than blockContext() silently re-reading the wall clock on every
+// call. This matters because the only EVM-level functions that consult
+// block.timestamp (Escrow timelocks, Guardian delays, inactivity rules) are
+// currently reachable through exactly one persist=true execution per logical
+// user action (gated by the knownPublicSelectors allowlist in evm_rpc.go) —
+// no other node ever independently replays the same call, so wall-clock time
+// is safe *today*. Making the timestamp an explicit parameter rather than a
+// hidden time.Now() read means that guarantee is visible and enforceable at
+// every call site, and if a future change ever needs to replay one of these
+// calls deterministically (e.g. from a block's own Timestamp field instead
+// of wall-clock), there's a single obvious parameter to redirect — not a
+// buried global clock read that would need to be hunted down.
+func blockContext(ts uint64) vm.BlockContext {
 return vm.BlockContext{
 CanTransfer: func(_ vm.StateDB, _ common.Address, _ *big.Int) bool { return true },
 Transfer:    func(_ vm.StateDB, _, _ common.Address, _ *big.Int) {},
 GetHash:     func(_ uint64) common.Hash { return common.Hash{} },
 Coinbase:    common.Address{},
 BlockNumber: big.NewInt(1), // P2-8: fixed — AequitasV7 uses block.timestamp not block.number; wall-clock is non-deterministic between nodes
-Time:        now,
+Time:        ts,
 Difficulty:  big.NewInt(0),
 GasLimit:    30_000_000,
 BaseFee:     big.NewInt(0),
@@ -135,6 +147,13 @@ return sdb, db, nil
 // ─── DEPLOY ───────────────────────────────────────────────────────────────────
 
 func (e *EVMEngine) DeployContract(from common.Address, bytecode []byte, value *big.Int) (contractAddr common.Address, ret []byte, err error) {
+// Same reasoning as CallContract: the EVM layer has no real wei ledger,
+// so a deployment carrying value > 0 would silently drop it rather than
+// crediting the new contract.
+if value != nil && value.Sign() > 0 {
+return common.Address{}, nil, fmt.Errorf("contract deployment with msg.value > 0 is not supported on this chain")
+}
+ts := uint64(time.Now().Unix())
 defer func() {
 if r := recover(); r != nil {
 err = fmt.Errorf("EVM panic: %v", r)
@@ -152,7 +171,7 @@ nonce := e.chainState.LoadNonce(strings.ToLower(from.Hex()))
 sdb.SetNonce(from, nonce)
 
 txCtx := vm.TxContext{Origin: from, GasPrice: big.NewInt(0)}
-evm := vm.NewEVM(blockContext(), txCtx, sdb, chainConfig(), vm.Config{})
+evm := vm.NewEVM(blockContext(ts), txCtx, sdb, chainConfig(), vm.Config{})
 
 _, contractAddr, _, err = evm.Create(
 vm.AccountRef(from),
@@ -239,6 +258,22 @@ return contractAddr, runtimeCode, nil
 // resets could never fix this because the very next read-only status
 // check would silently re-create the same state.
 func (e *EVMEngine) CallContract(from, to common.Address, data []byte, value *big.Int, persist bool) (ret []byte, err error) {
+// FIX: CanTransfer/Transfer in blockContext() are permanent no-op stubs —
+// there is no real wei ledger backing the EVM StateDB (Go-state/PostgreSQL
+// is authoritative for AEQ balances). Without this check, a contract call
+// carrying value > 0 would execute "successfully" while the value is
+// silently dropped: never debited from the sender, never credited to
+// anyone, on either ledger. The two value-bearing flows that ARE real
+// (plain native transfer with no calldata, and the a9059cbb ERC-20
+// transfer selector) are intercepted and routed through Go-state
+// (Transfer/TransferWithV7Fee) BEFORE reaching this function — see
+// sendRawTransaction in evm_rpc.go. Any other call that still carries
+// value here would otherwise be a silent fund-loss bug, so reject it
+// outright instead of pretending it succeeded.
+if value != nil && value.Sign() > 0 {
+return nil, fmt.Errorf("contract calls with msg.value > 0 are not supported on this chain (no native value-transfer mechanism in the EVM layer); use a plain transfer or the V7 transfer() selector instead")
+}
+ts := uint64(time.Now().Unix())
 defer func() {
 if r := recover(); r != nil {
 err = fmt.Errorf("EVM panic: %v", r)
@@ -277,7 +312,7 @@ return nil, fmt.Errorf("no code at %s", to.Hex())
 }
 
 txCtx := vm.TxContext{Origin: from, GasPrice: big.NewInt(0)}
-evm := vm.NewEVM(blockContext(), txCtx, sdb, chainConfig(), vm.Config{})
+evm := vm.NewEVM(blockContext(ts), txCtx, sdb, chainConfig(), vm.Config{})
 
 var execErr error
 ret, _, execErr = evm.Call(

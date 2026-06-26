@@ -483,7 +483,8 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		s.mu.Unlock()
 		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1")
 
-		if err := s.state.Transfer(senderAddr, toAddr, valueFloat); err != nil {
+		fromLost, toLost, err := s.state.Transfer(senderAddr, toAddr, valueFloat)
+		if err != nil {
 			// Transfer failed — mark receipt as failed so MetaMask shows correct status.
 			s.mu.Lock()
 			s.txStatus[txHash] = false
@@ -496,7 +497,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		// also call AddTransaction. ProduceBlock drains pending_txs from DB via
 		// LoadAndClearPendingTxs. Calling both would include the same TX twice
 		// in the block → double-credited transfers on secondary nodes.
-		pendingTx := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: valueFloat, TxHash: txHash}
+		pendingTx := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: valueFloat, TxHash: txHash, FromDemurrageLost: fromLost, ToDemurrageLost: toLost}
 		s.state.SavePendingTx(pendingTx)
 		fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
 		return txHash, nil
@@ -527,7 +528,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		// recipient (computed inside the lock), eliminating the TOCTOU race where
 		// preRecipientBalance/postRecipientBalance were read outside the lock and
 		// concurrent transfers to the same recipient could produce wrong netAmt.
-		netAmt, err := s.state.TransferWithV7Fee(senderAddr, toAddr, amountFloat)
+		netAmt, fromLost, toLost, err := s.state.TransferWithV7Fee(senderAddr, toAddr, amountFloat)
 		if err != nil {
 			// Mark as failed
 			s.mu.Lock()
@@ -541,7 +542,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		// also call AddTransaction. ProduceBlock drains pending_txs from DB via
 		// LoadAndClearPendingTxs. Calling both would include the same TX twice
 		// in the block → double-credited transfers on secondary nodes.
-		pendingTxV7 := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: netAmt, TxHash: txHash}
+		pendingTxV7 := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: netAmt, TxHash: txHash, FromDemurrageLost: fromLost, ToDemurrageLost: toLost}
 		s.state.SavePendingTx(pendingTxV7)
 		fmt.Printf("[RPC] ✓ Token transfer %.4f AEQ (with V7 fee): %s → %s\n", amountFloat, senderAddr, toAddr)
 		return txHash, nil
@@ -606,7 +607,22 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 	if tx.To() != nil && len(tx.Data()) >= 4 {
 		sel := hex.EncodeToString(tx.Data()[:4])
 		isV7 := strings.ToLower(tx.To().Hex()) == strings.ToLower(V7_CONTRACT_ADDR)
-		if isV7 && !knownPublicSelectors[sel] {
+		// FIX: previously this allowlist gate only fired `if isV7`, leaving any
+		// OTHER deployed contract (the relayer can deploy arbitrary bytecode,
+		// see the deployment branch above) wide open to arbitrary calldata via
+		// a signed raw tx with persist=true. The storage-persistence logic
+		// downstream (dumpAndPersistStorageWithNullifier and the v7*Slots
+		// tables in evm_engine.go) is hardcoded to V7's specific slot layout —
+		// calling and persisting state for any other contract through this
+		// path would silently write using the wrong slot semantics, corrupting
+		// that contract's actual storage. No legitimate flow needs a raw
+		// state-changing call to a non-V7 contract today (BioVerifier's
+		// verifyProof is always invoked read-only, persist=false, elsewhere),
+		// so reject it outright rather than letting it pass uninspected.
+		if !isV7 {
+			return nil, &RPCError{Code: -32603, Message: "state-changing calls via /rpc are only supported for the V7 contract"}
+		}
+		if !knownPublicSelectors[sel] {
 			// Special case: registerWithSig is only allowed when the signer is the
 			// relayer itself (i.e. called internally by /api/register). External wallets
 			// must go through /api/register so Go-state is updated atomically.

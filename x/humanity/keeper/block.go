@@ -33,6 +33,17 @@ type Transaction struct {
 	AmountOut       float64 `json:"amount_out,omitempty"`       // swap output amount
 	AmountPerHuman  float64 `json:"amount_per_human,omitempty"` // for ubi_distribution
 	LPShares        float64 `json:"lp_shares,omitempty"`        // for add_liquidity
+	// FromDemurrageLost/ToDemurrageLost carry the exact AEQ amount the
+	// primary node decayed off Wallet/To via settleDemurrageLocked while
+	// processing this TX. Secondary nodes replay these exact numbers
+	// (ApplyTransferDelta/ApplySwapDelta/AddLiquidityDelta/RemoveLiquidityDelta)
+	// instead of recomputing decay from effectiveBalance() at replay time —
+	// recomputing would use the replaying node's own wall-clock time, which
+	// can differ from the primary's by anything from network latency to a
+	// full historical resync, producing a different decay amount and a
+	// StateRoot divergence identical in kind to the swap-fee bug fixed in 8e3f675.
+	FromDemurrageLost float64 `json:"from_demurrage_lost,omitempty"`
+	ToDemurrageLost   float64 `json:"to_demurrage_lost,omitempty"`
 	TxHash          string  `json:"tx_hash"`
 	// Nullifier and Commitment are set on register_human TXs so secondary
 	// nodes can apply the registration to their local state when they receive
@@ -720,7 +731,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				fmt.Printf("[REPLAY] ⚠ Skipping transfer in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.ApplyTransferDelta(wallet, to, tx.Amount); err != nil {
+			if err := dag.state.ApplyTransferDelta(wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d)\n", wallet, to, tx.Amount, err, block.Height)
 				continue
 			}
@@ -731,7 +742,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				fmt.Printf("[REPLAY] ⚠ Skipping swap_aeq_tusd in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.ApplySwapDelta(wallet, tx.Amount, tx.AmountOut, true); err != nil {
+			if err := dag.state.ApplySwapDelta(wallet, tx.Amount, tx.AmountOut, true, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ swap_aeq_tusd %s: %v (block #%d)\n", wallet, err, block.Height)
 				continue
 			}
@@ -742,7 +753,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				fmt.Printf("[REPLAY] ⚠ Skipping swap_tusd_aeq in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.ApplySwapDelta(wallet, tx.Amount, tx.AmountOut, false); err != nil {
+			if err := dag.state.ApplySwapDelta(wallet, tx.Amount, tx.AmountOut, false, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ swap_tusd_aeq %s: %v (block #%d)\n", wallet, err, block.Height)
 				continue
 			}
@@ -753,7 +764,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				fmt.Printf("[REPLAY] ⚠ Skipping add_liquidity in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.AddLiquidityDelta(wallet, tx.Amount, tx.AmountOut, tx.LPShares); err != nil {
+			if err := dag.state.AddLiquidityDelta(wallet, tx.Amount, tx.AmountOut, tx.LPShares, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ add_liquidity %s: %v (block #%d)\n", wallet, err, block.Height)
 				continue
 			}
@@ -764,7 +775,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				fmt.Printf("[REPLAY] ⚠ Skipping remove_liquidity in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.RemoveLiquidityDelta(wallet, tx.Amount); err != nil {
+			if err := dag.state.RemoveLiquidityDelta(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ remove_liquidity %s: %v (block #%d)\n", wallet, err, block.Height)
 				continue
 			}

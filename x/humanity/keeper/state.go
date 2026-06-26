@@ -844,20 +844,44 @@ func effectiveBalance(acc *AccountState) Decimal {
 // from an up-to-date, already-settled balance instead of accidentally
 // granting someone pre-decay value just because they happened to act at
 // that exact moment. Caller must hold cs.mu (write lock).
-func (cs *ChainState) settleDemurrageLocked(acc *AccountState) {
+// Returns the amount that was decayed (0 if nothing was settled) so callers
+// on the primary node can attach it to the queued Transaction — secondary
+// nodes replay this exact figure via applyDemurrageLossLocked instead of
+// recomputing it themselves (which would use their own wall-clock time and
+// diverge from the primary's StateRoot; see ApplyTransferDelta etc.).
+func (cs *ChainState) settleDemurrageLocked(acc *AccountState) Decimal {
 	// P0-FIX: pool addresses are tokenomics infrastructure — never apply
 	// demurrage to them. Doing so would drain pool balances incorrectly.
 	if isTokenomicsPoolAddress(acc.Address) {
-		return
+		return 0
 	}
 	current := effectiveBalance(acc)
 	lost := acc.Balance.Sub(current)
 	if lost <= 0 {
-		return
+		return 0
 	}
 	acc.Balance = current
 	cs.distributeSwapFee(lost.Float(), true) // true = denominated in AEQ; reuses the same 40/30/20/10 split as swap fees
 	fmt.Printf("[DEMURRAGE] %s: idle balance decayed by %.6f AEQ, redistributed to pools\n", acc.Address, lost.Float())
+	return lost
+}
+
+// applyDemurrageLossLocked applies a demurrage loss already decided by the
+// primary node (lost, in AEQ) directly to acc's balance and redistributes it
+// to the tokenomics pools, WITHOUT consulting effectiveBalance()/nowUnix().
+// Used exclusively by secondary-node replay (the "Delta" functions below) so
+// every node arrives at byte-identical state for a given block, regardless
+// of how much wall-clock time has passed since the primary processed it
+// (live replication has sub-second skew; a node resyncing from genesis can
+// be replaying months-old transactions all at the "current" wall-clock
+// instant, which would otherwise decay them by the wrong amount entirely).
+// Caller must hold cs.mu (write lock).
+func (cs *ChainState) applyDemurrageLossLocked(acc *AccountState, lost float64) {
+	if lost <= 0 || isTokenomicsPoolAddress(acc.Address) {
+		return
+	}
+	acc.Balance = NewDecimal(round6(acc.Balance.Float() - lost))
+	cs.distributeSwapFee(lost, true)
 }
 
 func (cs *ChainState) GetBalance(address string) float64 {
@@ -1417,7 +1441,13 @@ func (cs *ChainState) RegisterHuman(address string) error {
 	return nil
 }
 
-func (cs *ChainState) Transfer(from, to string, amount float64) error {
+// Transfer moves amount AEQ from->to on the primary node. Returns the AEQ
+// amount demurrage-decayed off the sender and recipient respectively (0 if
+// neither was idle long enough to decay) — callers must attach these to the
+// queued Transaction so secondary nodes replay the exact same numbers
+// instead of recomputing decay at their own wall-clock time (see
+// applyDemurrageLossLocked).
+func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	from = strings.ToLower(from)
@@ -1425,21 +1455,21 @@ func (cs *ChainState) Transfer(from, to string, amount float64) error {
 	// P1-FIX: reject NaN/Inf amounts — these would corrupt balances via
 	// NewDecimal which uses math.Round (NaN/Inf propagate silently).
 	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return fmt.Errorf("invalid transfer amount: %v", amount)
+		return 0, 0, fmt.Errorf("invalid transfer amount: %v", amount)
 	}
 	// P2-5: reject self-transfers; mirrors AequitasV7.sol behaviour and
 	// prevents double-demurrage settlement on the same account object.
 	if from == to {
-		return fmt.Errorf("self-transfer not allowed")
+		return 0, 0, fmt.Errorf("self-transfer not allowed")
 	}
 
 	fromAcc, ok := cs.accounts[from]
 	if !ok {
-		return fmt.Errorf("insufficient balance")
+		return 0, 0, fmt.Errorf("insufficient balance")
 	}
-	cs.settleDemurrageLocked(fromAcc) // make sure we're checking against the real, decayed balance
+	fromLost := cs.settleDemurrageLocked(fromAcc) // make sure we're checking against the real, decayed balance
 	if fromAcc.Balance.Float() < amount {
-		return fmt.Errorf("insufficient balance")
+		return 0, 0, fmt.Errorf("insufficient balance")
 	}
 
 	fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - amount))
@@ -1449,7 +1479,7 @@ func (cs *ChainState) Transfer(from, to string, amount float64) error {
 	if _, ok := cs.accounts[to]; !ok {
 		cs.accounts[to] = &AccountState{Address: to}
 	}
-	cs.settleDemurrageLocked(cs.accounts[to])
+	toLost := cs.settleDemurrageLocked(cs.accounts[to])
 	cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + amount))
 	touchActivity(cs.accounts[to]) // receiving also resets the clock on the recipient's whole balance
 	cs.enforceWealthCapLocked(cs.accounts[to])
@@ -1458,7 +1488,7 @@ func (cs *ChainState) Transfer(from, to string, amount float64) error {
 
 	fmt.Printf("[STATE] ✓ Transfer %.2f AEQ: %s → %s\n", amount, from, to)
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
-	return nil
+	return fromLost.Float(), toLost.Float(), nil
 }
 
 // TransferWithV7Fee is used by the RPC layer when intercepting V7 ERC-20
@@ -1467,23 +1497,27 @@ func (cs *ChainState) Transfer(from, to string, amount float64) error {
 //   Concentration surcharge if sender holds ≥1/5/10% of total supply
 //   20% of fee → UBI pool, 80% burned (removed from supply)
 // Without this, Go-ledger and V7-contract diverge on every user transfer.
-func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) (float64, error) {
+// Returns (netAmountCredited, fromDemurrageLost, toDemurrageLost, err) — the
+// two demurrage figures must be attached to the queued Transaction so
+// secondary nodes replay the exact decay instead of recomputing it (see
+// applyDemurrageLossLocked).
+func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) (float64, float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 
 	if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return 0, fmt.Errorf("invalid transfer amount: %v", amount)
+		return 0, 0, 0, fmt.Errorf("invalid transfer amount: %v", amount)
 	}
 
 	fromAcc, ok := cs.accounts[from]
 	if !ok {
-		return 0, fmt.Errorf("insufficient balance")
+		return 0, 0, 0, fmt.Errorf("insufficient balance")
 	}
-	cs.settleDemurrageLocked(fromAcc)
+	fromLost := cs.settleDemurrageLocked(fromAcc)
 	if fromAcc.Balance.Float() < amount {
-		return 0, fmt.Errorf("insufficient balance")
+		return 0, 0, 0, fmt.Errorf("insufficient balance")
 	}
 
 	// Compute total supply inline to avoid re-entering the mutex.
@@ -1510,7 +1544,7 @@ func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) (float6
 	if _, ok := cs.accounts[to]; !ok {
 		cs.accounts[to] = &AccountState{Address: to}
 	}
-	cs.settleDemurrageLocked(cs.accounts[to])
+	toLost := cs.settleDemurrageLocked(cs.accounts[to])
 	cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + netToRecipient))
 	touchActivity(cs.accounts[to])
 	cs.enforceWealthCapLocked(cs.accounts[to])
@@ -1528,7 +1562,7 @@ func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) (float6
 	fmt.Printf("[STATE] ✓ TransferV7 %.6f AEQ (fee=%.6f → UBI): %s → %s\n",
 		amount, fee, from, to)
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
-	return netToRecipient, nil
+	return netToRecipient, fromLost.Float(), toLost.Float(), nil
 }
 
 // calcV7Fee mirrors AequitasV7.sol's _calcFee():
@@ -1586,48 +1620,53 @@ const swapFeeBps = 10
 // k grows only from genesis seeding, not from accumulated fees, keeping
 // the fee-distribution logic in one place instead of split between the
 // pool and the four-way split.
-func (cs *ChainState) SwapAEQForTUSD(address string, amountIn float64) (float64, error) {
+func (cs *ChainState) SwapAEQForTUSD(address string, amountIn, minAmountOut float64) (float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.swapLocked(address, amountIn, true)
+	return cs.swapLocked(address, amountIn, true, minAmountOut)
 }
 
 // SwapTUSDForAEQ swaps `amountIn` tUSD from `address` into AEQ. Same
 // constant-product pricing and fee handling as SwapAEQForTUSD, just with
 // the two reserves' roles reversed.
-func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn float64) (float64, error) {
+func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut float64) (float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	return cs.swapLocked(address, amountIn, false)
+	return cs.swapLocked(address, amountIn, false, minAmountOut)
 }
 
 // swapLocked implements both swap directions. aeqToTusd=true means AEQ is
 // the input side and tUSD is the output side; false is the reverse.
-// Caller must hold cs.mu.
-func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd bool) (float64, error) {
+// minAmountOut, if > 0, rejects the swap before any state is mutated when
+// the computed output would fall below it (slippage protection) — 0 means
+// no protection requested.
+// Caller must hold cs.mu. Returns (amountOut, demurrageLost, err) — lost
+// must be attached to the queued Transaction so secondary nodes replay the
+// exact decay via ApplySwapDelta instead of recomputing it themselves.
+func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd bool, minAmountOut float64) (float64, float64, error) {
 	// P2-7: reload pool from DB before swap to avoid stale-memory AMM invariant violation
 	cs.reloadPoolFromDB()
 	address = strings.ToLower(address)
 	if amountIn <= 0 {
-		return 0, fmt.Errorf("amount must be positive")
+		return 0, 0, fmt.Errorf("amount must be positive")
 	}
 	if cs.pool == nil {
-		return 0, fmt.Errorf("liquidity pool not initialized")
+		return 0, 0, fmt.Errorf("liquidity pool not initialized")
 	}
 
 	acc, ok := cs.accounts[address]
 	if !ok {
-		return 0, fmt.Errorf("account not found")
+		return 0, 0, fmt.Errorf("account not found")
 	}
-	cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
+	lost := cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
 
 	if aeqToTusd {
 		if acc.Balance.Float() < amountIn {
-			return 0, fmt.Errorf("insufficient AEQ balance")
+			return 0, 0, fmt.Errorf("insufficient AEQ balance")
 		}
 	} else {
 		if acc.TUsdBalance.Float() < amountIn {
-			return 0, fmt.Errorf("insufficient tUSD balance")
+			return 0, 0, fmt.Errorf("insufficient tUSD balance")
 		}
 	}
 
@@ -1641,7 +1680,10 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 		// x*y=k: reserveAEQ * reserveTUSD = (reserveAEQ + amountInAfterFee) * (reserveTUSD - amountOut)
 		amountOut = AMMSwapOut(cs.pool.ReserveAEQ, cs.pool.ReserveTUSD, NewDecimal(amountInAfterFee)).Float()
 		if amountOut >= cs.pool.ReserveTUSD.Float() {
-			return 0, fmt.Errorf("swap too large for pool liquidity")
+			return 0, 0, fmt.Errorf("swap too large for pool liquidity")
+		}
+		if minAmountOut > 0 && amountOut < minAmountOut {
+			return 0, 0, fmt.Errorf("slippage: output %.6f tUSD below requested minimum %.6f", amountOut, minAmountOut)
 		}
 		cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() + amountInAfterFee))
 		cs.pool.ReserveTUSD = NewDecimal(max(0.0, round6(cs.pool.ReserveTUSD.Float()-amountOut)))
@@ -1650,7 +1692,10 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 	} else {
 		amountOut = AMMSwapOut(cs.pool.ReserveTUSD, cs.pool.ReserveAEQ, NewDecimal(amountInAfterFee)).Float()
 		if amountOut >= cs.pool.ReserveAEQ.Float() {
-			return 0, fmt.Errorf("swap too large for pool liquidity")
+			return 0, 0, fmt.Errorf("swap too large for pool liquidity")
+		}
+		if minAmountOut > 0 && amountOut < minAmountOut {
+			return 0, 0, fmt.Errorf("slippage: output %.6f AEQ below requested minimum %.6f", amountOut, minAmountOut)
 		}
 		cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + amountInAfterFee))
 		cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(cs.pool.ReserveAEQ.Float()-amountOut)))
@@ -1672,7 +1717,7 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr)
 	go cs.SavePriceSnapshot()
-	return amountOut, nil
+	return amountOut, lost.Float(), nil
 }
 
 func sideLabel(aeqToTusd, isInput bool) string {
@@ -1774,31 +1819,35 @@ func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) {
 // withdraw their share back out. Tracking proportional LP ownership (so
 // deposits are genuinely reversible) is a deliberate follow-up, not
 // included in this first pass.
-func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64) error {
+// Returns the AEQ amount demurrage-decayed off address before the deposit
+// (0 if none) — callers must attach this to the queued Transaction so
+// secondary nodes replay the exact decay via AddLiquidityDelta instead of
+// recomputing it themselves.
+func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64) (float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	address = strings.ToLower(address)
 
 	if amountAEQ <= 0 || amountTUSD <= 0 {
-		return fmt.Errorf("both amounts must be positive")
+		return 0, fmt.Errorf("both amounts must be positive")
 	}
 	if math.IsNaN(amountAEQ) || math.IsInf(amountAEQ, 0) || math.IsNaN(amountTUSD) || math.IsInf(amountTUSD, 0) {
-		return fmt.Errorf("invalid liquidity amounts")
+		return 0, fmt.Errorf("invalid liquidity amounts")
 	}
 	if cs.pool == nil {
-		return fmt.Errorf("liquidity pool not initialized")
+		return 0, fmt.Errorf("liquidity pool not initialized")
 	}
 
 	acc, ok := cs.accounts[address]
 	if !ok {
-		return fmt.Errorf("account not found")
+		return 0, fmt.Errorf("account not found")
 	}
-	cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
+	lost := cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
 	if acc.Balance.Float() < amountAEQ {
-		return fmt.Errorf("insufficient AEQ balance")
+		return 0, fmt.Errorf("insufficient AEQ balance")
 	}
 	if acc.TUsdBalance.Float() < amountTUSD {
-		return fmt.Errorf("insufficient tUSD balance")
+		return 0, fmt.Errorf("insufficient tUSD balance")
 	}
 
 	// If the pool already has liquidity, require the deposit to roughly
@@ -1809,7 +1858,7 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 		expectedTUSD := amountAEQ * (cs.pool.ReserveTUSD.Float() / cs.pool.ReserveAEQ.Float())
 		tolerance := expectedTUSD * 0.003 // 0.3% slack — tighter than 1% to prevent price manipulation
 		if amountTUSD < expectedTUSD-tolerance || amountTUSD > expectedTUSD+tolerance {
-			return fmt.Errorf("deposit ratio does not match pool ratio (expected ~%.4f tUSD for %.4f AEQ)", expectedTUSD, amountAEQ)
+			return 0, fmt.Errorf("deposit ratio does not match pool ratio (expected ~%.4f tUSD for %.4f AEQ)", expectedTUSD, amountAEQ)
 		}
 		if cs.pool.TotalLPShares > 0 {
 			// Proportional to the pool's existing size — same fraction of the
@@ -1851,29 +1900,38 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 	go cs.SavePriceSnapshot()
 
 	fmt.Printf("[POOL] ✓ %s added liquidity: %.4f AEQ + %.4f tUSD → %.6f LP shares\n", address, amountAEQ, amountTUSD, mintedShares)
-	return nil
+	return lost.Float(), nil
 }
 
 // RemoveLiquidity burns sharesToBurn of address's LP shares and returns
 // the corresponding proportional amount of both reserves to their
 // balances. sharesToBurn must not exceed the account's own LPShares —
 // an account can only withdraw its own claim, never another LP's.
-func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (float64, float64, error) {
+// Returns (outAEQ, outTUSD, demurrageLost, err) — demurrageLost must be
+// attached to the queued Transaction so secondary nodes replay the exact
+// decay via RemoveLiquidityDelta instead of recomputing it themselves.
+func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (float64, float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	address = strings.ToLower(address)
 
 	if sharesToBurn <= 0 {
-		return 0, 0, fmt.Errorf("shares must be positive")
+		return 0, 0, 0, fmt.Errorf("shares must be positive")
 	}
 	if cs.pool == nil {
-		return 0, 0, fmt.Errorf("liquidity pool not initialized")
+		return 0, 0, 0, fmt.Errorf("liquidity pool not initialized")
 	}
 
 	acc, ok := cs.accounts[address]
 	if !ok {
-		return 0, 0, fmt.Errorf("account not found")
+		return 0, 0, 0, fmt.Errorf("account not found")
 	}
+	// FIX: RemoveLiquidity previously never settled demurrage on the
+	// withdrawing account, unlike AddLiquidity/Transfer/swapLocked — an idle
+	// wealthy account could dodge decay indefinitely by periodically
+	// removing/re-adding trivial liquidity amounts (touchActivity() below
+	// resets the decay clock without the decay ever having been applied).
+	lost := cs.settleDemurrageLocked(acc)
 
 	// F17-BOUNDARY: If TotalLPShares rounds to 0 but the user still has LP shares
 	// (dust rounding edge case), allow them to drain the entire pool — they are
@@ -1896,13 +1954,13 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 			cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
 			go cs.SavePriceSnapshot()
 			fmt.Printf("[POOL] ✓ %s drained final dust position → %.4f AEQ + %.4f tUSD\n", address, outAEQ, outTUSD)
-			return outAEQ, outTUSD, nil
+			return outAEQ, outTUSD, lost.Float(), nil
 		}
-		return 0, 0, fmt.Errorf("liquidity pool is empty")
+		return 0, 0, 0, fmt.Errorf("liquidity pool is empty")
 	}
 
 	if acc.LPShares.Float() < sharesToBurn {
-		return 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)", acc.LPShares.Float(), sharesToBurn)
+		return 0, 0, 0, fmt.Errorf("insufficient LP shares (have %.6f, requested %.6f)", acc.LPShares.Float(), sharesToBurn)
 	}
 	// F17-FIX: guard against TotalLPShares corruption (< actual shares).
 	// Capping fraction to 1.0 above prevents over-withdrawal from reserves,
@@ -1910,7 +1968,7 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 	if sharesToBurn > cs.pool.TotalLPShares.Float() {
 		sharesToBurn = cs.pool.TotalLPShares.Float()
 		if sharesToBurn <= 0 {
-			return 0, 0, fmt.Errorf("pool total LP shares is zero or negative")
+			return 0, 0, 0, fmt.Errorf("pool total LP shares is zero or negative")
 		}
 		// Zeroing acc.LPShares prevents phantom shares when the clamped
 		// sharesToBurn is less than the user's recorded LPShares.
@@ -1951,7 +2009,7 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 		cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
 		go cs.SavePriceSnapshot()
 		fmt.Printf("[POOL] ✓ %s removed liquidity (F17 clamp): %.6f shares → %.4f AEQ + %.4f tUSD\n", address, sharesToBurn, outAEQ17, outTUSD17)
-		return outAEQ17, outTUSD17, nil
+		return outAEQ17, outTUSD17, lost.Float(), nil
 	}
 
 	fraction := sharesToBurn / cs.pool.TotalLPShares.Float()
@@ -1992,7 +2050,7 @@ func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (flo
 	go cs.SavePriceSnapshot()
 
 	fmt.Printf("[POOL] ✓ %s removed liquidity: %.6f shares → %.4f AEQ + %.4f tUSD\n", address, sharesToBurn, outAEQ, outTUSD)
-	return outAEQ, outTUSD, nil
+	return outAEQ, outTUSD, lost.Float(), nil
 }
 
 // GetLPShares returns address's current LP share balance, and the pool's
@@ -2252,8 +2310,13 @@ func (cs *ChainState) SetBalance(address string, amount float64) {
 
 // ApplyTransferDelta directly adjusts AEQ balances by the net amount that
 // reached the recipient (after any fee that was applied on the primary).
-// Used by secondary nodes replaying transfer TXs from blocks.
-func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount float64) error {
+// Used by secondary nodes replaying transfer TXs from blocks. fromLost/toLost
+// are the exact demurrage amounts the primary decayed off each side (see
+// Transfer()/TransferWithV7Fee()) — applied directly via
+// applyDemurrageLossLocked rather than recomputed, since recomputing via
+// effectiveBalance()/nowUnix() at replay time would use this node's own
+// wall-clock time and diverge from what the primary actually settled.
+func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount, fromLost, toLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	from = strings.ToLower(from)
@@ -2262,8 +2325,7 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount float64) err
 	if !ok {
 		return fmt.Errorf("from account not found: %s", from)
 	}
-	// Settle demurrage before checking/subtracting balance — mirrors Transfer() on primary.
-	cs.settleDemurrageLocked(fromAcc)
+	cs.applyDemurrageLossLocked(fromAcc, fromLost)
 	if fromAcc.Balance.Float() < netAmount {
 		return fmt.Errorf("insufficient balance (have %.6f, need %.6f)", fromAcc.Balance.Float(), netAmount)
 	}
@@ -2274,6 +2336,7 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount float64) err
 		cs.accounts[to] = &AccountState{Address: to}
 	}
 	toAcc := cs.accounts[to]
+	cs.applyDemurrageLossLocked(toAcc, toLost)
 	toAcc.Balance = NewDecimal(round6(toAcc.Balance.Float() + netAmount))
 	cs.enforceWealthCapLocked(toAcc)
 	cs.saveAccountToDB(toAcc)
@@ -2284,7 +2347,10 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount float64) err
 // stored in the block TX. aeqToTusd=true: wallet loses amountIn AEQ, gains amountOut tUSD.
 // aeqToTusd=false: wallet loses amountIn tUSD, gains amountOut AEQ.
 // Also updates pool reserves to mirror what swapLocked() did on the primary.
-func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64, aeqToTusd bool) error {
+// demurrageLost is the exact amount swapLocked() decayed off wallet on the
+// primary — applied directly (applyDemurrageLossLocked) rather than
+// recomputed, for the same reason as in ApplyTransferDelta.
+func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	wallet = strings.ToLower(wallet)
@@ -2292,6 +2358,7 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 	if !ok {
 		return fmt.Errorf("account not found: %s", wallet)
 	}
+	cs.applyDemurrageLossLocked(acc, demurrageLost)
 	if aeqToTusd {
 		if acc.Balance.Float() < amountIn {
 			return fmt.Errorf("insufficient AEQ balance")
@@ -2335,7 +2402,10 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 // the exact stored amounts. lpShares is the number of LP shares minted on the
 // primary node; if > 0 it is used directly instead of recomputing, eliminating
 // pool-state drift between nodes. Reloads pool from DB first for consistency.
-func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lpShares float64) error {
+// demurrageLost is the exact amount AddLiquidity() decayed off wallet on the
+// primary — applied directly rather than recomputed, for the same reason as
+// in ApplyTransferDelta.
+func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lpShares, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	wallet = strings.ToLower(wallet)
@@ -2344,6 +2414,7 @@ func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lp
 		return fmt.Errorf("account not found: %s", wallet)
 	}
 	cs.reloadPoolFromDB()
+	cs.applyDemurrageLossLocked(acc, demurrageLost)
 	if acc.Balance.Float() < aeqAmount {
 		return fmt.Errorf("insufficient AEQ balance")
 	}
@@ -2378,7 +2449,10 @@ func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lp
 
 // RemoveLiquidityDelta burns sharesToBurn LP shares and returns proportional
 // pool reserves to the wallet, using the secondary's current pool state.
-func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn float64) error {
+// demurrageLost is the exact amount RemoveLiquidity() decayed off wallet on
+// the primary — applied directly rather than recomputed, for the same
+// reason as in ApplyTransferDelta.
+func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	wallet = strings.ToLower(wallet)
@@ -2387,6 +2461,7 @@ func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn float64) 
 		return fmt.Errorf("account not found: %s", wallet)
 	}
 	cs.reloadPoolFromDB()
+	cs.applyDemurrageLossLocked(acc, demurrageLost)
 	if cs.pool == nil || cs.pool.TotalLPShares.Float() <= 0 {
 		return fmt.Errorf("liquidity pool is empty")
 	}

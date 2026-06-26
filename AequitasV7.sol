@@ -96,15 +96,17 @@ contract AequitasV7 {
         require(!isHuman[msg.sender], "Already registered");
         uint256 commitment = pubSignals[0];
         require(!usedCommitments[commitment], "Commitment used");
-        // Bind nullifier to circuit output (pubSignals[1]) when v2 circuit is used.
-        // This is the same effectiveNullifier logic as registerWithSig.
-        bytes32 effectiveNullifier = nullifier;
-        if (pubSignals[1] != 0) {
-            bytes32 zkNullifier = bytes32(pubSignals[1]);
-            require(nullifier == bytes32(0) || nullifier == zkNullifier, "Nullifier/circuit mismatch");
-            effectiveNullifier = zkNullifier;
-        }
-        require(effectiveNullifier != bytes32(0), "Nullifier required");
+        // FIX (v2-only nullifier): pubSignals[1] MUST be the ZK-circuit-derived
+        // nullifier. Previously, when pubSignals[1] == 0 (a v1-circuit proof,
+        // which never outputs a nullifier as a public signal), this function
+        // fell back to trusting the caller-supplied `nullifier` parameter with
+        // ZERO cryptographic binding to the proof — anyone could submit an
+        // arbitrary nullifier value, defeating "one biometric = one
+        // registration" entirely for that path. Requiring pubSignals[1] != 0
+        // means the nullifier is always attested by the proof itself.
+        require(pubSignals[1] != 0, "v1 circuit not accepted: ZK-bound nullifier required");
+        bytes32 effectiveNullifier = bytes32(pubSignals[1]);
+        require(nullifier == bytes32(0) || nullifier == effectiveNullifier, "Nullifier/circuit mismatch");
         require(usedNullifiers[effectiveNullifier] == address(0), "Nullifier used");
 
         // CEI: write all state before the external call
@@ -155,22 +157,29 @@ contract AequitasV7 {
         bytes calldata signature,
         bytes32 nullifier
     ) external {
+        // FIX (ecrecover zero-address): ecrecover returns address(0) on
+        // malformed signature data instead of reverting. Without this check,
+        // claimedHuman == address(0) combined with garbage signature bytes
+        // would make `_recoverSigner(...) == claimedHuman` pass (0 == 0),
+        // registering address(0) as human and minting INITIAL_GRANT into an
+        // unusable balance — needless attack surface even though it can't be
+        // profitably exploited.
+        require(claimedHuman != address(0), "claimedHuman cannot be zero address");
         require(!isHuman[claimedHuman], "Already registered");
 
         uint256 commitment = pubSignals[0];
         require(!usedCommitments[commitment], "Commitment used");
 
-        // Use circuit-derived nullifier when available (pubSignals[1] != 0).
-        // This ZK-binds the nullifier to the biometric secret inside the proof.
-        bytes32 effectiveNullifier = nullifier;
-        if (pubSignals[1] != 0) {
-            bytes32 zkNullifier = bytes32(pubSignals[1]);
-            require(nullifier == bytes32(0) || nullifier == zkNullifier,
-                "Nullifier mismatch: submitted nullifier does not match ZK-derived value");
-            effectiveNullifier = zkNullifier;
-        }
+        // FIX (v2-only nullifier): same reasoning as register() above — a v1
+        // circuit (pubSignals[1] == 0) provides no cryptographic nullifier at
+        // all, so the old fallback to the caller-supplied `nullifier` param
+        // let anyone pick an arbitrary value, breaking "one biometric = one
+        // registration". Require the ZK-bound nullifier unconditionally.
+        require(pubSignals[1] != 0, "v1 circuit not accepted: ZK-bound nullifier required");
+        bytes32 effectiveNullifier = bytes32(pubSignals[1]);
+        require(nullifier == bytes32(0) || nullifier == effectiveNullifier,
+            "Nullifier mismatch: submitted nullifier does not match ZK-derived value");
 
-        require(effectiveNullifier != bytes32(0), "Nullifier required");
         require(usedNullifiers[effectiveNullifier] == address(0), "Nullifier used");
 
         // FIX 2: sign over effectiveNullifier (ZK-derived) not the raw nullifier param
@@ -372,6 +381,18 @@ contract AequitasV7 {
         ubiPool += amount;
         isHuman[human] = false;
         totalHumans--;
+        // FIX (wardCount leak): revokeGuardian()'s comment claimed this cleanup
+        // was "handled by triggerEscrowToUBI", but it never actually was — a
+        // ward swept to UBI by inactivity kept occupying a wardCount slot on
+        // their guardian forever (de-registered humans can't call
+        // revokeGuardian themselves, since it requires isHuman). Release it
+        // here so the guardian's capacity is correctly freed.
+        address g = guardianOf[human];
+        if (g != address(0)) {
+            wardCount[g]--;
+            guardianOf[human] = address(0);
+            emit GuardianRevoked(human, g);
+        }
         emit EscrowToUBI(human, amount);
     }
 

@@ -2,8 +2,6 @@ package keeper
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -275,6 +273,16 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 
 	claimedHuman := common.HexToAddress(wallet)
 
+	// FIX: AequitasV7.sol now REQUIRES the ZK-circuit-bound nullifier
+	// (pubSignals[1] != 0) — the old fallback that trusted a caller-supplied
+	// nullifier whenever a v1-circuit proof omitted it was removed because it
+	// had zero cryptographic binding to the proof. Reject v1 requests here,
+	// before spending a relayer dry-run, with a clear message instead of
+	// letting them fail later on the contract's own (correct) revert.
+	if req.CircuitVersion < 2 || req.ZKNullifier == "" {
+		return "", fmt.Errorf("v1 circuit registrations are no longer accepted: a ZK-bound nullifier (circuit v2+) is required")
+	}
+
 	// Prefer ZK-circuit-derived nullifier (v2 circuit, pubSignals[1]) over
 	// client-SHA256 nullifier. When the v2 circuit is used, the nullifier is
 	// cryptographically attested by the Groth16 proof itself.
@@ -290,30 +298,15 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	if existingWallet := a.state.GetWalletByNullifier(effectiveNullifier); existingWallet != "" {
 		return "", fmt.Errorf("identity already registered (nullifier used by %s)", existingWallet)
 	}
-	if req.CircuitVersion < 2 {
-		if req.BioHash == "" {
-			return "", fmt.Errorf("BioHash required for v1 circuit registration")
-		}
-	}
+	// NOTE: the v1-circuit BioHash/SHA256-nullifier-derivation checks that
+	// used to live here are gone along with v1 support (see the early
+	// CircuitVersion < 2 rejection above) — every request reaching this point
+	// already has a v2 ZK-bound nullifier. bioHash, if supplied, is still
+	// checked for duplicates below (secondary defense-in-depth dedup layer,
+	// independent of the nullifier).
 	if req.BioHash != "" {
 		if existingWallet := a.state.GetWalletByBioHash(req.BioHash); existingWallet != "" {
 			return "", fmt.Errorf("biometric already registered to %s", existingWallet)
-		}
-		// P1-FIX: SHA256-derivation only applies to v1 circuit (nullifier=SHA256(bioHash)).
-		// v2 circuit nullifiers are ZK-bound (pubSignals[1]) and NOT SHA256(bioHash).
-		// Applying this check to a v2 ZKNullifier always fails, rejecting valid v2
-		// registrations that arrive with a bioHash for duplicate-detection purposes.
-		if req.CircuitVersion < 2 || req.ZKNullifier == "" {
-			// Application-level nullifier binding: verify the nullifier is correctly
-			// derived from the biometric hash via SHA256(bioHash+":aequitas-ubi-v1").
-			// This prevents a client from submitting a valid ZK proof with an
-			// arbitrary nullifier — the server independently recomputes and checks.
-			h := sha256.Sum256([]byte(req.BioHash + ":aequitas-ubi-v1"))
-			expectedNullifier := hex.EncodeToString(h[:])
-			actualNullifier := strings.ToLower(strings.TrimPrefix(effectiveNullifier, "0x"))
-			if expectedNullifier != actualNullifier {
-				return "", fmt.Errorf("nullifier does not match biometric hash derivation")
-			}
 		}
 	}
 
@@ -373,12 +366,24 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// V7 not yet deployed (startup race). Mirror validates the proof via
 		// BioVerifier and writes storage slots directly. Only allowed here.
 		fmt.Printf("[REGISTER] V7 not yet deployed — using mirror registration for %s\n", wallet)
-		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata, effectiveNullifier)
-		if mirrorErr != nil {
-			return "", fmt.Errorf("registration failed (V7 missing + mirror failed): %w; mirror: %v", dryRunErr, mirrorErr)
-		}
+		// FIX (TOCTOU): claim the nullifier atomically BEFORE writing any mirror
+		// storage slots, not after. persistRegisterWithSigMirror's own internal
+		// "already used" checks (LoadStorageSlot reads) are plain reads with no
+		// locking — two concurrent requests sharing the same nullifier could
+		// both pass those checks and both write totalSupply/totalHumans/balance
+		// slots before the old post-hoc TryClaimNullifier call ever ran, double-
+		// crediting the registration grant. TryClaimNullifier's DB-level
+		// INSERT...ON CONFLICT (or mutex-guarded map) is the only atomic
+		// primitive here, so only the winner may proceed to mutate storage.
 		if !a.state.TryClaimNullifier(effectiveNullifier, wallet) {
 			return "", fmt.Errorf("nullifier already claimed: %s", effectiveNullifier)
+		}
+		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata, effectiveNullifier)
+		if mirrorErr != nil {
+			// Registration didn't actually happen — release the claim so the
+			// legitimate owner of this nullifier isn't permanently locked out.
+			a.state.ReleaseNullifier(effectiveNullifier)
+			return "", fmt.Errorf("registration failed (V7 missing + mirror failed): %w; mirror: %v", dryRunErr, mirrorErr)
 		}
 		var regErr error
 		for attempt := 1; attempt <= 3; attempt++ {
@@ -689,7 +694,7 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 	totalSupply := loadSlotBig(a.state, addrStr, 0)
 	totalHumans := loadSlotBig(a.state, addrStr, 1)
 	ubiAccumulated := loadSlotBig(a.state, addrStr, 3)
-	now := big.NewInt(int64(blockContext().Time))
+	now := big.NewInt(time.Now().Unix())
 
 	a.state.SaveStorageSlot(addrStr, common.BigToHash(big.NewInt(0)).Hex(), common.BigToHash(new(big.Int).Add(totalSupply, initialGrant)).Hex())
 	a.state.SaveStorageSlot(addrStr, common.BigToHash(big.NewInt(1)).Hex(), common.BigToHash(new(big.Int).Add(totalHumans, big.NewInt(1))).Hex())

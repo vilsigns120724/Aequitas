@@ -59,16 +59,22 @@ count++
 return count
 }
 
+// GetAllHumans returns copies of every registered Human, not pointers into
+// the live map — a caller mutating a returned *Human used to mutate the
+// keeper's own state unsynchronized with k.mu, defeating the lock's purpose.
 func (k *Keeper) GetAllHumans() []*types.Human {
 k.mu.RLock()
 defer k.mu.RUnlock()
 result := make([]*types.Human, 0, len(k.humans))
 for _, h := range k.humans {
-result = append(result, h)
+hCopy := *h
+result = append(result, &hCopy)
 }
 return result
 }
 
 func (k *Keeper) ExportState() ([]byte, error) {
+k.mu.RLock()
+defer k.mu.RUnlock()
 return json.Marshal(k.humans)
 }

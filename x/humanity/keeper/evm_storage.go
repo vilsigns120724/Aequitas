@@ -209,6 +209,27 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 	contractAddr = strings.ToLower(contractAddr)
 	fmt.Printf("[MIGRATE] Rebuilding EVM storage from Go-state for %s...\n", contractAddr)
 
+	// FIX: every SaveStorageSlot call below used to discard its error. A
+	// transient DB blip mid-migration would silently leave some accounts'
+	// balance/isHuman/lastActivity slots written and others not, producing
+	// a partially-migrated, inconsistent EVM mirror with no signal to the
+	// caller — discovered later only when users report wrong balances or
+	// registration status. Track the first failure and how many occurred so
+	// the function can return a real error and the caller's existing
+	// rollback logic (contract_deploy.go's restoreOnFailure) actually fires
+	// instead of treating an incomplete migration as a success.
+	var firstErr error
+	failCount := 0
+	save := func(addr, slot, value string) {
+		if err := cs.SaveStorageSlot(addr, slot, value); err != nil {
+			failCount++
+			if firstErr == nil {
+				firstErr = err
+			}
+			fmt.Printf("[MIGRATE] ERROR: SaveStorageSlot(%s, %s) failed: %v\n", addr, slot, err)
+		}
+	}
+
 	weiPerAEQ := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 	var totalSupply float64
 	var totalHumans int64
@@ -223,16 +244,16 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 			balBig = new(big.Int)
 		}
 		addrBytes := common.HexToAddress(addr).Bytes()
-		cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex())
+		save(contractAddr, mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex())
 		totalSupply += acc.Balance.Float()
 		if acc.IsHuman {
-			cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 6).Hex(), common.HexToHash("0x01").Hex())
+			save(contractAddr, mappingSlot(addrBytes, 6).Hex(), common.HexToHash("0x01").Hex())
 			totalHumans++
 			// Preserve lastActivity (slot 10) and lastDemurrage (slot 11).
 			if acc.LastActivityAt > 0 {
 				ts := big.NewInt(acc.LastActivityAt)
-				cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 10).Hex(), common.BigToHash(ts).Hex())
-				cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 11).Hex(), common.BigToHash(ts).Hex())
+				save(contractAddr, mappingSlot(addrBytes, 10).Hex(), common.BigToHash(ts).Hex())
+				save(contractAddr, mappingSlot(addrBytes, 11).Hex(), common.BigToHash(ts).Hex())
 			}
 			// Set ubiClaimed (slot 12) to the CURRENT ubiPerHumanAccumulated (slot 3).
 			// This prevents double-claiming: after an upgrade, each human's "already claimed"
@@ -252,8 +273,8 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 	if supplyWei == nil {
 		supplyWei = new(big.Int)
 	}
-	cs.SaveStorageSlot(contractAddr, common.BigToHash(big.NewInt(0)).Hex(), common.BigToHash(supplyWei).Hex())
-	cs.SaveStorageSlot(contractAddr, common.BigToHash(big.NewInt(1)).Hex(), common.BigToHash(big.NewInt(totalHumans)).Hex())
+	save(contractAddr, common.BigToHash(big.NewInt(0)).Hex(), common.BigToHash(supplyWei).Hex())
+	save(contractAddr, common.BigToHash(big.NewInt(1)).Hex(), common.BigToHash(big.NewInt(totalHumans)).Hex())
 
 	// Read current ubiPerHumanAccumulated (slot 3) from DB so we can set
 	// ubiClaimed = that value for every human, preventing double-claim on upgrade.
@@ -270,7 +291,7 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 	for addr, acc := range cs.accounts {
 		if acc.IsHuman {
 			addrB := common.HexToAddress(addr).Bytes()
-			cs.SaveStorageSlot(contractAddr, mappingSlot(addrB, 12).Hex(), ubiAccumVal)
+			save(contractAddr, mappingSlot(addrB, 12).Hex(), ubiAccumVal)
 		}
 	}
 	cs.mu.RUnlock()
@@ -289,9 +310,15 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 			nullKey := common.HexToHash(strings.TrimPrefix(nullifier, "0x"))
 			nullSlot := mappingSlotBytes32(nullKey, 8)
 			walletHash := common.BigToHash(common.HexToAddress(wallet).Big())
-			cs.SaveStorageSlot(contractAddr, nullSlot.Hex(), walletHash.Hex())
+			save(contractAddr, nullSlot.Hex(), walletHash.Hex())
 		}
 		rows.Close()
+	} else {
+		failCount++
+		if firstErr == nil {
+			firstErr = err
+		}
+		fmt.Printf("[MIGRATE] ERROR: nullifiers query failed: %v\n", err)
 	}
 
 	// usedCommitments (slot 7) + commitmentOf (slot 9): from bio_registrations
@@ -312,14 +339,20 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 			}
 			// usedCommitments[commitment] = true (slot 7)
 			commitSlot7 := mappingSlot(common.LeftPadBytes(commitBig.Bytes(), 32), 7)
-			cs.SaveStorageSlot(contractAddr, commitSlot7.Hex(), common.HexToHash("0x01").Hex())
+			save(contractAddr, commitSlot7.Hex(), common.HexToHash("0x01").Hex())
 			// commitmentOf[wallet] = commitment (slot 9)
 			if wallet != "" {
 				commitSlot9 := mappingSlot(common.HexToAddress(wallet).Bytes(), 9)
-				cs.SaveStorageSlot(contractAddr, commitSlot9.Hex(), common.BigToHash(commitBig).Hex())
+				save(contractAddr, commitSlot9.Hex(), common.BigToHash(commitBig).Hex())
 			}
 		}
 		rows2.Close()
+	} else {
+		failCount++
+		if firstErr == nil {
+			firstErr = err2
+		}
+		fmt.Printf("[MIGRATE] ERROR: bio_registrations query failed: %v\n", err2)
 	}
 
 	// lastActivity (slot 10) + lastDemurrage (slot 11): from chain_accounts
@@ -330,16 +363,26 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 		}
 		ts := big.NewInt(acc.LastActivityAt)
 		addrBytes := common.HexToAddress(addr).Bytes()
-		cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 10).Hex(), common.BigToHash(ts).Hex())
-		cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 11).Hex(), common.BigToHash(ts).Hex())
+		save(contractAddr, mappingSlot(addrBytes, 10).Hex(), common.BigToHash(ts).Hex())
+		save(contractAddr, mappingSlot(addrBytes, 11).Hex(), common.BigToHash(ts).Hex())
 	}
 	cs.mu.RUnlock()
 
 	// Restore guardian/escrow relationship slots (5, 13-16) that were saved
 	// before the storage wipe. These are not tracked in any Go-state table so
 	// they can only be preserved by snapshot + restore across the upgrade.
-	cs.RestorePreUpgradeRelationshipSlots(contractAddr)
+	if restoreErr := cs.RestorePreUpgradeRelationshipSlots(contractAddr); restoreErr != nil {
+		failCount++
+		if firstErr == nil {
+			firstErr = restoreErr
+		}
+		fmt.Printf("[MIGRATE] ERROR: relationship slot restore failed: %v\n", restoreErr)
+	}
 
+	if firstErr != nil {
+		fmt.Printf("[MIGRATE] ✗ EVM storage rebuild INCOMPLETE: %d slot/query write(s) failed (first error: %v)\n", failCount, firstErr)
+		return fmt.Errorf("migration incomplete: %d write(s) failed: %w", failCount, firstErr)
+	}
 	fmt.Printf("[MIGRATE] ✓ EVM storage rebuilt: %d humans, %.2f AEQ total supply\n", totalHumans, totalSupply)
 	return nil
 }
@@ -354,19 +397,28 @@ const upgradeRelationshipSlotsTable = "evm_upgrade_relationship_slots"
 // Call this BEFORE wiping evm_storage on a contract upgrade; then call
 // RestorePreUpgradeRelationshipSlots AFTER MigrateEVMFromGoState has rebuilt
 // the rest of the storage to re-inject these slots back in.
-func (cs *ChainState) SavePreUpgradeRelationshipSlots(contractAddr string) {
+// Returns an error if the snapshot could not be completed reliably — the
+// caller (contract_deploy.go) must abort the upgrade rather than proceed to
+// wipe evm_storage, since a failed/partial snapshot here means guardian and
+// escrow relationships would be permanently lost by the wipe with no way to
+// restore them afterward.
+func (cs *ChainState) SavePreUpgradeRelationshipSlots(contractAddr string) error {
 	if cs.db == nil {
-		return
+		return nil
 	}
 	contractAddr = strings.ToLower(contractAddr)
-	cs.db.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+	if _, err := cs.db.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 		address TEXT NOT NULL,
 		slot    TEXT NOT NULL,
 		value   TEXT NOT NULL,
 		PRIMARY KEY (address, slot)
-	)`, upgradeRelationshipSlotsTable))
+	)`, upgradeRelationshipSlotsTable)); err != nil {
+		return fmt.Errorf("create snapshot table: %w", err)
+	}
 	// Clear any stale snapshot from a previous upgrade cycle.
-	cs.db.Exec(fmt.Sprintf(`DELETE FROM %s WHERE address = $1`, upgradeRelationshipSlotsTable), contractAddr)
+	if _, err := cs.db.Exec(fmt.Sprintf(`DELETE FROM %s WHERE address = $1`, upgradeRelationshipSlotsTable), contractAddr); err != nil {
+		return fmt.Errorf("clear stale snapshot: %w", err)
+	}
 
 	// We can't filter by "slot prefix for base slot N" efficiently in SQL because
 	// the slot hash is opaque. Instead, snapshot ALL slots for this address that
@@ -377,49 +429,63 @@ func (cs *ChainState) SavePreUpgradeRelationshipSlots(contractAddr string) {
 	rows, err := cs.db.Query(`SELECT slot, value FROM evm_storage WHERE lower(address) = $1`, contractAddr)
 	if err != nil {
 		fmt.Printf("[DEPLOY] Warning: could not snapshot relationship slots: %v\n", err)
-		return
+		return fmt.Errorf("query existing slots: %w", err)
 	}
 	defer rows.Close()
 	count := 0
 	for rows.Next() {
 		var slot, value string
-		rows.Scan(&slot, &value)
-		cs.db.Exec(fmt.Sprintf(`INSERT INTO %s (address, slot, value) VALUES ($1, $2, $3)
+		if scanErr := rows.Scan(&slot, &value); scanErr != nil {
+			return fmt.Errorf("scan slot row: %w", scanErr)
+		}
+		if _, execErr := cs.db.Exec(fmt.Sprintf(`INSERT INTO %s (address, slot, value) VALUES ($1, $2, $3)
 			ON CONFLICT (address, slot) DO UPDATE SET value = $3`, upgradeRelationshipSlotsTable),
-			contractAddr, slot, value)
+			contractAddr, slot, value); execErr != nil {
+			return fmt.Errorf("save slot %s: %w", slot, execErr)
+		}
 		count++
 	}
 	fmt.Printf("[DEPLOY] Saved %d EVM storage slots for guardian/escrow preservation\n", count)
+	return nil
 }
 
 // RestorePreUpgradeRelationshipSlots writes the slots that were saved by
 // SavePreUpgradeRelationshipSlots back into evm_storage. Called at the end of
 // MigrateEVMFromGoState so these survive the upgrade storage wipe.
-func (cs *ChainState) RestorePreUpgradeRelationshipSlots(contractAddr string) {
+// Returns an error if any saved slot could not be restored — the caller
+// (MigrateEVMFromGoState) folds this into its own failure tracking so a
+// partial restore is reported instead of silently leaving guardian/escrow
+// relationships missing post-upgrade.
+func (cs *ChainState) RestorePreUpgradeRelationshipSlots(contractAddr string) error {
 	if cs.db == nil {
-		return
+		return nil
 	}
 	contractAddr = strings.ToLower(contractAddr)
 	rows, err := cs.db.Query(fmt.Sprintf(`SELECT slot, value FROM %s WHERE address = $1`, upgradeRelationshipSlotsTable), contractAddr)
 	if err != nil {
-		return // table doesn't exist yet (first-ever deploy, no prior snapshot)
+		return nil // table doesn't exist yet (first-ever deploy, no prior snapshot)
 	}
 	defer rows.Close()
 	count := 0
 	for rows.Next() {
 		var slot, value string
-		rows.Scan(&slot, &value)
+		if scanErr := rows.Scan(&slot, &value); scanErr != nil {
+			return fmt.Errorf("scan relationship slot row: %w", scanErr)
+		}
 		// Use INSERT … ON CONFLICT DO NOTHING so that slots MigrateEVMFromGoState
 		// already wrote (balanceOf, isHuman, etc.) are not overwritten by stale
 		// pre-upgrade values — only truly-missing slots get restored.
-		cs.db.Exec(`INSERT INTO evm_storage (address, slot, value) VALUES ($1, $2, $3)
+		if _, execErr := cs.db.Exec(`INSERT INTO evm_storage (address, slot, value) VALUES ($1, $2, $3)
 			ON CONFLICT (address, slot) DO NOTHING`,
-			contractAddr, slot, value)
+			contractAddr, slot, value); execErr != nil {
+			return fmt.Errorf("restore slot %s: %w", slot, execErr)
+		}
 		count++
 	}
 	if count > 0 {
 		fmt.Printf("[MIGRATE] Restored %d guardian/escrow slots from pre-upgrade snapshot\n", count)
 	}
+	return nil
 }
 
 // SyncBalancesToEVM writes the current Go-state AEQ balance for each addr into
@@ -757,6 +823,26 @@ func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) {
 		nullifier, walletAddress,
 	); err != nil {
 		fmt.Printf("[NULLIFIER] Warning: could not persist nullifier: %v\n", err)
+	}
+}
+
+// ReleaseNullifier undoes a TryClaimNullifier claim. Used when a
+// registration that successfully claimed a nullifier later fails for an
+// unrelated reason (invalid signature, write error, etc.) — without this,
+// the nullifier would be permanently consumed and the legitimate human
+// behind it could never register again with a fresh attempt.
+func (cs *ChainState) ReleaseNullifier(nullifier string) {
+	if nullifier == "" {
+		return
+	}
+	cs.mu.Lock()
+	delete(cs.nullifiers, nullifier)
+	cs.mu.Unlock()
+	if cs.db == nil {
+		return
+	}
+	if _, err := cs.db.Exec(`DELETE FROM nullifiers WHERE nullifier = $1`, nullifier); err != nil {
+		fmt.Printf("[NULLIFIER] Warning: could not release nullifier %s: %v\n", nullifier, err)
 	}
 }
 

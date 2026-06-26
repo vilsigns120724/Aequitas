@@ -62,6 +62,17 @@ type SwapRequest struct {
 	Wallet    string  `json:"wallet"`
 	Direction string  `json:"direction"`
 	Amount    float64 `json:"amount"`
+	// MinAmountOut is an optional client-supplied slippage floor: if the
+	// actual swap output would be less than this, the swap is rejected
+	// before any state is mutated instead of silently executing at
+	// whatever price the pool happens to be at. Zero (the default, and
+	// what every pre-existing client sends) means "no protection" —
+	// preserving old behavior for clients that don't set it. Intentionally
+	// NOT part of the signed message: it's a safety floor for the caller's
+	// own benefit, not a security-critical value that needs tamper-proofing
+	// (a stripped/altered MinAmountOut only removes the caller's own
+	// protection, it cannot move funds anywhere).
+	MinAmountOut float64 `json:"min_amount_out,omitempty"`
 	Nonce     int64   `json:"nonce"`     // per-wallet monotonic counter — atomically consumed on use
 	Timestamp int64   `json:"timestamp"` // Unix time — secondary guard against stale requests
 	Signature string  `json:"signature"`
@@ -128,12 +139,12 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var amountOut float64
+	var amountOut, demurrageLost float64
 	var err error
 	if req.Direction == "aeq_to_tusd" {
-		amountOut, err = a.state.SwapAEQForTUSD(wallet, req.Amount)
+		amountOut, demurrageLost, err = a.state.SwapAEQForTUSD(wallet, req.Amount, req.MinAmountOut)
 	} else {
-		amountOut, err = a.state.SwapTUSDForAEQ(wallet, req.Amount)
+		amountOut, demurrageLost, err = a.state.SwapTUSDForAEQ(wallet, req.Amount, req.MinAmountOut)
 	}
 	if err != nil {
 		// Swap failed — restore nonce so user can retry with the same nonce.
@@ -147,10 +158,11 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		txType = "swap_tusd_aeq"
 	}
 	a.blockchain.AddTransaction(Transaction{
-		Type:      txType,
-		Wallet:    wallet,
-		Amount:    req.Amount,
-		AmountOut: amountOut,
+		Type:              txType,
+		Wallet:            wallet,
+		Amount:            req.Amount,
+		AmountOut:         amountOut,
+		FromDemurrageLost: demurrageLost,
 	})
 	json.NewEncoder(w).Encode(SwapResponse{
 		Success:   true,
@@ -220,18 +232,20 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sharesBefore, _ := a.state.GetLPShares(wallet)
-	if err := a.state.AddLiquidity(wallet, req.AmountAEQ, req.AmountTUSD); err != nil {
+	demurrageLost, err := a.state.AddLiquidity(wallet, req.AmountAEQ, req.AmountTUSD)
+	if err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
 	sharesAfter, _ := a.state.GetLPShares(wallet)
 	a.blockchain.AddTransaction(Transaction{
-		Type:      "add_liquidity",
-		Wallet:    wallet,
-		Amount:    req.AmountAEQ,
-		AmountOut: req.AmountTUSD,
-		LPShares:  sharesAfter - sharesBefore,
+		Type:              "add_liquidity",
+		Wallet:            wallet,
+		Amount:            req.AmountAEQ,
+		AmountOut:         req.AmountTUSD,
+		LPShares:          sharesAfter - sharesBefore,
+		FromDemurrageLost: demurrageLost,
 	})
 	json.NewEncoder(w).Encode(AddLiquidityResponse{Success: true, Message: "liquidity added"})
 }
@@ -295,16 +309,17 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
-	outAEQ, outTUSD, err := a.state.RemoveLiquidity(wallet, req.SharesToBurn)
+	outAEQ, outTUSD, demurrageLost, err := a.state.RemoveLiquidity(wallet, req.SharesToBurn)
 	if err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
 	a.blockchain.AddTransaction(Transaction{
-		Type:   "remove_liquidity",
-		Wallet: wallet,
-		Amount: req.SharesToBurn,
+		Type:              "remove_liquidity",
+		Wallet:            wallet,
+		Amount:            req.SharesToBurn,
+		FromDemurrageLost: demurrageLost,
 	})
 	json.NewEncoder(w).Encode(RemoveLiquidityResponse{
 		Success:    true,

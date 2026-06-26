@@ -9,6 +9,7 @@ import (
 	"html"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -414,6 +415,20 @@ func (a *APIServer) handleCheckRegistrationByBioHash(w http.ResponseWriter, r *h
 		http.Error(w, `{"error":"POST required"}`, 405)
 		return
 	}
+	// FIX: this endpoint is unauthenticated by design (anyone checking their
+	// own registration status), but it returns a wallet address linked to a
+	// supplied bioHash with no throttle at all — unlike every other
+	// bioHash/escrow-adjacent endpoint in this file. Reuse the same
+	// package-level rate limiter as handleRecoverEscrow so it can't be used
+	// to mass-probe bioHash values for wallet-address leakage.
+	ip := clientIP(r)
+	if ts, loaded := registerRateLimit.Load("biohash-check:" + ip); loaded {
+		if time.Since(ts.(time.Time)) < 5*time.Second {
+			jsonError(w, "rate limited, try again shortly", 429)
+			return
+		}
+	}
+	registerRateLimit.Store("biohash-check:"+ip, time.Now())
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var bioHashBody struct {
 		BioHash string `json:"bioHash"`
@@ -667,6 +682,25 @@ func (a *APIServer) handleWealthCap(w http.ResponseWriter, r *http.Request) {
 // GET /api/sign-validator-challenge?wallet=0x...
 func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	// FIX: the doc comment above has always claimed this is "restricted to
+	// loopback (127.0.0.1 / ::1)", but no such check actually existed — the
+	// only gate was SNAPSHOT_TOKEN. That meant anyone who obtained the token
+	// could call this from anywhere on the internet, contradicting the
+	// stated design and removing the network-position defense-in-depth layer
+	// the comment promised. Enforce it for real: the raw TCP peer (not the
+	// XFF-trusting clientIP helper, since that would let a private-network
+	// caller spoof an arbitrary forwarded IP) must be a loopback or private
+	// address — i.e. this endpoint must be reached from the node's own host
+	// or its private network (a co-located reverse proxy), never directly
+	// from the public internet, even with a valid token.
+	peerHost, _, splitErr := net.SplitHostPort(r.RemoteAddr)
+	if splitErr != nil {
+		peerHost = r.RemoteAddr
+	}
+	if !isPrivateOrLoopback(peerHost) {
+		http.Error(w, `{"error":"this endpoint is restricted to the node's local/private network"}`, http.StatusForbidden)
+		return
+	}
 	// F12-FIX: Require SNAPSHOT_TOKEN unconditionally. Previously the endpoint
 	// was open when SNAPSHOT_TOKEN was not set. An open endpoint leaks that the
 	// node is running and allows unauthenticated challenge generation.
