@@ -456,25 +456,31 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
 		valueFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(tx.Value()), decimals).Float64()
 
-		if err := s.state.Transfer(senderAddr, toAddr, valueFloat); err != nil {
-			// Nonce is NOT restored: once reserved it is consumed (matches EVM
-			// semantics where a failed tx still increments the account nonce).
-			// The caller must sign a new tx with nonce+1.
-			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
-		}
-		// Sync updated balances to EVM storage so both ledgers agree.
-		s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
+		// FIX P0-RACE: Set txStatus=true and persist receipt BEFORE calling
+		// Transfer(). MetaMask polls getTransactionReceipt immediately after
+		// receiving txHash. Without this, the window while Transfer() executes
+		// (DB write, ~10-100ms) returned null receipts → MetaMask showed
+		// "Senden fehlgeschlagen" even for successful transfers.
 		s.mu.Lock()
 		s.txStatus[txHash] = true
 		s.mu.Unlock()
 		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1")
-		pendingTx := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: valueFloat, TxHash: txHash}
-		// Persist TX to DB so secondary nodes receive it via block even after
-		// a node restart that would otherwise clear in-memory pendingTxs.
-		s.state.SavePendingTx(pendingTx)
-		if s.dag != nil {
-			s.dag.AddTransaction(pendingTx)
+
+		if err := s.state.Transfer(senderAddr, toAddr, valueFloat); err != nil {
+			// Transfer failed — mark receipt as failed so MetaMask shows correct status.
+			s.mu.Lock()
+			s.txStatus[txHash] = false
+			s.mu.Unlock()
+			s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x0")
+			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 		}
+		s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
+		// FIX P2-DOUBLE-TX: Only use DB persistence (SavePendingTx) — do NOT
+		// also call AddTransaction. ProduceBlock drains pending_txs from DB via
+		// LoadAndClearPendingTxs. Calling both would include the same TX twice
+		// in the block → double-credited transfers on secondary nodes.
+		pendingTx := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: valueFloat, TxHash: txHash}
+		s.state.SavePendingTx(pendingTx)
 		fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
 		return txHash, nil
 	}
@@ -491,24 +497,35 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
 		amountFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(amountBig), decimals).Float64()
 
+		// FIX P0-RACE: Set txStatus=true and persist receipt BEFORE calling
+		// TransferWithV7Fee. Same race window as the native transfer path — MetaMask
+		// polls getTransactionReceipt immediately after receiving txHash; without this
+		// the window while TransferWithV7Fee executes returned null receipts.
+		s.mu.Lock()
+		s.txStatus[txHash] = true
+		s.mu.Unlock()
+		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1")
+
 		// E2-FIX: TransferWithV7Fee now returns the exact net amount credited to the
 		// recipient (computed inside the lock), eliminating the TOCTOU race where
 		// preRecipientBalance/postRecipientBalance were read outside the lock and
 		// concurrent transfers to the same recipient could produce wrong netAmt.
 		netAmt, err := s.state.TransferWithV7Fee(senderAddr, toAddr, amountFloat)
 		if err != nil {
+			// Mark as failed
+			s.mu.Lock()
+			s.txStatus[txHash] = false
+			s.mu.Unlock()
+			s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x0")
 			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 		}
 		s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
-		s.mu.Lock()
-		s.txStatus[txHash] = true
-		s.mu.Unlock()
-		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1")
+		// FIX P2-DOUBLE-TX: Only use DB persistence (SavePendingTx) — do NOT
+		// also call AddTransaction. ProduceBlock drains pending_txs from DB via
+		// LoadAndClearPendingTxs. Calling both would include the same TX twice
+		// in the block → double-credited transfers on secondary nodes.
 		pendingTxV7 := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: netAmt, TxHash: txHash}
 		s.state.SavePendingTx(pendingTxV7)
-		if s.dag != nil {
-			s.dag.AddTransaction(pendingTxV7)
-		}
 		fmt.Printf("[RPC] ✓ Token transfer %.4f AEQ (with V7 fee): %s → %s\n", amountFloat, senderAddr, toAddr)
 		return txHash, nil
 	}
@@ -540,6 +557,8 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		s.deployedContracts[txHash] = contractAddrStr
 		s.txStatus[txHash] = true
 		s.mu.Unlock()
+		// FIX 7: Persist receipt so post-restart MetaMask gets correct status for deployment.
+		s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x1")
 		fmt.Printf("[RPC] ✓ Contract deployed: %s tx=%s\n", contractAddrStr, txHash)
 		return txHash, nil
 	}

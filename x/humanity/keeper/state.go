@@ -21,6 +21,11 @@ import (
 // mocked in tests without needing to thread a clock through every call.
 var timeNowFunc = time.Now
 
+// processStartTime records when this process started. Used by
+// resetDBStateForBootstrap to refuse RESET_DB_STATE=true on accidental
+// crash-recovery restarts that retain the env var.
+var processStartTime = time.Now()
+
 type AccountState struct {
 	Address string  `json:"address"`
 	Balance Decimal `json:"balance"`
@@ -312,12 +317,20 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		fmt.Println("[DB-RESET] Refused: RESET_DB_STATE=true on IS_PRIMARY_NODE=true")
 		return
 	}
+	// Only honour within the first 5 minutes of startup.
+	// An accidentally-retained RESET_DB_STATE would otherwise wipe the DB
+	// on every Railway crash-recovery restart.
+	if time.Since(processStartTime) > 5*time.Minute {
+		fmt.Println("[DB-RESET] Refused: RESET_DB_STATE=true but process started >5 minutes ago — ignoring to prevent accidental wipe on restart")
+		return
+	}
 	if os.Getenv("BOOTSTRAP_SNAPSHOT_URL") == "" {
 		fmt.Println("[DB-RESET] Refused: RESET_DB_STATE=true requires BOOTSTRAP_SNAPSHOT_URL")
 		return
 	}
 
 	tables := []string{
+		"pending_txs",      // prevent stale TXs from polluting post-reset state
 		"bio_registrations",
 		"nullifiers",
 		"bio_hashes",
@@ -2211,6 +2224,8 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount float64) err
 	if !ok {
 		return fmt.Errorf("from account not found: %s", from)
 	}
+	// Settle demurrage before checking/subtracting balance — mirrors Transfer() on primary.
+	cs.settleDemurrageLocked(fromAcc)
 	if fromAcc.Balance.Float() < netAmount {
 		return fmt.Errorf("insufficient balance (have %.6f, need %.6f)", fromAcc.Balance.Float(), netAmount)
 	}
@@ -2222,6 +2237,7 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount float64) err
 	}
 	toAcc := cs.accounts[to]
 	toAcc.Balance = NewDecimal(round6(toAcc.Balance.Float() + netAmount))
+	cs.enforceWealthCapLocked(toAcc)
 	cs.saveAccountToDB(toAcc)
 	return nil
 }
@@ -2229,7 +2245,7 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount float64) err
 // ApplySwapDelta adjusts balances after a swap, using the exact amountIn/amountOut
 // stored in the block TX. aeqToTusd=true: wallet loses amountIn AEQ, gains amountOut tUSD.
 // aeqToTusd=false: wallet loses amountIn tUSD, gains amountOut AEQ.
-// Pool reserves are reloaded from DB on the secondary before each real swap anyway.
+// Also updates pool reserves to mirror what swapLocked() did on the primary.
 func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64, aeqToTusd bool) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -2252,6 +2268,23 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountOut))
 	}
 	cs.saveAccountToDB(acc)
+
+	// Update pool reserves to match what swapLocked() did on primary.
+	// fee is swapFeeBps (0.1%); amountInAfterFee is what enters the pool.
+	if cs.pool != nil {
+		fee := amountIn * float64(swapFeeBps) / 10000.0
+		amountInAfterFee := amountIn - fee
+		if aeqToTusd {
+			// Sender put in AEQ, got tUSD: reserveAEQ grows, reserveTUSD shrinks.
+			cs.pool.ReserveAEQ = NewDecimal(round6(cs.pool.ReserveAEQ.Float() + amountInAfterFee))
+			cs.pool.ReserveTUSD = NewDecimal(max(0.0, round6(cs.pool.ReserveTUSD.Float()-amountOut)))
+		} else {
+			// Sender put in tUSD, got AEQ: reserveTUSD grows, reserveAEQ shrinks.
+			cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + amountInAfterFee))
+			cs.pool.ReserveAEQ = NewDecimal(max(0.0, round6(cs.pool.ReserveAEQ.Float()-amountOut)))
+		}
+		cs.savePoolToDB()
+	}
 	return nil
 }
 
@@ -2369,6 +2402,8 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64) {
 			continue
 		}
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountPerHuman))
+		touchActivity(acc)
+		cs.enforceWealthCapLocked(acc)
 		cs.saveAccountToDB(acc)
 	}
 	// Zero the UBI pool on secondary (it was zeroed on primary after distribution)
@@ -2376,6 +2411,8 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64) {
 		ubiAcc.Balance = NewDecimal(0)
 		cs.saveAccountToDB(ubiAcc)
 	}
+	// Write last_ubi_at to secondary's chain_config so StateRoot matches primary.
+	cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", time.Now().Unix()))
 }
 
 // ApplyFaucetDelta credits faucetAmount tUSD to wallet and marks FaucetClaimed.

@@ -31,7 +31,7 @@ func init() {
 			time.Sleep(60 * time.Second)
 			now := time.Now()
 			registerRateLimit.Range(func(k, v interface{}) bool {
-				if now.Sub(v.(time.Time)) > 11*time.Second {
+				if now.Sub(v.(time.Time)) > 35*time.Second { // must exceed maximum rate limit window (30s)
 					registerRateLimit.Delete(k)
 				}
 				return true

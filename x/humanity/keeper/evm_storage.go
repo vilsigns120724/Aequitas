@@ -1166,6 +1166,9 @@ func (cs *ChainState) SavePendingTx(tx Transaction) {
 
 // LoadAndClearPendingTxs atomically reads all DB-pending TXs and deletes them.
 // Called by ProduceBlock so that restart-surviving TXs are included once.
+// Note: pending_txs is only written by the primary node's EVM RPC layer.
+// Secondary nodes have separate DBs and their pending_txs table is always empty,
+// so calling this on a secondary is safe — it just returns nil immediately.
 func (cs *ChainState) LoadAndClearPendingTxs() []Transaction {
 	if cs.db == nil {
 		return nil

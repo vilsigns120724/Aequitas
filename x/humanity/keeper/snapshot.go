@@ -24,13 +24,14 @@ import (
 const SnapshotVersion = 1
 
 type StateSnapshot struct {
-Version int `json:"version"`
+	Version          int                       `json:"version"`
 	Timestamp        int64                     `json:"timestamp"`
 	Accounts         []*AccountState           `json:"accounts"`
 	Pool             *PoolState                `json:"pool"`
-	Nullifiers       map[string]string         `json:"nullifiers"`          // nullifier → wallet
+	Nullifiers       map[string]string         `json:"nullifiers"`           // nullifier → wallet
 	BioRegistrations []SnapshotBioRegistration `json:"bio_registrations"`
-	Signature        string                    `json:"signature,omitempty"` // ECDSA over SHA256(JSON without this field)
+	ChainConfig      map[string]string         `json:"chain_config,omitempty"` // critical timing keys for secondary state sync
+	Signature        string                    `json:"signature,omitempty"`  // ECDSA over SHA256(JSON without this field)
 }
 
 type SnapshotBioRegistration struct {
@@ -87,6 +88,14 @@ Version: SnapshotVersion,
 				})
 			}
 			rows.Close()
+		}
+	}
+
+	// Export critical config values so secondary nodes have matching timing state.
+	snap.ChainConfig = map[string]string{}
+	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at"} {
+		if val := cs.getConfigValue(key); val != "" {
+			snap.ChainConfig[key] = val
 		}
 	}
 
@@ -259,6 +268,13 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 					`INSERT INTO bio_hashes (hash, wallet_address) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
 					br.BioHash, strings.ToLower(br.WalletAddress),
 				)
+			}
+		}
+		// Import chain_config timing values. Do NOT overwrite if already set —
+		// the primary's live value takes precedence over the snapshot's snapshot-time value.
+		for key, val := range snap.ChainConfig {
+			if existing := cs.getConfigValue(key); existing == "" {
+				cs.setConfigValue(key, val)
 			}
 		}
 	}

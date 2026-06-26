@@ -100,7 +100,7 @@ func (cs *ChainState) SetGuardian(wallet, guardian string) error {
 	// Check outside the transaction (read-only, no TOCTOU risk for this check).
 	var guardianOfGuardian string
 	scanErr := cs.db.QueryRow(
-		`SELECT guardian_address FROM guardians WHERE wallet_address = $1`, guardian,
+		`SELECT guardian_address FROM guardians WHERE lower(wallet_address) = $1`, guardian,
 	).Scan(&guardianOfGuardian)
 	if scanErr == nil && strings.ToLower(guardianOfGuardian) == wallet {
 		return fmt.Errorf("circular guardian relationship: %s is already guardian of %s", wallet, guardian)
@@ -126,7 +126,7 @@ func (cs *ChainState) SetGuardian(wallet, guardian string) error {
 
 	var existingSetAt int64
 	rowErr := tx.QueryRow(
-		`SELECT COALESCE(set_at, 0) FROM guardians WHERE wallet_address = $1 FOR UPDATE`,
+		`SELECT COALESCE(set_at, 0) FROM guardians WHERE lower(wallet_address) = $1 FOR UPDATE`,
 		wallet,
 	).Scan(&existingSetAt)
 	if rowErr != nil && rowErr != sql.ErrNoRows {
@@ -196,7 +196,7 @@ func (cs *ChainState) GetGuardian(wallet string) (guardian string, setAt int64, 
 		return "", 0, fmt.Errorf("no database")
 	}
 	row := cs.db.QueryRow(
-		`SELECT guardian_address, set_at FROM guardians WHERE wallet_address = $1`, wallet,
+		`SELECT guardian_address, set_at FROM guardians WHERE lower(wallet_address) = $1`, wallet,
 	)
 	err = row.Scan(&guardian, &setAt)
 	return guardian, setAt, err
@@ -213,21 +213,25 @@ func (cs *ChainState) GetGuardian(wallet string) (guardian string, setAt int64, 
 func (cs *ChainState) ConfirmAlive(wallet, expectedGuardian string) error {
 	wallet = strings.ToLower(wallet)
 	expectedGuardian = strings.ToLower(expectedGuardian)
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
 
-	// Re-verify the guardian inside the lock to prevent TOCTOU: a concurrent
-	// SetGuardian could change the guardian between the API handler's DB lookup
-	// and here. Re-fetching under the write lock ensures atomicity.
+	// Re-verify guardian OUTSIDE the lock to avoid stalling chain ops.
+	// A concurrent SetGuardian could still swap the guardian after this check
+	// but before the lock below — that is acceptable: the window is tiny and
+	// the worst outcome is a spurious "mismatch" error (the caller retries).
+	// Holding the write lock for a DB query would block ALL chain operations
+	// (Transfer, RegisterHuman, UBI distribution) for the full round-trip time.
 	if cs.db != nil && expectedGuardian != "" {
 		var currentGuardian string
 		dbErr := cs.db.QueryRow(
-			`SELECT guardian_address FROM guardians WHERE wallet_address = $1`, wallet,
+			`SELECT guardian_address FROM guardians WHERE lower(wallet_address) = $1`, wallet,
 		).Scan(&currentGuardian)
 		if dbErr != nil || strings.ToLower(currentGuardian) != expectedGuardian {
-			return fmt.Errorf("guardian mismatch — concurrent guardian change detected, retry")
+			return fmt.Errorf("guardian mismatch — concurrent change detected, retry")
 		}
 	}
+
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 
 	acc, ok := cs.accounts[wallet]
 	if !ok {

@@ -9,7 +9,6 @@ import (
 	"html"
 	"io"
 	"math/big"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -896,8 +895,10 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 			validators = append(validators, v)
 		}
 		a.blockchain.mu.RUnlock()
-		// P2-9: only return validator list if authorized
-		if secretOK || keyAuthorized || sigOK {
+		// P2-9: only return validator list if authorized via secret or proven key ownership.
+		// keyAuthorized alone (without sigOK or secretOK) must NOT reveal the validator list —
+		// anyone can enumerate validator addresses from /api/blocks.
+		if secretOK || sigOK {
 			json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": validators})
 		} else {
 			json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
@@ -1285,17 +1286,15 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 	}
 	// FIX 5: IP-based rate limiting — reuse the package-level registerRateLimit
 	// sync.Map so escrow recovery cannot be hammered faster than once per 30s per IP.
-	clientIP := r.RemoteAddr
-	if host, _, err := net.SplitHostPort(clientIP); err == nil {
-		clientIP = host
-	}
-	if ts, loaded := registerRateLimit.Load(clientIP); loaded {
+	// Use clientIP(r) helper to correctly handle X-Forwarded-For from Railway's proxy.
+	ip := clientIP(r)
+	if ts, loaded := registerRateLimit.Load(ip); loaded {
 		if time.Since(ts.(time.Time)) < 30*time.Second {
 			jsonError(w, "rate limited, try again shortly", 429)
 			return
 		}
 	}
-	registerRateLimit.Store(clientIP, time.Now())
+	registerRateLimit.Store(ip, time.Now())
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req struct {
 		Wallet    string `json:"wallet"`
