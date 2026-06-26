@@ -87,6 +87,23 @@ fmt.Println()
 
 p2pNode.SetDAG(bc)
 
+	// FIX: NewAPIServer must be constructed (and therefore NewEVMRPCServer,
+	// which sets dag.evm) BEFORE bc.StartHTTPBlockSync below. StartHTTPBlockSync
+	// launches goroutines that immediately start pulling and replaying peer
+	// blocks; replayTransactions calls verifyZKProof, which checks dag.evm and
+	// permanently rejects the proof ("EVM not initialized, rejecting ZK proof
+	// for block safety") if it's still nil — and a block, once processed, is
+	// marked in replayedBlocks and never retried even after the EVM becomes
+	// ready moments later. This used to construct the API server (and thus the
+	// EVM engine) AFTER StartHTTPBlockSync, which raced exactly this window:
+	// confirmed in production where a register_human TX in an early synced
+	// block was permanently skipped on a freshly-started secondary because the
+	// EVM engine hadn't been wired up yet when that block was replayed.
+	fmt.Println("── Starting API Server ──────────────────")
+	api := keeper.NewAPIServer(bc, p2pNode, humanKeeper, chainState)
+	go api.Start(API_PORT)
+	fmt.Println()
+
 	// Bootstrap from a peer snapshot if this is a fresh node (no humans in DB).
 	// Set BOOTSTRAP_SNAPSHOT_URL to the primary node's /api/snapshot endpoint.
 	// Set SNAPSHOT_TOKEN to match the primary node's SNAPSHOT_TOKEN env var.
@@ -145,12 +162,6 @@ p2pNode.SetDAG(bc)
 multiaddr := p2pNode.GetMultiaddr()
 fmt.Println("── Share this address to join network ───")
 fmt.Printf("%s\n", multiaddr)
-fmt.Println()
-
-fmt.Println("── Starting API Server ──────────────────")
-api := keeper.NewAPIServer(bc, p2pNode, humanKeeper, chainState)
-go api.Start(API_PORT)
-
 fmt.Println()
 
 fmt.Println("── Starting Block Production ────────────")
