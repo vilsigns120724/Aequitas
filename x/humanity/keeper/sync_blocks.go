@@ -277,11 +277,27 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) {
 		return
 	}
 	defer resp.Body.Close()
+	// FIX: this used to decode the response body unconditionally, regardless
+	// of HTTP status. If the primary rejects registration (e.g. 403 because
+	// NODE_OPERATOR_WALLET isn't a registered human yet), the body is
+	// {"error":"..."} — decoding that into {Peers, Validators} silently
+	// yields two empty slices with no error. The node then never learns the
+	// primary's proposer address as an authorized validator, so every block
+	// from the primary gets rejected by AddPeerBlock's "not an authorized
+	// validator" check forever — visible only as "stuck at block 1", with no
+	// indication why, since the actual rejection reason (this 403) was never
+	// logged on the secondary's side at all.
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("[PEERS] ✗ Registration with primary %s rejected (HTTP %d): %s — this node will NOT sync any blocks until registration succeeds (check NODE_OPERATOR_WALLET is a registered human, and PEER_SECRET/signature)\n",
+			primaryURL, resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		return
+	}
 	var result struct {
 		Peers      []string `json:"peers"`
 		Validators []string `json:"validators"`
 	}
-	json.NewDecoder(resp.Body).Decode(&result)
+	json.Unmarshal(bodyBytes, &result)
 
 	// Add newly discovered authorized validators to our local set so we
 	// accept blocks from them without requiring AUTHORIZED_VALIDATORS env var.
