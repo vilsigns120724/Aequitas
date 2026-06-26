@@ -22,8 +22,36 @@ const (
 	ProtocolID      = "/aequitas/1.0.0"
 	BlockProtocolID = "/aequitas/blocks/1.0.0"
 	ListenPort      = 4001
-	BootstrapNode   = "/dns4/thomas.proxy.rlwy.net/tcp/47298/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R"
+	// FIX: this was hardcoded to "thomas.proxy.rlwy.net:47298" — a Railway
+	// TCP-proxy domain:port pair tied to a specific service instance. Railway
+	// regenerates this domain whenever the service is recreated (e.g. renamed,
+	// redeployed from scratch, or moved to a new project), and the old domain
+	// stops resolving/accepting connections entirely with no warning. Every
+	// node's P2P bootstrap dial then times out forever ("failed to dial:
+	// context deadline exceeded"), silently disabling real P2P block
+	// broadcast/merging network-wide — HTTP sync masked this because it's a
+	// separate, working fallback path, but it only pulls from ONE primary and
+	// can't merge multiple validators' blocks the way actual P2P gossip can.
+	// Confirmed in production: the address had gone stale. The first
+	// replacement TCP-proxy address found (zephyr.proxy.rlwy.net:22303)
+	// turned out to forward to port 8080 (the HTTP API), not 4001 (the P2P
+	// listener) — Railway only allows one TCP-proxy mapping per service, so
+	// the proxy had to be repointed at port 4001 specifically, yielding
+	// reseau.proxy.rlwy.net:41277. The peer ID suffix is unaffected (NODE_KEY-
+	// derived, stable across address changes) — only the domain:port needed
+	// updating. BOOTSTRAP_P2P_ADDR now overrides this default so a future
+	// Railway domain regeneration is an env var change, not a code deploy.
+	defaultBootstrapNode = "/dns4/reseau.proxy.rlwy.net/tcp/41277/p2p/12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R"
 )
+
+// BootstrapNode returns the P2P bootstrap multiaddr to dial on startup —
+// BOOTSTRAP_P2P_ADDR if set, otherwise the built-in default above.
+func BootstrapNode() string {
+	if addr := os.Getenv("BOOTSTRAP_P2P_ADDR"); addr != "" {
+		return addr
+	}
+	return defaultBootstrapNode
+}
 
 type P2PNode struct {
 	host   host.Host
@@ -188,7 +216,7 @@ func (n *P2PNode) Start() {
 	selfID := n.host.ID().String()
 	if selfID != "12D3KooWFuP5HtD1Xy9bj3ZdWL7eisWTx72V26hpGieMmqsGLV5R" {
 		fmt.Println("── Connecting to Bootstrap Node ─────────")
-		if err := n.ConnectToPeer(BootstrapNode); err != nil {
+		if err := n.ConnectToPeer(BootstrapNode()); err != nil {
 			// P2P bootstrap is best-effort — HTTP block sync is the primary
 			// mechanism. Failure here is expected when port 4001 is firewalled
 			// (e.g. Railway, Docker without -p 4001:4001) and does not prevent
