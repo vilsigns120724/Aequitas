@@ -3,6 +3,7 @@ package keeper
 import (
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -1139,4 +1140,63 @@ func (cs *ChainState) GetTxReceipt(txHash string) (fromAddr, toAddr, status stri
 		return "", "", "", false
 	}
 	return fromAddr, toAddr, status, true
+}
+
+// ─── PENDING TXs (persistent — survive node restart) ─────────────────────────
+
+// SavePendingTx writes a Transaction to the DB so it survives node restarts.
+// ProduceBlock calls LoadAndClearPendingTxs to drain these and include them
+// in the next block, ensuring secondary nodes receive every state change.
+func (cs *ChainState) SavePendingTx(tx Transaction) {
+	if cs.db == nil {
+		return
+	}
+	data, err := json.Marshal(tx)
+	if err != nil {
+		fmt.Printf("[TX] SavePendingTx marshal error: %v\n", err)
+		return
+	}
+	if _, err := cs.db.Exec(
+		`INSERT INTO pending_txs (tx_json, created_at) VALUES ($1, $2)`,
+		string(data), time.Now().Unix(),
+	); err != nil {
+		fmt.Printf("[TX] SavePendingTx db error: %v\n", err)
+	}
+}
+
+// LoadAndClearPendingTxs atomically reads all DB-pending TXs and deletes them.
+// Called by ProduceBlock so that restart-surviving TXs are included once.
+func (cs *ChainState) LoadAndClearPendingTxs() []Transaction {
+	if cs.db == nil {
+		return nil
+	}
+	rows, err := cs.db.Query(`SELECT id, tx_json FROM pending_txs ORDER BY id`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var txs []Transaction
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		var raw string
+		if err := rows.Scan(&id, &raw); err != nil {
+			continue
+		}
+		var tx Transaction
+		if err := json.Unmarshal([]byte(raw), &tx); err != nil {
+			fmt.Printf("[TX] LoadAndClearPendingTxs unmarshal error: %v\n", err)
+			continue
+		}
+		txs = append(txs, tx)
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if len(ids) > 0 {
+		// Delete in a separate query after closing rows
+		for _, id := range ids {
+			cs.db.Exec(`DELETE FROM pending_txs WHERE id = $1`, id)
+		}
+	}
+	return txs
 }

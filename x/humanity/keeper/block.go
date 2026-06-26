@@ -342,6 +342,17 @@ copy(txs, dag.pendingTxs)
 dag.pendingTxs = nil
 dag.txMu.Unlock()
 
+// Drain DB-persisted pending TXs — these survived a node restart and
+// must now be included in a block so secondary nodes receive them.
+// Without this, a transfer applied just before a restart would never
+// reach secondary nodes and balances would diverge permanently.
+if dag.state != nil {
+	if dbTxs := dag.state.LoadAndClearPendingTxs(); len(dbTxs) > 0 {
+		fmt.Printf("[DAG] Including %d restart-surviving TX(s) from DB in block\n", len(dbTxs))
+		txs = append(txs, dbTxs...)
+	}
+}
+
 proposer := dag.nodeID
 if dag.signingKey != nil {
 	// Use the Ethereum address derived from the signing key so peer nodes

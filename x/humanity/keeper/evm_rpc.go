@@ -467,16 +467,13 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		s.mu.Lock()
 		s.txStatus[txHash] = true
 		s.mu.Unlock()
-		// Persist receipt to DB so MetaMask gets correct status after node restart.
 		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1")
+		pendingTx := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: valueFloat, TxHash: txHash}
+		// Persist TX to DB so secondary nodes receive it via block even after
+		// a node restart that would otherwise clear in-memory pendingTxs.
+		s.state.SavePendingTx(pendingTx)
 		if s.dag != nil {
-			s.dag.AddTransaction(Transaction{
-				Type:   "transfer",
-				Wallet: senderAddr,
-				To:     toAddr,
-				Amount: valueFloat,
-				TxHash: txHash,
-			})
+			s.dag.AddTransaction(pendingTx)
 		}
 		fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
 		return txHash, nil
@@ -507,14 +504,10 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		s.txStatus[txHash] = true
 		s.mu.Unlock()
 		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1")
+		pendingTxV7 := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: netAmt, TxHash: txHash}
+		s.state.SavePendingTx(pendingTxV7)
 		if s.dag != nil {
-			s.dag.AddTransaction(Transaction{
-				Type:   "transfer",
-				Wallet: senderAddr,
-				To:     toAddr,
-				Amount: netAmt,
-				TxHash: txHash,
-			})
+			s.dag.AddTransaction(pendingTxV7)
 		}
 		fmt.Printf("[RPC] ✓ Token transfer %.4f AEQ (with V7 fee): %s → %s\n", amountFloat, senderAddr, toAddr)
 		return txHash, nil

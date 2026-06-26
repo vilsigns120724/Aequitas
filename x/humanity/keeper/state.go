@@ -266,6 +266,16 @@ key TEXT PRIMARY KEY,
 value TEXT NOT NULL
 )`)
 
+	// Pending block transactions — persisted so they survive node restarts.
+	// Without this, transfers via sendRawTransaction update Go-state/DB but
+	// pendingTxs (in-memory) is lost on restart → secondary nodes never get
+	// the TX in a block → balances permanently diverge across nodes.
+	dbExec(`CREATE TABLE IF NOT EXISTS pending_txs (
+id         SERIAL PRIMARY KEY,
+tx_json    TEXT   NOT NULL,
+created_at BIGINT NOT NULL DEFAULT 0
+)`)
+
 	// EVM transaction receipts — persisted so MetaMask can get correct
 	// receipts after a node restart (avoids "Senden fehlgeschlagen" for
 	// transactions that actually succeeded before the node restarted).
