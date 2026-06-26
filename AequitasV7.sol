@@ -60,10 +60,20 @@ contract AequitasV7 {
     mapping(address => uint256) public guardianRequestedAt;
     mapping(address => uint256) public wardCount;
 
+    // FIX 10: CAPS vs Go-chain discrepancy — documented.
+    // Solidity CAPS[0]=50 means Phase 0 (<100 humans) cap = 50 × fairShare = 50,000 AEQ.
+    // The Go chain enforces a tighter server-side cap of max(5, totalHumans) × fairShare
+    // (which grows from 5× to 25× as humans register, never exceeding 25,000 AEQ at Phase 0).
+    // The Solidity cap is a last-resort on-chain backstop; routine enforcement is by the Go layer.
+    // These two values are intentionally different: the Solidity cap is deliberately loose so it
+    // only triggers if the Go-layer cap is bypassed by a direct contract call.
     uint256[5] public CAPS       = [50, 20, 10, 5, 3];
     uint256[5] public THRESHOLDS = [0, 100, 1_000, 10_000, 100_000];
 
     event Registered(address indexed human, uint256 commitment, uint256 grant);
+    /// @dev Standard ERC-20 Transfer event used to signal mints (from == address(0)).
+    /// Emitted in _confirmAlive() for the wake-up bonus mint so off-chain indexers can track supply changes.
+    event Transfer(address indexed from, address indexed to, uint256 value);
     event Transferred(address indexed from, address indexed to, uint256 amount, uint256 fee);
     event DemurrageApplied(address indexed human, uint256 amount);
     event WealthCapApplied(address indexed human, uint256 excess);
@@ -108,6 +118,14 @@ contract AequitasV7 {
         ubiClaimed[msg.sender] = ubiPerHumanAccumulated;
         lastActivity[msg.sender] = block.timestamp;
         lastDemurrage[msg.sender] = block.timestamp;
+
+        // FIX 4: _applyWealthCap is intentionally NOT called here.
+        // At registration, isHuman[msg.sender] is already set to true above, so the
+        // guard inside _applyWealthCap (if (!isHuman[human]) return) would NOT block it.
+        // At Phase 0 with N humans the cap = 50 × (totalSupply / totalHumans), which is
+        // far above INITIAL_GRANT, so the cap would never fire on a fresh registration.
+        // The omission is a deliberate gas optimisation — cap enforcement is left to
+        // subsequent transfer/claimUBI calls which already invoke _applyWealthCap.
 
         // External call last
         require(bioVerifier.verifyProof(pA, pB, pC, pubSignals), "Invalid proof");
@@ -271,6 +289,8 @@ contract AequitasV7 {
         require(ubiPool > 0, "Pool empty");
         uint256 addPerHuman = ubiPool / totalHumans;
         require(addPerHuman > 0, "Too small");
+        // FIX 6: prevent dust distributions — minimum 0.1 AEQ per human (INITIAL_GRANT / 10000)
+        require(addPerHuman >= INITIAL_GRANT / 10_000, "Distribution below minimum threshold");
         ubiPool -= addPerHuman * totalHumans;
         ubiPerHumanAccumulated += addPerHuman;
         emit UBIAccumulated(addPerHuman, ubiPerHumanAccumulated);
@@ -279,6 +299,10 @@ contract AequitasV7 {
     function claimUBI() external {
         require(isHuman[msg.sender], "Not human");
         require(escrowOf[msg.sender] == 0, "In escrow");
+        // FIX 7: guard against underflow if ubiClaimed somehow exceeds ubiPerHumanAccumulated
+        // (mirrors the same guard in claimableUBI). Solidity 0.8+ would revert with a cryptic
+        // arithmetic error; this gives a clear, user-friendly message instead.
+        require(ubiClaimed[msg.sender] <= ubiPerHumanAccumulated, "UBI accounting error");
         uint256 owed = ubiPerHumanAccumulated - ubiClaimed[msg.sender];
         require(owed > 0, "Nothing to claim");
         ubiClaimed[msg.sender] = ubiPerHumanAccumulated;
@@ -312,14 +336,18 @@ contract AequitasV7 {
             uint256 amount = escrowOf[human];
             escrowOf[human] = 0;
             uint256 fs = fairShare();
-            // NOTE: When recovering from escrow, the human receives their escrowed amount
-            // PLUS one fairShare() of newly minted AEQ as an incentive to confirm aliveness.
-            // totalSupply increases by fairShare() to maintain the supply invariant.
-            // This is intentional economic policy — not a bug.
+            // NOTE (FIX 5 / FIX 9): When recovering from escrow, the human receives their
+            // escrowed amount PLUS one fairShare() of newly minted AEQ as an incentive to
+            // confirm aliveness. totalSupply increases by fairShare() to maintain the supply
+            // invariant. This is intentional economic policy — not a bug.
+            // Two events are emitted for auditability:
+            //   EscrowReleased — the return of the original escrowed balance
+            //   Transfer(address(0), human, fs) — the mint of the wake-up bonus
             balanceOf[human] += amount + fs;
             totalSupply += fs;
             ubiClaimed[human] = ubiPerHumanAccumulated;
-            emit EscrowReleased(human, amount + fs);
+            emit EscrowReleased(human, amount);
+            if (fs > 0) emit Transfer(address(0), human, fs); // mint event for the wake-up bonus
         }
     }
 
@@ -334,6 +362,9 @@ contract AequitasV7 {
     }
 
     function triggerEscrowToUBI(address human) external {
+        // FIX 2: guard isHuman before decrementing totalHumans to avoid underflow
+        // and to prevent confusing revert messages if called on a non-registered address.
+        require(isHuman[human], "Not a registered human");
         require(escrowOf[human] > 0, "Not in escrow");
         require(block.timestamp >= lastActivity[human] + INACTIVITY_UBI, "Too soon");
         uint256 amount = escrowOf[human];
@@ -373,6 +404,11 @@ contract AequitasV7 {
     }
 
     function revokeGuardian() external {
+        // FIX 8: require isHuman so that de-registered users (isHuman=false but
+        // guardianOf still set) cannot unexpectedly decrement the guardian's wardCount.
+        // Clean-up of guardianOf for de-registered accounts is handled by triggerEscrowToUBI
+        // flow; revokeGuardian is an active human action.
+        require(isHuman[msg.sender], "Not human");
         address g = guardianOf[msg.sender];
         require(g != address(0), "No guardian");
         wardCount[g]--;

@@ -179,7 +179,11 @@ fmt.Println("── Starting Daily Pool Distributions ───")
 // it can be cleanly stopped on node shutdown.
 distCtx, distCancel := context.WithCancel(context.Background())
 _ = distCancel // called in shutdown handler below
+// FIX 6: distDone is closed when the goroutine exits so the shutdown handler
+// can wait for any in-progress distribution to finish before the process exits.
+distDone := make(chan struct{})
 go func(ctx context.Context) {
+	defer close(distDone)
 berlin, err := time.LoadLocation("Europe/Berlin")
 if err != nil {
 berlin = time.FixedZone("CET", 2*60*60) // CEST fallback (summer, UTC+2)
@@ -277,6 +281,13 @@ signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 <-quit
 // FIX 11: Signal the distribution goroutine to stop cleanly.
 distCancel()
+// FIX 6: Wait for the distribution goroutine to finish any in-progress work
+// before exiting. A 10-second timeout prevents hanging indefinitely.
+select {
+case <-distDone:
+case <-time.After(10 * time.Second):
+	fmt.Println("[WARN] Distribution goroutine did not stop in 10 seconds — forcing exit")
+}
 fmt.Println("Node stopped.")
 }
 
@@ -294,6 +305,13 @@ func isRFC1918OrLoopback(host string) bool {
 		if ip == nil {
 			return false
 		}
+	}
+	// FIX 9: Normalise IPv6-mapped IPv4 addresses (e.g. ::ffff:10.0.0.1) to their
+	// IPv4 form so the RFC-1918 CIDR checks below match them correctly.
+	// net.IP.To4() returns nil for a pure IPv6 address and a 4-byte slice for
+	// both native IPv4 and IPv6-mapped IPv4 — exactly what we want here.
+	if ip4 := ip.To4(); ip4 != nil {
+		ip = ip4
 	}
 	if ip.IsLoopback() {
 		return true

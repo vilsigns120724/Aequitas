@@ -3770,11 +3770,15 @@ async function loadStatus() {
     const avgEl = document.getElementById('live-cap-avg');
     // Cap display at total supply — when only 1000 AEQ exist the theoretical
     // cap (5 × 1000 = 5000) is unreachable and confusing to show.
-    const totalSupplyNum = parseFloat((document.getElementById('s-supply') || {}).textContent) || 0;
-    const displayCap = (wc.cap_aeq !== undefined && totalSupplyNum > 0)
+    // FIX 1: strip comma separators before parseFloat (e.g. "1,234.56" → 1234.56)
+    const supplyText = (document.getElementById('s-supply') || {}).textContent || '0';
+    const totalSupplyNum = parseFloat(supplyText.replace(/,/g, '')) || 0;
+    // FIX 2: guard against NaN (e.g. when s-supply still shows "—")
+    const displayCap = (wc.cap_aeq !== undefined && totalSupplyNum > 0 && !isNaN(totalSupplyNum))
       ? Math.min(wc.cap_aeq, totalSupplyNum)
       : wc.cap_aeq;
-    if (capEl && displayCap !== undefined) capEl.textContent = displayCap.toFixed(2);
+    if (capEl && displayCap !== undefined && !isNaN(displayCap)) capEl.textContent = displayCap.toFixed(2);
+    else if (capEl && wc.cap_aeq !== undefined) capEl.textContent = wc.cap_aeq.toFixed(2);
     if (multEl && wc.multiplier !== undefined) multEl.textContent = wc.multiplier.toFixed(0) + '×';
     if (avgEl && wc.average_aeq !== undefined) avgEl.textContent = wc.average_aeq.toFixed(2);
   } catch(_) {}
@@ -4533,6 +4537,9 @@ async function doSetGuardian() {
       guardianLog('✓ Guardian set: ' + sanitize(d.guardian), 'ok');
       const addrEl = document.getElementById('guardian-addr-display');
       if (addrEl) addrEl.textContent = d.guardian;
+      // FIX 5: clear input after successful set
+      const inputEl = document.getElementById('guardian-input');
+      if (inputEl) inputEl.value = '';
     } else {
       guardianLog('✗ ' + sanitize(d.error || 'Failed'), 'err');
     }
@@ -4544,6 +4551,11 @@ async function doGuardianConfirmAlive() {
   const ward = (document.getElementById('ward-input').value || '').trim().toLowerCase();
   if (!ward.startsWith('0x') || ward.length !== 42) {
     guardianLog('Enter a valid ward address (0x... 42 chars).', 'err'); return;
+  }
+  // FIX 9: prevent self-confirmation — user cannot confirm themselves as alive
+  if (ward === waddr.toLowerCase()) {
+    guardianLog('You cannot confirm yourself — enter your ward\'s address.', 'err');
+    return;
   }
   try {
     guardianLog('Sign in MetaMask as guardian...', 'info');
@@ -4862,6 +4874,12 @@ async function connectSwapWallet() {
     document.getElementById('swap-btn-faucet').disabled = false;
     document.getElementById('swap-btn-addliq').disabled = false;
     setSwapDirection('aeq_to_tusd');
+    // FIX 4: load guardian status for registered humans connecting via Exchange tab
+    try {
+      const balResp = await fetch('/api/balance?wallet=' + accounts[0]);
+      const balData = await balResp.json();
+      if (balData.is_human) loadGuardianStatus();
+    } catch(_) {}
   } catch (e) {
     swapLog('Connection failed: ' + sanitize(e.message), 'err');
   }
@@ -4948,20 +4966,23 @@ async function doSwap() {
   if (!swapWaddr) return;
   const amount = parseFloat(document.getElementById('swap-amount').value || '0');
   if (amount <= 0) { swapLog('Enter a valid amount', 'err'); return; }
+  // FIX 7: guard against sub-precision amounts rounding to zero
+  const preciseAmount = parseFloat(amount.toFixed(8));
+  if (preciseAmount <= 0) { swapLog('Amount too small (minimum precision: 0.00000001)', 'err'); document.getElementById('swap-btn-go').disabled = false; return; }
 
   document.getElementById('swap-btn-go').disabled = true;
   try {
     const nonceResp = await fetch('/api/nonce?wallet=' + swapWaddr);
     const { nonce } = await nonceResp.json();
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = 'Aequitas Swap: ' + swapDirection + ' ' + amount.toFixed(8) + ' nonce:' + nonce + ' ts:' + timestamp;
+    const message = 'Aequitas Swap: ' + swapDirection + ' ' + preciseAmount.toFixed(8) + ' nonce:' + nonce + ' ts:' + timestamp;
     swapLog('Sign the message in MetaMask to confirm this swap...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/swap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount: parseFloat(amount.toFixed(8)), nonce, timestamp, signature })
+      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount: preciseAmount, nonce, timestamp, signature })
     });
     const data = await resp.json();
     if (data.success) {

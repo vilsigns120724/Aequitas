@@ -161,10 +161,18 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 	if deployedAddr != v7Addr {
 		fmt.Printf("[DEPLOY] WARNING: deployed at %s but expected %s\n", deployedAddr, v7Addr)
 		fmt.Printf("[DEPLOY] Saving runtime code under expected address %s\n", v7Addr)
-		// Save under the expected address so existing code references work
+		// Save under the expected address so existing code references work.
 		runtimeCode, _ := state.LoadContract(deployedAddr)
 		if len(runtimeCode) > 0 {
 			state.SaveContract(v7Addr, runtimeCode, deployerAddr)
+		}
+		// FIX 7: Remove the stale DB entries at the EVM-assigned address so the
+		// database doesn't hold orphaned rows that waste space and could confuse
+		// future contract lookups. The canonical copy is now at v7Addr above.
+		if state.db != nil {
+			state.db.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, deployedAddr)    //nolint:errcheck
+			state.db.Exec(`DELETE FROM evm_storage WHERE lower(contract_address) = $1`, deployedAddr) //nolint:errcheck
+			fmt.Printf("[DEPLOY] Removed stale evm_contracts/evm_storage entries at %s\n", deployedAddr)
 		}
 	} else {
 		fmt.Printf("[DEPLOY] ✓ V7 contract deployed at %s\n", V7_CONTRACT_ADDR)

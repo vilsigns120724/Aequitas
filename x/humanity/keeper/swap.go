@@ -354,6 +354,7 @@ func (a *APIServer) handleLPPosition(w http.ResponseWriter, r *http.Request) {
 type FaucetRequest struct {
 	Wallet    string `json:"wallet"`
 	Signature string `json:"signature"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 type FaucetResponse struct {
@@ -391,7 +392,19 @@ func (a *APIServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	message := fmt.Sprintf("Aequitas tUSD Faucet Claim: %s", wallet)
+	// FIX 8: validate timestamp — reject requests older than 5 minutes or
+	// more than 30 seconds in the future to prevent replay attacks.
+	now := time.Now().Unix()
+	if req.Timestamp == 0 {
+		json.NewEncoder(w).Encode(FaucetResponse{Success: false, Message: "timestamp required"})
+		return
+	}
+	if diff := now - req.Timestamp; diff > 300 || diff < -30 {
+		json.NewEncoder(w).Encode(FaucetResponse{Success: false, Message: "timestamp expired or invalid"})
+		return
+	}
+	// Message must include the timestamp to match the client-side signing message.
+	message := fmt.Sprintf("Aequitas tUSD Faucet Claim: %s ts:%d", wallet, req.Timestamp)
 	if err := verifyPersonalSign(message, req.Signature, wallet); err != nil {
 		json.NewEncoder(w).Encode(FaucetResponse{Success: false, Message: "signature invalid: " + err.Error()})
 		return

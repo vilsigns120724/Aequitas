@@ -109,7 +109,7 @@ func (cs *ChainState) SetGuardian(wallet, guardian string) error {
 	// Max 3 wards per guardian (pre-check; re-checked under lock in confirmGuardian).
 	var wardCount int
 	cs.db.QueryRow(
-		`SELECT COUNT(*) FROM guardians WHERE lower(guardian_address) = $1 AND wallet_address != $2`,
+		`SELECT COUNT(*) FROM guardians WHERE lower(guardian_address) = lower($1) AND lower(wallet_address) != lower($2)`,
 		guardian, wallet,
 	).Scan(&wardCount)
 	if wardCount >= maxWardsPerGuardian {
@@ -144,11 +144,30 @@ func (cs *ChainState) SetGuardian(wallet, guardian string) error {
 	// and then both increment the ward count past the maximum.
 	var currentWards int
 	tx.QueryRow( //nolint:errcheck
-		`SELECT COUNT(*) FROM guardians WHERE lower(guardian_address) = $1 AND wallet_address != $2`,
+		`SELECT COUNT(*) FROM guardians WHERE lower(guardian_address) = lower($1) AND lower(wallet_address) != lower($2)`,
 		guardian, wallet,
 	).Scan(&currentWards)
 	if currentWards >= maxWardsPerGuardian {
 		return fmt.Errorf("guardian %s already has %d wards (maximum %d) — re-check under lock", guardian, currentWards, maxWardsPerGuardian)
+	}
+
+	// FIX 1: Anti-cycle depth-limited walk. The simple A→B/B→A check above only
+	// catches 2-node cycles. Walk up to 5 levels of the guardian chain starting
+	// from `guardian` to detect 3+ node cycles (A→B→C→A etc.) before inserting.
+	current := guardian
+	for depth := 0; depth < 5; depth++ {
+		var nextGuardian string
+		err := tx.QueryRow(
+			`SELECT guardian_address FROM guardians WHERE lower(wallet_address) = lower($1)`, current,
+		).Scan(&nextGuardian)
+		if err != nil {
+			break // no guardian for `current` — end of chain, safe to insert
+		}
+		if strings.EqualFold(nextGuardian, wallet) {
+			tx.Rollback() //nolint:errcheck
+			return fmt.Errorf("circular guardian relationship detected (cycle depth %d)", depth+2)
+		}
+		current = nextGuardian
 	}
 
 	if _, execErr := tx.Exec(
@@ -213,6 +232,12 @@ func (cs *ChainState) ConfirmAlive(wallet, expectedGuardian string) error {
 	acc, ok := cs.accounts[wallet]
 	if !ok {
 		return fmt.Errorf("account %s not found", wallet)
+	}
+	// FIX 3: Only registered humans participate in the guardian / inactivity system.
+	// Non-human accounts have no inactivity clock, so resetting it is a no-op at
+	// best and a logic error at worst (could mask a misconfigured guardian entry).
+	if !acc.IsHuman {
+		return fmt.Errorf("account %s is not a registered human — guardian confirm-alive not applicable", wallet)
 	}
 	touchActivity(acc)
 	cs.saveAccountToDB(acc)
@@ -361,6 +386,13 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 	for _, c := range candidates {
 		acc, ok := cs.accounts[c.addr]
 		if !ok {
+			continue
+		}
+		// FIX 5: Re-check IsHuman under write lock. Between the candidate scan
+		// and here an account could theoretically have been de-registered or was
+		// never human (e.g. a pool address that slipped through the RLock scan).
+		// Non-human accounts must never be escrowed.
+		if !acc.IsHuman {
 			continue
 		}
 		// Re-check LastActivityAt under write lock — between the candidate scan
