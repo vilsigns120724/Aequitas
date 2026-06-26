@@ -476,7 +476,10 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 			mirrorPAslice := []*big.Int{pA[0], pA[1]}
 			mirrorPCslice := []*big.Int{pC[0], pC[1]}
 			mirrorPSslice := []*big.Int{pubSignals[0], pubSignals[1]}
-			a.blockchain.AddTransaction(Transaction{
+			// FIX: same durability gap as the non-mirror path below —
+			// AddTransaction only queues in-memory; SavePendingTx survives a
+			// restart between now and the next ProduceBlock tick.
+			a.state.SavePendingTx(Transaction{
 				Type:       "register_human",
 				Wallet:     wallet,
 				TxHash:     txHash,
@@ -614,7 +617,20 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		pAslice := []*big.Int{pA[0], pA[1]}
 		pCslice := []*big.Int{pC[0], pC[1]}
 		psSlice := []*big.Int{pubSignals[0], pubSignals[1]}
-		a.blockchain.AddTransaction(Transaction{
+		// FIX: this used to call a.blockchain.AddTransaction(), which only
+		// appends to dag.pendingTxs — an in-memory slice with no DB backing.
+		// EVM-originated transfers were already moved to SavePendingTx (DB-
+		// durable, drained by ProduceBlock via LoadAndClearPendingTxs) for
+		// exactly this reason: a restart between AddTransaction and the next
+		// ProduceBlock tick silently loses the queued TX forever, with no
+		// error anywhere. register_human was never given the same treatment.
+		// Confirmed in production: a registration that succeeded in Go-state
+		// (chain_accounts, durable) never appeared in ANY block's
+		// transaction list — the chain showed "humans: 1" from the very next
+		// block onward, but zero secondary node could ever learn about it
+		// via replay, permanently diverging total_humans (and therefore
+		// StateRoot) between primary and every secondary, forever.
+		a.state.SavePendingTx(Transaction{
 			Type:       "register_human",
 			Wallet:     wallet,
 			TxHash:     txHash,
