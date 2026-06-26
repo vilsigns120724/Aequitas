@@ -314,6 +314,23 @@ func (s *EVMRPCServer) ethCall(params []json.RawMessage) (interface{}, *RPCError
 
 	fmt.Printf("[RPC] eth_call to=%s data=%x\n", toStr, data[:min4(len(data), 4)])
 
+	// Intercept isHuman(address) calls (selector 0x2f543389) to V7.
+	// The EVM engine sometimes returns an error for this simple storage read
+	// causing ethers.js to throw "could not decode result data" and the proof
+	// server to report "Chain unavailable". Read from Go state directly instead.
+	if len(data) >= 4 && hex.EncodeToString(data[:4]) == "2f543389" &&
+		toStr == strings.ToLower(V7_CONTRACT_ADDR) {
+		if len(data) >= 36 {
+			addrHex := "0x" + hex.EncodeToString(data[16:36])
+			isHuman := s.state.IsHuman(addrHex)
+			result := make([]byte, 32) // ABI-encode bool: 32 bytes, 0 or 1
+			if isHuman {
+				result[31] = 1
+			}
+			return "0x" + hex.EncodeToString(result), nil
+		}
+	}
+
 	// Intercept balanceOf(address) calls (selector 0x70a08231) to the V7
 	// contract — MetaMask Mobile uses this ERC-20 call to display token
 	// balances, but AEQ is now a native currency so the contract returns 0.
