@@ -3768,7 +3768,13 @@ async function loadStatus() {
     const capEl = document.getElementById('live-cap-aeq');
     const multEl = document.getElementById('live-cap-mult');
     const avgEl = document.getElementById('live-cap-avg');
-    if (capEl && wc.cap_aeq !== undefined) capEl.textContent = wc.cap_aeq.toFixed(2);
+    // Cap display at total supply — when only 1000 AEQ exist the theoretical
+    // cap (5 × 1000 = 5000) is unreachable and confusing to show.
+    const totalSupplyNum = parseFloat((document.getElementById('s-supply') || {}).textContent) || 0;
+    const displayCap = (wc.cap_aeq !== undefined && totalSupplyNum > 0)
+      ? Math.min(wc.cap_aeq, totalSupplyNum)
+      : wc.cap_aeq;
+    if (capEl && displayCap !== undefined) capEl.textContent = displayCap.toFixed(2);
     if (multEl && wc.multiplier !== undefined) multEl.textContent = wc.multiplier.toFixed(0) + '×';
     if (avgEl && wc.average_aeq !== undefined) avgEl.textContent = wc.average_aeq.toFixed(2);
   } catch(_) {}
@@ -4478,16 +4484,23 @@ function guardianLog(msg, type) {
 
 async function loadGuardianStatus() {
   if (!waddr) return;
+  // Always show the panel for registered humans — regardless of whether a
+  // guardian is already set (404 from /api/guardian = no guardian yet = show "None")
+  const panel = document.getElementById('guardian-panel');
+  if (panel) panel.style.display = 'block';
   try {
     const resp = await fetch('/api/guardian?wallet=' + waddr);
+    const addrEl = document.getElementById('guardian-addr-display');
     if (resp.ok) {
       const d = await resp.json();
-      const panel = document.getElementById('guardian-panel');
-      if (panel) panel.style.display = 'block';
-      const addrEl = document.getElementById('guardian-addr-display');
       if (addrEl) addrEl.textContent = d.guardian || 'None';
+    } else {
+      if (addrEl) addrEl.textContent = 'None';
     }
-  } catch(_) {}
+  } catch(_) {
+    const addrEl = document.getElementById('guardian-addr-display');
+    if (addrEl) addrEl.textContent = 'None';
+  }
   try {
     const resp = await fetch('/api/escrow?wallet=' + waddr);
     if (resp.ok) {
