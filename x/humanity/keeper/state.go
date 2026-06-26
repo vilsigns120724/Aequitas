@@ -355,6 +355,12 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		"v6_commitments",
 		"v6_humans",
 		"v6_state",
+		// FIX: same reasoning as clearRegistrationsFromDB — without this, a
+		// stale relationship-slot snapshot survives the reset and gets
+		// blindly restored into evm_storage on the next automatic V7
+		// redeploy, reintroducing isHuman/balanceOf entries this reset was
+		// supposed to remove.
+		"evm_upgrade_relationship_slots",
 	}
 
 	fmt.Println("[DB-RESET] RESET_DB_STATE=true — truncating local secondary DB before snapshot bootstrap")
@@ -410,6 +416,25 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		`DELETE FROM evm_tx_receipts`,
 		`DELETE FROM pending_txs`,
 		`DELETE FROM evm_contracts WHERE lower(address) = '` + v7Addr + `'`,
+		// CRITICAL FIX: evm_upgrade_relationship_slots was never cleared here.
+		// This table snapshots EVERY evm_storage row for V7 (see
+		// SavePreUpgradeRelationshipSlots) before a contract-version upgrade
+		// wipes evm_storage, then blindly restores all of it afterward via
+		// RestorePreUpgradeRelationshipSlots — relying on MigrateEVMFromGoState
+		// to overwrite the slots it knows how to re-derive (balanceOf, isHuman,
+		// etc.) for every account that's still in chain_accounts. That
+		// assumption breaks the moment CLEAR_REGISTRATIONS wipes chain_accounts
+		// too: migration then has zero accounts to re-derive from, so EVERY
+		// stale slot from the snapshot — including isHuman=true for wallets
+		// this exact reset was supposed to un-register — gets faithfully
+		// restored on the very next automatic V7 redeploy. Without this line,
+		// a wallet that got its isHuman EVM slot stuck "true" (e.g. from the
+		// concurrent-registration race fixed in 2dee74b) stayed stuck forever,
+		// no matter how many times CLEAR_REGISTRATIONS was run — confirmed in
+		// production via /api/admin/registration-debug and the
+		// "[MIGRATE] Restored N guardian/escrow slots from pre-upgrade
+		// snapshot" log line reappearing after every reset.
+		`DELETE FROM evm_upgrade_relationship_slots WHERE address = '` + v7Addr + `'`,
 	}
 	for _, stmt := range stmts {
 		if _, err := cs.db.Exec(stmt); err != nil {
