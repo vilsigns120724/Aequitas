@@ -144,6 +144,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/nonce", a.handleNonce)
 	mux.HandleFunc("/api/peers", a.handlePeers)
 	mux.HandleFunc("/api/signing-address", a.handleSigningAddress)
+	mux.HandleFunc("/api/admin/registration-debug", a.handleRegistrationDebug)
 	mux.HandleFunc("/api/prove", a.handleProveProxy)
 	mux.HandleFunc("/api/prove/get/", a.handleProveGetProxy)
 	mux.HandleFunc("/api/proof/check", a.handleProofCheckProxy)
@@ -1066,6 +1067,44 @@ func (a *APIServer) handleSigningAddress(w http.ResponseWriter, r *http.Request)
 		addr = strings.ToLower(crypto.PubkeyToAddress(sk.PublicKey).Hex())
 	}
 	json.NewEncoder(w).Encode(map[string]string{"signing_address": addr})
+}
+
+// handleRegistrationDebug reports, per-layer, whether a wallet shows up as
+// already-registered anywhere — chain_accounts.is_human, nullifiers,
+// bio_registrations, the chain's own bio_hashes table, and the V7 EVM
+// isHuman storage slot. "Already registered" can come from any one of
+// these independently, and they can disagree after a partial reset; this
+// endpoint makes that visible instead of requiring a manual DB query.
+// Protected by SNAPSHOT_TOKEN, same as the other operator-only endpoints.
+// GET /api/admin/registration-debug?wallet=0x...
+func (a *APIServer) handleRegistrationDebug(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	token := os.Getenv("SNAPSHOT_TOKEN")
+	if token == "" {
+		http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
+		return
+	}
+	authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(authHeader), []byte(token)) != 1 {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
+	if !isValidWalletAddr(wallet) {
+		http.Error(w, `{"error":"wallet required (0x...)"}`, http.StatusBadRequest)
+		return
+	}
+	info := a.state.GetRegistrationDebugInfo(wallet)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"wallet":                  wallet,
+		"chain_is_human":          info.ChainIsHuman,
+		"chain_balance":           info.ChainBalance,
+		"nullifier_exists":        info.NullifierExists,
+		"bio_registration_exists": info.BioRegistrationExists,
+		"bio_hash_exists":         info.BioHashExists,
+		"evm_is_human_slot":       info.EVMIsHumanSlot,
+		"note":                    "bio_hash_exists refers to the CHAIN's own bio_hashes table, not the separate proof-server service's bio_hashes table (different DB) — a 'biometric already registered' error from /api/proof/check is NOT reflected here.",
+	})
 }
 
 // handleSnapshot exports the full Go-state as a signed JSON snapshot.

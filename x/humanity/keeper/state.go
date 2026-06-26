@@ -395,6 +395,15 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 	stmts := []string{
 		`DELETE FROM nullifiers`,
 		`DELETE FROM bio_registrations`,
+		// FIX: bio_hashes was never cleared here. Nothing on the chain side
+		// reads this table for registration blocking today (it's write-only,
+		// populated by SaveBioHash/snapshot import), but leaving stale rows
+		// behind after every other registration table is wiped is an
+		// inconsistent half-reset, and it's the SAME table name as the one
+		// the separate proof-server service uses for its own (much more
+		// consequential) duplicate-biometric check — clearing it here keeps
+		// the chain's own copy honest regardless of what reads it later.
+		`DELETE FROM bio_hashes`,
 		`UPDATE chain_accounts SET is_human = false, balance = 0, tusd_balance = 0, lp_shares = 0, last_activity_at = 0, faucet_claimed = false`,
 		`DELETE FROM evm_storage WHERE lower(address) = '` + v7Addr + `'`,
 		`DELETE FROM evm_nonces`,

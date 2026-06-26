@@ -188,8 +188,12 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Early reject: wallet already registered — saves the expensive EVM call.
+	// FIX: message now names the exact layer that blocked, so "already
+	// registered" reports from different layers (chain_accounts.is_human vs.
+	// nullifiers vs. bio_registrations vs. bio_hashes) are no longer
+	// indistinguishable when debugging a stuck registration.
 	if a.state.IsHuman(wallet) {
-		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "wallet already registered"})
+		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "wallet already registered (chain_accounts.is_human)"})
 		return
 	}
 
@@ -296,7 +300,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		return "", fmt.Errorf("nullifier required")
 	}
 	if existingWallet := a.state.GetWalletByNullifier(effectiveNullifier); existingWallet != "" {
-		return "", fmt.Errorf("identity already registered (nullifier used by %s)", existingWallet)
+		return "", fmt.Errorf("identity already registered: nullifier used by %s (nullifiers table)", existingWallet)
 	}
 	// NOTE: the v1-circuit BioHash/SHA256-nullifier-derivation checks that
 	// used to live here are gone along with v1 support (see the early
@@ -304,9 +308,23 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// already has a v2 ZK-bound nullifier. bioHash, if supplied, is still
 	// checked for duplicates below (secondary defense-in-depth dedup layer,
 	// independent of the nullifier).
+	// FIX: GetWalletByBioHash only checks bio_registrations. The chain also
+	// maintains its own, separate bio_hashes table (see SaveBioHash) — check
+	// that too, using whichever key SaveBioHash would have used (BioHashKey
+	// preferred, BioHash fallback), so the two tables can't silently
+	// disagree about whether a biometric is already claimed.
+	storedBioHashKey := req.BioHashKey
+	if storedBioHashKey == "" {
+		storedBioHashKey = req.BioHash
+	}
+	if storedBioHashKey != "" {
+		if existingWallet := a.state.GetWalletByStoredBioHash(storedBioHashKey); existingWallet != "" {
+			return "", fmt.Errorf("biometric already registered to %s (chain bio_hashes table)", existingWallet)
+		}
+	}
 	if req.BioHash != "" {
 		if existingWallet := a.state.GetWalletByBioHash(req.BioHash); existingWallet != "" {
-			return "", fmt.Errorf("biometric already registered to %s", existingWallet)
+			return "", fmt.Errorf("biometric already registered to %s (chain bio_registrations table)", existingWallet)
 		}
 	}
 

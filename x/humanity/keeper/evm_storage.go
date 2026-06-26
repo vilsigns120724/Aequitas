@@ -680,6 +680,42 @@ func (cs *ChainState) SaveBioRegistration(commitment, walletAddress, txHash, bio
 	return err
 }
 
+// RegistrationDebugInfo reports, per-layer, whether wallet shows up as
+// already-registered anywhere — used by the /api/admin/registration-debug
+// endpoint to make "already registered" actionable: which of the several
+// independent tables/slots involved in registration is actually blocking.
+type RegistrationDebugInfo struct {
+	ChainIsHuman          bool    `json:"chain_is_human"`
+	ChainBalance          float64 `json:"chain_balance"`
+	NullifierExists       bool    `json:"nullifier_exists"`
+	BioRegistrationExists bool    `json:"bio_registration_exists"`
+	BioHashExists         bool    `json:"bio_hash_exists"`
+	EVMIsHumanSlot        bool    `json:"evm_is_human_slot"`
+}
+
+// GetRegistrationDebugInfo gathers the per-layer registration state for a
+// wallet. Caller is responsible for authenticating the request — this
+// function itself does no access control.
+func (cs *ChainState) GetRegistrationDebugInfo(wallet string) RegistrationDebugInfo {
+	wallet = strings.ToLower(wallet)
+	info := RegistrationDebugInfo{
+		ChainIsHuman: cs.IsHuman(wallet),
+		ChainBalance: cs.GetBalance(wallet),
+	}
+	if cs.db == nil {
+		return info
+	}
+	cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM nullifiers WHERE lower(wallet_address) = $1)`, wallet).Scan(&info.NullifierExists)
+	cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM bio_registrations WHERE lower(wallet_address) = $1)`, wallet).Scan(&info.BioRegistrationExists)
+	cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM bio_hashes WHERE lower(wallet_address) = $1)`, wallet).Scan(&info.BioHashExists)
+	addrBytes := common.HexToAddress(wallet).Bytes()
+	isHumanSlot := mappingSlot(addrBytes, 6).Hex()
+	if val, err := cs.LoadStorageSlot(strings.ToLower(V7_CONTRACT_ADDR), isHumanSlot); err == nil {
+		info.EVMIsHumanSlot = common.HexToHash(val) != (common.Hash{})
+	}
+	return info
+}
+
 // GetWalletByCommitment looks up which wallet (if any) successfully
 // registered with a given proof commitment. Returns "" if none found —
 // this lets the app ask "did MY specific proof get registered?" instead of
@@ -713,10 +749,32 @@ func (cs *ChainState) GetWalletByBioHash(bioHash string) string {
 	return wallet
 }
 
-// SaveBioHash writes the biometric hash into the bio_hashes table after a
-// confirmed registration. The proof server's /check and /prove endpoints
-// read from this table to block duplicate biometric registrations — keeping
-// it in sync with bio_registrations ensures both layers see the same state.
+// GetWalletByStoredBioHash looks up a wallet by the chain's OWN bio_hashes
+// table (written by SaveBioHash below) — distinct from GetWalletByBioHash,
+// which queries bio_registrations. The two tables can disagree (e.g. after
+// a partial reset, or if a row was written to one but not the other), so
+// registerOnV7 checks both as defense-in-depth rather than trusting either
+// alone.
+func (cs *ChainState) GetWalletByStoredBioHash(bioHash string) string {
+	if cs.db == nil || bioHash == "" {
+		return ""
+	}
+	var wallet string
+	err := cs.db.QueryRow(`SELECT wallet_address FROM bio_hashes WHERE hash = $1`, bioHash).Scan(&wallet)
+	if err != nil {
+		return ""
+	}
+	return wallet
+}
+
+// SaveBioHash writes the biometric hash into the chain's OWN bio_hashes
+// table after a confirmed registration. NOTE: despite the similar name and
+// schema, this is NOT the same table the separate proof-server service
+// checks in its /check and /prove endpoints — that service runs its own
+// process with its own DATABASE_URL/Postgres instance (see
+// aequitas-proof-server/bio_store.js). Clearing or populating THIS table
+// has no effect on what the proof server blocks; it only affects
+// GetWalletByStoredBioHash above and the chain's own bookkeeping.
 func (cs *ChainState) SaveBioHash(bioHash, walletAddress string) {
 	if cs.db == nil || bioHash == "" {
 		return
