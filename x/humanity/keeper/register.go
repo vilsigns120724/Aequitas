@@ -22,6 +22,34 @@ import (
 
 var registerRateLimit sync.Map
 
+// registerWalletLocks serializes the full registration flow (IsHuman check
+// → EVM registerWithSig call → Go-state RegisterHuman) per wallet.
+//
+// FIX: without this, two near-simultaneous requests for the SAME wallet
+// (a double-click, an app retry after a slow response, etc.) could both
+// pass the early IsHuman()==false check and both proceed into
+// registerOnV7. Each EVM CallContract builds a fresh StateDB from
+// Postgres independently, so two concurrent registerWithSig calls can both
+// read isHuman[wallet]==false and both succeed on-chain (double-crediting
+// totalSupply/totalHumans there) before either commits. Both callers then
+// race into state.RegisterHuman(wallet): the first sets
+// chain_accounts.is_human=true and succeeds; the second sees it already
+// true, returns an "already registered" error that's just logged and
+// discarded — leaving the contract's isHuman mapping permanently true
+// while chain_accounts.is_human stayed false for that caller. The wallet
+// is then stuck forever: every future attempt's EVM dry-run reverts with
+// "Already registered" (the EVM mapping never got cleared) while the
+// dashboard/API show the wallet as unregistered. Serializing the entire
+// flow per wallet closes the race at its root instead of only patching
+// the symptom.
+var registerWalletLocks sync.Map
+
+// lockWallet returns the mutex for wallet, creating one on first use.
+func lockWallet(wallet string) *sync.Mutex {
+	v, _ := registerWalletLocks.LoadOrStore(wallet, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
 func init() {
 	// P3-4: periodically clean up expired rate-limit entries to prevent unbounded growth.
 	go func() {
@@ -178,6 +206,13 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "wallet required"})
 		return
 	}
+
+	// Serialize the entire registration flow for this wallet — see
+	// registerWalletLocks doc comment for why this is required, not optional.
+	walletLock := lockWallet(wallet)
+	walletLock.Lock()
+	defer walletLock.Unlock()
+
 	if len(req.PA) < 2 || len(req.PB) < 2 || len(req.PC) < 2 || len(req.PubSignals) < 2 {
 		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "incomplete ZK proof"})
 		return
