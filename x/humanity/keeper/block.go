@@ -276,16 +276,15 @@ txs = []Transaction{}
 txData, _ := json.Marshal(txs)
 txRootBytes := sha256.Sum256(txData)
 txRoot := hex.EncodeToString(txRootBytes[:])
-// Fix 5: Sort parentHashes for determinism — map iteration order is random
-// in Go, so two nodes assembling the same set of parents may produce
-// different orderings and therefore different hashes without this sort.
-parentHashes := make([]string, len(b.ParentHashes))
-copy(parentHashes, b.ParentHashes)
-sort.Strings(parentHashes)
+// Use parent hashes in the order stored on the block — do NOT sort here.
+// Sorting must happen when PRODUCING a block (in ProduceBlock) so the order
+// is baked into block.ParentHashes before the hash is computed. Re-sorting
+// during verification would break hashes for blocks produced by peers using
+// the original order.
 data, _ := json.Marshal(map[string]interface{}{
 "height":        b.Height,
 "timestamp":     b.Timestamp,
-"parent_hashes": parentHashes,
+"parent_hashes": b.ParentHashes,
 "proposer":      b.Proposer,
 "humans":        b.Humans,
 "state_root":    b.StateRoot,
@@ -299,11 +298,14 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 dag.mu.Lock()
 defer dag.mu.Unlock()
 
-// Collect all current tips as parents
+// Collect all current tips as parents.
+// Sort deterministically so the hash is identical regardless of map
+// iteration order — both nodes must agree on parent_hashes ordering.
 parentHashes := make([]string, 0, len(dag.tips))
 for hash := range dag.tips {
 parentHashes = append(parentHashes, hash)
 }
+sort.Strings(parentHashes)
 
 // Height = max parent height + 1
 maxParentHeight := int64(0)
