@@ -237,6 +237,22 @@ header::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;back
 .pctbtn{flex:1;padding:8px;font-size:12px;background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);cursor:pointer;font-family:var(--font-body);font-weight:600;transition:all 0.2s}
 .pctbtn:hover{border-color:var(--purple);color:var(--purple);box-shadow:var(--glow-purple)}
 #demurrage-notice{font-size:13px;padding:12px 14px;border-radius:var(--radius-sm);background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);color:var(--gold);margin:10px 0;line-height:1.7}
+.guardian-panel{margin-top:16px;border-top:1px solid var(--border);padding-top:14px}
+.guardian-panel-title{font-size:0.58rem;color:var(--purple);letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:12px}
+.guardian-status-box{background:rgba(155,114,246,0.04);border:1px solid rgba(155,114,246,0.18);border-radius:var(--radius-sm);padding:10px;margin-bottom:10px}
+.guardian-lbl{font-size:0.54rem;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;font-weight:600}
+.guardian-addr{font-size:0.63rem;color:var(--neon);font-family:var(--font-mono);word-break:break-all}
+.guardian-input-row{margin-bottom:8px}
+.guardian-input-row input{width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);border-radius:6px;padding:9px 12px;color:var(--text);font-family:var(--font-mono);font-size:0.64rem;outline:none;box-sizing:border-box;transition:border-color 0.2s}
+.guardian-input-row input:focus{border-color:var(--purple)}
+.guardian-btn{width:100%;margin-top:5px;padding:9px;border-radius:6px;border:none;cursor:pointer;font-size:0.62rem;font-weight:700;letter-spacing:0.5px;transition:all 0.2s}
+.guardian-btn-set{background:linear-gradient(135deg,rgba(155,114,246,0.25),rgba(34,211,238,0.15));border:1px solid rgba(155,114,246,0.35)!important;color:var(--purple)}
+.guardian-btn-confirm{background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.25)!important;color:var(--neon)}
+.guardian-btn-recover{background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.35)!important;color:var(--red)}
+.guardian-hint{font-size:0.53rem;color:var(--muted);margin-top:5px;line-height:1.6}
+.guardian-section-sep{border-top:1px solid var(--border);margin:10px 0;padding-top:10px}
+.escrow-warn{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);border-radius:6px;padding:8px 10px;font-size:0.6rem;color:var(--red);margin-top:8px;line-height:1.7}
+.guardian-log{margin-top:8px;font-size:0.6rem;line-height:1.7;min-height:18px;font-family:var(--font-mono)}
 .swap-dir{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;cursor:pointer;font-size:1rem;transition:all 0.2s;width:100%;margin:8px 0}
 .swap-dir:hover{border-color:var(--purple);box-shadow:var(--glow-purple)}
 input[type=number]{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px 12px;font-family:var(--font-body);font-size:0.8rem;outline:none;transition:all 0.2s}
@@ -396,6 +412,42 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <button class="rbtn" id="btn-web-reg" onclick="registerViaBrowser()" style="background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;margin-top:8px" data-i18n="btn-web-reg">🌐 REGISTER VIA BROWSER (WebAuthn)</button>
     <div id="web-reg-warn" style="display:none;font-size:0.62rem;color:#f59e0b;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:6px;padding:8px 10px;margin-top:6px" data-i18n="web-reg-warn">⚠ Device-bound: This identity is tied to this device and browser. You cannot transfer it to another device. For permanent multi-device identity, use the Aequitas Android App instead.<br><br>⚠ <strong>Important:</strong> WebAuthn proves device possession — NOT biological uniqueness. A person with two devices could theoretically register twice. If uniqueness is critical to you, use the Android App with biometric verification instead.</div>
     <div class="rlog" id="rlog"><span class="info" data-i18n="reg-log-hint">// Open Aequitas Android App to generate your proof, then return here...</span></div>
+
+    <!-- Guardian Panel — shown only when user is a registered human -->
+    <div class="guardian-panel" id="guardian-panel" style="display:none">
+      <div class="guardian-panel-title">🛡 Guardian System</div>
+
+      <!-- My Guardian Status -->
+      <div class="guardian-status-box">
+        <div class="guardian-lbl">My Guardian</div>
+        <div class="guardian-addr" id="guardian-addr-display">None</div>
+        <div id="escrow-warning" class="escrow-warn" style="display:none">
+          ⚠ Your funds are in ESCROW — <strong id="escrow-amount-display"></strong>
+          <br>Your wallet was inactive for 910+ days. Sign to recover your balance.
+          <button class="guardian-btn guardian-btn-recover" style="margin-top:8px" onclick="doRecoverEscrow()">🔓 RECOVER FROM ESCROW</button>
+        </div>
+      </div>
+
+      <!-- Set Guardian -->
+      <div class="guardian-input-row">
+        <div class="guardian-lbl">Set / Change Guardian</div>
+        <input type="text" id="guardian-input" placeholder="Guardian wallet address (0x...)">
+        <button class="guardian-btn guardian-btn-set" onclick="doSetGuardian()">🛡 SET GUARDIAN</button>
+        <div class="guardian-hint">Must be a registered Aequitas human · 7-day timelock · Guardian can only confirm your liveness, not access funds · Max 3 wards per guardian</div>
+      </div>
+
+      <!-- Guardian: Confirm Ward Alive -->
+      <div class="guardian-section-sep">
+        <div class="guardian-lbl">Confirm Alive (As Guardian)</div>
+        <div class="guardian-input-row">
+          <input type="text" id="ward-input" placeholder="Ward wallet address (0x...)">
+          <button class="guardian-btn guardian-btn-confirm" onclick="doGuardianConfirmAlive()">✓ CONFIRM WARD IS ALIVE</button>
+          <div class="guardian-hint">If your ward cannot access their wallet, confirm their liveness to prevent their funds moving to escrow after 910 days of inactivity.</div>
+        </div>
+      </div>
+
+      <div class="guardian-log" id="guardian-log"></div>
+    </div>
   </div>
   <div class="ic">
     <div class="ic-title" data-i18n="reg-details">Registration Details</div>
@@ -4416,6 +4468,110 @@ function closeBlock() {
   document.body.style.overflow = '';
 }
 
+// ── GUARDIAN SYSTEM ──────────────────────────────────────────────────────────
+function guardianLog(msg, type) {
+  const el = document.getElementById('guardian-log');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = type === 'ok' ? 'var(--neon)' : type === 'err' ? 'var(--red)' : 'var(--muted)';
+}
+
+async function loadGuardianStatus() {
+  if (!waddr) return;
+  try {
+    const resp = await fetch('/api/guardian?wallet=' + waddr);
+    if (resp.ok) {
+      const d = await resp.json();
+      const panel = document.getElementById('guardian-panel');
+      if (panel) panel.style.display = 'block';
+      const addrEl = document.getElementById('guardian-addr-display');
+      if (addrEl) addrEl.textContent = d.guardian || 'None';
+    }
+  } catch(_) {}
+  try {
+    const resp = await fetch('/api/escrow?wallet=' + waddr);
+    if (resp.ok) {
+      const d = await resp.json();
+      const warn = document.getElementById('escrow-warning');
+      const amtEl = document.getElementById('escrow-amount-display');
+      if (warn) warn.style.display = 'block';
+      if (amtEl) amtEl.textContent = (d.amount || 0).toFixed(4) + ' AEQ';
+    }
+  } catch(_) {}
+}
+
+async function doSetGuardian() {
+  if (!waddr || !window.ethereum) { guardianLog('Connect wallet first.', 'err'); return; }
+  const guardian = (document.getElementById('guardian-input').value || '').trim().toLowerCase();
+  if (!guardian.startsWith('0x') || guardian.length !== 42) {
+    guardianLog('Enter a valid guardian address (0x... 42 chars).', 'err'); return;
+  }
+  try {
+    guardianLog('Sign in MetaMask to set guardian...', 'info');
+    const msg = 'Aequitas: set guardian ' + guardian;
+    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, waddr] });
+    const resp = await fetch('/api/set-guardian', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: waddr, guardian, signature: sig })
+    });
+    const d = await resp.json();
+    if (d.guardian) {
+      guardianLog('✓ Guardian set: ' + sanitize(d.guardian), 'ok');
+      const addrEl = document.getElementById('guardian-addr-display');
+      if (addrEl) addrEl.textContent = d.guardian;
+    } else {
+      guardianLog('✗ ' + sanitize(d.error || 'Failed'), 'err');
+    }
+  } catch(e) { guardianLog('✗ ' + sanitize(e.message), 'err'); }
+}
+
+async function doGuardianConfirmAlive() {
+  if (!waddr || !window.ethereum) { guardianLog('Connect wallet first.', 'err'); return; }
+  const ward = (document.getElementById('ward-input').value || '').trim().toLowerCase();
+  if (!ward.startsWith('0x') || ward.length !== 42) {
+    guardianLog('Enter a valid ward address (0x... 42 chars).', 'err'); return;
+  }
+  try {
+    guardianLog('Sign in MetaMask as guardian...', 'info');
+    const msg = 'Aequitas: confirm alive ' + ward;
+    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, waddr] });
+    const resp = await fetch('/api/confirm-alive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: ward, guardian: waddr, signature: sig })
+    });
+    const d = await resp.json();
+    if (d.success) {
+      guardianLog('✓ Activity confirmed for ' + sanitize(ward), 'ok');
+    } else {
+      guardianLog('✗ ' + sanitize(d.error || 'Failed'), 'err');
+    }
+  } catch(e) { guardianLog('✗ ' + sanitize(e.message), 'err'); }
+}
+
+async function doRecoverEscrow() {
+  if (!waddr || !window.ethereum) { guardianLog('Connect wallet first.', 'err'); return; }
+  try {
+    guardianLog('Sign in MetaMask to recover escrow...', 'info');
+    const msg = 'Aequitas: recover escrow ' + waddr;
+    const sig = await window.ethereum.request({ method: 'personal_sign', params: [msg, waddr] });
+    const resp = await fetch('/api/recover-escrow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: waddr, signature: sig })
+    });
+    const d = await resp.json();
+    if (d.success) {
+      guardianLog('✓ Escrow recovered! New balance: ' + sanitize(String((d.new_balance || 0).toFixed(4))) + ' AEQ', 'ok');
+      const warn = document.getElementById('escrow-warning');
+      if (warn) warn.style.display = 'none';
+    } else {
+      guardianLog('✗ ' + sanitize(d.error || 'Failed'), 'err');
+    }
+  } catch(e) { guardianLog('✗ ' + sanitize(e.message), 'err'); }
+}
+
 async function loadHumans() {
   try {
     const d = await (await fetch('/api/humans')).json();
@@ -5141,6 +5297,7 @@ async function connectWalletAndProve() {
       addLog('Already registered! Balance: ' + sanitize(String(bd.balance || 0)) + ' AEQ', 'ok');
       document.getElementById('btn-reg').disabled = true;
       document.getElementById('btn-reg').textContent = 'ALREADY REGISTERED';
+      loadGuardianStatus();
       return;
     }
 
@@ -5358,6 +5515,7 @@ async function doRegister() {
     const d = await r.json();
     if (!d.success) { addLog('Error: ' + sanitize(d.message || ''), 'err'); document.getElementById('btn-reg').disabled = false; return; }
     addLog('Registered! ' + sanitize(d.message || ''), 'ok');
+    loadGuardianStatus();
     setTimeout(() => { window.location.href = '/registered?wallet=' + waddr; }, 1500);
   } catch (e) { addLog('Error: ' + sanitize(e.message), 'err'); document.getElementById('btn-reg').disabled = false; }
 }
@@ -5456,6 +5614,7 @@ async function restoreWalletFromStorage() {
           const bReg = document.getElementById('btn-reg');
           if (bReg) { bReg.disabled = true; bReg.textContent = 'ALREADY REGISTERED ✓'; }
           addLog('✓ Wallet restored. Balance: ' + (bd.balance || 0).toFixed(4) + ' AEQ · Already registered.', 'ok');
+          loadGuardianStatus();
         }
       } catch(_) {}
     } else {
