@@ -12,12 +12,18 @@ import (
 "strings"
 "sort"
 "sync"
+"sync/atomic"
 "time"
+"context"
 
 "github.com/ethereum/go-ethereum/accounts/abi"
 "github.com/ethereum/go-ethereum/common"
 "github.com/ethereum/go-ethereum/crypto"
 )
+
+// FIX 2: droppedReplayBlocks counts blocks dropped from the replay queue
+// due to it being full. Accessed atomically.
+var droppedReplayBlocks int64
 
 type Transaction struct {
 	Type            string  `json:"type"`
@@ -83,7 +89,9 @@ challengeMu            sync.Mutex
 replayQueue            chan *Block       // serialized replay channel — ensures TX ordering across blocks
 replayedBlocks         map[string]bool  // tracks blocks already replayed — prevents double-credit on duplicate delivery
 replayedMu             sync.Mutex
-consecutiveStateRootMismatches int      // Fix 6: counter for consecutive StateRoot mismatches
+stateRootMismatches map[string]int // FIX 4: per-proposer StateRoot mismatch counters
+	replayCtx    context.Context    // FIX 6: governs replay goroutine lifetime
+	replayCancel context.CancelFunc // FIX 6: called by Close() to stop the goroutine
 }
 
 
@@ -222,13 +230,24 @@ warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
 replayQueue:            make(chan *Block, 1000),
 replayedBlocks:         make(map[string]bool),
+	stateRootMismatches:    make(map[string]int),
 }
+// FIX 6: Context for replay goroutine shutdown via Close().
+dag.replayCtx, dag.replayCancel = context.WithCancel(context.Background())
 // Single consumer goroutine ensures blocks are replayed in the order received.
 // This preserves TX dependencies (e.g. register_human in block N must be
 // applied before a transfer in block N+1 that references the same wallet).
 go func() {
-	for b := range dag.replayQueue {
-		dag.replayTransactions(b)
+	for {
+		select {
+		case <-dag.replayCtx.Done():
+			return
+		case b, ok := <-dag.replayQueue:
+			if !ok {
+				return
+			}
+			dag.replayTransactions(b)
+		}
 	}
 }()
 if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
@@ -513,13 +532,13 @@ localRoot := dag.state.StateRoot()
 if block.StateRoot != localRoot {
 fmt.Printf("[DAG] ⚠ StateRoot mismatch on peer block #%d (proposer=%s..., local=%s...) — accepted (warn only)\n",
 block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
-// Fix 6: Track consecutive mismatches and alert if state may have diverged.
-dag.consecutiveStateRootMismatches++
-if dag.consecutiveStateRootMismatches >= 5 {
-fmt.Printf("[ALERT] 5+ consecutive StateRoot mismatches with peer %s — state may have diverged. Consider resync.\n", block.Proposer)
+// FIX 4: Track mismatches per proposer.
+dag.stateRootMismatches[block.Proposer]++
+if dag.stateRootMismatches[block.Proposer] >= 5 {
+fmt.Printf("[ALERT] 5+ consecutive StateRoot mismatches from proposer %s — state may have diverged. Consider resync.\n", block.Proposer)
 }
 } else {
-dag.consecutiveStateRootMismatches = 0 // reset on match
+dag.stateRootMismatches[block.Proposer] = 0 // reset on match
 }
 }
 
@@ -551,7 +570,12 @@ if hasTxs {
 	select {
 	case dag.replayQueue <- block:
 	default:
+		// FIX 2: Track drops atomically and escalate to ALERT after 10 drops.
+		dropped := atomic.AddInt64(&droppedReplayBlocks, 1)
 		fmt.Printf("[WARN] replayQueue full (%d capacity), dropping block #%d — state may diverge. Consider increasing queue capacity.\n", cap(dag.replayQueue), block.Height)
+		if dropped > 10 {
+			fmt.Printf("[ALERT] %d blocks dropped from replay queue — chain state MAY BE PERMANENTLY DIVERGED. Restart and re-sync from snapshot.\n", dropped)
+		}
 	}
 }
 
@@ -626,6 +650,11 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 	if dag.replayedBlocks[block.Hash] {
 		dag.replayedMu.Unlock()
 		return // already replayed
+	}
+	// FIX 1: Cap the cache to prevent unbounded growth (memory leak).
+	// dag.blocks is the authoritative deduplication store; this is a fast-path cache.
+	if len(dag.replayedBlocks) > 50000 {
+		dag.replayedBlocks = make(map[string]bool, 1000)
 	}
 	dag.replayedBlocks[block.Hash] = true
 	dag.replayedMu.Unlock()
@@ -762,6 +791,13 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 // is called from AddPeerBlock for every received block.
 func (dag *BlockDAG) ReconstructState(state *ChainState) {
 	fmt.Printf("[CHAIN] State loaded from DB — skipping full block-replay reconstruction\n")
+}
+
+// Close shuts down the replay goroutine cleanly. Call on node shutdown.
+// FIX 6: context-based shutdown so the goroutine exits without leaking.
+func (dag *BlockDAG) Close() {
+	dag.replayCancel()
+	close(dag.replayQueue)
 }
 
 // verifyZKProof reconstructs the Groth16 proof from the TX's decimal string

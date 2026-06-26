@@ -92,7 +92,7 @@ return nil, fmt.Errorf("DNS lookup failed for %s", host)
 }
 for _, ip := range ips {
 parsed := net.ParseIP(ip)
-if parsed == nil || parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast() || parsed.IsMulticast() {
+if parsed == nil || parsed.IsLoopback() || parsed.IsPrivate() || parsed.IsLinkLocalUnicast() || parsed.IsMulticast() || parsed.IsUnspecified() {
 	return nil, fmt.Errorf("DNS resolved to private/loopback address %s for host %s", ip, host)
 }
 }
