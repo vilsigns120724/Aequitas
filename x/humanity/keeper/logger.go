@@ -6,7 +6,7 @@ import (
 )
 
 // Log is the shared structured logger for the keeper package.
-// P3-5: uses log/slog (Go 1.21+) with JSON output so Railway/Render
+// P3-5: uses log/slog (Go 1.21+) with JSON output so hosted
 // log aggregators can filter and search by field, not just grep text.
 //
 // Usage:

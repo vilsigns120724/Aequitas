@@ -156,7 +156,7 @@ No mining. No staking. No protocol emissions.
                        │ pA, pB, pC, pubSignals, nullifier
 ┌──────────────────────▼──────────────────────────────────┐
 │           Aequitas Layer 1 (Go 1.24)                   │
-│    Node 1 (Railway) ←─ libp2p ─→ Node 2 (Render)       │
+│    Node 1 (Railway) ←─ libp2p ─→ Node 2 (Railway/VPS)       │
 │    BlockDAG Consensus · EVM Engine (go-ethereum)        │
 │    JSON-RPC · Dual-Ledger (Go + EVM)                    │
 │    PostgreSQL (shared persistent state)                 │

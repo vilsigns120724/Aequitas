@@ -72,7 +72,7 @@ def box(text, color=TEAL, bg=LTEAL):
     return t
 
 def step_block(num, title, content_items, color=PURPLE):
-    """Render a numbered step with title and content."""
+    """Build a numbered step with title and content."""
     story = []
     # Number badge + title in one row
     badge = Paragraph(str(num), S('bd', fontName='Helvetica-Bold', fontSize=11,

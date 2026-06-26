@@ -311,7 +311,7 @@ Aequitas maintains two synchronized ledgers in parallel:
 ### 5.2 Netzwerk-Topologie / Network Topology
 
 ```
-Node 1 (Railway, Berlin)          Node 2 (Render, Frankfurt)
+Node 1 (Railway, Berlin)          Node 2 (Railway/VPS)
 ├── Primärer API-Server           ├── Sekundärer API-Server
 ├── Block-Produzent               ├── Block-Produzent
 ├── UBI-Verteilung (täglich)      ├── P2P-Peer
