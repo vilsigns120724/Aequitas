@@ -346,6 +346,8 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		}
 	}
 	fmt.Println("[DB-RESET] Done")
+	fmt.Println("[DB-RESET] ⚠ IMPORTANT: remove RESET_DB_STATE=true from env vars after this deploy succeeds.")
+	fmt.Println("[DB-RESET]   Leaving it set will WIPE the DB again on every future restart.")
 }
 
 // setConfigValue persists a key/value pair to chain_config (upsert).
