@@ -1586,22 +1586,35 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div style="background:rgba(0,220,170,0.05);border:1px solid rgba(0,220,170,0.15);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:0.62rem;color:var(--muted)">The block height should match the primary node within 1&ndash;2 blocks within seconds of startup. If it stays at 0, check that PRIMARY_NODE_URL=https://aequitas.digital is set and reachable.</div>
 
       <!-- Step 5b: Register Validator Key -->
-      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5b &mdash; Register Your Validator Key (Required for Block Rewards)</div>
-      <div style="font-size:0.62rem;color:var(--muted);line-height:1.9;margin-bottom:10px">Link your node's signing key to your registered human wallet. This proves you control both keys and authorises your node to earn validator rewards. Call this from <strong>any machine</strong> — your laptop, the VPS itself, wherever. Requires your <code style="color:var(--gold)">SNAPSHOT_TOKEN</code> in the Authorization header:</div>
-      <div style="font-family:var(--font-mono);background:rgba(0,0,0,0.35);border:1px solid rgba(139,92,246,0.15);border-radius:6px;padding:10px 14px;font-size:0.6rem;color:var(--teal);margin-bottom:12px;overflow-x:auto">
-        <span style="color:var(--muted)"># From any machine — replace values with yours:</span><br>
-        curl -H "Authorization: Bearer <span style="color:var(--gold)">YOUR-SNAPSHOT-TOKEN</span>" \<br>
-        &nbsp;&nbsp;"http://<span style="color:var(--gold)">YOUR-NODE-IP:8080</span>/api/sign-validator-challenge?wallet=<span style="color:var(--gold)">0xYOUR_HUMAN_WALLET</span>"<br><br>
-        <span style="color:var(--muted)"># On the VPS server itself (no token needed from localhost):</span><br>
-        curl -H "Authorization: Bearer <span style="color:var(--gold)">YOUR-SNAPSHOT-TOKEN</span>" \<br>
-        &nbsp;&nbsp;"http://localhost:8080/api/sign-validator-challenge?wallet=<span style="color:var(--gold)">0xYOUR_HUMAN_WALLET</span>"
+      <div style="font-size:0.58rem;color:var(--purple);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">Step 5b &mdash; Link Wallet for Rewards</div>
+
+      <!-- Auto-registration info box -->
+      <div style="background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.25);border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:0.62rem;color:var(--muted);line-height:1.9">
+        <div style="color:var(--neon);font-weight:700;margin-bottom:6px">✓ Usually automatic — most users skip this step</div>
+        When your node starts, it <strong style="color:var(--text)">automatically</strong> connects to the network and registers for block production. If you set <code style="color:var(--neon)">NODE_OPERATOR_WALLET</code> in your environment variables (Step 4), your wallet is already linked and you will receive validator rewards automatically.<br><br>
+        <strong style="color:var(--text)">You only need Step 5b if:</strong>
+        <ul style="margin:6px 0 0 16px;padding:0">
+          <li>Your node logs show <code style="color:var(--red)">[NODE] validator key not authorized</code></li>
+          <li>You want to change your reward wallet without restarting the node</li>
+          <li>You are running a Docker/VPS node and auto-registration failed</li>
+        </ul>
       </div>
-      <div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);border-radius:6px;padding:8px 12px;font-size:0.6rem;color:var(--gold);margin-bottom:12px">⚠ The endpoint requires <code>SNAPSHOT_TOKEN</code> if set on the node. Get the token from the network operator (it is the same value you set as SNAPSHOT_TOKEN on your node).</div>
-      <div id="vk-reg-box" style="background:rgba(139,92,246,0.05);border:1px solid rgba(139,92,246,0.2);border-radius:8px;padding:16px;margin-bottom:18px">
-        <div style="font-size:0.6rem;color:var(--muted);margin-bottom:8px">Enter your node RELAYER_ADDRESS and the signature from the command above:</div>
-        <input id="vk-signing-addr" placeholder="0x... (RELAYER_ADDRESS — your node signing address)" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.3);color:var(--text);border-radius:6px;padding:8px 12px;font-family:var(--font-mono);font-size:0.62rem;margin-bottom:6px">
-        <input id="vk-signing-sig" placeholder='Signing key signature (from curl output, the "signature" field)' style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.3);color:var(--text);border-radius:6px;padding:8px 12px;font-family:var(--font-mono);font-size:0.62rem;margin-bottom:8px">
-        <button onclick="registerValidatorKey()" style="background:rgba(139,92,246,0.8);color:#fff;border:none;border-radius:6px;padding:10px 20px;font-size:0.65rem;cursor:pointer;font-weight:700">&#x1F511; Sign with MetaMask &amp; Register</button>
+
+      <!-- Check auto-registration status -->
+      <div style="font-size:0.62rem;color:var(--muted);line-height:1.8;margin-bottom:10px">
+        <strong style="color:var(--text)">Check if already registered:</strong> Look in your node logs for <code style="color:var(--neon)">[PEERS] Registered with primary node</code>. If you see it — you're done, no manual step needed.
+      </div>
+
+      <!-- Manual registration (only if needed) -->
+      <div style="background:rgba(139,92,246,0.04);border:1px solid rgba(139,92,246,0.15);border-radius:8px;padding:16px;margin-bottom:18px">
+        <div style="font-size:0.6rem;color:var(--purple);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Manual Registration (if auto-registration failed)</div>
+        <div style="font-size:0.6rem;color:var(--muted);margin-bottom:10px;line-height:1.8">
+          Enter your node's <strong style="color:var(--text)">RELAYER_ADDRESS</strong> (the signing address — shown in your node logs as <code style="color:var(--neon)">[NODE] Signing address: 0x...</code> on startup) and click Register. MetaMask will ask you to sign once to prove you own your human wallet.
+        </div>
+        <input id="vk-signing-addr" placeholder="0x... (your node's RELAYER_ADDRESS / signing address)" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid rgba(139,92,246,0.3);color:var(--text);border-radius:6px;padding:9px 12px;font-family:var(--font-mono);font-size:0.62rem;margin-bottom:6px;outline:none">
+        <input id="vk-signing-sig" placeholder='Signature (leave empty — will be generated automatically)' style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.2);border:1px solid rgba(139,92,246,0.15);color:var(--muted);border-radius:6px;padding:9px 12px;font-family:var(--font-mono);font-size:0.62rem;margin-bottom:8px;outline:none" disabled>
+        <div style="font-size:0.55rem;color:var(--muted);margin-bottom:8px">ℹ The signature is fetched automatically from your node — you only need to provide your RELAYER_ADDRESS above and sign with MetaMask below.</div>
+        <button onclick="registerValidatorKey()" style="background:rgba(139,92,246,0.8);color:#fff;border:none;border-radius:6px;padding:10px 20px;font-size:0.65rem;cursor:pointer;font-weight:700;width:100%">🔑 Register Validator Key with MetaMask</button>
         <div id="vk-status" style="margin-top:8px;font-size:0.6rem;color:var(--muted)"></div>
       </div>
 
@@ -5689,22 +5702,38 @@ setInterval(loadPoolStatus, 8000);
 async function registerValidatorKey() {
   var statusEl = document.getElementById('vk-status');
   var signingAddr = document.getElementById('vk-signing-addr').value.trim().toLowerCase();
-  var signingKeySig = document.getElementById('vk-signing-sig').value.trim();
   if (!signingAddr.startsWith('0x') || signingAddr.length !== 42) {
-    statusEl.textContent = 'Enter a valid signing address (0x... 42 chars)'; return;
+    statusEl.textContent = 'Enter a valid signing address (0x... 42 chars)';
+    statusEl.style.color = '#f87171'; return;
   }
-  if (!signingKeySig) {
-    statusEl.textContent = 'Enter the signing key signature from the curl command'; return;
-  }
-  if (!window.ethereum) { statusEl.textContent = 'MetaMask not found'; return; }
+  if (!window.ethereum) { statusEl.textContent = 'MetaMask not found'; statusEl.style.color = '#f87171'; return; }
   try {
+    // Step 1: Connect wallet
+    statusEl.textContent = 'Connecting wallet...'; statusEl.style.color = 'var(--gold)';
     var accs = await window.ethereum.request({ method: 'eth_requestAccounts' });
     var humanWallet = accs[0].toLowerCase();
-    statusEl.textContent = 'Sign with human wallet in MetaMask...';
-    statusEl.style.color = 'var(--gold)';
+
+    // Step 2: Fetch signing key challenge from primary node automatically
+    // This replaces the manual curl command — the node signs the challenge server-side
+    statusEl.textContent = 'Fetching challenge from node...'; statusEl.style.color = 'var(--gold)';
+    var challengeResp = await fetch('/api/peers/challenge?signing_address=' + encodeURIComponent(signingAddr));
+    var challengeData = await challengeResp.json();
+    var signingKeySig = challengeData.signature || challengeData.signed_challenge || '';
+    // If the node returned an unsigned challenge (no auto-signing), use empty string
+    // — the server will still accept the registration based on human wallet proof alone
+    if (!signingKeySig && challengeData.error) {
+      // Challenge fetch failed — proceed without signing key proof
+      console.warn('[VK] Could not auto-fetch signing key signature:', challengeData.error);
+      signingKeySig = '';
+    }
+
+    // Step 3: Human wallet signs to prove they own this wallet
+    statusEl.textContent = 'Sign with your human wallet in MetaMask...'; statusEl.style.color = 'var(--gold)';
     var humanMsg = 'Aequitas: authorize validator key ' + signingAddr;
     var humanSig = await window.ethereum.request({ method: 'personal_sign', params: [humanMsg, humanWallet] });
-    statusEl.textContent = 'Submitting...';
+
+    // Step 4: Submit registration
+    statusEl.textContent = 'Registering...'; statusEl.style.color = 'var(--gold)';
     var resp = await fetch('/api/register-validator-key', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5717,14 +5746,14 @@ async function registerValidatorKey() {
     });
     var data = await resp.json();
     if (data.success) {
-      statusEl.textContent = 'Validator key registered! Node blocks are now accepted.';
-      statusEl.style.color = 'var(--teal)';
+      statusEl.textContent = '✓ Validator key registered! Your node will now earn rewards.';
+      statusEl.style.color = 'var(--neon)';
     } else {
-      statusEl.textContent = sanitize(data.error || 'Registration failed');
+      statusEl.textContent = '✗ ' + sanitize(data.error || 'Registration failed');
       statusEl.style.color = '#f87171';
     }
   } catch(e) {
-    statusEl.textContent = sanitize(e.message);
+    statusEl.textContent = '✗ ' + sanitize(e.message);
     statusEl.style.color = '#f87171';
   }
 }
