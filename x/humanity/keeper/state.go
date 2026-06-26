@@ -451,6 +451,19 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		// "[MIGRATE] Restored N guardian/escrow slots from pre-upgrade
 		// snapshot" log line reappearing after every reset.
 		`DELETE FROM evm_upgrade_relationship_slots WHERE address = '` + v7Addr + `'`,
+		// CRITICAL FIX: liquidity_pool reserves were never reset here.
+		// StateRoot() hashes cs.pool.ReserveAEQ/ReserveTUSD/TotalLPShares
+		// directly (see state.go ~2261) — leaving stale pool reserves behind
+		// while every other table gets wiped means two nodes that both ran
+		// CLEAR_REGISTRATIONS at different points in their history (e.g. a
+		// primary reset fresh, a secondary with leftover pool data from
+		// before any reset ever touched it) compute permanently different
+		// StateRoots for the IDENTICAL set of accounts/nullifiers — exactly
+		// the "[DAG] StateRoot mismatch ... accepted (warn only)" /
+		// "5+ consecutive StateRoot mismatches" pattern seen in production
+		// on every single block between a freshly-reset primary and a
+		// secondary whose liquidity_pool row was never touched.
+		`UPDATE liquidity_pool SET reserve_aeq = 0, reserve_tusd = 0, total_lp_shares = 0 WHERE id = 1`,
 	}
 	// FIX: bio_hashes and evm_upgrade_relationship_slots are only ever
 	// created lazily (by SaveBioHash / SavePreUpgradeRelationshipSlots) —
