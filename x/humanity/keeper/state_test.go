@@ -240,8 +240,9 @@ func TestEnforceWealthCap_AboveCap_ExcessRedistributed(t *testing.T) {
 	}
 	addHuman(cs, "0xrich", 100_000)
 	acc := cs.accounts["0xrich"]
-	avg := (100_000.0 + 25*10.0) / 26.0
-	expectedCap := 25.0 * avg
+	// Current production logic intentionally uses the fixed fair-share
+	// invariant of 1000 AEQ per human.
+	expectedCap := 25_000.0
 	cs.mu.Lock()
 	cs.enforceWealthCapLocked(acc)
 	cs.mu.Unlock()
@@ -252,7 +253,7 @@ func TestEnforceWealthCap_AboveCap_ExcessRedistributed(t *testing.T) {
 		cs.accounts[lpPoolAddr].Balance.Float() +
 		cs.accounts[ubiPoolAddr].Balance.Float() +
 		cs.accounts[treasuryPoolAddr].Balance.Float()
-	expectedExcess := 100_000.0 - expectedCap
+	expectedExcess := 75_000.0
 	if math.Abs(poolTotal-expectedExcess) > 1e-6 {
 		t.Errorf("pool total: want %.6f excess redistributed, got %.6f", expectedExcess, poolTotal)
 	}

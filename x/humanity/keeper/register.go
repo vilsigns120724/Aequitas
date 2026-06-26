@@ -25,19 +25,19 @@ import (
 var registerRateLimit sync.Map
 
 func init() {
-// P3-4: periodically clean up expired rate-limit entries to prevent unbounded growth.
-go func() {
-for {
-time.Sleep(60 * time.Second)
-now := time.Now()
-registerRateLimit.Range(func(k, v interface{}) bool {
-if now.Sub(v.(time.Time)) > 11*time.Second {
-registerRateLimit.Delete(k)
-}
-return true
-})
-}
-}()
+	// P3-4: periodically clean up expired rate-limit entries to prevent unbounded growth.
+	go func() {
+		for {
+			time.Sleep(60 * time.Second)
+			now := time.Now()
+			registerRateLimit.Range(func(k, v interface{}) bool {
+				if now.Sub(v.(time.Time)) > 11*time.Second {
+					registerRateLimit.Delete(k)
+				}
+				return true
+			})
+		}
+	}()
 }
 
 // isPrivateOrLoopback returns true for RFC-1918 private ranges and loopback
@@ -66,7 +66,7 @@ func clientIP(r *http.Request) string {
 		host = r.RemoteAddr
 	}
 	// Only trust X-Forwarded-For when the TCP connection itself comes from a
-	// private/loopback address — i.e. through Railway's or Render's proxy.
+	// private/loopback address — i.e. through the trusted platform proxy.
 	// A direct internet client must not be able to spoof their IP via this header.
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" && isPrivateOrLoopback(host) {
 		first := strings.TrimSpace(strings.SplitN(xff, ",", 2)[0])
@@ -131,8 +131,8 @@ type RegisterRequest struct {
 	// ZKNullifier is pubSignals[1] from the v2 circuit — the nullifier
 	// derived INSIDE the ZK proof, making it cryptographically binding.
 	// When present, it overrides the client-SHA256 nullifier.
-	ZKNullifier   string `json:"zkNullifier"`
-	CircuitVersion int   `json:"circuitVersion"`
+	ZKNullifier    string `json:"zkNullifier"`
+	CircuitVersion int    `json:"circuitVersion"`
 }
 
 type RegisterResponse struct {

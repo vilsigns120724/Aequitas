@@ -1,4 +1,4 @@
-﻿package keeper
+package keeper
 
 const explorerHTML = `<!DOCTYPE html>
 <html lang="en">
@@ -4363,7 +4363,7 @@ async function loadBlocks() {
     });
     const dedupedBlocks = Object.values(byHeight).sort(function(a, b) { return b.height - a.height; });
     document.getElementById('block-count').textContent = dedupedBlocks.length + ' blocks';
-    // Render blocks table rows (latest 30)
+    // Populate block table rows (latest 30)
     if (list) {
       list.innerHTML = dedupedBlocks.slice(0, 30).map(function(b) {
         const merge = b.parent_hashes && b.parent_hashes.length > 1;

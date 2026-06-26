@@ -97,6 +97,40 @@ func (cs *ChainState) SaveNonce(address string, nonce uint64) error {
 	return err
 }
 
+// ReserveNonce atomically advances address from expected to next.
+// It returns false when another process/node already reserved the same nonce.
+func (cs *ChainState) ReserveNonce(address string, expected, next uint64) (bool, error) {
+	if cs.db == nil {
+		return true, nil
+	}
+	address = strings.ToLower(address)
+	if expected == 0 {
+		res, err := cs.db.Exec(
+			`INSERT INTO evm_nonces (address, nonce) VALUES ($1, $2)
+ ON CONFLICT (address) DO NOTHING`,
+			address, next,
+		)
+		if err != nil {
+			return false, err
+		}
+		if rows, _ := res.RowsAffected(); rows == 1 {
+			return true, nil
+		}
+	}
+	res, err := cs.db.Exec(
+		`UPDATE evm_nonces SET nonce = $3 WHERE lower(address) = $1 AND nonce = $2`,
+		address, expected, next,
+	)
+	if err != nil {
+		return false, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rows == 1, nil
+}
+
 func (cs *ChainState) LoadNonce(address string) uint64 {
 	if cs.db == nil {
 		return 0
@@ -224,7 +258,9 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 	// ubiClaimed = that value for every human, preventing double-claim on upgrade.
 	ubiAccumSlot := common.BigToHash(big.NewInt(3)).Hex()
 	ubiAccumVal, _ := cs.LoadStorageSlot(contractAddr, ubiAccumSlot)
-	if ubiAccumVal == "" { ubiAccumVal = common.Hash{}.Hex() }
+	if ubiAccumVal == "" {
+		ubiAccumVal = common.Hash{}.Hex()
+	}
 	// Also write slot 2 (ubiPool) and slot 3 (ubiPerHumanAccumulated) — preserve existing
 	// slot 3 value; it is NOT part of Go-state so we keep what was last in EVM.
 
@@ -782,10 +818,18 @@ func (cs *ChainState) GetPriceHistory(minutes, limit int) []map[string]interface
 	if cs.db == nil {
 		return nil
 	}
-	if minutes < 1 { minutes = 1 }
-	if minutes > 43200 { minutes = 43200 }
-	if limit < 1 { limit = 1 }
-	if limit > 5000 { limit = 5000 }
+	if minutes < 1 {
+		minutes = 1
+	}
+	if minutes > 43200 {
+		minutes = 43200
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 5000 {
+		limit = 5000
+	}
 	// P1-11: use ($1 * INTERVAL '1 minute') instead of string concat to
 	// prevent any future SQL-injection if $1 type changes to string.
 	rows, err := cs.db.Query(`
@@ -834,7 +878,7 @@ func (cs *ChainState) SaveGiniSnapshot() {
 	if cs.db == nil {
 		return
 	}
-	gini := cs.CalcGini()    // acquires RLock
+	gini := cs.CalcGini()      // acquires RLock
 	humans := cs.TotalHumans() // acquires RLock
 	cs.db.Exec(`INSERT INTO gini_snapshots (gini, humans) VALUES ($1, $2)`, gini, humans)
 }

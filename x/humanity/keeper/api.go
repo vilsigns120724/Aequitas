@@ -1,54 +1,54 @@
-﻿package keeper
+package keeper
 
 import (
-"bytes"
-"crypto/subtle"
-"encoding/hex"
-"encoding/json"
-"fmt"
-"html"
-"io"
-"math/big"
-"net"
-"net/http"
-"os"
-"path/filepath"
-"regexp"
-"strings"
-"sync"
-"time"
+	"bytes"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"html"
+	"io"
+	"math/big"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
 
-"github.com/ethereum/go-ethereum/accounts"
-"github.com/ethereum/go-ethereum/common"
-"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 type APIServer struct {
-blockchain        *BlockDAG
-p2pNode           *P2PNode
-keeper            *Keeper
-startTime         time.Time
-proofServerStatus map[string]interface{}
-proofStatusMu     sync.RWMutex
-state             *ChainState
-// Shared EVM RPC server — one instance so all registration calls share
-// the same nonce map and mutex, preventing parallel registrations from
-// reading the same DB nonce and writing the same follower value.
-evmRPC            *EVMRPCServer
+	blockchain        *BlockDAG
+	p2pNode           *P2PNode
+	keeper            *Keeper
+	startTime         time.Time
+	proofServerStatus map[string]interface{}
+	proofStatusMu     sync.RWMutex
+	state             *ChainState
+	// Shared EVM RPC server — one instance so all registration calls share
+	// the same nonce map and mutex, preventing parallel registrations from
+	// reading the same DB nonce and writing the same follower value.
+	evmRPC *EVMRPCServer
 }
 
 func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper, state *ChainState) *APIServer {
-s := &APIServer{
-blockchain:        bc,
-p2pNode:           p2p,
-keeper:            k,
-startTime:         time.Now(),
-proofServerStatus: map[string]interface{}{},
-state:             state,
-evmRPC:            NewEVMRPCServer(bc, state),
-}
-go s.syncProofServerStatus()
-return s
+	s := &APIServer{
+		blockchain:        bc,
+		p2pNode:           p2p,
+		keeper:            k,
+		startTime:         time.Now(),
+		proofServerStatus: map[string]interface{}{},
+		state:             state,
+		evmRPC:            NewEVMRPCServer(bc, state),
+	}
+	go s.syncProofServerStatus()
+	return s
 }
 
 // jsonError writes a properly JSON-marshaled error response, preventing JSON
@@ -63,8 +63,12 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 // isValidWalletAddr checks 0x-prefixed 40-hex-char Ethereum address format.
 // P3-11: prevents garbage keys from entering cs.accounts map.
 func isValidWalletAddr(addr string) bool {
-	if len(addr) != 42 { return false }
-	if addr[:2] != "0x" && addr[:2] != "0X" { return false }
+	if len(addr) != 42 {
+		return false
+	}
+	if addr[:2] != "0x" && addr[:2] != "0X" {
+		return false
+	}
 	for _, c := range addr[2:] {
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
 			return false
@@ -73,262 +77,289 @@ func isValidWalletAddr(addr string) bool {
 	return true
 }
 
+const defaultProofServerURL = "https://aequitas-proof-server-production.up.railway.app"
+
+func proofServerBaseURL() string {
+	if proofBase := strings.TrimRight(os.Getenv("PROOF_SERVER_URL"), "/"); proofBase != "" {
+		return proofBase
+	}
+	return defaultProofServerURL
+}
+
+func addProofServerAuth(req *http.Request) {
+	if tok := os.Getenv("CHAIN_SERVICE_TOKEN"); tok != "" {
+		req.Header.Set("x-chain-token", tok)
+	}
+}
+
 func (a *APIServer) syncProofServerStatus() {
-proofBase := os.Getenv("PROOF_SERVER_URL")
-if proofBase == "" {
-proofBase = "https://aequitas-proof-server-production.up.railway.app"
-}
-for {
-proofHTTP := &http.Client{Timeout: 8 * time.Second}
-resp, err := proofHTTP.Get(proofBase + "/health")
-if err == nil {
-body, _ := io.ReadAll(resp.Body)
-resp.Body.Close()
-var data map[string]interface{}
-if json.Unmarshal(body, &data) == nil {
-a.proofStatusMu.Lock()
-a.proofServerStatus = data
-a.proofStatusMu.Unlock()
-}
-}
-time.Sleep(30 * time.Second)
-}
+	for {
+		proofHTTP := &http.Client{Timeout: 8 * time.Second}
+		resp, err := proofHTTP.Get(proofServerBaseURL() + "/health")
+		if err == nil {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			var data map[string]interface{}
+			if json.Unmarshal(body, &data) == nil {
+				a.proofStatusMu.Lock()
+				a.proofServerStatus = data
+				a.proofStatusMu.Unlock()
+			}
+		}
+		time.Sleep(30 * time.Second)
+	}
 }
 
 func (a *APIServer) Start(port int) {
-mux := http.NewServeMux()
-mux.HandleFunc("/landing", a.handleLanding)
-mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-	// Root path: serve landing page; anything else falls to handleUI
-	if r.URL.Path == "/" {
-		a.handleLanding(w, r)
-		return
+	mux := http.NewServeMux()
+	mux.HandleFunc("/landing", a.handleLanding)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Root path: serve landing page; anything else falls to handleUI
+		if r.URL.Path == "/" {
+			a.handleLanding(w, r)
+			return
+		}
+		a.handleUI(w, r)
+	})
+	mux.HandleFunc("/api/status", a.handleStatus)
+	mux.HandleFunc("/api/blocks", a.handleBlocks)
+	mux.HandleFunc("/api/humans", a.handleHumans)
+	mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
+	mux.HandleFunc("/api/register", a.handleRegister)
+	mux.HandleFunc("/api/balance", a.handleBalance)
+	mux.HandleFunc("/api/check-registration", a.handleCheckRegistration)
+	mux.HandleFunc("/api/check-registration-by-biohash", a.handleCheckRegistrationByBioHash)
+	mux.HandleFunc("/api/check-nullifier", a.handleCheckNullifier)
+	mux.HandleFunc("/api/swap", a.handleSwap)
+	mux.HandleFunc("/api/add-liquidity", a.handleAddLiquidity)
+	mux.HandleFunc("/api/remove-liquidity", a.handleRemoveLiquidity)
+	mux.HandleFunc("/api/lp-position", a.handleLPPosition)
+	mux.HandleFunc("/api/faucet", a.handleFaucet)
+	mux.HandleFunc("/api/pool", a.handlePoolStatus)
+	mux.HandleFunc("/api/snapshot", a.handleSnapshot)
+	mux.HandleFunc("/api/gini/history", a.handleGiniHistory)
+	mux.HandleFunc("/api/price-history", a.handlePriceHistory)
+	mux.HandleFunc("/api/wealth-cap", a.handleWealthCap)
+	mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
+	mux.HandleFunc("/api/nonce", a.handleNonce)
+	mux.HandleFunc("/api/peers", a.handlePeers)
+	mux.HandleFunc("/api/signing-address", a.handleSigningAddress)
+	mux.HandleFunc("/api/prove", a.handleProveProxy)
+	mux.HandleFunc("/api/prove/get/", a.handleProveGetProxy)
+	mux.HandleFunc("/api/proof/check", a.handleProofCheckProxy)
+	mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
+	mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
+	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
+	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
+	mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
+	mux.HandleFunc("/api/guardian", a.handleGetGuardian)
+	mux.HandleFunc("/api/escrow", a.handleGetEscrow)
+	mux.HandleFunc("/api/recover-escrow", a.handleRecoverEscrow)
+	mux.HandleFunc("/registered", a.handleRegistered)
+	mux.HandleFunc("/download/app.apk", a.handleAppDownload)
+	mux.HandleFunc("/download/node-guide-en.pdf", func(w http.ResponseWriter, r *http.Request) {
+		a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_EN.pdf", "Aequitas_Node_Guide_EN.pdf", "application/pdf")
+	})
+	mux.HandleFunc("/download/node-guide-de.pdf", func(w http.ResponseWriter, r *http.Request) {
+		a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_DE.pdf", "Aequitas_Node_Guide_DE.pdf", "application/pdf")
+	})
+	fmt.Println("── Starting EVM RPC ─────────────────────")
+	// Use the shared EVMRPCServer (a.evmRPC) so /rpc and /api/register share
+	// one nonce map + mutex — creating a second instance here caused separate
+	// nonce maps, making the atomic nonce reservation ineffective.
+	mux.HandleFunc("/rpc", a.evmRPC.handleRPC)
+	if a.evmRPC.evm != nil {
+		fmt.Println("✓ EVM Engine ready")
+		// Ensure V7 contract is deployed — redeploys from hardcoded bytecode
+		// if missing (e.g. after a DB reset). Without this the node fails with
+		// "no code at address" on every registration attempt.
+		deployerAddr := os.Getenv("RELAYER_ADDRESS")
+		if deployerAddr == "" {
+			deployerAddr = "0x0BE8b961CBf6564bd1931B0803D35C0659E0D016"
+		}
+		EnsureContractsDeployed(a.evmRPC.evm, a.state, deployerAddr)
+	} else {
+		fmt.Println("✗ EVM Engine failed")
 	}
-	a.handleUI(w, r)
-})
-mux.HandleFunc("/api/status", a.handleStatus)
-mux.HandleFunc("/api/blocks", a.handleBlocks)
-mux.HandleFunc("/api/humans", a.handleHumans)
-mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
-mux.HandleFunc("/api/register", a.handleRegister)
-mux.HandleFunc("/api/balance", a.handleBalance)
-mux.HandleFunc("/api/check-registration", a.handleCheckRegistration)
-mux.HandleFunc("/api/check-registration-by-biohash", a.handleCheckRegistrationByBioHash)
-mux.HandleFunc("/api/check-nullifier", a.handleCheckNullifier)
-mux.HandleFunc("/api/swap", a.handleSwap)
-mux.HandleFunc("/api/add-liquidity", a.handleAddLiquidity)
-mux.HandleFunc("/api/remove-liquidity", a.handleRemoveLiquidity)
-mux.HandleFunc("/api/lp-position", a.handleLPPosition)
-mux.HandleFunc("/api/faucet", a.handleFaucet)
-mux.HandleFunc("/api/pool", a.handlePoolStatus)
-mux.HandleFunc("/api/snapshot", a.handleSnapshot)
-mux.HandleFunc("/api/gini/history", a.handleGiniHistory)
-mux.HandleFunc("/api/price-history", a.handlePriceHistory)
-mux.HandleFunc("/api/wealth-cap", a.handleWealthCap)
-mux.HandleFunc("/api/sign-validator-challenge", a.handleSignValidatorChallenge)
-mux.HandleFunc("/api/nonce", a.handleNonce)
-mux.HandleFunc("/api/peers", a.handlePeers)
-mux.HandleFunc("/api/signing-address", a.handleSigningAddress)
-mux.HandleFunc("/api/prove", a.handleProveProxy)
-mux.HandleFunc("/api/prove/get/", a.handleProveGetProxy)
-mux.HandleFunc("/api/proof/check", a.handleProofCheckProxy)
-mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
-mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
-mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
-mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
-mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
-mux.HandleFunc("/api/guardian", a.handleGetGuardian)
-mux.HandleFunc("/api/escrow", a.handleGetEscrow)
-mux.HandleFunc("/api/recover-escrow", a.handleRecoverEscrow)
-mux.HandleFunc("/registered", a.handleRegistered)
-mux.HandleFunc("/download/app.apk", a.handleAppDownload)
-mux.HandleFunc("/download/node-guide-en.pdf", func(w http.ResponseWriter, r *http.Request) {
-	a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_EN.pdf", "Aequitas_Node_Guide_EN.pdf", "application/pdf")
-})
-mux.HandleFunc("/download/node-guide-de.pdf", func(w http.ResponseWriter, r *http.Request) {
-	a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_DE.pdf", "Aequitas_Node_Guide_DE.pdf", "application/pdf")
-})
-fmt.Println("── Starting EVM RPC ─────────────────────")
-// Use the shared EVMRPCServer (a.evmRPC) so /rpc and /api/register share
-// one nonce map + mutex — creating a second instance here caused separate
-// nonce maps, making the atomic nonce reservation ineffective.
-mux.HandleFunc("/rpc", a.evmRPC.handleRPC)
-if a.evmRPC.evm != nil {
-fmt.Println("✓ EVM Engine ready")
-// Ensure V7 contract is deployed — redeploys from hardcoded bytecode
-// if missing (e.g. after a DB reset). Without this the node fails with
-// "no code at address" on every registration attempt.
-deployerAddr := os.Getenv("RELAYER_ADDRESS")
-if deployerAddr == "" {
-deployerAddr = "0x0BE8b961CBf6564bd1931B0803D35C0659E0D016"
-}
-EnsureContractsDeployed(a.evmRPC.evm, a.state, deployerAddr)
-} else {
-fmt.Println("✗ EVM Engine failed")
-}
-addr := fmt.Sprintf(":%d", port)
-fmt.Printf("✓ API Server listening on port %d\n", port)
-// Use http.Server with explicit timeouts to prevent slowloris attacks and
-// goroutine leaks from clients that never send/read — the default mux has none.
-srv := &http.Server{
-Addr:         addr,
-Handler:      mux,
-ReadTimeout:  30 * time.Second,
-WriteTimeout: 60 * time.Second,
-IdleTimeout:  120 * time.Second,
-}
-go func() {
-if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-fmt.Printf("[API] Server error: %v\n", err)
-}
-}()
+	addr := fmt.Sprintf(":%d", port)
+	fmt.Printf("✓ API Server listening on port %d\n", port)
+	// Use http.Server with explicit timeouts to prevent slowloris attacks and
+	// goroutine leaks from clients that never send/read — the default mux has none.
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      mux,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Printf("[API] Server error: %v\n", err)
+		}
+	}()
 }
 
 func (a *APIServer) handleStatus(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-latest := a.blockchain.LatestBlock()
-uptime := int64(time.Since(a.startTime).Seconds())
-// Use a.state (PostgreSQL-backed ChainState) as the single source of
-// truth for human count, not a.keeper — the in-memory Keeper map is never
-// persisted and resets to 0 on every restart, which previously made this
-// "growth" figure silently diverge from total_humans below (which already
-// correctly used a.state).
-humans := a.state.TotalHumans()
-growth := humans * 10
-if growth > 100 {
-growth = 100
-}
-// Calculate time until next UBI distribution (24h after server start)
-// P3-3: compute next UBI based on last_ubi_at, not server uptime.
-nextUBISecs := a.state.SecondsUntilNextUBI()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	latest := a.blockchain.LatestBlock()
+	uptime := int64(time.Since(a.startTime).Seconds())
+	// Use a.state (PostgreSQL-backed ChainState) as the single source of
+	// truth for human count, not a.keeper — the in-memory Keeper map is never
+	// persisted and resets to 0 on every restart, which previously made this
+	// "growth" figure silently diverge from total_humans below (which already
+	// correctly used a.state).
+	humans := a.state.TotalHumans()
+	growth := humans * 10
+	if growth > 100 {
+		growth = 100
+	}
+	// Calculate time until next UBI distribution (24h after server start)
+	// P3-3: compute next UBI based on last_ubi_at, not server uptime.
+	nextUBISecs := a.state.SecondsUntilNextUBI()
 
-json.NewEncoder(w).Encode(map[string]interface{}{
-"chain_id":        "aequitas-1",
-"version":         "v0.3.0",
-"height":          latest.Height,
-"latest_hash":     latest.Hash,
-"total_humans":    a.state.TotalHumans(),
-"total_supply":    fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
-"node_id":         a.p2pNode.GetNodeID(),
-"uptime":          uptime,
-"is_primary":      os.Getenv("IS_PRIMARY_NODE") == "true",
-"block_time":      6,
-"contract_v7":  V7_CONTRACT_ADDR,
-// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
-"bio_verifier": BIO_VERIFIER_ADDR,
-"chain_evm_id": 1926,
-"index":        a.state.CalcAequitasIndex(),
-"gini":         a.state.CalcGini(),
-"growth":       growth,
-"velocity":     50,
-"phase":        a.state.CalcPhase(),
-"fee_bps":      10,
-// P2-FIX: use the pool address constants from state.go instead of duplicating
-// the raw strings here. If addresses ever change, only one place needs updating.
-"pool_validators": fmt.Sprintf("%.4f", a.state.GetBalance(validatorsPoolAddr)),
-"pool_lp":         fmt.Sprintf("%.4f", a.state.GetBalance(lpPoolAddr)),
-"pool_ubi":        fmt.Sprintf("%.4f", a.state.GetBalance(ubiPoolAddr)),
-"pool_treasury":   fmt.Sprintf("%.4f", a.state.GetBalance(treasuryPoolAddr)),
-"ubi_next_payout_secs": nextUBISecs,
-})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"chain_id":     "aequitas-1",
+		"version":      "v0.3.0",
+		"height":       latest.Height,
+		"latest_hash":  latest.Hash,
+		"total_humans": a.state.TotalHumans(),
+		"total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
+		"node_id":      a.p2pNode.GetNodeID(),
+		"uptime":       uptime,
+		"is_primary":   os.Getenv("IS_PRIMARY_NODE") == "true",
+		"block_time":   6,
+		"contract_v7":  V7_CONTRACT_ADDR,
+		// P3-8: V5/V6 legacy addresses removed from status — minimise attack surface.
+		"bio_verifier": BIO_VERIFIER_ADDR,
+		"chain_evm_id": 1926,
+		"index":        a.state.CalcAequitasIndex(),
+		"gini":         a.state.CalcGini(),
+		"growth":       growth,
+		"velocity":     50,
+		"phase":        a.state.CalcPhase(),
+		"fee_bps":      10,
+		// P2-FIX: use the pool address constants from state.go instead of duplicating
+		// the raw strings here. If addresses ever change, only one place needs updating.
+		"pool_validators":      fmt.Sprintf("%.4f", a.state.GetBalance(validatorsPoolAddr)),
+		"pool_lp":              fmt.Sprintf("%.4f", a.state.GetBalance(lpPoolAddr)),
+		"pool_ubi":             fmt.Sprintf("%.4f", a.state.GetBalance(ubiPoolAddr)),
+		"pool_treasury":        fmt.Sprintf("%.4f", a.state.GetBalance(treasuryPoolAddr)),
+		"ubi_next_payout_secs": nextUBISecs,
+	})
 }
 
 func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-blocks := a.blockchain.GetBlocks()
-// P3-2: support ?limit=N&offset=M for block history paging.
-limit := 50
-offset := 0
-fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
-fmt.Sscanf(r.URL.Query().Get("offset"), "%d", &offset)
-if limit < 1 || limit > 500 { limit = 50 }
-if offset < 0 { offset = 0 }
-// Default: newest blocks (offset from end)
-if r.URL.Query().Get("offset") == "" {
-offset = len(blocks) - limit
-if offset < 0 { offset = 0 }
-}
-end := offset + limit
-if end > len(blocks) { end = len(blocks) }
-if offset >= len(blocks) { offset = len(blocks) }
-json.NewEncoder(w).Encode(blocks[offset:end])
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	blocks := a.blockchain.GetBlocks()
+	// P3-2: support ?limit=N&offset=M for block history paging.
+	limit := 50
+	offset := 0
+	fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
+	fmt.Sscanf(r.URL.Query().Get("offset"), "%d", &offset)
+	if limit < 1 || limit > 500 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	// Default: newest blocks (offset from end)
+	if r.URL.Query().Get("offset") == "" {
+		offset = len(blocks) - limit
+		if offset < 0 {
+			offset = 0
+		}
+	}
+	end := offset + limit
+	if end > len(blocks) {
+		end = len(blocks)
+	}
+	if offset >= len(blocks) {
+		offset = len(blocks)
+	}
+	json.NewEncoder(w).Encode(blocks[offset:end])
 }
 
 func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-accounts := a.state.GetAllAccounts()
-humans := []map[string]interface{}{}
-for _, acc := range accounts {
-if acc.IsHuman {
-humans = append(humans, map[string]interface{}{
-"address": acc.Address,
-// Use effectiveBalance so the Lorenz curve and Score tab show the same Gini.
-// Raw acc.Balance ignores demurrage decay → different Gini than CalcGini().
-"balance": effectiveBalance(acc).Float(),
-})
-}
-}
-json.NewEncoder(w).Encode(map[string]interface{}{
-"total":  len(humans),
-"humans": humans,
-})
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	accounts := a.state.GetAllAccounts()
+	humans := []map[string]interface{}{}
+	for _, acc := range accounts {
+		if acc.IsHuman {
+			humans = append(humans, map[string]interface{}{
+				"address": acc.Address,
+				// Use effectiveBalance so the Lorenz curve and Score tab show the same Gini.
+				// Raw acc.Balance ignores demurrage decay → different Gini than CalcGini().
+				"balance": effectiveBalance(acc).Float(),
+			})
+		}
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"total":  len(humans),
+		"humans": humans,
+	})
 }
 
 func (a *APIServer) handleSepoliaHumans(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-proofHTTP2 := &http.Client{Timeout: 8 * time.Second}
-resp, err := proofHTTP2.Get("https://aequitas-proof-server-production.up.railway.app/humans")
-if err != nil {
-// FIX 11: Don't leak the internal URL or low-level network error to clients.
-jsonError(w, "proof server unavailable", 503)
-return
-}
-defer resp.Body.Close()
-var data map[string]interface{}
-json.NewDecoder(resp.Body).Decode(&data)
-json.NewEncoder(w).Encode(data)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	proofHTTP2 := &http.Client{Timeout: 8 * time.Second}
+	proofReq, _ := http.NewRequest("GET", proofServerBaseURL()+"/humans", nil)
+	addProofServerAuth(proofReq)
+	resp, err := proofHTTP2.Do(proofReq)
+	if err != nil {
+		// FIX 11: Don't leak the internal URL or low-level network error to clients.
+		jsonError(w, "proof server unavailable", 503)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		jsonError(w, "proof server unavailable", resp.StatusCode)
+		return
+	}
+	var data map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&data)
+	json.NewEncoder(w).Encode(data)
 }
 
 func (a *APIServer) handleBalance(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-wallet := strings.ToLower(r.URL.Query().Get("wallet"))
-if wallet == "" {
-json.NewEncoder(w).Encode(map[string]interface{}{"balance": 0, "tusd_balance": 0, "is_human": false})
-return
-}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
+	if wallet == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"balance": 0, "tusd_balance": 0, "is_human": false})
+		return
+	}
 
-// Use ChainState (native balance) as the single source of truth.
-// This used to query the V7 contract's balanceOf()/isHuman() directly,
-// which was the right call back when registrations only wrote to EVM
-// storage and ChainState was never updated. Since registration now also
-// grants the native balance via state.RegisterHuman() (and transfers
-// move the native balance via state.Transfer()), ChainState reflects
-// the real, current state — while the contract's own balanceOf() can
-// lag behind it (it's no longer touched by ordinary native transfers
-// at all, and read-only contract calls are intentionally not persisted
-// per-call). Querying the contract here would show a wallet's balance
-// from whenever it last interacted with the contract directly, not its
-// real current native balance.
-balance := a.state.GetBalance(wallet)
-tusdBalance := a.state.GetTUsdBalance(wallet)
-isHuman := a.state.IsHuman(wallet)
-demurrage := a.state.GetDemurrageStatus(wallet)
+	// Use ChainState (native balance) as the single source of truth.
+	// This used to query the V7 contract's balanceOf()/isHuman() directly,
+	// which was the right call back when registrations only wrote to EVM
+	// storage and ChainState was never updated. Since registration now also
+	// grants the native balance via state.RegisterHuman() (and transfers
+	// move the native balance via state.Transfer()), ChainState reflects
+	// the real, current state — while the contract's own balanceOf() can
+	// lag behind it (it's no longer touched by ordinary native transfers
+	// at all, and read-only contract calls are intentionally not persisted
+	// per-call). Querying the contract here would show a wallet's balance
+	// from whenever it last interacted with the contract directly, not its
+	// real current native balance.
+	balance := a.state.GetBalance(wallet)
+	tusdBalance := a.state.GetTUsdBalance(wallet)
+	isHuman := a.state.IsHuman(wallet)
+	demurrage := a.state.GetDemurrageStatus(wallet)
 
-json.NewEncoder(w).Encode(map[string]interface{}{
-"wallet":                   wallet,
-"balance":                  balance,
-"tusd_balance":              tusdBalance,
-"is_human":                  isHuman,
-"demurrage_active":          demurrage.Active,
-"demurrage_days_until_start": demurrage.DaysUntilStart,
-"show_14_day_notice":        demurrage.ShowFourteenDayNotice,
-"show_7_day_notice":         demurrage.ShowSevenDayNotice,
-})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"wallet":                     wallet,
+		"balance":                    balance,
+		"tusd_balance":               tusdBalance,
+		"is_human":                   isHuman,
+		"demurrage_active":           demurrage.Active,
+		"demurrage_days_until_start": demurrage.DaysUntilStart,
+		"show_14_day_notice":         demurrage.ShowFourteenDayNotice,
+		"show_7_day_notice":          demurrage.ShowSevenDayNotice,
+	})
 }
 
 // handleCheckRegistration lets the app ask "did MY specific proof commitment
@@ -336,29 +367,29 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 // in a global, unfiltered /api/humans list (which showed every user the
 // most recently registered wallet, regardless of who they actually were).
 func (a *APIServer) handleCheckRegistration(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-commitment := r.URL.Query().Get("commitment")
-if commitment == "" {
-json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
-return
-}
+	commitment := r.URL.Query().Get("commitment")
+	if commitment == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
+		return
+	}
 
-wallet := a.state.GetWalletByCommitment(commitment)
-if wallet == "" {
-json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
-return
-}
+	wallet := a.state.GetWalletByCommitment(commitment)
+	if wallet == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
+		return
+	}
 
-balance := a.state.GetBalance(wallet)
-isHuman := a.state.IsHuman(wallet)
-json.NewEncoder(w).Encode(map[string]interface{}{
-"registered": true,
-"wallet":     wallet,
-"balance":    balance,
-"is_human":   isHuman,
-})
+	balance := a.state.GetBalance(wallet)
+	isHuman := a.state.IsHuman(wallet)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"registered": true,
+		"wallet":     wallet,
+		"balance":    balance,
+		"is_human":   isHuman,
+	})
 }
 
 // handleCheckRegistrationByBioHash mirrors handleCheckRegistration, but
@@ -369,73 +400,79 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 // supplies the real wallet) — so it can't poll by commitment the way the
 // old flow did.
 func (a *APIServer) handleCheckRegistrationByBioHash(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-if r.Method == "OPTIONS" { w.WriteHeader(200); return }
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(200)
+		return
+	}
 
-// POST only — GET is removed because bioHash in the URL lands in
-// server/proxy logs creating unnecessary biometric linkability.
-if r.Method != "POST" && r.Method != "OPTIONS" {
-http.Error(w, `{"error":"POST required"}`, 405); return
-}
-r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-var bioHashBody struct{ BioHash string `json:"bioHash"` }
-json.NewDecoder(r.Body).Decode(&bioHashBody)
-var bioHash = bioHashBody.BioHash
-if bioHash == "" {
-json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
-return
-}
+	// POST only — GET is removed because bioHash in the URL lands in
+	// server/proxy logs creating unnecessary biometric linkability.
+	if r.Method != "POST" && r.Method != "OPTIONS" {
+		http.Error(w, `{"error":"POST required"}`, 405)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var bioHashBody struct {
+		BioHash string `json:"bioHash"`
+	}
+	json.NewDecoder(r.Body).Decode(&bioHashBody)
+	var bioHash = bioHashBody.BioHash
+	if bioHash == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
+		return
+	}
 
-wallet := a.state.GetWalletByBioHash(bioHash)
-if wallet == "" {
-json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
-return
-}
+	wallet := a.state.GetWalletByBioHash(bioHash)
+	if wallet == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"registered": false})
+		return
+	}
 
-balance := a.state.GetBalance(wallet)
-isHuman := a.state.IsHuman(wallet)
+	balance := a.state.GetBalance(wallet)
+	isHuman := a.state.IsHuman(wallet)
 
-// If the bioHash exists in bio_registrations but the wallet is NOT yet
-// marked as human on-chain, it means someone else used this biometric
-// hash to generate a proof but hasn't completed registration yet —
-// OR a different wallet tried to reuse this bioHash. Either way, the
-// current user should NOT see "success". Return a distinct status so
-// the app can show an appropriate message.
-if !isHuman {
-json.NewEncoder(w).Encode(map[string]interface{}{
-"registered":       false,
-"biometric_in_use": true,
-"wallet":           wallet,
-})
-return
-}
+	// If the bioHash exists in bio_registrations but the wallet is NOT yet
+	// marked as human on-chain, it means someone else used this biometric
+	// hash to generate a proof but hasn't completed registration yet —
+	// OR a different wallet tried to reuse this bioHash. Either way, the
+	// current user should NOT see "success". Return a distinct status so
+	// the app can show an appropriate message.
+	if !isHuman {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"registered":       false,
+			"biometric_in_use": true,
+			"wallet":           wallet,
+		})
+		return
+	}
 
-json.NewEncoder(w).Encode(map[string]interface{}{
-"registered": true,
-"wallet":     wallet,
-"balance":    balance,
-"is_human":   isHuman,
-})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"registered": true,
+		"wallet":     wallet,
+		"balance":    balance,
+		"is_human":   isHuman,
+	})
 }
 
 // handleCheckNullifier lets the client ask "has this nullifier been used?"
 // before submitting a registration. GET /api/check-nullifier?n=<hex>
 func (a *APIServer) handleCheckNullifier(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-nullifier := r.URL.Query().Get("n")
-if nullifier == "" {
-json.NewEncoder(w).Encode(map[string]interface{}{"used": false})
-return
-}
-wallet := a.state.GetWalletByNullifier(nullifier)
-// Return only used/unused — never the associated wallet address.
-// The wallet linkage is a biometric identifier that should not be
-// publicly enumerable via the nullifier index.
-json.NewEncoder(w).Encode(map[string]interface{}{"used": wallet != ""})
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	nullifier := r.URL.Query().Get("n")
+	if nullifier == "" {
+		json.NewEncoder(w).Encode(map[string]interface{}{"used": false})
+		return
+	}
+	wallet := a.state.GetWalletByNullifier(nullifier)
+	// Return only used/unused — never the associated wallet address.
+	// The wallet linkage is a biometric identifier that should not be
+	// publicly enumerable via the nullifier index.
+	json.NewEncoder(w).Encode(map[string]interface{}{"used": wallet != ""})
 }
 
 // queryV7Status reads isHuman(address) and balanceOf(address) directly from
@@ -443,57 +480,57 @@ json.NewEncoder(w).Encode(map[string]interface{}{"used": wallet != ""})
 // against the contract's own bookkeeping, but no longer used by the
 // balance-facing endpoints above — see handleBalance for why.
 func (a *APIServer) queryV7Status(wallet string) (float64, bool) {
-// P2-AUDIT: Use the shared evmRPC instance instead of creating a new one per
-// call. Creating a new EVMRPCServer allocates a new EVM engine (including DB
-// initialization) on every invocation — wasteful and bypasses the shared nonce
-// map, which could cause nonce desync if this path ever submits transactions.
-evmRPC := a.evmRPC
-if evmRPC == nil || evmRPC.evm == nil {
-return 0, false
-}
+	// P2-AUDIT: Use the shared evmRPC instance instead of creating a new one per
+	// call. Creating a new EVMRPCServer allocates a new EVM engine (including DB
+	// initialization) on every invocation — wasteful and bypasses the shared nonce
+	// map, which could cause nonce desync if this path ever submits transactions.
+	evmRPC := a.evmRPC
+	if evmRPC == nil || evmRPC.evm == nil {
+		return 0, false
+	}
 
-to := common.HexToAddress(V7_CONTRACT_ADDR)
-from := common.HexToAddress(wallet)
+	to := common.HexToAddress(V7_CONTRACT_ADDR)
+	from := common.HexToAddress(wallet)
 
-// isHuman(address) — selector 0xf72c436f
-// persist=false: this is a read-only status query (used by the explorer
-// frontend's balance/status display), not a real registration. Previously
-// every poll of this endpoint silently wrote isHuman=true to evm_storage
-// as a side effect, which is part of why "already registered" kept
-// reappearing even right after a full database reset.
-isHumanData := append(common.Hex2Bytes("f72c436f"), common.LeftPadBytes(from.Bytes(), 32)...)
-isHumanRet, err := evmRPC.evm.CallContract(from, to, isHumanData, big.NewInt(0), false)
-isHuman := false
-if err == nil && len(isHumanRet) >= 32 {
-isHuman = isHumanRet[31] == 1
-}
+	// isHuman(address) — selector 0xf72c436f
+	// persist=false: this is a read-only status query (used by the explorer
+	// frontend's balance/status display), not a real registration. Previously
+	// every poll of this endpoint silently wrote isHuman=true to evm_storage
+	// as a side effect, which is part of why "already registered" kept
+	// reappearing even right after a full database reset.
+	isHumanData := append(common.Hex2Bytes("f72c436f"), common.LeftPadBytes(from.Bytes(), 32)...)
+	isHumanRet, err := evmRPC.evm.CallContract(from, to, isHumanData, big.NewInt(0), false)
+	isHuman := false
+	if err == nil && len(isHumanRet) >= 32 {
+		isHuman = isHumanRet[31] == 1
+	}
 
-if !isHuman {
-return 0, false
-}
+	if !isHuman {
+		return 0, false
+	}
 
-// balanceOf(address) — selector 0x70a08231
-balanceData := append(common.Hex2Bytes("70a08231"), common.LeftPadBytes(from.Bytes(), 32)...)
-balanceRet, err := evmRPC.evm.CallContract(from, to, balanceData, big.NewInt(0), false)
-balance := 0.0
-if err == nil && len(balanceRet) >= 32 {
-weiInt := new(big.Int).SetBytes(balanceRet)
-decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
-balanceFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(weiInt), decimals).Float64()
-balance = balanceFloat
-}
+	// balanceOf(address) — selector 0x70a08231
+	balanceData := append(common.Hex2Bytes("70a08231"), common.LeftPadBytes(from.Bytes(), 32)...)
+	balanceRet, err := evmRPC.evm.CallContract(from, to, balanceData, big.NewInt(0), false)
+	balance := 0.0
+	if err == nil && len(balanceRet) >= 32 {
+		weiInt := new(big.Int).SetBytes(balanceRet)
+		decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+		balanceFloat, _ := new(big.Float).Quo(new(big.Float).SetInt(weiInt), decimals).Float64()
+		balance = balanceFloat
+	}
 
-return balance, isHuman
+	return balance, isHuman
 }
 
 func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "text/html")
-// FIX 10: Add Content-Security-Policy to prevent XSS escalation on this HTML page.
-w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
-// XSS fix: escape wallet parameter before writing to HTML — without this,
-// a crafted URL like /registered?wallet=<script>... would execute JS.
-wallet := html.EscapeString(r.URL.Query().Get("wallet"))
-fmt.Fprintf(w, `<!DOCTYPE html>
+	w.Header().Set("Content-Type", "text/html")
+	// FIX 10: Add Content-Security-Policy to prevent XSS escalation on this HTML page.
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
+	// XSS fix: escape wallet parameter before writing to HTML — without this,
+	// a crafted URL like /registered?wallet=<script>... would execute JS.
+	wallet := html.EscapeString(r.URL.Query().Get("wallet"))
+	fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -530,91 +567,99 @@ Return to the <span class="hl">Aequitas App</span> — it will confirm your regi
 }
 
 func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "text/html")
-w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
 	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:")
-path := strings.Trim(r.URL.Path, "/")
-if idx := strings.Index(path, "/"); idx >= 0 {
-	path = path[:idx]
-}
-// Backwards-compat: /swap redirects to /exchange.
-if path == "swap" {
-	http.Redirect(w, r, "/exchange", http.StatusMovedPermanently)
-	return
-}
-// All paths serve the same HTML — client-side JS handles tab activation
-// from window.location.pathname immediately on DOMContentLoaded.
-// This avoids all server-side HTML manipulation and the race conditions
-// it creates between server-injected classes and JS-driven tab switching.
-fmt.Fprint(w, explorerHTML)
+	path := strings.Trim(r.URL.Path, "/")
+	if idx := strings.Index(path, "/"); idx >= 0 {
+		path = path[:idx]
+	}
+	// Backwards-compat: /swap redirects to /exchange.
+	if path == "swap" {
+		http.Redirect(w, r, "/exchange", http.StatusMovedPermanently)
+		return
+	}
+	// All paths serve the same HTML — client-side JS handles tab activation
+	// from window.location.pathname immediately on DOMContentLoaded.
+	// This avoids all server-side HTML manipulation and the race conditions
+	// it creates between server-injected classes and JS-driven tab switching.
+	fmt.Fprint(w, explorerHTML)
 }
 
 // handleNonce returns the next swap nonce a wallet should sign with.
 // GET /api/nonce?wallet=0x...
 func (a *APIServer) handleNonce(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-wallet := strings.ToLower(r.URL.Query().Get("wallet"))
-if wallet == "" {
-http.Error(w, `{"error":"wallet required"}`, 400)
-return
-}
-nonce := a.state.GetSwapNonce(wallet)
-json.NewEncoder(w).Encode(map[string]interface{}{"wallet": wallet, "nonce": nonce})
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
+	if wallet == "" {
+		http.Error(w, `{"error":"wallet required"}`, 400)
+		return
+	}
+	nonce := a.state.GetSwapNonce(wallet)
+	json.NewEncoder(w).Encode(map[string]interface{}{"wallet": wallet, "nonce": nonce})
 }
 
 // handlePriceHistory returns AEQ/tUSD price snapshots for the chart.
 // GET /api/price-history?minutes=240&limit=5000
 func (a *APIServer) handlePriceHistory(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-w.Header().Set("Cache-Control", "no-cache")
-minutes := 240
-limit := 1000
-fmt.Sscanf(r.URL.Query().Get("minutes"), "%d", &minutes)
-fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
-// Clamp to prevent memory exhaustion from large DB reads.
-if minutes < 1 { minutes = 1 }
-if minutes > 43200 { minutes = 43200 } // max 30 days
-if limit < 1 { limit = 1 }
-if limit > 5000 { limit = 5000 }
-history := a.state.GetPriceHistory(minutes, limit)
-json.NewEncoder(w).Encode(map[string]interface{}{"history": history, "count": len(history)})
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+	minutes := 240
+	limit := 1000
+	fmt.Sscanf(r.URL.Query().Get("minutes"), "%d", &minutes)
+	fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &limit)
+	// Clamp to prevent memory exhaustion from large DB reads.
+	if minutes < 1 {
+		minutes = 1
+	}
+	if minutes > 43200 {
+		minutes = 43200
+	} // max 30 days
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 5000 {
+		limit = 5000
+	}
+	history := a.state.GetPriceHistory(minutes, limit)
+	json.NewEncoder(w).Encode(map[string]interface{}{"history": history, "count": len(history)})
 }
 
 // handleGiniHistory returns Gini snapshots stored after each UBI distribution.
 // Falls back to the current Gini as a single point when no history exists yet.
 func (a *APIServer) handleGiniHistory(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-w.Header().Set("Cache-Control", "no-cache")
-history := a.state.GetGiniHistory(60) // last 60 snapshots
-if len(history) == 0 {
-// First UBI hasn't run yet — return current state as bootstrap point.
-gini := a.state.CalcGini()
-humans := a.state.TotalHumans()
-history = []map[string]interface{}{
-{"idx": gini * 100, "gini": gini, "humans": humans, "timestamp": time.Now().Unix()},
-}
-}
-json.NewEncoder(w).Encode(map[string]interface{}{"history": history})
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+	history := a.state.GetGiniHistory(60) // last 60 snapshots
+	if len(history) == 0 {
+		// First UBI hasn't run yet — return current state as bootstrap point.
+		gini := a.state.CalcGini()
+		humans := a.state.TotalHumans()
+		history = []map[string]interface{}{
+			{"idx": gini * 100, "gini": gini, "humans": humans, "timestamp": time.Now().Unix()},
+		}
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"history": history})
 }
 
 // handleWealthCap returns the current wealth cap parameters.
 // Field names match the live wealth-cap widget in the Equality tab.
 func (a *APIServer) handleWealthCap(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-w.Header().Set("Cache-Control", "no-cache")
-// P2-2: use GetWealthCapInfo which internally calls bootstrapMultiplierLocked()
-// and getAverageBalanceLocked() — the SAME functions enforceWealthCapLocked uses.
-// The old implementation had its own formula that diverged from the enforcement logic.
-capAEQ, mult, avg, n := a.state.GetWealthCapInfo()
-json.NewEncoder(w).Encode(map[string]interface{}{
-"cap_aeq": capAEQ, "multiplier": mult, "average_aeq": avg, "humans": n,
-})
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+	// P2-2: use GetWealthCapInfo which internally calls bootstrapMultiplierLocked()
+	// and getAverageBalanceLocked() — the SAME functions enforceWealthCapLocked uses.
+	// The old implementation had its own formula that diverged from the enforcement logic.
+	capAEQ, mult, avg, n := a.state.GetWealthCapInfo()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"cap_aeq": capAEQ, "multiplier": mult, "average_aeq": avg, "humans": n,
+	})
 }
 
 // handleSignValidatorChallenge signs the key-possession challenge message with
@@ -622,42 +667,45 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 // node operators with server access can use it — not an internet-accessible oracle.
 // GET /api/sign-validator-challenge?wallet=0x...
 func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-// F12-FIX: Require SNAPSHOT_TOKEN unconditionally. Previously the endpoint
-// was open when SNAPSHOT_TOKEN was not set. An open endpoint leaks that the
-// node is running and allows unauthenticated challenge generation.
-token := os.Getenv("SNAPSHOT_TOKEN")
-if token == "" {
-	http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured on this node"}`, http.StatusForbidden)
-	return
-}
-auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-if subtle.ConstantTimeCompare([]byte(auth), []byte(token)) != 1 {
-	http.Error(w, `{"error":"unauthorized — set Authorization: Bearer <SNAPSHOT_TOKEN>"}`, 401)
-	return
-}
-humanWallet := strings.ToLower(r.URL.Query().Get("wallet"))
-if humanWallet == "" || !strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
-http.Error(w, `{"error":"wallet required (0x...)"}`, 400); return
-}
-key := a.blockchain.GetSigningKey()
-if key == nil {
-http.Error(w, `{"error":"RELAYER_PRIVATE_KEY not configured"}`, 500); return
-}
-message := "Aequitas: validator key linked to human " + humanWallet
-msgHash := accounts.TextHash([]byte(message))
-sig, err := crypto.Sign(msgHash, key)
-if err != nil {
-http.Error(w, `{"error":"signing failed"}`, 500); return
-}
-sig[64] += 27
-signingAddr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
-json.NewEncoder(w).Encode(map[string]interface{}{
-"signing_address": signingAddr,
-"human_wallet":    humanWallet,
-"signature":       "0x" + hex.EncodeToString(sig),
-"message":         message,
-})
+	w.Header().Set("Content-Type", "application/json")
+	// F12-FIX: Require SNAPSHOT_TOKEN unconditionally. Previously the endpoint
+	// was open when SNAPSHOT_TOKEN was not set. An open endpoint leaks that the
+	// node is running and allows unauthenticated challenge generation.
+	token := os.Getenv("SNAPSHOT_TOKEN")
+	if token == "" {
+		http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured on this node"}`, http.StatusForbidden)
+		return
+	}
+	auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(auth), []byte(token)) != 1 {
+		http.Error(w, `{"error":"unauthorized — set Authorization: Bearer <SNAPSHOT_TOKEN>"}`, 401)
+		return
+	}
+	humanWallet := strings.ToLower(r.URL.Query().Get("wallet"))
+	if humanWallet == "" || !strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
+		http.Error(w, `{"error":"wallet required (0x...)"}`, 400)
+		return
+	}
+	key := a.blockchain.GetSigningKey()
+	if key == nil {
+		http.Error(w, `{"error":"RELAYER_PRIVATE_KEY not configured"}`, 500)
+		return
+	}
+	message := "Aequitas: validator key linked to human " + humanWallet
+	msgHash := accounts.TextHash([]byte(message))
+	sig, err := crypto.Sign(msgHash, key)
+	if err != nil {
+		http.Error(w, `{"error":"signing failed"}`, 500)
+		return
+	}
+	sig[64] += 27
+	signingAddr := strings.ToLower(crypto.PubkeyToAddress(key.PublicKey).Hex())
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"signing_address": signingAddr,
+		"human_wallet":    humanWallet,
+		"signature":       "0x" + hex.EncodeToString(sig),
+		"message":         message,
+	})
 }
 
 // handleRegisterValidatorKey links a node signing key to a registered human
@@ -672,70 +720,81 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 // where someone registers a victim's signing address using their own wallet.
 // UNIQUE(human_wallet) ensures one human = one validator key.
 func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-if r.Method == "OPTIONS" { w.WriteHeader(200); return }
-if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
-r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-var req struct {
-SigningAddress      string `json:"signing_address"`
-HumanWallet        string `json:"human_wallet"`
-HumanSignature     string `json:"human_signature"`
-SigningKeySignature string `json:"signing_key_signature"`
-}
-if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-http.Error(w, `{"error":"invalid request"}`, 400); return
-}
-signingAddr := strings.ToLower(strings.TrimSpace(req.SigningAddress))
-humanWallet := strings.ToLower(strings.TrimSpace(req.HumanWallet))
-if !strings.HasPrefix(signingAddr, "0x") || len(signingAddr) != 42 ||
-!strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
-http.Error(w, `{"error":"invalid address"}`, 400); return
-}
-// 1. Human wallet proves it authorises this signing key.
-humanMsg := "Aequitas: authorize validator key " + signingAddr
-if err := verifyPersonalSign(humanMsg, req.HumanSignature, humanWallet); err != nil {
-jsonError(w, "invalid human_signature: "+err.Error(), 400); return
-}
-// 2. Signing key proves it is linked to this human wallet (key-possession proof).
-signingMsg := "Aequitas: validator key linked to human " + humanWallet
-if err := verifyPersonalSign(signingMsg, req.SigningKeySignature, signingAddr); err != nil {
-jsonError(w, "invalid signing_key_signature — sign with RELAYER_PRIVATE_KEY: "+err.Error(), 400); return
-}
-if err := a.state.RegisterValidatorKey(signingAddr, humanWallet); err != nil {
-jsonError(w, err.Error(), 400); return
-}
-a.blockchain.AddAuthorizedValidator(signingAddr)
-fmt.Printf("[VALIDATOR] ✓ Registered key %s for human %s\n", signingAddr, humanWallet)
-json.NewEncoder(w).Encode(map[string]interface{}{
-"success":         true,
-"signing_address": signingAddr,
-"human_wallet":    humanWallet,
-})
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(200)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, `{"error":"POST required"}`, 405)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	var req struct {
+		SigningAddress      string `json:"signing_address"`
+		HumanWallet         string `json:"human_wallet"`
+		HumanSignature      string `json:"human_signature"`
+		SigningKeySignature string `json:"signing_key_signature"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request"}`, 400)
+		return
+	}
+	signingAddr := strings.ToLower(strings.TrimSpace(req.SigningAddress))
+	humanWallet := strings.ToLower(strings.TrimSpace(req.HumanWallet))
+	if !strings.HasPrefix(signingAddr, "0x") || len(signingAddr) != 42 ||
+		!strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
+		http.Error(w, `{"error":"invalid address"}`, 400)
+		return
+	}
+	// 1. Human wallet proves it authorises this signing key.
+	humanMsg := "Aequitas: authorize validator key " + signingAddr
+	if err := verifyPersonalSign(humanMsg, req.HumanSignature, humanWallet); err != nil {
+		jsonError(w, "invalid human_signature: "+err.Error(), 400)
+		return
+	}
+	// 2. Signing key proves it is linked to this human wallet (key-possession proof).
+	signingMsg := "Aequitas: validator key linked to human " + humanWallet
+	if err := verifyPersonalSign(signingMsg, req.SigningKeySignature, signingAddr); err != nil {
+		jsonError(w, "invalid signing_key_signature — sign with RELAYER_PRIVATE_KEY: "+err.Error(), 400)
+		return
+	}
+	if err := a.state.RegisterValidatorKey(signingAddr, humanWallet); err != nil {
+		jsonError(w, err.Error(), 400)
+		return
+	}
+	a.blockchain.AddAuthorizedValidator(signingAddr)
+	fmt.Printf("[VALIDATOR] ✓ Registered key %s for human %s\n", signingAddr, humanWallet)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":         true,
+		"signing_address": signingAddr,
+		"human_wallet":    humanWallet,
+	})
 }
 
 // handlePeerChallenge issues a one-time challenge that the peer must sign to
 // prove ownership of their signing key (P1-3 validator signature verification).
 // GET /api/peers/challenge?address=0x...
 func (a *APIServer) handlePeerChallenge(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-addr := strings.ToLower(r.URL.Query().Get("address"))
-if !isValidWalletAddr(addr) {
-http.Error(w, `{"error":"invalid address"}`, 400)
-return
-}
-challenge := a.blockchain.IssuePeerChallenge(addr)
-if challenge == "" {
-	jsonError(w, "too many pending challenges, retry after 90 seconds", 429)
-	return
-}
-json.NewEncoder(w).Encode(map[string]interface{}{
-"challenge":  challenge,
-"expires_in": 90,
-"instructions": "Sign the challenge string with your signing key and include the hex signature in POST /api/peers/register as 'signature'",
-})
+	w.Header().Set("Content-Type", "application/json")
+	addr := strings.ToLower(r.URL.Query().Get("address"))
+	if !isValidWalletAddr(addr) {
+		http.Error(w, `{"error":"invalid address"}`, 400)
+		return
+	}
+	challenge := a.blockchain.IssuePeerChallenge(addr)
+	if challenge == "" {
+		jsonError(w, "too many pending challenges, retry after 90 seconds", 429)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"challenge":    challenge,
+		"expires_in":   90,
+		"instructions": "Sign the challenge string with your signing key and include the hex signature in POST /api/peers/register as 'signature'",
+	})
 }
 
 // handlePeerRegister accepts a node registration and returns the current peer
@@ -744,261 +803,296 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 // its blocks are accepted without manual AUTHORIZED_VALIDATORS configuration.
 // POST /api/peers/register  body: {"url":"https://...","signing_address":"0x...","signature":"0x..."}
 func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-if r.Method == "OPTIONS" { w.WriteHeader(200); return }
-var req struct {
-URL                 string `json:"url"`
-SigningAddress      string `json:"signing_address"`
-PeerSecret          string `json:"peer_secret"`
-Signature           string `json:"signature"` // P1-3 challenge-response
-NodeOperatorWallet  string `json:"node_operator_wallet"`
-}
-r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-json.NewDecoder(r.Body).Decode(&req)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(200)
+		return
+	}
+	var req struct {
+		URL                string `json:"url"`
+		SigningAddress     string `json:"signing_address"`
+		PeerSecret         string `json:"peer_secret"`
+		Signature          string `json:"signature"` // P1-3 challenge-response
+		NodeOperatorWallet string `json:"node_operator_wallet"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	json.NewDecoder(r.Body).Decode(&req)
 
-// Secret check comes FIRST. URL registration and sync goroutines are only
-// started for authenticated peers — prevents goroutine exhaustion via
-// unauthenticated registrations even when PEER_SECRET is not set.
-peerSecret := os.Getenv("PEER_SECRET")
-// P1-2: constant-time comparison prevents timing-based secret oracle attacks.
-secretOK := peerSecret != "" && subtle.ConstantTimeCompare([]byte(req.PeerSecret), []byte(peerSecret)) == 1
+	// Secret check comes FIRST. URL registration and sync goroutines are only
+	// started for authenticated peers — prevents goroutine exhaustion via
+	// unauthenticated registrations even when PEER_SECRET is not set.
+	peerSecret := os.Getenv("PEER_SECRET")
+	// P1-2: constant-time comparison prevents timing-based secret oracle attacks.
+	secretOK := peerSecret != "" && subtle.ConstantTimeCompare([]byte(req.PeerSecret), []byte(peerSecret)) == 1
 
-// P1-2: compute sigOK early so it can gate URL registration.
-// A known validator address (keyAuthorizedEarly) alone is NOT sufficient —
-// anyone can read validator addresses from /api/blocks. Require PEER_SECRET
-// match OR a valid challenge-response signature to prove private-key ownership.
-sigOKEarly := req.Signature != "" && req.SigningAddress != "" &&
-a.blockchain.VerifyPeerChallenge(strings.ToLower(req.SigningAddress), req.Signature)
-if req.URL != "" && isAllowedPeerURL(req.URL) {
-if secretOK || sigOKEarly {
-GlobalPeerRegistry.Register(req.URL)
-fmt.Printf("[PEERS] Registered: %s\n", req.URL)
-a.blockchain.startSyncForPeer(req.URL)
-} else {
-fmt.Printf("[PEERS] URL rejected (no valid PEER_SECRET or validator key): %s\n", req.URL)
+	// P1-2: compute sigOK early so it can gate URL registration.
+	// A known validator address (keyAuthorizedEarly) alone is NOT sufficient —
+	// anyone can read validator addresses from /api/blocks. Require PEER_SECRET
+	// match OR a valid challenge-response signature to prove private-key ownership.
+	sigOKEarly := req.Signature != "" && req.SigningAddress != "" &&
+		a.blockchain.VerifyPeerChallenge(strings.ToLower(req.SigningAddress), req.Signature)
+	if req.URL != "" && isAllowedPeerURL(req.URL) {
+		if secretOK || sigOKEarly {
+			GlobalPeerRegistry.Register(req.URL)
+			fmt.Printf("[PEERS] Registered: %s\n", req.URL)
+			a.blockchain.startSyncForPeer(req.URL)
+		} else {
+			fmt.Printf("[PEERS] URL rejected (no valid PEER_SECRET or validator key): %s\n", req.URL)
+		}
+	} else if req.URL != "" {
+		fmt.Printf("[PEERS] URL rejected (must be public HTTPS): %s\n", req.URL)
+	}
+	if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && strings.HasPrefix(addr, "0x") && len(addr) == 42 {
+		// Authorization: accept if PEER_SECRET matches OR if the address has
+		// a registered validator key (individual human-signed credential) OR
+		// if the peer provided a valid challenge-response signature (P1-3).
+		// P2-FIX: VerifyPeerChallenge is one-time-use (deletes the
+		// challenge on first call). sigOKEarly consumed it already above;
+		// calling VerifyPeerChallenge again would always return false.
+		sigOK := sigOKEarly && strings.ToLower(strings.TrimSpace(req.SigningAddress)) == addr
+		keys := a.state.GetValidatorKeys()
+		keyAuthorized := false
+		for _, k := range keys {
+			if k["signing_address"] == addr {
+				keyAuthorized = true
+				break
+			}
+		}
+		// Authorization: PEER_SECRET match OR a valid challenge-response signature.
+		// keyAuthorized alone is not sufficient — anyone can read validator addresses
+		// from /api/blocks. The peer must prove private-key possession (sigOK) or
+		// share the PEER_SECRET. (keyAuthorized && sigOK) is a subset of sigOK and
+		// was removed as dead code (FIX 6).
+		if secretOK || sigOK {
+			nodeWallet := strings.ToLower(strings.TrimSpace(req.NodeOperatorWallet))
+			if nodeWallet == "" {
+				nodeWallet = addr
+			}
+			if !a.state.IsHuman(nodeWallet) {
+				fmt.Printf("[PEERS] Rejected %s: NODE_OPERATOR_WALLET %s is not a registered human\n", addr, nodeWallet)
+				http.Error(w, `{"error":"NODE_OPERATOR_WALLET is not a registered human — register first via the AequitasBio app"}`, http.StatusForbidden)
+				return
+			}
+			a.blockchain.AddAuthorizedValidator(addr)
+			method := "PEER_SECRET"
+			if sigOK {
+				method = "challenge-response signature"
+			}
+			if keyAuthorized && sigOK {
+				method += " (registered key)"
+			}
+			fmt.Printf("[PEERS] Auto-authorized validator via %s: %s (wallet: %s)\n", method, addr, nodeWallet)
+		} else if req.Signature == "" {
+			fmt.Printf("[PEERS] Validator %s: no signature provided — request /api/peers/challenge first\n", addr)
+		} else {
+			fmt.Printf("[PEERS] Validator %s: invalid/expired challenge signature\n", addr)
+		}
+		a.blockchain.mu.RLock()
+		validators := make([]string, 0, len(a.blockchain.authorizedValidators))
+		for v := range a.blockchain.authorizedValidators {
+			validators = append(validators, v)
+		}
+		a.blockchain.mu.RUnlock()
+		// P2-9: only return validator list if authorized
+		if secretOK || keyAuthorized || sigOK {
+			json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": validators})
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
+		}
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": []string{}})
 }
-} else if req.URL != "" {
-fmt.Printf("[PEERS] URL rejected (must be public HTTPS): %s\n", req.URL)
-}
-if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && strings.HasPrefix(addr, "0x") && len(addr) == 42 {
-// Authorization: accept if PEER_SECRET matches OR if the address has
-// a registered validator key (individual human-signed credential) OR
-// if the peer provided a valid challenge-response signature (P1-3).
-// P2-FIX: VerifyPeerChallenge is one-time-use (deletes the
-	// challenge on first call). sigOKEarly consumed it already above;
-	// calling VerifyPeerChallenge again would always return false.
-	sigOK := sigOKEarly && strings.ToLower(strings.TrimSpace(req.SigningAddress)) == addr
-keys := a.state.GetValidatorKeys()
-keyAuthorized := false
-for _, k := range keys {
-if k["signing_address"] == addr { keyAuthorized = true; break }
-}
-// Authorization: PEER_SECRET match OR a valid challenge-response signature.
-// keyAuthorized alone is not sufficient — anyone can read validator addresses
-// from /api/blocks. The peer must prove private-key possession (sigOK) or
-// share the PEER_SECRET. (keyAuthorized && sigOK) is a subset of sigOK and
-// was removed as dead code (FIX 6).
-if secretOK || sigOK {
-nodeWallet := strings.ToLower(strings.TrimSpace(req.NodeOperatorWallet))
-if nodeWallet == "" {
-	nodeWallet = addr
-}
-if !a.state.IsHuman(nodeWallet) {
-	fmt.Printf("[PEERS] Rejected %s: NODE_OPERATOR_WALLET %s is not a registered human\n", addr, nodeWallet)
-	http.Error(w, `{"error":"NODE_OPERATOR_WALLET is not a registered human — register first via the AequitasBio app"}`, http.StatusForbidden)
-	return
-}
-a.blockchain.AddAuthorizedValidator(addr)
-method := "PEER_SECRET"
-if sigOK { method = "challenge-response signature" }
-if keyAuthorized && sigOK { method += " (registered key)" }
-fmt.Printf("[PEERS] Auto-authorized validator via %s: %s (wallet: %s)\n", method, addr, nodeWallet)
-} else if req.Signature == "" {
-fmt.Printf("[PEERS] Validator %s: no signature provided — request /api/peers/challenge first\n", addr)
-} else {
-fmt.Printf("[PEERS] Validator %s: invalid/expired challenge signature\n", addr)
-}
-a.blockchain.mu.RLock()
-validators := make([]string, 0, len(a.blockchain.authorizedValidators))
-for v := range a.blockchain.authorizedValidators { validators = append(validators, v) }
-a.blockchain.mu.RUnlock()
-// P2-9: only return validator list if authorized
-if secretOK || keyAuthorized || sigOK {
-json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": validators})
-} else {
-json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
-}
-return
-}
-json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": []string{}})
-}
-
-const proofServerURL = "https://aequitas-proof-server-production.up.railway.app"
 
 // handleProveProxy proxies POST /api/prove to the proof server backend-side,
 // bypassing browser CORS restrictions. The proof server does not include
 // Access-Control-Allow-Origin, so browser fetches fail. By proxying through
 // the chain node (same origin as the website), CORS is not an issue.
 func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-if r.Method == "OPTIONS" { w.WriteHeader(200); return }
-if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
-body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
-if err != nil { http.Error(w, `{"error":"read error"}`, 500); return }
-// Add CHAIN_SERVICE_TOKEN so the proof server's auth check passes.
-// The token lives only in the chain node's env var and is never exposed to
-// browser clients — the proxy is the sole caller of the proof server.
-proofReq, _ := http.NewRequest("POST", proofServerURL+"/prove", bytes.NewReader(body))
-proofReq.Header.Set("Content-Type", "application/json")
-if tok := os.Getenv("CHAIN_SERVICE_TOKEN"); tok != "" {
-	proofReq.Header.Set("x-chain-token", tok)
-}
-resp, err := (&http.Client{Timeout: 120 * time.Second}).Do(proofReq)
-if err != nil { http.Error(w, `{"error":"proof server unreachable"}`, 502); return }
-defer resp.Body.Close()
-respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-w.WriteHeader(resp.StatusCode)
-w.Write(respBody)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(200)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, `{"error":"POST required"}`, 405)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	if err != nil {
+		http.Error(w, `{"error":"read error"}`, 500)
+		return
+	}
+	// Add CHAIN_SERVICE_TOKEN so the proof server's auth check passes.
+	// The token lives only in the chain node's env var and is never exposed to
+	// browser clients — the proxy is the sole caller of the proof server.
+	proofReq, _ := http.NewRequest("POST", proofServerBaseURL()+"/prove", bytes.NewReader(body))
+	proofReq.Header.Set("Content-Type", "application/json")
+	addProofServerAuth(proofReq)
+	resp, err := (&http.Client{Timeout: 120 * time.Second}).Do(proofReq)
+	if err != nil {
+		http.Error(w, `{"error":"proof server unreachable"}`, 502)
+		return
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	w.WriteHeader(resp.StatusCode)
+	w.Write(respBody)
 }
 
 // handleProveGetProxy proxies GET /api/prove/get/{id} to the proof server.
 func (a *APIServer) handleProveGetProxy(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-id := strings.TrimPrefix(r.URL.Path, "/api/prove/get/")
-// FIX 6: strict allowlist replaces denylist -- prevents path traversal.
-matched, _ := regexp.MatchString(`^[a-zA-Z0-9_-]{1,64}$`, id)
-if !matched {
-	http.Error(w, `{"error":"invalid proof id"}`, 400)
-	return
-}
-getReq, _ := http.NewRequest("GET", proofServerURL+"/get/"+id, nil)
-if tok := os.Getenv("CHAIN_SERVICE_TOKEN"); tok != "" {
-	getReq.Header.Set("x-chain-token", tok)
-}
-resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(getReq)
-if err != nil { http.Error(w, `{"error":"proof server unreachable"}`, 502); return }
-defer resp.Body.Close()
-respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-w.WriteHeader(resp.StatusCode)
-w.Write(respBody)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	id := strings.TrimPrefix(r.URL.Path, "/api/prove/get/")
+	// FIX 6: strict allowlist replaces denylist -- prevents path traversal.
+	matched, _ := regexp.MatchString(`^[a-zA-Z0-9_-]{1,64}$`, id)
+	if !matched {
+		http.Error(w, `{"error":"invalid proof id"}`, 400)
+		return
+	}
+	getReq, _ := http.NewRequest("GET", proofServerBaseURL()+"/get/"+id, nil)
+	addProofServerAuth(getReq)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(getReq)
+	if err != nil {
+		http.Error(w, `{"error":"proof server unreachable"}`, 502)
+		return
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	w.WriteHeader(resp.StatusCode)
+	w.Write(respBody)
 }
 
 // handleProofCheckProxy proxies POST /api/proof/check to the proof server.
 func (a *APIServer) handleProofCheckProxy(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-if r.Method == "OPTIONS" { w.WriteHeader(200); return }
-if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
-body, err := io.ReadAll(io.LimitReader(r.Body, 16<<10))
-if err != nil { http.Error(w, `{"error":"read error"}`, 500); return }
-resp, err := (&http.Client{Timeout: 30 * time.Second}).Post(
-	proofServerURL+"/check", "application/json", bytes.NewReader(body))
-if err != nil { http.Error(w, `{"error":"proof server unreachable"}`, 502); return }
-defer resp.Body.Close()
-respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<10))
-w.WriteHeader(resp.StatusCode)
-w.Write(respBody)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(200)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, `{"error":"POST required"}`, 405)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 16<<10))
+	if err != nil {
+		http.Error(w, `{"error":"read error"}`, 500)
+		return
+	}
+	proofReq, _ := http.NewRequest("POST", proofServerBaseURL()+"/check", bytes.NewReader(body))
+	proofReq.Header.Set("Content-Type", "application/json")
+	addProofServerAuth(proofReq)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(proofReq)
+	if err != nil {
+		http.Error(w, `{"error":"proof server unreachable"}`, 502)
+		return
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<10))
+	w.WriteHeader(resp.StatusCode)
+	w.Write(respBody)
 }
 
 // handlePeers returns the list of all known peer nodes.
 // GET /api/peers
 func (a *APIServer) handlePeers(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers()})
 }
 
 // handleSigningAddress returns this node's signing address, protected by
 // SNAPSHOT_TOKEN. Secondary node operators need this for BOOTSTRAP_SIGNER.
 // Not exposed in /api/status to avoid leaking validator addresses publicly.
 func (a *APIServer) handleSigningAddress(w http.ResponseWriter, r *http.Request) {
-w.Header().Set("Content-Type", "application/json")
-token := os.Getenv("SNAPSHOT_TOKEN")
-if token == "" {
-	http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
-	return
-}
-authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-if subtle.ConstantTimeCompare([]byte(authHeader), []byte(token)) != 1 {
-	http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-	return
-}
-var addr string
-if sk := a.blockchain.GetSigningKey(); sk != nil {
-	addr = strings.ToLower(crypto.PubkeyToAddress(sk.PublicKey).Hex())
-}
-json.NewEncoder(w).Encode(map[string]string{"signing_address": addr})
+	w.Header().Set("Content-Type", "application/json")
+	token := os.Getenv("SNAPSHOT_TOKEN")
+	if token == "" {
+		http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
+		return
+	}
+	authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(authHeader), []byte(token)) != 1 {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+	var addr string
+	if sk := a.blockchain.GetSigningKey(); sk != nil {
+		addr = strings.ToLower(crypto.PubkeyToAddress(sk.PublicKey).Hex())
+	}
+	json.NewEncoder(w).Encode(map[string]string{"signing_address": addr})
 }
 
 // handleSnapshot exports the full Go-state as a signed JSON snapshot.
 // Protected by SNAPSHOT_TOKEN env var if set. A new node can bootstrap
 // itself by setting BOOTSTRAP_SNAPSHOT_URL to this endpoint's URL.
 func (a *APIServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
-// SNAPSHOT_TOKEN is mandatory — the snapshot contains nullifier-to-wallet
-// mappings and bio-registration data. Without a token, all requests are
-// rejected so the endpoint is never accidentally left open.
-token := os.Getenv("SNAPSHOT_TOKEN")
-if token == "" {
-http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
-return
-}
-// P2-15: token in Authorization header (not URL query param that lands in logs).
-authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-if subtle.ConstantTimeCompare([]byte(authHeader), []byte(token)) != 1 {
-http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-return
-}
-snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey())
-w.Header().Set("Content-Type", "application/json")
-json.NewEncoder(w).Encode(snap)
+	// SNAPSHOT_TOKEN is mandatory — the snapshot contains nullifier-to-wallet
+	// mappings and bio-registration data. Without a token, all requests are
+	// rejected so the endpoint is never accidentally left open.
+	token := os.Getenv("SNAPSHOT_TOKEN")
+	if token == "" {
+		http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
+		return
+	}
+	// P2-15: token in Authorization header (not URL query param that lands in logs).
+	authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(authHeader), []byte(token)) != 1 {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+	snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey())
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(snap)
 }
 
 func (a *APIServer) handleAppDownload(w http.ResponseWriter, r *http.Request) {
-const apkPath = "downloads/aequitas-app.apk"
-const fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/raw/main/downloads/aequitas-app.apk"
-f, err := os.Open(apkPath)
-if err != nil {
-	// File not found in container — redirect to GitHub raw URL.
-	http.Redirect(w, r, fallbackURL, http.StatusFound)
-	return
-}
-defer f.Close()
-fi, err := f.Stat()
-if err != nil {
-	http.Redirect(w, r, fallbackURL, http.StatusFound)
-	return
-}
-w.Header().Set("Content-Disposition", "attachment; filename=aequitas-app.apk")
-w.Header().Set("Content-Type", "application/vnd.android.package-archive")
-w.Header().Set("Access-Control-Allow-Origin", "*")
-http.ServeContent(w, r, "aequitas-app.apk", fi.ModTime(), f)
+	const apkPath = "downloads/aequitas-app.apk"
+	const fallbackURL = "https://github.com/hanoi96international-gif/Aequitas/raw/main/downloads/aequitas-app.apk"
+	f, err := os.Open(apkPath)
+	if err != nil {
+		// File not found in container — redirect to GitHub raw URL.
+		http.Redirect(w, r, fallbackURL, http.StatusFound)
+		return
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		http.Redirect(w, r, fallbackURL, http.StatusFound)
+		return
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename=aequitas-app.apk")
+	w.Header().Set("Content-Type", "application/vnd.android.package-archive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	http.ServeContent(w, r, "aequitas-app.apk", fi.ModTime(), f)
 }
 
 func (a *APIServer) handleStaticDownload(w http.ResponseWriter, r *http.Request, path, filename, contentType string) {
-f, err := os.Open(path)
-if err != nil {
-	http.Error(w, "File not found", 404)
-	return
-}
-defer f.Close()
-fi, err := f.Stat()
-if err != nil {
-	http.Error(w, "File error", 500)
-	return
-}
-w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(filename)))
-w.Header().Set("Content-Type", contentType)
-w.Header().Set("Access-Control-Allow-Origin", "*")
-http.ServeContent(w, r, filename, fi.ModTime(), f)
+	f, err := os.Open(path)
+	if err != nil {
+		http.Error(w, "File not found", 404)
+		return
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		http.Error(w, "File error", 500)
+		return
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(filename)))
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	http.ServeContent(w, r, filename, fi.ModTime(), f)
 }
 
 func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
@@ -1018,8 +1112,14 @@ func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	if r.Method == "OPTIONS" { w.WriteHeader(200); return }
-	if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(200)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, `{"error":"POST required"}`, 405)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req struct {
 		Wallet    string `json:"wallet"`
@@ -1027,21 +1127,25 @@ func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
 		Signature string `json:"signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, 400); return
+		http.Error(w, `{"error":"invalid request body"}`, 400)
+		return
 	}
 	wallet := strings.ToLower(strings.TrimSpace(req.Wallet))
 	guardian := strings.ToLower(strings.TrimSpace(req.Guardian))
 	if !isValidWalletAddr(wallet) || !isValidWalletAddr(guardian) {
-		http.Error(w, `{"error":"invalid wallet or guardian address"}`, 400); return
+		http.Error(w, `{"error":"invalid wallet or guardian address"}`, 400)
+		return
 	}
 	// Verify signature: wallet signs "Aequitas: set guardian {guardian_address}"
 	msg := "Aequitas: set guardian " + guardian
 	if err := verifyPersonalSign(msg, req.Signature, wallet); err != nil {
-		jsonError(w, "invalid signature: "+err.Error(), 400); return
+		jsonError(w, "invalid signature: "+err.Error(), 400)
+		return
 	}
 	now := time.Now().Unix()
 	if err := a.state.SetGuardian(wallet, guardian); err != nil {
-		jsonError(w, err.Error(), 400); return
+		jsonError(w, err.Error(), 400)
+		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":  true,
@@ -1060,8 +1164,14 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	if r.Method == "OPTIONS" { w.WriteHeader(200); return }
-	if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(200)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, `{"error":"POST required"}`, 405)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req struct {
 		Wallet    string `json:"wallet"`
@@ -1069,33 +1179,39 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 		Guardian  string `json:"guardian"` // FIX 9: optional client-supplied guardian for early mismatch detection
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, 400); return
+		http.Error(w, `{"error":"invalid request body"}`, 400)
+		return
 	}
 	wallet := strings.ToLower(strings.TrimSpace(req.Wallet))
 	if !isValidWalletAddr(wallet) {
-		http.Error(w, `{"error":"invalid wallet address"}`, 400); return
+		http.Error(w, `{"error":"invalid wallet address"}`, 400)
+		return
 	}
 	// FIX 3: Look up guardian from DB first, then immediately verify the
 	// signature using that address before passing it into ConfirmAlive.
 	// ConfirmAlive re-fetches under its own lock to close the TOCTOU window.
 	guardianAddr, _, err := a.state.GetGuardian(wallet)
 	if err != nil || guardianAddr == "" {
-		http.Error(w, `{"error":"no guardian set for this wallet"}`, 404); return
+		http.Error(w, `{"error":"no guardian set for this wallet"}`, 404)
+		return
 	}
 	guardianAddr = strings.ToLower(guardianAddr)
 	// FIX 9: Defense-in-depth — if client supplied a guardian address, check it
 	// matches the DB value before doing any signature work.
 	if req.Guardian != "" && strings.ToLower(strings.TrimSpace(req.Guardian)) != guardianAddr {
-		jsonError(w, "guardian address mismatch", 400); return
+		jsonError(w, "guardian address mismatch", 400)
+		return
 	}
 	// Signature is by the guardian.
 	msg := "Aequitas: confirm alive " + wallet
 	if sigErr := verifyPersonalSign(msg, req.Signature, guardianAddr); sigErr != nil {
-		jsonError(w, "invalid guardian signature: "+sigErr.Error(), 400); return
+		jsonError(w, "invalid guardian signature: "+sigErr.Error(), 400)
+		return
 	}
 	// FIX 3 (cont.): pass guardianAddr so ConfirmAlive can re-verify under lock.
 	if confirmErr := a.state.ConfirmAlive(wallet, guardianAddr); confirmErr != nil {
-		jsonError(w, confirmErr.Error(), 400); return
+		jsonError(w, confirmErr.Error(), 400)
+		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":   true,
@@ -1112,11 +1228,13 @@ func (a *APIServer) handleGetGuardian(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
 	if !isValidWalletAddr(wallet) {
-		http.Error(w, `{"error":"invalid wallet address"}`, 400); return
+		http.Error(w, `{"error":"invalid wallet address"}`, 400)
+		return
 	}
 	guardian, setAt, err := a.state.GetGuardian(wallet)
 	if err != nil || guardian == "" {
-		http.Error(w, `{"error":"no guardian found"}`, 404); return
+		http.Error(w, `{"error":"no guardian found"}`, 404)
+		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"wallet":   wallet,
@@ -1134,11 +1252,13 @@ func (a *APIServer) handleGetEscrow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	wallet := strings.ToLower(r.URL.Query().Get("wallet"))
 	if !isValidWalletAddr(wallet) {
-		http.Error(w, `{"error":"invalid wallet address"}`, 400); return
+		http.Error(w, `{"error":"invalid wallet address"}`, 400)
+		return
 	}
 	amount, movedAt, err := a.state.GetEscrow(wallet)
 	if err != nil || amount == 0 {
-		http.Error(w, `{"error":"no escrow found for this wallet"}`, 404); return
+		http.Error(w, `{"error":"no escrow found for this wallet"}`, 404)
+		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"wallet":   wallet,
@@ -1155,8 +1275,14 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	if r.Method == "OPTIONS" { w.WriteHeader(200); return }
-	if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(200)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, `{"error":"POST required"}`, 405)
+		return
+	}
 	// FIX 5: IP-based rate limiting — reuse the package-level registerRateLimit
 	// sync.Map so escrow recovery cannot be hammered faster than once per 30s per IP.
 	clientIP := r.RemoteAddr
@@ -1176,18 +1302,22 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 		Signature string `json:"signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, 400); return
+		http.Error(w, `{"error":"invalid request body"}`, 400)
+		return
 	}
 	wallet := strings.ToLower(strings.TrimSpace(req.Wallet))
 	if !isValidWalletAddr(wallet) {
-		http.Error(w, `{"error":"invalid wallet address"}`, 400); return
+		http.Error(w, `{"error":"invalid wallet address"}`, 400)
+		return
 	}
 	msg := "Aequitas: recover escrow " + wallet
 	if err := verifyPersonalSign(msg, req.Signature, wallet); err != nil {
-		jsonError(w, "invalid signature: "+err.Error(), 400); return
+		jsonError(w, "invalid signature: "+err.Error(), 400)
+		return
 	}
 	if err := a.state.RecoverFromEscrow(wallet); err != nil {
-		jsonError(w, err.Error(), 400); return
+		jsonError(w, err.Error(), 400)
+		return
 	}
 	newBalance := a.state.GetBalance(wallet)
 	json.NewEncoder(w).Encode(map[string]interface{}{
