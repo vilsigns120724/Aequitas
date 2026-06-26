@@ -851,8 +851,15 @@ if r.Method == "OPTIONS" { w.WriteHeader(200); return }
 if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
 body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
 if err != nil { http.Error(w, `{"error":"read error"}`, 500); return }
-resp, err := (&http.Client{Timeout: 120 * time.Second}).Post(
-	proofServerURL+"/prove", "application/json", bytes.NewReader(body))
+// Add CHAIN_SERVICE_TOKEN so the proof server's auth check passes.
+// The token lives only in the chain node's env var and is never exposed to
+// browser clients — the proxy is the sole caller of the proof server.
+proofReq, _ := http.NewRequest("POST", proofServerURL+"/prove", bytes.NewReader(body))
+proofReq.Header.Set("Content-Type", "application/json")
+if tok := os.Getenv("CHAIN_SERVICE_TOKEN"); tok != "" {
+	proofReq.Header.Set("x-chain-token", tok)
+}
+resp, err := (&http.Client{Timeout: 120 * time.Second}).Do(proofReq)
 if err != nil { http.Error(w, `{"error":"proof server unreachable"}`, 502); return }
 defer resp.Body.Close()
 respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
@@ -871,7 +878,11 @@ if !matched {
 	http.Error(w, `{"error":"invalid proof id"}`, 400)
 	return
 }
-resp, err := (&http.Client{Timeout: 30 * time.Second}).Get(proofServerURL + "/get/" + id)
+getReq, _ := http.NewRequest("GET", proofServerURL+"/get/"+id, nil)
+if tok := os.Getenv("CHAIN_SERVICE_TOKEN"); tok != "" {
+	getReq.Header.Set("x-chain-token", tok)
+}
+resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(getReq)
 if err != nil { http.Error(w, `{"error":"proof server unreachable"}`, 502); return }
 defer resp.Body.Close()
 respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
