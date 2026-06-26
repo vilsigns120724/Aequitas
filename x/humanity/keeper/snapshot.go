@@ -209,6 +209,10 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		ubiPoolAddr:        true,
 		treasuryPoolAddr:   true,
 	}
+	// FIX 2: Read human count BEFORE acquiring the write lock. TotalHumans()
+	// acquires cs.mu.RLock() internally — calling it while holding cs.mu.Lock()
+	// would deadlock (write lock is not re-entrant in sync.RWMutex).
+	existingHumans := cs.TotalHumans()
 	cs.mu.Lock()
 	for _, acc := range snap.Accounts {
 		acc.Address = strings.ToLower(acc.Address)
@@ -223,7 +227,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	// FIX 11: Only import pool state on genuine cold start (no humans registered).
 	// Prevents a stale snapshot from overwriting an active pool that temporarily has
 	// zero reserves (e.g., after all liquidity was removed).
-	if snap.Pool != nil && cs.TotalHumans() == 0 && (cs.pool == nil || (cs.pool.ReserveAEQ.Float() == 0 && cs.pool.ReserveTUSD.Float() == 0)) {
+	if snap.Pool != nil && existingHumans == 0 && (cs.pool == nil || (cs.pool.ReserveAEQ.Float() == 0 && cs.pool.ReserveTUSD.Float() == 0)) {
 		cs.pool = snap.Pool
 	}
 	for nullifier, wallet := range snap.Nullifiers {
@@ -259,7 +263,10 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		}
 	}
 
-	cs.MigrateEVMFromGoState(V7_CONTRACT_ADDR)
+	if err := cs.MigrateEVMFromGoState(V7_CONTRACT_ADDR); err != nil {
+		fmt.Printf("[SNAPSHOT] ERROR: EVM migration failed after snapshot import: %v\n", err)
+		fmt.Printf("[SNAPSHOT] WARNING: EVM state may be inconsistent — consider restarting and re-importing\n")
+	}
 
 	fmt.Printf("[SNAPSHOT] ✓ Applied %d accounts, %d nullifiers, %d bio-registrations\n",
 		len(snap.Accounts), len(snap.Nullifiers), len(snap.BioRegistrations))

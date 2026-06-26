@@ -261,7 +261,10 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 	if err2 == nil {
 		for rows2.Next() {
 			var commitment, wallet string
-			rows2.Scan(&commitment, &wallet)
+			if err := rows2.Scan(&commitment, &wallet); err != nil {
+				fmt.Printf("[MIGRATE] WARNING: bio_registrations scan error: %v — skipping row\n", err)
+				continue
+			}
 			commitBig, ok := new(big.Int).SetString(strings.TrimPrefix(commitment, "0x"), 10)
 			if !ok {
 				commitBig, ok = new(big.Int).SetString(strings.TrimPrefix(commitment, "0x"), 16)

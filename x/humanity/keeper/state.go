@@ -1,4 +1,4 @@
-package keeper
+﻿package keeper
 
 import (
 "crypto/sha256"
@@ -87,7 +87,6 @@ TotalLPShares Decimal `json:"total_lp_shares"`
 
 type ChainState struct {
 mu        sync.RWMutex
-stateMu   sync.Mutex
 accounts  map[string]*AccountState
 pool      *PoolState
 db        *sql.DB
@@ -95,26 +94,9 @@ useDB     bool
 nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
 }
 
-// acquireStateLock serializes critical state mutations using an in-process
-// sync.Mutex. PostgreSQL advisory locks were removed because database/sql
-// uses a connection pool and lock/unlock can land on different connections,
-// causing lock leaks or deadlocks. For multi-node, the version column on
-// chain_accounts provides optimistic concurrency conflict detection.
-//
-// CALLERS MUST use defer releaseStateLock() immediately after calling
-// acquireStateLock() to ensure the mutex is always released even if a
-// panic occurs between the lock and unlock points. Example:
-//
-//	cs.acquireStateLock()
-//	defer cs.releaseStateLock()
-func (cs *ChainState) acquireStateLock() bool {
-cs.stateMu.Lock()
-return true
-}
-
-func (cs *ChainState) releaseStateLock() {
-cs.stateMu.Unlock()
-}
+// P3-FIX: stateMu, acquireStateLock, and releaseStateLock were dead code
+// (never called). Removed to eliminate a future deadlock trap where a
+// developer might call acquireStateLock inside a function already holding cs.mu.
 
 // beginStateTx starts a SERIALIZABLE PostgreSQL transaction for critical
 // state mutations. The caller is responsible for calling Commit or Rollback.
@@ -582,11 +564,18 @@ if acc.Version == 0 { return }       // new account (INSERT path)
 // Conflict: reload from DB and retry with current state
 if attempt < 2 {
 var dbBal, dbTusd, dbLp float64
-var dbVer int64
-if err := cs.db.QueryRow(`SELECT balance, tusd_balance, lp_shares, version FROM chain_accounts WHERE lower(address) = $1`, acc.Address).
-Scan(&dbBal, &dbTusd, &dbLp, &dbVer); err == nil && dbVer > 0 {
+var dbVer, dbLastActivity int64
+var dbFaucetClaimed, dbDemurrage14Shown bool
+// P1-FIX: reload ALL fields (including faucet_claimed, last_activity_at,
+// demurrage_14_day_warning_shown) so the retry doesn't overwrite those
+// fields with stale in-memory values from before the conflict.
+if err := cs.db.QueryRow(`SELECT balance, tusd_balance, lp_shares, version, last_activity_at, faucet_claimed, demurrage_14_day_warning_shown FROM chain_accounts WHERE lower(address) = $1`, acc.Address).
+Scan(&dbBal, &dbTusd, &dbLp, &dbVer, &dbLastActivity, &dbFaucetClaimed, &dbDemurrage14Shown); err == nil && dbVer > 0 {
 acc.Balance = NewDecimal(dbBal); acc.TUsdBalance = NewDecimal(dbTusd)
 acc.LPShares = NewDecimal(dbLp); acc.Version = dbVer
+acc.LastActivityAt = dbLastActivity
+acc.FaucetClaimed = dbFaucetClaimed
+acc.Demurrage14DayWarningShown = dbDemurrage14Shown
 }
 }
 }
@@ -709,6 +698,11 @@ return acc.Balance.MulFloat(factor)
 // granting someone pre-decay value just because they happened to act at
 // that exact moment. Caller must hold cs.mu (write lock).
 func (cs *ChainState) settleDemurrageLocked(acc *AccountState) {
+// P0-FIX: pool addresses are tokenomics infrastructure — never apply
+// demurrage to them. Doing so would drain pool balances incorrectly.
+if isTokenomicsPoolAddress(acc.Address) {
+	return
+}
 current := effectiveBalance(acc)
 lost := acc.Balance.Sub(current)
 if lost <= 0 {
@@ -921,6 +915,20 @@ if totalShares <= 0 {
 return
 }
 
+// P2-FIX: second totalShares guard after the demurrage loop. Recompute from
+// live account LPShares values so any unexpected collapse is caught here,
+// preventing division by zero in the distribution loop below.
+totalShares = 0
+for _, h := range holders {
+if acc, ok := cs.accounts[h.addr]; ok {
+totalShares += acc.LPShares.Float()
+}
+}
+if totalShares <= 0 {
+fmt.Println("[LP] totalShares collapsed to zero after demurrage loop — pool left untouched")
+return
+}
+
 // NOW read the pool balance — it includes any demurrage credits just added.
 poolAcc, ok := cs.accounts[lpPoolAddr]
 if !ok || poolAcc.Balance <= 0 {
@@ -991,7 +999,8 @@ if !ok || poolAcc.Balance <= 0 {
 fmt.Println("[UBI] Pool empty after demurrage settlement — nothing to distribute")
 return
 }
-cs.settleDemurrageLocked(poolAcc)
+// P0-FIX: Do NOT call settleDemurrageLocked on the pool account itself —
+// pool addresses are tokenomics infrastructure and must never have demurrage applied.
 total := poolAcc.Balance.Float()
 share := total / float64(len(humanAddrs))
 // P0-5/P2-9: prevent funds vanishing via float rounding to 0
@@ -1741,6 +1750,33 @@ if sharesToBurn <= 0 {
 // Zeroing acc.LPShares prevents phantom shares when the clamped
 // sharesToBurn is less than the user's recorded LPShares.
 acc.LPShares = NewDecimal(0)
+// P0-FIX: return immediately after the zero-out so we do NOT fall
+// through to the normal "acc.LPShares -= sharesToBurn" path below,
+// which would compute 0 - sharesToBurn = negative LP shares.
+fraction17 := sharesToBurn / cs.pool.TotalLPShares.Float()
+if fraction17 > 1.0 { fraction17 = 1.0 }
+outAEQ17 := cs.pool.ReserveAEQ.Float() * fraction17
+outTUSD17 := cs.pool.ReserveTUSD.Float() * fraction17
+if outAEQ17 > cs.pool.ReserveAEQ.Float() { outAEQ17 = cs.pool.ReserveAEQ.Float() }
+if outTUSD17 > cs.pool.ReserveTUSD.Float() { outTUSD17 = cs.pool.ReserveTUSD.Float() }
+acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ17))
+acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD17))
+touchActivity(acc)
+cs.enforceWealthCapLocked(acc)
+newResAEQ17 := round6(cs.pool.ReserveAEQ.Float() - outAEQ17)
+newResTUSD17 := round6(cs.pool.ReserveTUSD.Float() - outTUSD17)
+if newResAEQ17 < 0 { newResAEQ17 = 0 }
+if newResTUSD17 < 0 { newResTUSD17 = 0 }
+cs.pool.ReserveAEQ = NewDecimal(newResAEQ17)
+cs.pool.ReserveTUSD = NewDecimal(newResTUSD17)
+cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
+cs.saveAccountToDB(acc)
+cs.savePoolToDB()
+cs.save()
+cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
+go cs.SavePriceSnapshot()
+fmt.Printf("[POOL] ✓ %s removed liquidity (F17 clamp): %.6f shares → %.4f AEQ + %.4f tUSD\n", address, sharesToBurn, outAEQ17, outTUSD17)
+return outAEQ17, outTUSD17, nil
 }
 
 fraction := sharesToBurn / cs.pool.TotalLPShares.Float()

@@ -687,11 +687,12 @@ txHash = strings.ToLower(txHash)
 // instead of always returning the zero address. MetaMask and block explorers
 // use this to display the correct from/to fields for a transaction.
 s.mu.Lock()
-fromAddr := s.txSenders[txHash]
+fromAddr, known := s.txSenders[txHash]
 toAddr := s.txTos[txHash]
 s.mu.Unlock()
-if fromAddr == "" {
-fromAddr = "0x0000000000000000000000000000000000000000"
+if !known {
+// Unknown txHash — return null per Ethereum spec (not a synthetic object)
+return nil, nil
 }
 var toField interface{} = nil
 if toAddr != "" {

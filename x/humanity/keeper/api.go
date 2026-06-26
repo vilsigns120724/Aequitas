@@ -9,6 +9,7 @@ import (
 "html"
 "io"
 "math/big"
+"net"
 "net/http"
 "os"
 "path/filepath"
@@ -282,7 +283,8 @@ w.Header().Set("Access-Control-Allow-Origin", "*")
 proofHTTP2 := &http.Client{Timeout: 8 * time.Second}
 resp, err := proofHTTP2.Get("https://aequitas-proof-server-production.up.railway.app/humans")
 if err != nil {
-json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+// FIX 11: Don't leak the internal URL or low-level network error to clients.
+jsonError(w, "proof server unavailable", 503)
 return
 }
 defer resp.Body.Close()
@@ -486,6 +488,8 @@ return balance, isHuman
 
 func (a *APIServer) handleRegistered(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "text/html")
+// FIX 10: Add Content-Security-Policy to prevent XSS escalation on this HTML page.
+w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
 // XSS fix: escape wallet parameter before writing to HTML — without this,
 // a crafted URL like /registered?wallet=<script>... would execute JS.
 wallet := html.EscapeString(r.URL.Query().Get("wallet"))
@@ -723,6 +727,10 @@ http.Error(w, `{"error":"invalid address"}`, 400)
 return
 }
 challenge := a.blockchain.IssuePeerChallenge(addr)
+if challenge == "" {
+	jsonError(w, "too many pending challenges, retry after 90 seconds", 429)
+	return
+}
 json.NewEncoder(w).Encode(map[string]interface{}{
 "challenge":  challenge,
 "expires_in": 90,
@@ -788,10 +796,12 @@ keyAuthorized := false
 for _, k := range keys {
 if k["signing_address"] == addr { keyAuthorized = true; break }
 }
-// FIX 3: keyAuthorized alone is not sufficient for AddAuthorizedValidator.
-// A known key address (readable from /api/blocks) must also prove private-key
-// possession via challenge-response signature to prevent impersonation.
-if secretOK || sigOK || (keyAuthorized && sigOK) {
+// Authorization: PEER_SECRET match OR a valid challenge-response signature.
+// keyAuthorized alone is not sufficient — anyone can read validator addresses
+// from /api/blocks. The peer must prove private-key possession (sigOK) or
+// share the PEER_SECRET. (keyAuthorized && sigOK) is a subset of sigOK and
+// was removed as dead code (FIX 6).
+if secretOK || sigOK {
 nodeWallet := strings.ToLower(strings.TrimSpace(req.NodeOperatorWallet))
 if nodeWallet == "" {
 	nodeWallet = addr
@@ -804,8 +814,7 @@ if !a.state.IsHuman(nodeWallet) {
 a.blockchain.AddAuthorizedValidator(addr)
 method := "PEER_SECRET"
 if sigOK { method = "challenge-response signature" }
-if keyAuthorized && !sigOK && !secretOK { method = "registered validator key (Step-5b)" }
-if keyAuthorized && (sigOK || secretOK) { method += " (registered key)" }
+if keyAuthorized && sigOK { method += " (registered key)" }
 fmt.Printf("[PEERS] Auto-authorized validator via %s: %s (wallet: %s)\n", method, addr, nodeWallet)
 } else if req.Signature == "" {
 fmt.Printf("[PEERS] Validator %s: no signature provided — request /api/peers/challenge first\n", addr)
@@ -984,6 +993,7 @@ http.ServeContent(w, r, filename, fi.ModTime(), f)
 func (a *APIServer) handleLanding(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self'; img-src 'self' data:")
 	fmt.Fprint(w, landingHTML)
 }
 
@@ -1045,6 +1055,7 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Wallet    string `json:"wallet"`
 		Signature string `json:"signature"`
+		Guardian  string `json:"guardian"` // FIX 9: optional client-supplied guardian for early mismatch detection
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, 400); return
@@ -1053,18 +1064,26 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 	if !isValidWalletAddr(wallet) {
 		http.Error(w, `{"error":"invalid wallet address"}`, 400); return
 	}
-	// Look up who the guardian is.
+	// FIX 3: Look up guardian from DB first, then immediately verify the
+	// signature using that address before passing it into ConfirmAlive.
+	// ConfirmAlive re-fetches under its own lock to close the TOCTOU window.
 	guardianAddr, _, err := a.state.GetGuardian(wallet)
 	if err != nil || guardianAddr == "" {
 		http.Error(w, `{"error":"no guardian set for this wallet"}`, 404); return
 	}
 	guardianAddr = strings.ToLower(guardianAddr)
+	// FIX 9: Defense-in-depth — if client supplied a guardian address, check it
+	// matches the DB value before doing any signature work.
+	if req.Guardian != "" && strings.ToLower(strings.TrimSpace(req.Guardian)) != guardianAddr {
+		jsonError(w, "guardian address mismatch", 400); return
+	}
 	// Signature is by the guardian.
 	msg := "Aequitas: confirm alive " + wallet
 	if sigErr := verifyPersonalSign(msg, req.Signature, guardianAddr); sigErr != nil {
 		jsonError(w, "invalid guardian signature: "+sigErr.Error(), 400); return
 	}
-	if confirmErr := a.state.ConfirmAlive(wallet); confirmErr != nil {
+	// FIX 3 (cont.): pass guardianAddr so ConfirmAlive can re-verify under lock.
+	if confirmErr := a.state.ConfirmAlive(wallet, guardianAddr); confirmErr != nil {
 		jsonError(w, confirmErr.Error(), 400); return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1127,6 +1146,19 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	if r.Method == "OPTIONS" { w.WriteHeader(200); return }
 	if r.Method != "POST" { http.Error(w, `{"error":"POST required"}`, 405); return }
+	// FIX 5: IP-based rate limiting — reuse the package-level registerRateLimit
+	// sync.Map so escrow recovery cannot be hammered faster than once per 30s per IP.
+	clientIP := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(clientIP); err == nil {
+		clientIP = host
+	}
+	if ts, loaded := registerRateLimit.Load(clientIP); loaded {
+		if time.Since(ts.(time.Time)) < 30*time.Second {
+			jsonError(w, "rate limited, try again shortly", 429)
+			return
+		}
+	}
+	registerRateLimit.Store(clientIP, time.Now())
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req struct {
 		Wallet    string `json:"wallet"`

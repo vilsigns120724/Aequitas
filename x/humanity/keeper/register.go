@@ -324,15 +324,17 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	var nullifierBytes [32]byte
 	if effectiveNullifier != "" {
 		n := new(big.Int)
-		s := strings.TrimPrefix(effectiveNullifier, "0x")
-		if effectiveNullifier != s {
-			// Had "0x" prefix → hex string (v1 circuit)
-			n.SetString(s, 16)
-		} else {
-			// No prefix → try decimal first (v2 circuit), fall back to hex
-			if _, ok := n.SetString(s, 10); !ok {
-				n.SetString(s, 16)
+		if strings.HasPrefix(effectiveNullifier, "0x") || strings.HasPrefix(effectiveNullifier, "0X") {
+			// Explicit hex prefix → always parse as hex (v1 circuit SHA256 output)
+			n.SetString(strings.TrimPrefix(strings.TrimPrefix(effectiveNullifier, "0x"), "0X"), 16)
+		} else if req.CircuitVersion >= 2 {
+			// v2: decimal string (ZK-bound pubSignals[1])
+			if _, ok := n.SetString(effectiveNullifier, 10); !ok {
+				n.SetString(effectiveNullifier, 16)
 			}
+		} else {
+			// v1 without 0x prefix: SHA256 output is always hex
+			n.SetString(effectiveNullifier, 16)
 		}
 		b := n.Bytes()
 		if len(b) <= 32 {
@@ -378,8 +380,21 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		if !a.state.TryClaimNullifier(effectiveNullifier, wallet) {
 			return "", fmt.Errorf("nullifier already claimed: %s", effectiveNullifier)
 		}
-		if regErr := a.state.RegisterHuman(wallet); regErr != nil {
-			fmt.Printf("[REGISTER] Warning: native balance grant failed after mirror: %v\n", regErr)
+		var regErr error
+		for attempt := 1; attempt <= 3; attempt++ {
+			regErr = a.state.RegisterHuman(wallet)
+			if regErr == nil {
+				break
+			}
+			if attempt < 3 {
+				time.Sleep(time.Duration(attempt) * 2 * time.Second)
+				fmt.Printf("[REGISTER] Mirror RegisterHuman attempt %d failed: %v, retrying...\n", attempt, regErr)
+			}
+		}
+		if regErr != nil {
+			fmt.Printf("[REGISTER] Mirror RegisterHuman permanently failed for %s after 3 attempts: %v\n", wallet, regErr)
+			// Note: nullifier is already claimed — user must contact support
+			return "", fmt.Errorf("registration failed after retries: %w", regErr)
 		}
 		if len(req.PubSignals) > 0 {
 			commitment := req.PubSignals[0]
@@ -586,7 +601,10 @@ func notifyProofServer(bioHashKey, wallet string) {
 		fmt.Printf("[REGISTER] Warning: proof-server /store-bio call failed: %v\n", err)
 		return
 	}
-	defer resp.Body.Close()
+	if resp != nil {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}
 	if resp.StatusCode != 200 {
 		fmt.Printf("[REGISTER] Warning: proof-server /store-bio returned %d\n", resp.StatusCode)
 	}

@@ -186,10 +186,29 @@ func (cs *ChainState) GetGuardian(wallet string) (guardian string, setAt int64, 
 // ConfirmAlive resets wallet's last_activity_at to now. The caller must be the
 // guardian of wallet; the API handler verifies this before calling here.
 // The guardian has ZERO financial access — this only resets the inactivity timer.
-func (cs *ChainState) ConfirmAlive(wallet string) error {
+//
+// expectedGuardian is the guardian address the API handler looked up before
+// acquiring this lock. We re-fetch and compare inside the lock to close the
+// TOCTOU window where a concurrent SetGuardian could swap the guardian between
+// the API handler's DB lookup and this update.
+func (cs *ChainState) ConfirmAlive(wallet, expectedGuardian string) error {
 	wallet = strings.ToLower(wallet)
+	expectedGuardian = strings.ToLower(expectedGuardian)
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+
+	// Re-verify the guardian inside the lock to prevent TOCTOU: a concurrent
+	// SetGuardian could change the guardian between the API handler's DB lookup
+	// and here. Re-fetching under the write lock ensures atomicity.
+	if cs.db != nil && expectedGuardian != "" {
+		var currentGuardian string
+		dbErr := cs.db.QueryRow(
+			`SELECT guardian_address FROM guardians WHERE wallet_address = $1`, wallet,
+		).Scan(&currentGuardian)
+		if dbErr != nil || strings.ToLower(currentGuardian) != expectedGuardian {
+			return fmt.Errorf("guardian mismatch — concurrent guardian change detected, retry")
+		}
+	}
 
 	acc, ok := cs.accounts[wallet]
 	if !ok {
@@ -229,13 +248,21 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 		return fmt.Errorf("no database")
 	}
 
+	// FIX 8: Use DELETE...RETURNING for an atomic claim. A plain SELECT then
+	// DELETE has a TOCTOU race: two concurrent recovery calls can both pass the
+	// SELECT and then both credit the balance. The atomic DELETE returns the row
+	// only to the goroutine that deletes it — the other gets sql.ErrNoRows.
 	var amount float64
 	var movedAt int64
 	err := cs.db.QueryRow(
-		`SELECT amount, moved_at FROM escrow_accounts WHERE wallet_address = $1`, wallet,
+		`DELETE FROM escrow_accounts WHERE wallet_address = $1 RETURNING amount, moved_at`,
+		wallet,
 	).Scan(&amount, &movedAt)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("no escrow found for wallet %s", wallet)
+	}
 	if err != nil {
-		return fmt.Errorf("no escrow found for %s", wallet)
+		return fmt.Errorf("escrow retrieval failed: %w", err)
 	}
 	if amount <= 0 {
 		return fmt.Errorf("escrow amount is zero")
@@ -256,13 +283,6 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 	touchActivity(acc) // recovering from escrow resets the inactivity clock
 	cs.enforceWealthCapLocked(acc)
 	cs.saveAccountToDB(acc)
-
-	// Remove the escrow row.
-	if _, dbErr := cs.db.Exec(
-		`DELETE FROM escrow_accounts WHERE wallet_address = $1`, wallet,
-	); dbErr != nil {
-		fmt.Printf("[ESCROW] Warning: could not delete escrow row for %s: %v\n", wallet, dbErr)
-	}
 
 	fmt.Printf("[ESCROW] ✓ %s recovered %.6f AEQ from escrow\n", wallet, amount)
 	return nil

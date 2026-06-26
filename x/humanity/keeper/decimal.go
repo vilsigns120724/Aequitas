@@ -22,7 +22,14 @@ func NewDecimal(aeq float64) Decimal {
 	if math.IsNaN(aeq) || math.IsInf(aeq, 0) {
 		return 0
 	}
-	return Decimal(math.Round(aeq * float64(DecimalPrecision)))
+	// P2-FIX: guard against int64 overflow for large finite floats.
+	// math.Round on a value > ~9.2e12 AEQ (9.2e18 micro-units) would
+	// overflow int64, producing a large negative or garbage value.
+	result := math.Round(aeq * float64(DecimalPrecision))
+	if result > float64(math.MaxInt64) || result < float64(math.MinInt64) {
+		return 0
+	}
+	return Decimal(result)
 }
 
 // NewDecimalFromMicro creates a Decimal directly from micro-units.
