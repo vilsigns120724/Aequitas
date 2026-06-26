@@ -264,6 +264,19 @@ key TEXT PRIMARY KEY,
 value TEXT NOT NULL
 )`)
 
+// EVM transaction receipts — persisted so MetaMask can get correct
+// receipts after a node restart (avoids "Senden fehlgeschlagen" for
+// transactions that actually succeeded before the node restarted).
+dbExec(`CREATE TABLE IF NOT EXISTS evm_tx_receipts (
+tx_hash    TEXT PRIMARY KEY,
+from_addr  TEXT NOT NULL,
+to_addr    TEXT,
+status     TEXT NOT NULL DEFAULT '0x1',
+created_at BIGINT NOT NULL
+)`)
+// Keep only the last 10000 receipts to prevent unbounded growth.
+// Old receipts are pruned in SaveTxReceipt.
+
 cs.InitSwapNoncesTable()
 cs.InitValidatorKeysTable()
 cs.InitGiniSnapshotsTable()

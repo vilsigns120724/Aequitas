@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -1051,4 +1052,47 @@ func (cs *ChainState) ConsumeSwapNonce(wallet string, nonce int64) error {
 		return fmt.Errorf("nonce %d already used or invalid — replay rejected", nonce)
 	}
 	return nil
+}
+
+// ─── EVM TX RECEIPTS (persistent — survives node restart) ────────────────────
+
+// SaveTxReceipt persists an EVM transaction receipt to the database so MetaMask
+// can retrieve it after a node restart. Without this, restarts cleared the
+// in-memory txStatus map and MetaMask would show successful transactions as
+// "Senden fehlgeschlagen" (failed) because receipts returned null.
+func (cs *ChainState) SaveTxReceipt(txHash, fromAddr, toAddr, status string) {
+	if cs.db == nil {
+		return
+	}
+	_, err := cs.db.Exec(
+		`INSERT INTO evm_tx_receipts (tx_hash, from_addr, to_addr, status, created_at)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (tx_hash) DO UPDATE SET status = $4`,
+		strings.ToLower(txHash), strings.ToLower(fromAddr),
+		strings.ToLower(toAddr), status, time.Now().Unix(),
+	)
+	if err != nil {
+		fmt.Printf("[EVM] SaveTxReceipt error for %s: %v\n", txHash, err)
+		return
+	}
+	// Prune old receipts — keep only the latest 10,000 to prevent unbounded growth.
+	cs.db.Exec(`DELETE FROM evm_tx_receipts WHERE tx_hash NOT IN (
+		SELECT tx_hash FROM evm_tx_receipts ORDER BY created_at DESC LIMIT 10000
+	)`)
+}
+
+// GetTxReceipt looks up a persisted receipt. Returns (fromAddr, toAddr, status, found).
+// Called by getTransactionReceipt when the txHash is not in the in-memory cache.
+func (cs *ChainState) GetTxReceipt(txHash string) (fromAddr, toAddr, status string, found bool) {
+	if cs.db == nil {
+		return "", "", "", false
+	}
+	err := cs.db.QueryRow(
+		`SELECT from_addr, COALESCE(to_addr, ''), status FROM evm_tx_receipts WHERE tx_hash = $1`,
+		strings.ToLower(txHash),
+	).Scan(&fromAddr, &toAddr, &status)
+	if err == sql.ErrNoRows || err != nil {
+		return "", "", "", false
+	}
+	return fromAddr, toAddr, status, true
 }

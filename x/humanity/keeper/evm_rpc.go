@@ -454,6 +454,8 @@ return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 // Sync updated balances to EVM storage so both ledgers agree.
 s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
 s.mu.Lock(); s.txStatus[txHash] = true; s.mu.Unlock()
+// Persist receipt to DB so MetaMask gets correct status after node restart.
+s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1")
 if s.dag != nil {
 	s.dag.AddTransaction(Transaction{
 		Type:   "transfer",
@@ -489,6 +491,7 @@ return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 }
 s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
 s.mu.Lock(); s.txStatus[txHash] = true; s.mu.Unlock()
+s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1")
 if s.dag != nil {
 	s.dag.AddTransaction(Transaction{
 		Type:   "transfer",
@@ -621,32 +624,40 @@ txHash = strings.ToLower(txHash)
 s.mu.Lock()
 _, knownStatus := s.txStatus[txHash]
 _, knownDeploy := s.deployedContracts[txHash]
-if !knownStatus && !knownDeploy {
-s.mu.Unlock()
-return nil, nil
-}
+inMemory := knownStatus || knownDeploy
 var contractAddr interface{} = nil
 if addr, ok := s.deployedContracts[txHash]; ok {
 contractAddr = addr
 }
-// Default to success (0x1) for known txs; fall back to failure only
-// when we explicitly recorded a failure.
 status := "0x1"
 if succeeded, ok := s.txStatus[txHash]; ok && !succeeded {
 status = "0x0"
 }
-// Use the real sender recovered from the raw transaction at submission time.
 fromAddr := s.txSenders[txHash]
+toAddrMem := s.txTos[txHash]
+s.mu.Unlock()
+
+// If not in memory (node restarted), fall back to DB-persisted receipt.
+// This prevents MetaMask from showing successful transactions as "failed"
+// after a node restart clears the in-memory maps.
+if !inMemory {
+	if dbFrom, dbTo, dbStatus, found := s.state.GetTxReceipt(txHash); found {
+		fromAddr = dbFrom
+		toAddrMem = dbTo
+		status = dbStatus
+		inMemory = true // treat DB hit same as memory hit
+	}
+}
+if !inMemory {
+	return nil, nil
+}
 if fromAddr == "" {
 fromAddr = "0x0000000000000000000000000000000000000000"
 }
-// Use the real destination recovered at submission time.
 toField := interface{}(nil)
-if toStr := s.txTos[txHash]; toStr != "" && contractAddr == nil {
-// For non-deployment transactions, populate the `to` field.
-toField = toStr
+if toAddrMem != "" && contractAddr == nil {
+toField = toAddrMem
 }
-s.mu.Unlock()
 
 block := s.dag.LatestBlock()
 height := uint64(0)
