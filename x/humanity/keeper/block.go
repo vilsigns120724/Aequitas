@@ -284,7 +284,23 @@ Height:       0,
 Timestamp:    genesisTimestamp(), // P2-11: reads from genesis.json when available
 ParentHashes: []string{},
 Proposer:     "genesis",
-Humans:       dag.state.TotalHumans(),
+// FIX: this used to be dag.state.TotalHumans() — i.e. however many humans
+// THIS node's own DB currently has loaded at the moment it happens to
+// start up. calculateHash() includes Humans in the hashed fields, so two
+// nodes starting at different points in registration history (e.g. one
+// freshly reset to 0 humans, another restarted after a registration
+// already succeeded) computed two DIFFERENT genesis hashes. Since
+// AddPeerBlock only removes a parent from dag.tips on an EXACT hash
+// match, a secondary's own (differently-hashed) genesis tip was never
+// removed when the primary's block #1 arrived — referencing the
+// PRIMARY's genesis hash as its parent, not the secondary's. The
+// secondary's orphaned genesis then sat in dag.tips forever (nothing
+// ever referenced it as a parent to remove it), permanently showing
+// "Tips: 2" with no merge ever happening — confirmed in production.
+// Genesis must be 100% deterministic across every node by definition
+// (it's the one block everyone is supposed to agree on without any
+// data exchange), so it can never depend on a node's own live state.
+Humans:       0,
 IsGenesis:    true,
 }
 genesis.Hash = dag.calculateHash(genesis)
