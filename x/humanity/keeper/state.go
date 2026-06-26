@@ -161,6 +161,9 @@ func NewChainState(dataFile string) *ChainState {
 				if os.Getenv("RESET_DB_STATE") == "true" {
 					cs.resetDBStateForBootstrap()
 				}
+				if os.Getenv("CLEAR_REGISTRATIONS") == "true" {
+					cs.clearRegistrationsFromDB()
+				}
 				cs.loadFromDB()
 				fmt.Println("✓ ChainState using PostgreSQL")
 				return cs
@@ -371,6 +374,41 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 	fmt.Println("[DB-RESET] Done")
 	fmt.Println("[DB-RESET] ⚠ IMPORTANT: remove RESET_DB_STATE=true from env vars after this deploy succeeds.")
 	fmt.Println("[DB-RESET]   Leaving it set will WIPE the DB again on every future restart.")
+}
+
+// clearRegistrationsFromDB removes all human registration data without wiping
+// the full DB. Triggered by CLEAR_REGISTRATIONS=true env var. Clears:
+// nullifiers, bio_registrations, chain_accounts (is_human+balance), EVM
+// storage slots for V7 (usedNullifiers/usedCommitments/isHuman), evm_nonces,
+// evm_tx_receipts, and pending_txs. Safe to run on primary or secondary.
+// Remove CLEAR_REGISTRATIONS=true after the first successful restart.
+func (cs *ChainState) clearRegistrationsFromDB() {
+	if cs.db == nil {
+		return
+	}
+	if time.Since(processStartTime) > 5*time.Minute {
+		fmt.Println("[CLEAR-REG] Refused: CLEAR_REGISTRATIONS=true but process started >5 minutes ago")
+		return
+	}
+	fmt.Println("[CLEAR-REG] Clearing all registration data from DB...")
+	v7Addr := strings.ToLower(V7_CONTRACT_ADDR)
+	stmts := []string{
+		`DELETE FROM nullifiers`,
+		`DELETE FROM bio_registrations`,
+		`UPDATE chain_accounts SET is_human = false, balance = 0, tusd_balance = 0, lp_shares = 0, last_activity_at = 0, faucet_claimed = false`,
+		`DELETE FROM evm_storage WHERE lower(address) = '` + v7Addr + `'`,
+		`DELETE FROM evm_nonces`,
+		`DELETE FROM evm_tx_receipts`,
+		`DELETE FROM pending_txs`,
+		`DELETE FROM evm_contracts WHERE lower(address) = '` + v7Addr + `'`,
+	}
+	for _, stmt := range stmts {
+		if _, err := cs.db.Exec(stmt); err != nil {
+			fmt.Printf("[CLEAR-REG] Warning: %v\n", err)
+		}
+	}
+	fmt.Println("[CLEAR-REG] Done — all registrations cleared.")
+	fmt.Println("[CLEAR-REG] ⚠ Remove CLEAR_REGISTRATIONS=true from env vars and redeploy once more.")
 }
 
 // setConfigValue persists a key/value pair to chain_config (upsert).
