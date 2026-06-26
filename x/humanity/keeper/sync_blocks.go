@@ -141,44 +141,92 @@ func (dag *BlockDAG) startSyncForPeer(peerURL string) {
 	}()
 }
 
-func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
-	resp, err := httpSyncClient.Get(nodeURL + "/api/blocks")
+// fetchBlocksPage fetches one ascending-order page of blocks from nodeURL
+// via the existing ?offset=&limit= pagination on /api/blocks.
+func (dag *BlockDAG) fetchBlocksPage(nodeURL string, offset, limit int) ([]*Block, error) {
+	resp, err := httpSyncClient.Get(fmt.Sprintf("%s/api/blocks?offset=%d&limit=%d", nodeURL, offset, limit))
 	if err != nil {
-		fmt.Printf("[HTTP-SYNC] ✗ Could not reach %s: %v\n", nodeURL, err)
-		return false
+		return nil, err
 	}
+	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
-	resp.Body.Close()
 	var blocks []*Block
 	if err := json.Unmarshal(body, &blocks); err != nil {
-		fmt.Printf("[HTTP-SYNC] ✗ Bad response from %s: %v\n", nodeURL, err)
-		return false
+		return nil, err
 	}
-	const maxBlocksPerSync = 50000
-	if len(blocks) > maxBlocksPerSync {
-		fmt.Printf("[HTTP-SYNC] Peer %s returned %d blocks (max %d) -- skipping\n", nodeURL, len(blocks), maxBlocksPerSync)
-		return false
-	}
-	added := 0
-	for _, block := range blocks {
-		dag.mu.RLock()
-		_, exists := dag.blocks[block.Hash]
-		dag.mu.RUnlock()
-		if !exists && dag.AddPeerBlock(block) {
-			added++
+	return blocks, nil
+}
+
+// doSyncOnce walks nodeURL's block history in ascending order, starting
+// from however many blocks we already have locally (offset = dag.TotalBlocks()),
+// fetching pageSize-sized pages until it catches up to the peer's current
+// tip. Returns false on a network/decode error (used by syncWithNode to
+// back off), true otherwise — including the normal "nothing new" case.
+//
+// FIX: this used to fetch only the newest 50 blocks (the /api/blocks
+// default with no query params), every single poll, forever. AddPeerBlock
+// tolerates a missing parent only while len(dag.blocks) <= 10 (the
+// "initial sync" loophole) — beyond that, any block whose parent isn't
+// already known is rejected outright. A node that starts (or falls)  more
+// than ~50 blocks behind the peer — the normal case for any fresh
+// secondary, or one that was offline for more than a few minutes — could
+// therefore never close the gap: every poll fetched the exact same "newest
+// 50" window, permanently missing everything older. Walking forward through
+// history in large explicit-offset pages keeps the parent chain built up
+// contiguously regardless of how far behind we start, instead of relying on
+// that one-time tolerance window.
+func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
+	const pageSize = 500
+	const maxPagesPerCall = 2000 // hard cap: 1,000,000 blocks per call — headroom, not unbounded
+	totalAdded := 0
+	for page := 0; page < maxPagesPerCall; page++ {
+		offset := dag.TotalBlocks()
+		blocks, err := dag.fetchBlocksPage(nodeURL, offset, pageSize)
+		if err != nil {
+			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (offset=%d) from %s: %v\n", offset, nodeURL, err)
+			if page == 0 {
+				return false // never even got a first page — treat as a failed sync attempt
+			}
+			break // got at least one page this call; report what we added
+		}
+		if len(blocks) == 0 {
+			break // caught up — peer has nothing more at this offset
+		}
+		addedThisPage := 0
+		for _, block := range blocks {
+			dag.mu.RLock()
+			_, exists := dag.blocks[block.Hash]
+			dag.mu.RUnlock()
+			if !exists && dag.AddPeerBlock(block) {
+				addedThisPage++
+			}
+		}
+		totalAdded += addedThisPage
+		if len(blocks) < pageSize {
+			break // last page (peer's tip is within this page)
+		}
+		if addedThisPage == 0 {
+			// Fetched a full page but none of it could be added (e.g. all
+			// rejected for missing parents past the tolerance window) — more
+			// pages at a growing offset won't help, stop instead of looping
+			// forever on the same effective spot.
+			fmt.Printf("[HTTP-SYNC] ⚠ Page at offset=%d added 0 of %d blocks — stopping sync from %s for this cycle\n", offset, len(blocks), nodeURL)
+			break
 		}
 	}
-	if added > 0 {
+	if totalAdded > 0 {
 		dag.mu.RLock()
 		tipCount := len(dag.tips)
 		dag.mu.RUnlock()
-		fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d\n", added, nodeURL, tipCount)
+		fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d | height %d\n", totalAdded, nodeURL, tipCount, dag.Height())
 	}
 	return true
 }
 
 func (dag *BlockDAG) syncWithNode(nodeURL string) {
-	// Try immediately on first call — no initial delay.
+	// Try immediately on first call — no initial delay. doSyncOnce itself
+	// pages through full history starting from whatever we already have
+	// locally, so this one call already performs the initial catch-up.
 	backoff := 6 * time.Second
 	dag.doSyncOnce(nodeURL)
 	ticker := time.NewTicker(backoff)
