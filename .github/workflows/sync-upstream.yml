@@ -1,0 +1,24 @@
+# Auto-syncs forks of this repo with the upstream every 6 hours.
+# Fork operators: after syncing once (click "Sync fork" on GitHub),
+# this file will be in your fork and will keep it up to date automatically.
+name: Sync Fork with Upstream
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours
+  workflow_dispatch:          # manual trigger available
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    # Only run in forks, not in the upstream repo itself
+    if: github.repository != 'hanoi96international-gif/Aequitas'
+    steps:
+      - name: Sync fork with upstream
+        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
+        with:
+          upstream_sync_repo: hanoi96international-gif/Aequitas
+          upstream_sync_branch: main
+          target_sync_branch: main
+          target_repo_token: ${{ secrets.GITHUB_TOKEN }}
+          test_mode: false
