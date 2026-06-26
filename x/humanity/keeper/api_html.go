@@ -3564,6 +3564,8 @@ function setLang(lang) {
   if (!t) return;
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
+    // Translation strings may contain safe HTML (bold, emphasis) — this is intentional.
+    // Never allow user-supplied content to flow into the T object.
     if (t[key] !== undefined) el.innerHTML = t[key];
   });
 }
@@ -3592,7 +3594,7 @@ function avatarColor(a) {
 }
 
 async function addToMetaMask() {
-  if (!window.ethereum) { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a> to use this feature.', 'warn'); return; }
+  if (!window.ethereum) { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a> to use this feature.', 'warn', true); return; }
   try {
     await window.ethereum.request({
       method: 'wallet_addEthereumChain',
@@ -4299,7 +4301,7 @@ async function loadBlocks() {
           ? '<span class="exp-badge exp-badge-tx">' + txCount + '</span>'
           : '<span class="exp-muted">0</span>';
         return '<tr class="exp-tr" onclick="openBlock(\'' + sanitize(b.hash) + '\')">' +
-          '<td style="color:var(--purple);font-weight:700">#' + b.height + '</td>' +
+          '<td style="color:var(--purple);font-weight:700">#' + sanitize(String(b.height)) + '</td>' +
           '<td class="exp-muted" style="font-size:0.6rem">' + sanitize(timeAgo(b.timestamp)) + '</td>' +
           '<td>' + txBadge + '</td>' +
           '<td class="exp-addr" style="font-size:0.6rem">' + sanitize(proposer) + '</td>' +
@@ -4328,7 +4330,7 @@ async function loadBlocks() {
           const typeColor = tx.type === 'register_human' ? 'var(--gold)' : tx.type === 'transfer' ? 'var(--teal)' : tx.type === 'swap' ? 'var(--purple)' : 'var(--muted)';
           return '<tr class="exp-tr" onclick="openBlock(\'' + sanitize(item.blockHash) + '\')">' +
             '<td style="color:var(--teal);font-size:0.59rem">' + sanitize(shortRef) + '</td>' +
-            '<td style="color:var(--purple);font-weight:700">#' + item.blockHeight + '</td>' +
+            '<td style="color:var(--purple);font-weight:700">#' + sanitize(String(item.blockHeight)) + '</td>' +
             '<td style="color:' + typeColor + ';font-size:0.59rem">' + sanitize(tx.type || '—') + '</td>' +
             '<td style="font-size:0.62rem">' + amt + '</td>' +
             '</tr>';
@@ -4423,7 +4425,7 @@ async function loadHumans() {
     list.innerHTML = d.humans.map(h => {
       const color = avatarColor(h.address || '0x00');
       const init = (h.address || '??').slice(2, 4).toUpperCase();
-      return '<div class="hi"><div class="hav" style="background:' + color + '20;color:' + color + ';border-color:' + color + '50">' + init + '</div><div style="flex:1;min-width:0"><div class="hbal">' + fmt(h.balance) + ' AEQ</div><div class="hadr">' + h.address + '</div></div><div class="hbdg">HUMAN</div></div>';
+      return '<div class="hi"><div class="hav" style="background:' + color + '20;color:' + color + ';border-color:' + color + '50">' + init + '</div><div style="flex:1;min-width:0"><div class="hbal">' + sanitize(fmt(h.balance)) + ' AEQ</div><div class="hadr">' + sanitize(h.address || '—') + '</div></div><div class="hbdg">HUMAN</div></div>';
     }).join('');
   } catch (e) {}
 }
@@ -4470,9 +4472,20 @@ function setChartInterval(ms) {
   drawPriceChart();
 }
 
-function swapLog(msg, type) {
+function swapLog(msg, type, allowHTML) {
   const el = document.getElementById('swap-log');
-  el.innerHTML += '<div><span class="' + (type || 'info') + '">' + msg + '</span></div>';
+  if (!el) return;
+  const row = document.createElement('div');
+  const span = document.createElement('span');
+  span.className = (type || 'info');
+  if (allowHTML) {
+    // only for explicit HTML content (e.g. MetaMask deep-links) — never pass server messages here
+    span.innerHTML = msg;
+  } else {
+    span.textContent = msg; // default: treat as plain text
+  }
+  row.appendChild(span);
+  el.appendChild(row);
   el.scrollTop = el.scrollHeight;
 }
 
@@ -4605,7 +4618,7 @@ function updateFeeEstimate() {
       if (midEst && midEst.amountOut < (aeqToTusd ? currentPoolTUSD : currentPoolAEQ) * 0.99) lo = mid;
       else hi = mid;
     }
-    warnEl.innerHTML = '⚠ Too large for current pool liquidity. Try up to ~' + lo.toFixed(4) + ' ' + unit + '.';
+    warnEl.textContent = '⚠ Too large for current pool liquidity. Try up to ~' + lo.toFixed(4) + ' ' + unit + '.';
     warnEl.style.display = 'block';
     if (swapWaddr) goBtn.disabled = true;
   } else if (est) {
@@ -4632,13 +4645,13 @@ function updateFeeEstimate() {
         ? ('1 AEQ = ' + (amtAfterFee > 0 ? est.amountOut / amtAfterFee : 0).toFixed(4) + ' tUSD')
         : ('1 tUSD = ' + (amtAfterFee > 0 ? est.amountOut / amtAfterFee : 0).toFixed(4) + ' AEQ');
       if (impact >= 5) {
-        warnEl.innerHTML = '⚠ High price impact (' + impact.toFixed(2) + '%). Consider a smaller amount.';
+        warnEl.textContent = '⚠ High price impact (' + impact.toFixed(2) + '%). Consider a smaller amount.';
         warnEl.style.display = 'block';
       } else {
         warnEl.style.display = 'none';
       }
     } else {
-      warnEl.innerHTML = 'You will receive ≈ ' + est.amountOut.toFixed(6) + ' ' + outUnit;
+      warnEl.textContent = 'You will receive ≈ ' + est.amountOut.toFixed(6) + ' ' + outUnit;
       warnEl.style.display = 'block';
     }
     if (swapWaddr) goBtn.disabled = false;
@@ -4648,7 +4661,7 @@ function updateFeeEstimate() {
 async function connectSwapWallet() {
   if (!window.ethereum) {
     const _isMobS = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (_isMobS) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; swapLog('🦊 MetaMask nicht gefunden. Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn'); } else { swapLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn'); }
+    if (_isMobS) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; swapLog('🦊 MetaMask nicht gefunden. Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { swapLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
     return;
   }
   try {
@@ -4715,13 +4728,13 @@ function showDemurrageNotice(bd) {
   if (!box) return;
   if (bd.demurrage_active) {
     box.style.display = 'block';
-    box.innerHTML = '⏳ Part of your idle AEQ balance is now slowly decaying (0.5%/month) because it hasn\'t been used in over 3 months. Send, swap, or deposit any amount to reset the clock.';
+    box.textContent = '⏳ Part of your idle AEQ balance is now slowly decaying (0.5%/month) because it hasn\'t been used in over 3 months. Send, swap, or deposit any amount to reset the clock.';
   } else if (bd.show_7_day_notice) {
     box.style.display = 'block';
-    box.innerHTML = '⏳ Your AEQ balance will start decaying in ' + bd.demurrage_days_until_start.toFixed(1) + ' days unless you send, swap, or deposit some of it.';
+    box.textContent = '⏳ Your AEQ balance will start decaying in ' + (bd.demurrage_days_until_start || 0).toFixed(1) + ' days. Tip: transfer or swap to reset your activity timer.';
   } else if (bd.show_14_day_notice) {
     box.style.display = 'block';
-    box.innerHTML = '💡 Heads up: if this balance stays untouched, it will start slowly decaying in about 2 weeks. Any transfer, swap, or deposit resets the countdown.';
+    box.textContent = '💡 Heads up: if this balance stays untouched, it will start slowly decaying in about 2 weeks. Any transfer, swap, or deposit resets the countdown.';
   } else {
     box.style.display = 'none';
   }
@@ -4779,7 +4792,7 @@ async function doSwap() {
     const resp = await fetch('/api/swap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount, nonce, timestamp, signature })
+      body: JSON.stringify({ wallet: swapWaddr, direction: swapDirection, amount: parseFloat(amount.toFixed(8)), nonce, timestamp, signature })
     });
     const data = await resp.json();
     if (data.success) {
@@ -4800,14 +4813,15 @@ async function claimFaucet() {
   if (!swapWaddr) return;
   document.getElementById('swap-btn-faucet').disabled = true;
   try {
-    const message = 'Aequitas tUSD Faucet Claim: ' + swapWaddr.toLowerCase();
+    const faucetTs = Math.floor(Date.now() / 1000);
+    const message = 'Aequitas tUSD Faucet Claim: ' + swapWaddr.toLowerCase() + ' ts:' + faucetTs;
     swapLog('Sign the message in MetaMask to claim test-tUSD...', 'info');
     const signature = await signMessage(message);
 
     const resp = await fetch('/api/faucet', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: swapWaddr, signature })
+      body: JSON.stringify({ wallet: swapWaddr, signature, timestamp: faucetTs })
     });
     const data = await resp.json();
     if (data.success) {
@@ -5061,6 +5075,10 @@ function checkProofParams() {
     document.querySelectorAll('.tab')[0].click();
     setTimeout(() => connectWalletAndProve(), 600);
   } else if (proofId) {
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(proofId)) {
+      console.warn('Invalid proof ID format');
+      return;
+    }
     fetch('/api/prove/get/' + proofId).then(r => r.json()).then(pd => {
       proofData = pd;
       document.getElementById('pbox').style.display = 'block';
@@ -5069,6 +5087,10 @@ function checkProofParams() {
       setTimeout(() => connectWallet(), 600);
     }).catch(e => console.error(e));
   } else if (proof) {
+    if (proof.length > 10000) {
+      console.warn('Proof param too large');
+      return;
+    }
     try {
       proofData = JSON.parse(decodeURIComponent(proof));
       document.getElementById('pbox').style.display = 'block';
@@ -5091,7 +5113,7 @@ let pendingBioHash = null;
 async function connectWalletAndProve() {
   if (!window.ethereum) {
     const _isMobC = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (_isMobC) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; addLog('🦊 Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn'); } else { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn'); }
+    if (_isMobC) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; addLog('🦊 Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
     return;
   }
   if (!pendingBioHash) {
@@ -5164,7 +5186,7 @@ async function connectWalletAndProve() {
 async function connectWallet() {
   if (!window.ethereum) {
     const _isMobW = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (_isMobW) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; addLog('🦊 Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn'); } else { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn'); }
+    if (_isMobW) { const _dl = 'https://metamask.app.link/dapp/' + window.location.host; addLog('🦊 Mobile: <a href="' + _dl + '" style="color:var(--gold)">In MetaMask App öffnen</a>', 'warn', true); } else { addLog('🦊 MetaMask not found — <a href="https://metamask.io/download/" target="_blank" style="color:var(--gold)">install MetaMask</a>', 'warn', true); }
     return;
   }
   try {
@@ -5221,10 +5243,20 @@ function copyAddr(id, btn) {
   });
 }
 
-function addLog(msg, type) {
+function addLog(msg, type, allowHTML) {
   const el = document.getElementById('rlog');
   if (!el) return;
-  el.innerHTML += '<div><span class="' + (type||'info') + '">' + msg + '</span></div>';
+  const row = document.createElement('div');
+  const span = document.createElement('span');
+  span.className = (type || 'info');
+  if (allowHTML) {
+    // only for explicit HTML content (e.g. MetaMask deep-links) — never pass server messages here
+    span.innerHTML = msg;
+  } else {
+    span.textContent = msg; // default: treat as plain text
+  }
+  row.appendChild(span);
+  el.appendChild(row);
   el.scrollTop = el.scrollHeight;
 }
 
@@ -5324,8 +5356,8 @@ async function doRegister() {
       })
     });
     const d = await r.json();
-    if (!d.success) { addLog('Error: ' + d.message, 'err'); document.getElementById('btn-reg').disabled = false; return; }
-    addLog('Registered! ' + d.message, 'ok');
+    if (!d.success) { addLog('Error: ' + sanitize(d.message || ''), 'err'); document.getElementById('btn-reg').disabled = false; return; }
+    addLog('Registered! ' + sanitize(d.message || ''), 'ok');
     setTimeout(() => { window.location.href = '/registered?wallet=' + waddr; }, 1500);
   } catch (e) { addLog('Error: ' + sanitize(e.message), 'err'); document.getElementById('btn-reg').disabled = false; }
 }

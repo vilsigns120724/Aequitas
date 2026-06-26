@@ -19,6 +19,9 @@ const DecimalPrecision = int64(1_000_000)
 
 // NewDecimal converts a float64 AEQ amount to Decimal, rounding to 6dp.
 func NewDecimal(aeq float64) Decimal {
+	if math.IsNaN(aeq) || math.IsInf(aeq, 0) {
+		return 0
+	}
 	return Decimal(math.Round(aeq * float64(DecimalPrecision)))
 }
 
@@ -88,6 +91,9 @@ func (d *Decimal) UnmarshalJSON(b []byte) error {
 	var f float64
 	if err := json.Unmarshal(b, &f); err != nil {
 		return err
+	}
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		return fmt.Errorf("invalid decimal value: overflow or NaN")
 	}
 	*d = NewDecimal(f)
 	return nil

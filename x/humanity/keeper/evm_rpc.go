@@ -232,7 +232,9 @@ if len(params) == 0 {
 return "0x0", nil
 }
 var addr string
-json.Unmarshal(params[0], &addr)
+if err := json.Unmarshal(params[0], &addr); err != nil {
+return nil, &RPCError{Code: -32602, Message: "invalid params"}
+}
 addr = strings.ToLower(addr)
 
 // Read DB outside the lock (avoids blocking other goroutines on a DB call).
@@ -252,7 +254,9 @@ if len(params) == 0 {
 return "0x0", nil
 }
 var addr string
-json.Unmarshal(params[0], &addr)
+if err := json.Unmarshal(params[0], &addr); err != nil {
+return nil, &RPCError{Code: -32602, Message: "invalid params"}
+}
 addr = strings.ToLower(addr)
 
 balance := s.state.GetBalance(addr)
@@ -271,7 +275,9 @@ if len(params) == 0 {
 return "0x", nil
 }
 var addr string
-json.Unmarshal(params[0], &addr)
+if err := json.Unmarshal(params[0], &addr); err != nil {
+return nil, &RPCError{Code: -32602, Message: "invalid params"}
+}
 addrLow := strings.ToLower(addr)
 
 // Try EVM StateDB first
@@ -356,7 +362,9 @@ return nil, &RPCError{Code: -32602, Message: "Missing params"}
 }
 
 var rawHex string
-json.Unmarshal(params[0], &rawHex)
+if err := json.Unmarshal(params[0], &rawHex); err != nil {
+return nil, &RPCError{Code: -32602, Message: "invalid params"}
+}
 rawHex = strings.TrimPrefix(rawHex, "0x")
 
 rawBytes, err := hex.DecodeString(rawHex)
@@ -605,18 +613,26 @@ if len(params) == 0 {
 return nil, nil
 }
 var txHash string
-json.Unmarshal(params[0], &txHash)
+if err := json.Unmarshal(params[0], &txHash); err != nil {
+return nil, &RPCError{Code: -32602, Message: "invalid params"}
+}
 txHash = strings.ToLower(txHash)
 
 s.mu.Lock()
+_, knownStatus := s.txStatus[txHash]
+_, knownDeploy := s.deployedContracts[txHash]
+if !knownStatus && !knownDeploy {
+s.mu.Unlock()
+return nil, nil
+}
 var contractAddr interface{} = nil
 if addr, ok := s.deployedContracts[txHash]; ok {
 contractAddr = addr
 }
-// Default to success (0x1) for any tx we've seen; fall back to failure only
+// Default to success (0x1) for known txs; fall back to failure only
 // when we explicitly recorded a failure.
 status := "0x1"
-if succeeded, known := s.txStatus[txHash]; known && !succeeded {
+if succeeded, ok := s.txStatus[txHash]; ok && !succeeded {
 status = "0x0"
 }
 // Use the real sender recovered from the raw transaction at submission time.
@@ -662,7 +678,9 @@ if len(params) == 0 {
 return nil, nil
 }
 var txHash string
-json.Unmarshal(params[0], &txHash)
+if err := json.Unmarshal(params[0], &txHash); err != nil {
+return nil, &RPCError{Code: -32602, Message: "invalid params"}
+}
 txHash = strings.ToLower(txHash)
 
 // P2-AUDIT: Return the real sender and destination stored at submission time

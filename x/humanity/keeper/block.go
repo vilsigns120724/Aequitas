@@ -81,6 +81,9 @@ warnedUnknownProposers map[string]bool  // suppresses repeated "not authorized" 
 peerChallenges         map[string]peerChallenge // address → pending challenge (P1-3)
 challengeMu            sync.Mutex
 replayQueue            chan *Block       // serialized replay channel — ensures TX ordering across blocks
+replayedBlocks         map[string]bool  // tracks blocks already replayed — prevents double-credit on duplicate delivery
+replayedMu             sync.Mutex
+consecutiveStateRootMismatches int      // Fix 6: counter for consecutive StateRoot mismatches
 }
 
 
@@ -134,15 +137,22 @@ func (dag *BlockDAG) IssuePeerChallenge(signingAddr string) string {
 	h := sha256.Sum256([]byte(raw))
 	challenge := hex.EncodeToString(h[:])
 	dag.challengeMu.Lock()
+	// Fix 7: Cap peerChallenges to prevent unbounded growth from floods of
+	// challenge requests. Prune expired entries first; if still over cap, reject.
+	now := time.Now().Unix()
+	for addr, c := range dag.peerChallenges {
+		if now > c.expiresAt {
+			delete(dag.peerChallenges, addr)
+		}
+	}
+	if len(dag.peerChallenges) > 200 {
+		dag.challengeMu.Unlock()
+		fmt.Printf("[DAG] ⚠ peerChallenges cap exceeded for %s — rejecting new challenge\n", strings.ToLower(signingAddr))
+		return ""
+	}
 	dag.peerChallenges[strings.ToLower(signingAddr)] = peerChallenge{
 		value:     challenge,
 		expiresAt: ts + 90,
-	}
-	// Prune expired challenges
-	for addr, c := range dag.peerChallenges {
-		if time.Now().Unix() > c.expiresAt {
-			delete(dag.peerChallenges, addr)
-		}
 	}
 	dag.challengeMu.Unlock()
 	return challenge
@@ -211,6 +221,7 @@ activeSyncPeers:        make(map[string]bool),
 warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
 replayQueue:            make(chan *Block, 1000),
+replayedBlocks:         make(map[string]bool),
 }
 // Single consumer goroutine ensures blocks are replayed in the order received.
 // This preserves TX dependencies (e.g. register_human in block N must be
@@ -265,10 +276,16 @@ txs = []Transaction{}
 txData, _ := json.Marshal(txs)
 txRootBytes := sha256.Sum256(txData)
 txRoot := hex.EncodeToString(txRootBytes[:])
+// Fix 5: Sort parentHashes for determinism — map iteration order is random
+// in Go, so two nodes assembling the same set of parents may produce
+// different orderings and therefore different hashes without this sort.
+parentHashes := make([]string, len(b.ParentHashes))
+copy(parentHashes, b.ParentHashes)
+sort.Strings(parentHashes)
 data, _ := json.Marshal(map[string]interface{}{
 "height":        b.Height,
 "timestamp":     b.Timestamp,
-"parent_hashes": b.ParentHashes,
+"parent_hashes": parentHashes,
 "proposer":      b.Proposer,
 "humans":        b.Humans,
 "state_root":    b.StateRoot,
@@ -353,10 +370,12 @@ return block
 
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 dag.mu.Lock()
-defer dag.mu.Unlock()
+// NOTE: no defer — we manually unlock before the channel send below (Fix 2).
+// All early-return paths must call dag.mu.Unlock() explicitly.
 
 // Skip if already known
 if _, exists := dag.blocks[block.Hash]; exists {
+dag.mu.Unlock()
 return false
 }
 
@@ -365,6 +384,7 @@ return false
 // both the signature check and the parent check below.
 if block.IsGenesis {
 fmt.Printf("[DAG] ✗ Rejected peer genesis: genesis can only be created locally\n")
+dag.mu.Unlock()
 return false
 }
 
@@ -373,6 +393,7 @@ expectedHash := dag.calculateHash(block)
 if expectedHash != block.Hash {
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: hash mismatch (claimed %s..., computed %s...)\n",
 block.Height, block.Hash[:min(16, len(block.Hash))], expectedHash[:16])
+dag.mu.Unlock()
 return false
 }
 
@@ -382,23 +403,27 @@ return false
 if !block.IsGenesis && block.Signature == "" {
 	fmt.Printf("[DAG] ✗ Rejected peer block #%d from %s: missing signature\n",
 		block.Height, block.Proposer)
+	dag.mu.Unlock()
 	return false
 }
 if block.Signature != "" && !block.IsGenesis {
 	sigBytes, sigErr := hex.DecodeString(block.Signature)
 	if sigErr != nil || len(sigBytes) != 65 {
 		fmt.Printf("[DAG] ✗ Rejected peer block #%d: malformed signature\n", block.Height)
+		dag.mu.Unlock()
 		return false
 	}
 	hashBytes := common.HexToHash(block.Hash)
 	pubkeyBytes, recErr := crypto.Ecrecover(hashBytes[:], sigBytes)
 	if recErr != nil {
 		fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature recovery failed: %v\n", block.Height, recErr)
+		dag.mu.Unlock()
 		return false
 	}
 	pubkey, parseErr := crypto.UnmarshalPubkey(pubkeyBytes)
 	if parseErr != nil {
 		fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid public key: %v\n", block.Height, parseErr)
+		dag.mu.Unlock()
 		return false
 	}
 	recoveredAddr := strings.ToLower(crypto.PubkeyToAddress(*pubkey).Hex())
@@ -409,6 +434,7 @@ if block.Signature != "" && !block.IsGenesis {
 	if recoveredAddr != proposer {
 		fmt.Printf("[DAG] ✗ Rejected peer block #%d: signature mismatch (signer %s, proposer %s)\n",
 			block.Height, recoveredAddr, proposer)
+		dag.mu.Unlock()
 		return false
 	}
 	// Proposer must be in the authorized validator set. Without this check
@@ -422,33 +448,41 @@ if block.Signature != "" && !block.IsGenesis {
 			dag.warnedUnknownProposers[proposer] = true
 			fmt.Printf("[DAG] ✗ Proposer %s is not an authorized validator — add to AUTHORIZED_VALIDATORS env var to accept its blocks\n", proposer)
 		}
+		dag.mu.Unlock()
 		return false
 	}
 }
 
 // Integrity check 3: parent-existence and height validation.
-// Only enforced when we already have a populated DAG (more than genesis).
-// During initial catch-up the DAG is empty so every block would appear
-// to have unknown parents — relaxing the check lets the first sync fill
-// the DAG, after which the check protects against floating blocks.
-if len(dag.blocks) > 1 {
+// Height-1 blocks only need the genesis as parent; for all higher heights
+// we always validate parents exist. During initial sync, missing parents
+// are tolerated (logged but block accepted) when we have few blocks.
 if len(block.ParentHashes) == 0 {
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: no parent hashes\n", block.Height)
+dag.mu.Unlock()
 return false
 }
+if block.Height > 1 {
 maxParentHeight := int64(-1)
 for _, ph := range block.ParentHashes {
 parent, parentExists := dag.blocks[ph]
 if !parentExists {
-return false
+	// During initial sync, missing parents are expected — log but accept.
+	// Only reject if we have substantial state (not during initial sync).
+	if len(dag.blocks) > 10 {
+		dag.mu.Unlock()
+		return false
+	}
+	continue
 }
 if parent.Height > maxParentHeight {
 maxParentHeight = parent.Height
 }
 }
-if block.Height != maxParentHeight+1 {
+if maxParentHeight >= 0 && block.Height != maxParentHeight+1 {
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid height (parent max %d)\n",
 block.Height, maxParentHeight)
+dag.mu.Unlock()
 return false
 }
 }
@@ -461,6 +495,7 @@ case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_li
 // known / empty — OK
 default:
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
+dag.mu.Unlock()
 return false
 }
 }
@@ -476,6 +511,13 @@ localRoot := dag.state.StateRoot()
 if block.StateRoot != localRoot {
 fmt.Printf("[DAG] ⚠ StateRoot mismatch on peer block #%d (proposer=%s..., local=%s...) — accepted (warn only)\n",
 block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
+// Fix 6: Track consecutive mismatches and alert if state may have diverged.
+dag.consecutiveStateRootMismatches++
+if dag.consecutiveStateRootMismatches >= 5 {
+fmt.Printf("[ALERT] 5+ consecutive StateRoot mismatches with peer %s — state may have diverged. Consider resync.\n", block.Proposer)
+}
+} else {
+dag.consecutiveStateRootMismatches = 0 // reset on match
 }
 }
 
@@ -493,21 +535,25 @@ if block.Height > dag.height {
 dag.height = block.Height
 }
 
-// Replay TXs outside the DAG lock via the serialized replay queue.
-// The single consumer goroutine ensures blocks are replayed in order,
-// preserving TX dependencies across blocks (e.g. register_human in
-// block N before a transfer in block N+1 for the same wallet).
-if len(block.Transactions) > 0 {
+tipCount := len(dag.tips)
+hasTxs := len(block.Transactions) > 0
+
+// Release lock BEFORE channel send — holding dag.mu while blocked on a
+// full channel would deadlock all other DAG operations (e.g. ProduceBlock).
+dag.mu.Unlock()
+
+if hasTxs {
+	// Non-blocking send: if the queue is full, drop the block with a warning.
+	// Dropping is safer than running replayTransactions concurrently (which
+	// would bypass the serialization guarantee and risk double-credits).
 	select {
 	case dag.replayQueue <- block:
 	default:
-		// Queue full — process synchronously in a goroutine to avoid
-		// dropping TXs (better than losing them entirely).
-		go dag.replayTransactions(block)
+		fmt.Printf("[WARN] replayQueue full (%d capacity), dropping block #%d — state may diverge. Consider increasing queue capacity.\n", cap(dag.replayQueue), block.Height)
 	}
 }
 
-fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, len(dag.tips))
+fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, tipCount)
 return true
 }
 
@@ -572,6 +618,16 @@ return tips
 // pool-state differences, floating-point order sensitivity, and
 // demurrage timing differences between nodes.
 func (dag *BlockDAG) replayTransactions(block *Block) {
+	// Fix 4: Deduplication guard — if this block has already been replayed,
+	// skip it. Prevents double-credits when a block is delivered more than once.
+	dag.replayedMu.Lock()
+	if dag.replayedBlocks[block.Hash] {
+		dag.replayedMu.Unlock()
+		return // already replayed
+	}
+	dag.replayedBlocks[block.Hash] = true
+	dag.replayedMu.Unlock()
+
 	for _, tx := range block.Transactions {
 		wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
 		switch tx.Type {
@@ -714,10 +770,8 @@ func (dag *BlockDAG) ReconstructState(state *ChainState) {
 // validation for backward compatibility.
 func (dag *BlockDAG) verifyZKProof(tx Transaction) bool {
 	if dag.evm == nil {
-		// EVM not yet wired (happens briefly at startup). Fall back to the
-		// trust-based path so registrations are not silently dropped.
-		fmt.Printf("[REPLAY] ⚠ verifyZKProof: EVM unavailable — falling back to trust-based verification\n")
-		return true
+		fmt.Printf("[WARN] EVM not initialized, rejecting ZK proof for block safety\n")
+		return false
 	}
 
 	// Parse ProofA [2]*big.Int

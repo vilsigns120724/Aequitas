@@ -9,10 +9,12 @@ import (
 "html"
 "io"
 "math/big"
-
 "net/http"
 "os"
+"path/filepath"
+"regexp"
 "strings"
+"sync"
 "time"
 
 "github.com/ethereum/go-ethereum/accounts"
@@ -26,6 +28,7 @@ p2pNode           *P2PNode
 keeper            *Keeper
 startTime         time.Time
 proofServerStatus map[string]interface{}
+proofStatusMu     sync.RWMutex
 state             *ChainState
 // Shared EVM RPC server — one instance so all registration calls share
 // the same nonce map and mutex, preventing parallel registrations from
@@ -45,6 +48,15 @@ evmRPC:            NewEVMRPCServer(bc, state),
 }
 go s.syncProofServerStatus()
 return s
+}
+
+// jsonError writes a properly JSON-marshaled error response, preventing JSON
+// injection via concatenated error strings that may contain quote characters.
+func jsonError(w http.ResponseWriter, msg string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	enc, _ := json.Marshal(map[string]string{"error": msg})
+	w.Write(enc)
 }
 
 // isValidWalletAddr checks 0x-prefixed 40-hex-char Ethereum address format.
@@ -73,7 +85,9 @@ body, _ := io.ReadAll(resp.Body)
 resp.Body.Close()
 var data map[string]interface{}
 if json.Unmarshal(body, &data) == nil {
+a.proofStatusMu.Lock()
 a.proofServerStatus = data
+a.proofStatusMu.Unlock()
 }
 }
 time.Sleep(30 * time.Second)
@@ -516,6 +530,7 @@ w.Header().Set("Content-Type", "text/html")
 w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; font-src https://fonts.bunny.net; connect-src 'self' https://aequitas.digital; img-src 'self' data:")
 path := strings.Trim(r.URL.Path, "/")
 if idx := strings.Index(path, "/"); idx >= 0 {
 	path = path[:idx]
@@ -604,7 +619,6 @@ json.NewEncoder(w).Encode(map[string]interface{}{
 // GET /api/sign-validator-challenge?wallet=0x...
 func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
 // F12-FIX: Require SNAPSHOT_TOKEN unconditionally. Previously the endpoint
 // was open when SNAPSHOT_TOKEN was not set. An open endpoint leaks that the
 // node is running and allows unauthenticated challenge generation.
@@ -679,15 +693,15 @@ http.Error(w, `{"error":"invalid address"}`, 400); return
 // 1. Human wallet proves it authorises this signing key.
 humanMsg := "Aequitas: authorize validator key " + signingAddr
 if err := verifyPersonalSign(humanMsg, req.HumanSignature, humanWallet); err != nil {
-http.Error(w, `{"error":"invalid human_signature: `+err.Error()+`"}`, 400); return
+jsonError(w, "invalid human_signature: "+err.Error(), 400); return
 }
 // 2. Signing key proves it is linked to this human wallet (key-possession proof).
 signingMsg := "Aequitas: validator key linked to human " + humanWallet
 if err := verifyPersonalSign(signingMsg, req.SigningKeySignature, signingAddr); err != nil {
-http.Error(w, `{"error":"invalid signing_key_signature — sign with RELAYER_PRIVATE_KEY: `+err.Error()+`"}`, 400); return
+jsonError(w, "invalid signing_key_signature — sign with RELAYER_PRIVATE_KEY: "+err.Error(), 400); return
 }
 if err := a.state.RegisterValidatorKey(signingAddr, humanWallet); err != nil {
-http.Error(w, `{"error":"`+err.Error()+`"}`, 400); return
+jsonError(w, err.Error(), 400); return
 }
 a.blockchain.AddAuthorizedValidator(signingAddr)
 fmt.Printf("[VALIDATOR] ✓ Registered key %s for human %s\n", signingAddr, humanWallet)
@@ -774,12 +788,10 @@ keyAuthorized := false
 for _, k := range keys {
 if k["signing_address"] == addr { keyAuthorized = true; break }
 }
-// C5-FIX: Allow keyAuthorized for AddAuthorizedValidator when the key is in
-// registered_nodes (Step-5b double-signature registration). This allows automated
-// peer re-authorization after restart without PEER_SECRET, while maintaining C1
-// security: URL registration still requires secretOK || sigOKEarly (proof of key
-// possession), not just a known address.
-if secretOK || sigOK || keyAuthorized {
+// FIX 3: keyAuthorized alone is not sufficient for AddAuthorizedValidator.
+// A known key address (readable from /api/blocks) must also prove private-key
+// possession via challenge-response signature to prevent impersonation.
+if secretOK || sigOK || (keyAuthorized && sigOK) {
 nodeWallet := strings.ToLower(strings.TrimSpace(req.NodeOperatorWallet))
 if nodeWallet == "" {
 	nodeWallet = addr
@@ -844,9 +856,10 @@ func (a *APIServer) handleProveGetProxy(w http.ResponseWriter, r *http.Request) 
 w.Header().Set("Content-Type", "application/json")
 w.Header().Set("Access-Control-Allow-Origin", "*")
 id := strings.TrimPrefix(r.URL.Path, "/api/prove/get/")
-// C5-FIX: prevent path traversal
-if id == "" || strings.Contains(id, "..") || strings.ContainsAny(id, "/?#") {
-	http.Error(w, `{"error":"invalid id"}`, 400)
+// FIX 6: strict allowlist replaces denylist -- prevents path traversal.
+matched, _ := regexp.MatchString(`^[a-zA-Z0-9_-]{1,64}$`, id)
+if !matched {
+	http.Error(w, `{"error":"invalid proof id"}`, 400)
 	return
 }
 resp, err := (&http.Client{Timeout: 30 * time.Second}).Get(proofServerURL + "/get/" + id)
@@ -889,7 +902,6 @@ json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.All
 // Not exposed in /api/status to avoid leaking validator addresses publicly.
 func (a *APIServer) handleSigningAddress(w http.ResponseWriter, r *http.Request) {
 w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
 token := os.Getenv("SNAPSHOT_TOKEN")
 if token == "" {
 	http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
@@ -927,7 +939,6 @@ return
 }
 snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey())
 w.Header().Set("Content-Type", "application/json")
-w.Header().Set("Access-Control-Allow-Origin", "*")
 json.NewEncoder(w).Encode(snap)
 }
 
@@ -964,7 +975,7 @@ if err != nil {
 	http.Error(w, "File error", 500)
 	return
 }
-w.Header().Set("Content-Disposition", "attachment; filename="+filename)
+w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(filename)))
 w.Header().Set("Content-Type", contentType)
 w.Header().Set("Access-Control-Allow-Origin", "*")
 http.ServeContent(w, r, filename, fi.ModTime(), f)
@@ -1005,11 +1016,11 @@ func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
 	// Verify signature: wallet signs "Aequitas: set guardian {guardian_address}"
 	msg := "Aequitas: set guardian " + guardian
 	if err := verifyPersonalSign(msg, req.Signature, wallet); err != nil {
-		http.Error(w, `{"error":"invalid signature: `+err.Error()+`"}`, 400); return
+		jsonError(w, "invalid signature: "+err.Error(), 400); return
 	}
 	now := time.Now().Unix()
-	if err := a.state.SetGuardian(wallet, guardian, now); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, 400); return
+	if err := a.state.SetGuardian(wallet, guardian); err != nil {
+		jsonError(w, err.Error(), 400); return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":  true,
@@ -1051,10 +1062,10 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 	// Signature is by the guardian.
 	msg := "Aequitas: confirm alive " + wallet
 	if sigErr := verifyPersonalSign(msg, req.Signature, guardianAddr); sigErr != nil {
-		http.Error(w, `{"error":"invalid guardian signature: `+sigErr.Error()+`"}`, 400); return
+		jsonError(w, "invalid guardian signature: "+sigErr.Error(), 400); return
 	}
 	if confirmErr := a.state.ConfirmAlive(wallet); confirmErr != nil {
-		http.Error(w, `{"error":"`+confirmErr.Error()+`"}`, 400); return
+		jsonError(w, confirmErr.Error(), 400); return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":   true,
@@ -1130,10 +1141,10 @@ func (a *APIServer) handleRecoverEscrow(w http.ResponseWriter, r *http.Request) 
 	}
 	msg := "Aequitas: recover escrow " + wallet
 	if err := verifyPersonalSign(msg, req.Signature, wallet); err != nil {
-		http.Error(w, `{"error":"invalid signature: `+err.Error()+`"}`, 400); return
+		jsonError(w, "invalid signature: "+err.Error(), 400); return
 	}
 	if err := a.state.RecoverFromEscrow(wallet); err != nil {
-		http.Error(w, `{"error":"`+err.Error()+`"}`, 400); return
+		jsonError(w, err.Error(), 400); return
 	}
 	newBalance := a.state.GetBalance(wallet)
 	json.NewEncoder(w).Encode(map[string]interface{}{

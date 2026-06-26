@@ -27,8 +27,8 @@ contract AequitasV7 {
     uint8   public constant decimals = 18;
 
     uint256 public constant INITIAL_GRANT     = 1_000 * 1e18;
-    uint256 public constant TX_FEE_BPS        = 10;
-    uint256 public constant UBI_SHARE_BPS     = 2000;
+    uint256 public constant TX_FEE_BPS        = 700;    // 7% fee on transfers
+    uint256 public constant UBI_SHARE_BPS     = 10_000; // 100% of fee goes to UBI pool
     uint256 public constant DEMURRAGE_BPS     = 100;
     uint256 public constant SECONDS_PER_YEAR  = 365 days;
     uint256 public constant INACTIVITY_ESCROW = 910 days;
@@ -78,6 +78,7 @@ contract AequitasV7 {
     event AliveConfirmed(address indexed human, address indexed by);
 
     constructor(address _bioVerifier) {
+        require(_bioVerifier != address(0), "BioVerifier cannot be zero address");
         bioVerifier = IBioVerifier(_bioVerifier);
     }
 
@@ -95,7 +96,8 @@ contract AequitasV7 {
         }
         require(effectiveNullifier != bytes32(0), "Nullifier required");
         require(usedNullifiers[effectiveNullifier] == address(0), "Nullifier used");
-        require(bioVerifier.verifyProof(pA, pB, pC, pubSignals), "Invalid proof");
+
+        // CEI: write all state before the external call
         usedCommitments[commitment] = true;
         commitmentOf[msg.sender] = commitment;
         usedNullifiers[effectiveNullifier] = msg.sender;
@@ -106,6 +108,10 @@ contract AequitasV7 {
         ubiClaimed[msg.sender] = ubiPerHumanAccumulated;
         lastActivity[msg.sender] = block.timestamp;
         lastDemurrage[msg.sender] = block.timestamp;
+
+        // External call last
+        require(bioVerifier.verifyProof(pA, pB, pC, pubSignals), "Invalid proof");
+
         emit Registered(msg.sender, commitment, INITIAL_GRANT);
     }
 
@@ -149,12 +155,13 @@ contract AequitasV7 {
         require(effectiveNullifier != bytes32(0), "Nullifier required");
         require(usedNullifiers[effectiveNullifier] == address(0), "Nullifier used");
 
+        // FIX 2: sign over effectiveNullifier (ZK-derived) not the raw nullifier param
         bytes32 messageHash = keccak256(abi.encodePacked(
             block.chainid,
             address(this),
             "register",
             commitment,
-            nullifier
+            effectiveNullifier
         ));
         bytes32 ethSignedHash = keccak256(abi.encodePacked(
             "\x19Ethereum Signed Message:\n32",
@@ -165,8 +172,7 @@ contract AequitasV7 {
             "Invalid signature"
         );
 
-        require(bioVerifier.verifyProof(pA, pB, pC, pubSignals), "Invalid proof");
-
+        // CEI: write all state before the external call
         usedCommitments[commitment] = true;
         commitmentOf[claimedHuman] = commitment;
         usedNullifiers[effectiveNullifier] = claimedHuman;
@@ -177,6 +183,9 @@ contract AequitasV7 {
         ubiClaimed[claimedHuman] = ubiPerHumanAccumulated;
         lastActivity[claimedHuman] = block.timestamp;
         lastDemurrage[claimedHuman] = block.timestamp;
+
+        // External call last
+        require(bioVerifier.verifyProof(pA, pB, pC, pubSignals), "Invalid proof");
 
         emit Registered(claimedHuman, commitment, INITIAL_GRANT);
     }
@@ -192,6 +201,11 @@ contract AequitasV7 {
             v := byte(0, calldataload(add(signature.offset, 64)))
         }
         if (v < 27) v += 27;
+        // Prevent signature malleability (EIP-2)
+        require(
+            uint256(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0,
+            "Invalid signature: high s value"
+        );
         return ecrecover(ethSignedHash, v, r, s);
     }
 
@@ -243,6 +257,7 @@ contract AequitasV7 {
     function applyWealthCap(address human) external { require(isHuman[human],"Not human"); _applyWealthCap(human); }
 
     function _applyWealthCap(address human) internal {
+        if (!isHuman[human]) return; // Only apply wealth cap to registered humans
         uint256 cap = wealthCap();
         if (balanceOf[human] <= cap) return;
         uint256 excess = balanceOf[human] - cap;
@@ -281,6 +296,7 @@ contract AequitasV7 {
 
     function claimableUBI(address human) external view returns (uint256) {
         if (!isHuman[human]) return 0;
+        if (ubiClaimed[human] > ubiPerHumanAccumulated) return 0;
         return ubiPerHumanAccumulated - ubiClaimed[human];
     }
 
@@ -296,6 +312,10 @@ contract AequitasV7 {
             uint256 amount = escrowOf[human];
             escrowOf[human] = 0;
             uint256 fs = fairShare();
+            // NOTE: When recovering from escrow, the human receives their escrowed amount
+            // PLUS one fairShare() of newly minted AEQ as an incentive to confirm aliveness.
+            // totalSupply increases by fairShare() to maintain the supply invariant.
+            // This is intentional economic policy — not a bug.
             balanceOf[human] += amount + fs;
             totalSupply += fs;
             ubiClaimed[human] = ubiPerHumanAccumulated;
@@ -338,11 +358,17 @@ contract AequitasV7 {
     function confirmGuardian() external {
         require(pendingGuardian[msg.sender] != address(0), "No pending guardian");
         require(block.timestamp >= guardianRequestedAt[msg.sender] + GUARDIAN_TIMELOCK, "Timelock active");
-        if (guardianOf[msg.sender] != address(0)) wardCount[guardianOf[msg.sender]]--;
+        address oldGuardian = guardianOf[msg.sender];
+        if (oldGuardian != address(0)) {
+            wardCount[oldGuardian]--;
+            emit GuardianRevoked(msg.sender, oldGuardian);
+        }
         address g = pendingGuardian[msg.sender];
+        require(wardCount[g] < MAX_WARDS, "Guardian already has maximum wards");
         guardianOf[msg.sender] = g;
         wardCount[g]++;
         pendingGuardian[msg.sender] = address(0);
+        guardianRequestedAt[msg.sender] = 0;
         emit GuardianConfirmed(msg.sender, g);
     }
 
@@ -351,6 +377,8 @@ contract AequitasV7 {
         require(g != address(0), "No guardian");
         wardCount[g]--;
         guardianOf[msg.sender] = address(0);
+        pendingGuardian[msg.sender] = address(0);
+        guardianRequestedAt[msg.sender] = 0;
         emit GuardianRevoked(msg.sender, g);
     }
 

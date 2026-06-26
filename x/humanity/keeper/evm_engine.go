@@ -117,7 +117,10 @@ rows, err := e.chainState.db.Query(
 if err == nil {
 for rows.Next() {
 var slot, val string
-rows.Scan(&slot, &val)
+if err := rows.Scan(&slot, &val); err != nil {
+fmt.Printf("[WARN] EVM storage scan error for %s: %v\n", addr.Hex(), err)
+continue
+}
 sdb.SetState(addr, common.HexToHash(slot), common.HexToHash(val))
 }
 rows.Close()
@@ -470,7 +473,6 @@ count++
 if e.chainState.db != nil {
 rows, err := e.chainState.db.Query(`SELECT nullifier, wallet_address FROM nullifiers`)
 if err == nil {
-defer rows.Close()
 for rows.Next() {
 var nullHex, wallet string
 // P2-FIX: check scan error to avoid processing a partially-read row.

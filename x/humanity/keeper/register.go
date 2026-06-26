@@ -290,6 +290,11 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	if existingWallet := a.state.GetWalletByNullifier(effectiveNullifier); existingWallet != "" {
 		return "", fmt.Errorf("identity already registered (nullifier used by %s)", existingWallet)
 	}
+	if req.CircuitVersion < 2 {
+		if req.BioHash == "" {
+			return "", fmt.Errorf("BioHash required for v1 circuit registration")
+		}
+	}
 	if req.BioHash != "" {
 		if existingWallet := a.state.GetWalletByBioHash(req.BioHash); existingWallet != "" {
 			return "", fmt.Errorf("biometric already registered to %s", existingWallet)
@@ -369,6 +374,9 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata, effectiveNullifier)
 		if mirrorErr != nil {
 			return "", fmt.Errorf("registration failed (V7 missing + mirror failed): %w; mirror: %v", dryRunErr, mirrorErr)
+		}
+		if !a.state.TryClaimNullifier(effectiveNullifier, wallet) {
+			return "", fmt.Errorf("nullifier already claimed: %s", effectiveNullifier)
 		}
 		if regErr := a.state.RegisterHuman(wallet); regErr != nil {
 			fmt.Printf("[REGISTER] Warning: native balance grant failed after mirror: %v\n", regErr)
@@ -570,14 +578,10 @@ func notifyProofServer(bioHashKey, wallet string) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-chain-token", token)
-	// C3-FIX: use redirect-blocking client to prevent SSRF via PROOF_SERVER_URL.
-	proofClient := &http.Client{
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-	resp, err := proofClient.Do(req)
+	// FIX 2: use httpSyncClient (pinningDialer + redirect blocking) instead of
+	// a bare http.Client, preventing SSRF via PROOF_SERVER_URL redirect chains
+	// or DNS-rebinding to internal/cloud-metadata addresses.
+	resp, err := httpSyncClient.Do(req)
 	if err != nil {
 		fmt.Printf("[REGISTER] Warning: proof-server /store-bio call failed: %v\n", err)
 		return
@@ -627,7 +631,16 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 	}
 
 	// Check nullifier slot (slot 8) for replay protection.
-	nullKey := common.HexToHash(strings.TrimPrefix(nullifierHex, "0x"))
+	// Parse nullifierHex correctly: v2 nullifiers are decimal strings, not hex.
+	nullBigCheck := new(big.Int)
+	if strings.HasPrefix(nullifierHex, "0x") || strings.HasPrefix(nullifierHex, "0X") {
+		nullBigCheck.SetString(strings.TrimPrefix(strings.TrimPrefix(nullifierHex, "0x"), "0X"), 16)
+	} else {
+		if _, ok := nullBigCheck.SetString(nullifierHex, 10); !ok {
+			nullBigCheck.SetString(nullifierHex, 16)
+		}
+	}
+	nullKey := common.BigToHash(nullBigCheck)
 	nullSlotCheck := mappingSlotBytes32(nullKey, 8)
 	nullVal, _ := a.state.LoadStorageSlot(addrStr, nullSlotCheck.Hex())
 	if common.HexToHash(nullVal) != (common.Hash{}) {
@@ -681,7 +694,15 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 }
 
 func validRegisterSignature(contractAddr, claimedHuman common.Address, commitment *big.Int, nullifierHex string, sigBytes []byte) bool {
-	nullKey := common.HexToHash(strings.TrimPrefix(nullifierHex, "0x"))
+	nullBigSig := new(big.Int)
+	if strings.HasPrefix(nullifierHex, "0x") || strings.HasPrefix(nullifierHex, "0X") {
+		nullBigSig.SetString(strings.TrimPrefix(strings.TrimPrefix(nullifierHex, "0x"), "0X"), 16)
+	} else {
+		if _, ok := nullBigSig.SetString(nullifierHex, 10); !ok {
+			nullBigSig.SetString(nullifierHex, 16)
+		}
+	}
+	nullKey := common.BigToHash(nullBigSig)
 	packed := make([]byte, 0, 32+20+8+32+32)
 	packed = append(packed, common.LeftPadBytes(big.NewInt(1926).Bytes(), 32)...)
 	packed = append(packed, contractAddr.Bytes()...)

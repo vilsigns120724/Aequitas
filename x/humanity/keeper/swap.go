@@ -110,7 +110,7 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 	// Reject stale or future-dated requests to prevent replay attacks.
 	// The timestamp is part of the signed message, so an attacker cannot
 	// strip or change it without invalidating the signature.
-	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 300 {
+	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 60 {
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: "request expired or timestamp out of range"})
 		return
 	}
@@ -205,7 +205,7 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: "wallet and positive amounts required"})
 		return
 	}
-	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 300 {
+	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 60 {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: "request expired or timestamp out of range"})
 		return
 	}
@@ -281,7 +281,7 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "wallet and positive shares required"})
 		return
 	}
-	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 300 {
+	if diff := time.Now().Unix() - req.Timestamp; diff < -60 || diff > 60 {
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: "request expired or timestamp out of range"})
 		return
 	}

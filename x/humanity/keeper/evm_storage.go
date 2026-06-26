@@ -166,9 +166,9 @@ func (cs *ChainState) LoadStorageSlot(address, slot string) (string, error) {
 // contract upgrade). Writes: totalSupply (slot 0), totalHumans (slot 1),
 // balanceOf (slot 4), isHuman (slot 6), usedCommitments (slot 7),
 // usedNullifiers (slot 8). Safe to call without holding cs.mu.
-func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
+func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 	if cs.db == nil {
-		return
+		return nil
 	}
 	contractAddr = strings.ToLower(contractAddr)
 	fmt.Printf("[MIGRATE] Rebuilding EVM storage from Go-state for %s...\n", contractAddr)
@@ -300,6 +300,7 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) {
 	cs.RestorePreUpgradeRelationshipSlots(contractAddr)
 
 	fmt.Printf("[MIGRATE] ✓ EVM storage rebuilt: %d humans, %.2f AEQ total supply\n", totalHumans, totalSupply)
+	return nil
 }
 
 // upgradeRelationshipSlotsTable is the name of the temporary table used to
@@ -667,20 +668,28 @@ func (cs *ChainState) TryClaimNullifier(nullifier, walletAddress string) bool {
 		return false
 	}
 	walletAddress = strings.ToLower(walletAddress)
-	if cs.db != nil {
-		res, err := cs.db.Exec(
-			`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT (nullifier) DO NOTHING`,
-			nullifier, walletAddress,
-		)
-		if err != nil {
-			fmt.Printf("[NULLIFIER] TryClaimNullifier DB error: %v\n", err)
+	if cs.db == nil {
+		cs.mu.Lock()
+		if _, exists := cs.nullifiers[nullifier]; exists {
+			cs.mu.Unlock()
 			return false
 		}
-		if n, _ := res.RowsAffected(); n == 0 {
-			return false // already existed
-		}
+		cs.nullifiers[nullifier] = walletAddress
+		cs.mu.Unlock()
+		return true
 	}
-	// Insert succeeded (or no DB) — update in-memory cache.
+	res, err := cs.db.Exec(
+		`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT (nullifier) DO NOTHING`,
+		nullifier, walletAddress,
+	)
+	if err != nil {
+		fmt.Printf("[NULLIFIER] TryClaimNullifier DB error: %v\n", err)
+		return false
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return false // already existed
+	}
+	// Insert succeeded — update in-memory cache.
 	cs.mu.Lock()
 	if len(cs.nullifiers) < maxInMemNullifiers {
 		cs.nullifiers[nullifier] = walletAddress

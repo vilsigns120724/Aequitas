@@ -100,6 +100,13 @@ nullifiers map[string]string // nullifier hex → wallet address (in-memory cach
 // uses a connection pool and lock/unlock can land on different connections,
 // causing lock leaks or deadlocks. For multi-node, the version column on
 // chain_accounts provides optimistic concurrency conflict detection.
+//
+// CALLERS MUST use defer releaseStateLock() immediately after calling
+// acquireStateLock() to ensure the mutex is always released even if a
+// panic occurs between the lock and unlock points. Example:
+//
+//	cs.acquireStateLock()
+//	defer cs.releaseStateLock()
 func (cs *ChainState) acquireStateLock() bool {
 cs.stateMu.Lock()
 return true
@@ -279,7 +286,10 @@ cs.InitSwapNoncesTable()
 cs.InitValidatorKeysTable()
 cs.InitGiniSnapshotsTable()
 cs.InitPriceSnapshotsTable()
-cs.InitGuardianTables()
+if err := cs.InitGuardianTables(); err != nil {
+	fmt.Printf("[DB] FATAL: InitGuardianTables failed: %v\n", err)
+	panic(err)
+}
 }
 
 // setConfigValue persists a key/value pair to chain_config (upsert).
@@ -351,7 +361,7 @@ now := fmt.Sprintf("%d", time.Now().Unix())
 result, err := cs.db.Exec(
 `INSERT INTO chain_config (key, value) VALUES ('last_ubi_at', $1)
 ON CONFLICT (key) DO UPDATE SET value = $1
-WHERE chain_config.value = '' OR CAST(chain_config.value AS BIGINT) < $2`,
+WHERE chain_config.value = '' OR COALESCE(NULLIF(regexp_replace(chain_config.value, '[^0-9]', '', 'g'), ''), '0')::BIGINT < $2`,
 now, threshold,
 )
 if err != nil {
@@ -834,6 +844,7 @@ return
 total := poolAcc.Balance.Float()
 // P0-2: credit recipients BEFORE zeroing the pool so a crash mid-loop
 // leaves money in the pool (re-distributable) rather than losing it.
+var totalDistributed float64
 for _, ns := range nodeShares {
 wallet := ns.wallet
 // P2-FIX: validate wallet address before crediting — a malformed
@@ -853,10 +864,15 @@ acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 touchActivity(acc)
 cs.enforceWealthCapLocked(acc)
 cs.saveAccountToDB(acc)
+totalDistributed += share
 }
-// Zero pool only after all recipients are successfully written.
+// Zero pool only after all recipients are successfully written,
+// and only if something was actually distributed (prevents destroying
+// pool balance when all shares rounded to zero).
+if totalDistributed > 0 {
 poolAcc.Balance = NewDecimal(0)
 cs.saveAccountToDB(poolAcc)
+}
 cs.save()
 
 cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(nodes, validatorsPoolAddr)...)
@@ -899,6 +915,10 @@ return
 for _, h := range holders {
 acc := cs.accounts[h.addr]
 cs.settleDemurrageLocked(acc)
+}
+// Re-check totalShares after demurrage settlement — shares could have gone to zero.
+if totalShares <= 0 {
+return
 }
 
 // NOW read the pool balance — it includes any demurrage credits just added.
@@ -971,6 +991,7 @@ if !ok || poolAcc.Balance <= 0 {
 fmt.Println("[UBI] Pool empty after demurrage settlement — nothing to distribute")
 return
 }
+cs.settleDemurrageLocked(poolAcc)
 total := poolAcc.Balance.Float()
 share := total / float64(len(humanAddrs))
 // P0-5/P2-9: prevent funds vanishing via float rounding to 0
@@ -1088,15 +1109,15 @@ if avg <= 0 {
 return // no meaningful average yet (e.g. only one human registered so far)
 }
 multiplier := cs.bootstrapMultiplierLocked()
-cap := avg * multiplier
-if acc.Balance.Float() <= cap {
+wealthCapAmt := avg * multiplier
+if acc.Balance.Float() <= wealthCapAmt {
 return
 }
-excess := acc.Balance.Float() - cap
-acc.Balance = NewDecimal(cap)
+excess := acc.Balance.Float() - wealthCapAmt
+acc.Balance = NewDecimal(wealthCapAmt)
 cs.distributeSwapFee(excess, true)
 fmt.Printf("[WEALTH CAP] %s exceeded %.2fx average (%.2f AEQ) — %.4f AEQ excess redistributed to pools\n",
-acc.Address, multiplier, cap, excess)
+acc.Address, multiplier, wealthCapAmt, excess)
 }
 
 // DemurrageStatus describes whether/when an idle account's AEQ will
@@ -1142,13 +1163,14 @@ status.ShowFourteenDayNotice = true
 // P1-5: set in-memory flag SYNCHRONOUSLY to prevent duplicate notices on parallel requests.
 // DB write is async to avoid blocking the GET path.
 acc.Demurrage14DayWarningShown = true
-go func(addr string) {
-cs.mu.Lock()
-defer cs.mu.Unlock()
-if a, ok := cs.accounts[addr]; ok {
-cs.saveAccountToDB(a)
-}
-}(address)
+// FIX-11: capture account by value before launching goroutine so the
+// goroutine does not need to re-acquire cs.mu (which would block until
+// the outer write-lock is released anyway, but a value copy is safer
+// against concurrent mutations and eliminates any lock ordering concerns).
+accCopy := *acc
+go func() {
+cs.saveAccountToDB(&accCopy)
+}()
 }
 }
 
@@ -1277,6 +1299,10 @@ cs.mu.Lock()
 defer cs.mu.Unlock()
 from = strings.ToLower(from)
 to = strings.ToLower(to)
+
+if amount <= 0 || math.IsNaN(amount) || math.IsInf(amount, 0) {
+	return 0, fmt.Errorf("invalid transfer amount: %v", amount)
+}
 
 fromAcc, ok := cs.accounts[from]
 if !ok {
@@ -1582,6 +1608,9 @@ address = strings.ToLower(address)
 if amountAEQ <= 0 || amountTUSD <= 0 {
 return fmt.Errorf("both amounts must be positive")
 }
+if math.IsNaN(amountAEQ) || math.IsInf(amountAEQ, 0) || math.IsNaN(amountTUSD) || math.IsInf(amountTUSD, 0) {
+return fmt.Errorf("invalid liquidity amounts")
+}
 if cs.pool == nil {
 return fmt.Errorf("liquidity pool not initialized")
 }
@@ -1709,6 +1738,9 @@ sharesToBurn = cs.pool.TotalLPShares.Float()
 if sharesToBurn <= 0 {
 	return 0, 0, fmt.Errorf("pool total LP shares is zero or negative")
 }
+// Zeroing acc.LPShares prevents phantom shares when the clamped
+// sharesToBurn is less than the user's recorded LPShares.
+acc.LPShares = NewDecimal(0)
 }
 
 fraction := sharesToBurn / cs.pool.TotalLPShares.Float()

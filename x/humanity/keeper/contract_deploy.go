@@ -92,8 +92,30 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 		}
 
 		state.SavePreUpgradeRelationshipSlots(v7Addr)
-		state.db.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, v7Addr)
-		state.db.Exec(`DELETE FROM evm_storage WHERE lower(address) = $1`, v7Addr)
+
+		// FIX 12: Wrap the destructive wipe in a DB transaction so a crash
+		// mid-upgrade does not leave evm_contracts/evm_storage in a half-deleted state.
+		upgradeTx, txErr := state.db.Begin()
+		if txErr != nil {
+			if restoreOnFailure != nil {
+				restoreOnFailure("could not begin upgrade transaction: " + txErr.Error())
+			} else {
+				fmt.Printf("[DEPLOY] ERROR: could not begin upgrade transaction: %v\n", txErr)
+			}
+			return
+		}
+		upgradeTx.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, v7Addr)    //nolint:errcheck
+		upgradeTx.Exec(`DELETE FROM evm_storage WHERE lower(contract_address) = $1`, v7Addr) //nolint:errcheck
+		if commitErr := upgradeTx.Commit(); commitErr != nil {
+			upgradeTx.Rollback() //nolint:errcheck
+			if restoreOnFailure != nil {
+				restoreOnFailure("upgrade wipe commit failed: " + commitErr.Error())
+			} else {
+				fmt.Printf("[DEPLOY] ERROR: upgrade wipe commit failed: %v\n", commitErr)
+			}
+			return
+		}
+
 		// Restore slot 2 (ubiPool) and slot 3 (ubiPerHumanAccumulated) immediately
 		// after wipe so MigrateEVMFromGoState can read them. Without slot 2 restore,
 		// the ubiPool balance in V7 is zeroed after every upgrade.
@@ -148,8 +170,15 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 		fmt.Printf("[DEPLOY] ✓ V7 contract deployed at %s\n", V7_CONTRACT_ADDR)
 	}
 	// Repopulate EVM storage from Go-state BEFORE setting the version marker.
-	// If migration fails mid-way, the marker stays at the old version so the
-	// next startup re-runs the full upgrade instead of treating it as done.
-	state.MigrateEVMFromGoState(V7_CONTRACT_ADDR)
+	// FIX 13: Only mark the upgrade complete if migration succeeds — a failed
+	// migration that sets the version marker would permanently skip re-migration.
+	if err := state.MigrateEVMFromGoState(V7_CONTRACT_ADDR); err != nil {
+		if restoreOnFailure != nil {
+			restoreOnFailure("migration failed, not marking upgrade complete: " + err.Error())
+		} else {
+			fmt.Printf("[DEPLOY] ERROR: migration failed, not marking upgrade complete: %v\n", err)
+		}
+		return
+	}
 	state.setConfigValue("v7_contract_version", V7ContractVersion)
 }

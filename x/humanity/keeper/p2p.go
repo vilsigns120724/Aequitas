@@ -57,10 +57,11 @@ if err != nil {
 return nil, err
 }
 encoded := base64.StdEncoding.EncodeToString(keyBytes)
-// Print to stderr only — log aggregators (Railway, Render) capture stdout
-// but usually not stderr, keeping the private key out of log storage.
+// Fix 9: NODE_KEY is visible in Railway/Render log dashboards even on stderr.
+// Operators must treat it as a secret and move it to a NODE_KEY env var.
 fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
-fmt.Fprintln(os.Stderr, "SAVE THIS AS NODE_KEY ENVIRONMENT VAR:")
+fmt.Fprintln(os.Stderr, "⚠ WARNING: NODE_KEY is visible in Railway/Render log dashboards. Treat this as a secret.")
+fmt.Fprintln(os.Stderr, "SAVE THIS AS NODE_KEY ENVIRONMENT VAR, then restart the service:")
 fmt.Fprintln(os.Stderr, encoded)
 fmt.Fprintln(os.Stderr, "════════════════════════════════════════")
 

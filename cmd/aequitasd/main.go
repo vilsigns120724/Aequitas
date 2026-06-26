@@ -1,8 +1,11 @@
 package main
 
 import (
+"context"
 "encoding/json"
 "fmt"
+"net"
+"net/url"
 "os"
 "os/signal"
 "syscall"
@@ -91,13 +94,21 @@ p2pNode.SetDAG(bc)
 	// verify the snapshot's ECDSA signature before importing.
 	// After startup, ongoing state sync happens via block TX replay in AddPeerBlock.
 	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && chainState.TotalHumans() == 0 {
-		expectedSigner := os.Getenv("BOOTSTRAP_SIGNER")
-		if expectedSigner == "" {
-			fmt.Println("[BOOTSTRAP] ✗ Refused: BOOTSTRAP_SIGNER must be set to the primary node's signing address (0x...)")
+		// FIX 15: Validate URL scheme and host before fetching to prevent SSRF.
+		parsedBootstrap, urlErr := url.Parse(bootstrapURL)
+		if urlErr != nil || (parsedBootstrap.Scheme != "https" && parsedBootstrap.Scheme != "http") {
+			fmt.Printf("[BOOTSTRAP] ✗ Refused: BOOTSTRAP_SNAPSHOT_URL must be an http or https URL (got %q)\n", bootstrapURL)
+		} else if host := parsedBootstrap.Hostname(); isRFC1918OrLoopback(host) {
+			fmt.Printf("[BOOTSTRAP] ✗ Refused: BOOTSTRAP_SNAPSHOT_URL must not point to a private/loopback address (got %q)\n", host)
 		} else {
-			fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)
-			if err := chainState.ImportSnapshotFromURL(bootstrapURL, expectedSigner); err != nil {
-				fmt.Printf("[BOOTSTRAP] ✗ Import failed: %v\n", err)
+			expectedSigner := os.Getenv("BOOTSTRAP_SIGNER")
+			if expectedSigner == "" {
+				fmt.Println("[BOOTSTRAP] ✗ Refused: BOOTSTRAP_SIGNER must be set to the primary node's signing address (0x...)")
+			} else {
+				fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)
+				if err := chainState.ImportSnapshotFromURL(bootstrapURL, expectedSigner); err != nil {
+					fmt.Printf("[BOOTSTRAP] ✗ Import failed: %v\n", err)
+				}
 			}
 		}
 	}
@@ -164,7 +175,11 @@ fmt.Println("── Starting Daily Pool Distributions ───")
 // the lock wins; others see 0 rows updated and skip. This eliminates the
 // IS_PRIMARY_NODE env-var footgun where any operator could accidentally (or
 // maliciously) trigger double distributions by setting IS_PRIMARY_NODE=true.
-go func() {
+// FIX 11: Create a cancellable context for the distribution goroutine so
+// it can be cleanly stopped on node shutdown.
+distCtx, distCancel := context.WithCancel(context.Background())
+_ = distCancel // called in shutdown handler below
+go func(ctx context.Context) {
 berlin, err := time.LoadLocation("Europe/Berlin")
 if err != nil {
 berlin = time.FixedZone("CET", 2*60*60) // CEST fallback (summer, UTC+2)
@@ -183,7 +198,9 @@ return candidate
 
 lastAt := chainState.GetLastUBIAt()
 var firstTarget time.Time
-if lastAt > 0 && time.Since(time.Unix(lastAt, 0)) < time.Hour {
+// FIX 10: Apply the same 1-hour guard for fresh DBs (lastAt == 0) to prevent
+// the distribution from firing immediately on a brand-new node startup.
+if lastAt == 0 || time.Since(time.Unix(lastAt, 0)) < time.Hour {
 firstTarget = nextDaily20(time.Now().Add(time.Hour))
 } else {
 firstTarget = nextDaily20(time.Now())
@@ -195,7 +212,12 @@ fmt.Printf("[POOLS] Next distribution at %s Berlin time (in %s)\n",
 firstTarget.In(berlin).Format("02.01. 15:04:05"), firstDelay.Round(time.Minute))
 
 for {
-time.Sleep(time.Until(firstTarget))
+// FIX 11: Use a select so the goroutine unblocks on shutdown.
+select {
+case <-ctx.Done():
+return
+case <-time.After(time.Until(firstTarget)):
+}
 // Distributed lock: only the node that atomically claims last_ubi_at proceeds.
 if chainState.TryLockDistribution() {
 // Read UBI pool balance and human count BEFORE distribution so the
@@ -228,7 +250,7 @@ firstTarget = nextDaily20(time.Now())
 chainState.SetNextUBIAt(firstTarget.Unix())
 fmt.Printf("[POOLS] Next distribution at %s Berlin time\n", firstTarget.In(berlin).Format("02.01. 15:04:05"))
 }
-}()
+}(distCtx)
 
 // Register this node's operator wallet so it participates in validator
 // pool distributions. Any node that sets NODE_OPERATOR_WALLET gets
@@ -253,5 +275,40 @@ fmt.Println("╚═════════════════════�
 quit := make(chan os.Signal, 1)
 signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 <-quit
-fmt.Println("\nNode stopped.")
+// FIX 11: Signal the distribution goroutine to stop cleanly.
+distCancel()
+fmt.Println("Node stopped.")
+}
+
+// isRFC1918OrLoopback returns true if host is a loopback address or an
+// RFC 1918 private-network address. Used to block SSRF via BOOTSTRAP_SNAPSHOT_URL.
+func isRFC1918OrLoopback(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		// Not a bare IP - hostname; resolve it for the check.
+		addrs, err := net.LookupHost(host)
+		if err != nil || len(addrs) == 0 {
+			return false // cannot resolve; let the HTTP client fail naturally
+		}
+		ip = net.ParseIP(addrs[0])
+		if ip == nil {
+			return false
+		}
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	private := []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"169.254.0.0/16", // link-local
+	}
+	for _, cidr := range private {
+		_, network, _ := net.ParseCIDR(cidr)
+		if network != nil && network.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }

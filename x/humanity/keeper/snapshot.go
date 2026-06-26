@@ -202,16 +202,28 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	// This makes the import safe to call on partially-populated state without
 	// regressing balances that have advanced via UBI/demurrage since the snapshot.
 	var accountsToPersist []*AccountState
+	// FIX 12: Skip system pool addresses -- snapshot must not override protocol-managed accounts.
+	systemAddresses := map[string]bool{
+		validatorsPoolAddr: true,
+		lpPoolAddr:         true,
+		ubiPoolAddr:        true,
+		treasuryPoolAddr:   true,
+	}
 	cs.mu.Lock()
 	for _, acc := range snap.Accounts {
 		acc.Address = strings.ToLower(acc.Address)
+		if systemAddresses[acc.Address] {
+			continue
+		}
 		if _, exists := cs.accounts[acc.Address]; !exists {
 			cs.accounts[acc.Address] = acc
 			accountsToPersist = append(accountsToPersist, acc)
 		}
 	}
-	// FIX: cs.pool is never nil after NewChainState() — check for empty reserves instead
-	if snap.Pool != nil && (cs.pool == nil || (cs.pool.ReserveAEQ.Float() == 0 && cs.pool.ReserveTUSD.Float() == 0)) {
+	// FIX 11: Only import pool state on genuine cold start (no humans registered).
+	// Prevents a stale snapshot from overwriting an active pool that temporarily has
+	// zero reserves (e.g., after all liquidity was removed).
+	if snap.Pool != nil && cs.TotalHumans() == 0 && (cs.pool == nil || (cs.pool.ReserveAEQ.Float() == 0 && cs.pool.ReserveTUSD.Float() == 0)) {
 		cs.pool = snap.Pool
 	}
 	for nullifier, wallet := range snap.Nullifiers {

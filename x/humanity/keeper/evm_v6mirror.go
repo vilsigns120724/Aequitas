@@ -93,15 +93,29 @@ func (e *EVMEngine) RestoreV6FromMirror() {
 }
 
 func mappingSlot(key []byte, slot int64) common.Hash {
+	// FIX 14: Guard against keys longer than 32 bytes — keep the rightmost 32
+	// bytes (matching Solidity's left-padding semantics for address/uint keys).
+	if len(key) > 32 {
+		key = key[len(key)-32:]
+	}
 	paddedKey := make([]byte, 32)
 	copy(paddedKey[32-len(key):], key)
 	slotBytes := common.BigToHash(big.NewInt(slot)).Bytes()
-	data := append(paddedKey, slotBytes...)
+	// FIX 14: Use a fresh allocation to avoid aliasing when paddedKey or
+	// slotBytes share an underlying array with other variables.
+	data := make([]byte, 64)
+	copy(data[:32], paddedKey)
+	copy(data[32:], slotBytes)
 	return common.BytesToHash(crypto.Keccak256(data))
 }
 
 func mappingSlotBytes32(key common.Hash, slot int64) common.Hash {
 	slotBytes := common.BigToHash(big.NewInt(slot)).Bytes()
-	data := append(key.Bytes(), slotBytes...)
+	// FIX 14: Use a fresh allocation instead of append to avoid aliasing — if
+	// key.Bytes() returns a slice backed by key's array, appending to it could
+	// corrupt the original key value in callers that reuse the hash.
+	data := make([]byte, 64)
+	copy(data[:32], key.Bytes())
+	copy(data[32:], slotBytes)
 	return common.BytesToHash(crypto.Keccak256(data))
 }

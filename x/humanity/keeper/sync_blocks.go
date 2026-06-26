@@ -79,7 +79,7 @@ return nil, err
 // public IPs because the minimal resolver doesn't handle PTR/A lookups
 // for already-resolved addresses the same way on all platforms.
 if ip := net.ParseIP(host); ip != nil {
-if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsMulticast() {
+if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsUnspecified() {
 	return nil, fmt.Errorf("connection to private/loopback IP rejected: %s", host)
 }
 d := &net.Dialer{Timeout: 10 * time.Second}
@@ -317,7 +317,7 @@ return false
 
 // Literal IP: allow HTTP or HTTPS as long as the IP is public.
 if ip := net.ParseIP(host); ip != nil {
-return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast() && !ip.IsMulticast()
+return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast() && !ip.IsMulticast() && !ip.IsUnspecified()
 }
 
 // Hostname: require HTTPS to prevent DNS-rebinding attacks.
@@ -325,17 +325,11 @@ if u.Scheme != "https" {
 return false
 }
 
-// For hostnames: resolve DNS and verify every returned IP is public.
-addrs, err := net.LookupHost(host)
-if err != nil || len(addrs) == 0 {
-return false
-}
-for _, addr := range addrs {
-ip := net.ParseIP(addr)
-if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsMulticast() || ip.IsMulticast() {
-return false
-}
-}
+// FIX 10: DNS lookup removed from isAllowedPeerURL to eliminate TOCTOU race
+// (DNS may resolve differently at connect time vs. check time, enabling
+// DNS-rebinding). The actual IP validation is authoritative in pinningDialer,
+// which resolves DNS once and pins the connection to the resolved IP.
+// String-level checks for obviously private literal IPs are still done above.
 return true
 }
 
