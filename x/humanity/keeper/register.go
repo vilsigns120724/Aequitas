@@ -448,11 +448,40 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		if !a.state.TryClaimNullifier(effectiveNullifier, wallet) {
 			return "", fmt.Errorf("nullifier already claimed: %s", effectiveNullifier)
 		}
-		// persistRegisterWithSigMirror now also calls RegisterHuman (the
-		// Go-state side) itself and rolls back its own EVM-mirror slot
-		// writes if that fails — so on success here, both sides are already
-		// guaranteed consistent. No separate retry loop needed.
-		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata, effectiveNullifier)
+		// FIX (audit recheck 2, P1 #8/#11): pendingRegTx used to be built
+		// AFTER persistRegisterWithSigMirror returned, then persisted via a
+		// separate SavePendingTx call — non-atomic with the Go-state mutation
+		// persistRegisterWithSigMirror did internally. A failure in that
+		// separate SavePendingTx call (or a crash between the two) left the
+		// registration fully applied locally with no secondary ever learning
+		// about it, exactly the gap RegisterHumanAtomic already closed for
+		// the non-mirror path. Build it BEFORE the call instead and pass it
+		// in — persistRegisterWithSigMirror now calls RegisterHumanAtomic
+		// instead of RegisterHuman, so the Go-state mutation and the outbox
+		// insert commit or roll back together as one DB transaction, same as
+		// the non-mirror path.
+		mirrorCommitment := ""
+		if len(req.PubSignals) > 0 {
+			mirrorCommitment = req.PubSignals[0]
+		}
+		var pendingRegTx Transaction
+		if effectiveNullifier != "" {
+			mirrorPAslice := []*big.Int{pA[0], pA[1]}
+			mirrorPCslice := []*big.Int{pC[0], pC[1]}
+			mirrorPSslice := []*big.Int{pubSignals[0], pubSignals[1]}
+			pendingRegTx = Transaction{
+				Type:       "register_human",
+				Wallet:     wallet,
+				TxHash:     crypto.Keccak256Hash(append(calldata, claimedHuman.Bytes()...)).Hex(),
+				Nullifier:  effectiveNullifier,
+				Commitment: mirrorCommitment,
+				ProofA:     bigIntsToHexStrings(mirrorPAslice),
+				ProofB:     bigInt2x2ToHexStrings(pB),
+				ProofC:     bigIntsToHexStrings(mirrorPCslice),
+				PubSignals: bigIntsToHexStrings(mirrorPSslice),
+			}
+		}
+		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata, effectiveNullifier, pendingRegTx)
 		if mirrorErr != nil {
 			// Registration didn't actually happen — release the claim so the
 			// legitimate owner of this nullifier isn't permanently locked out.
@@ -469,38 +498,6 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 			a.state.SaveBioHash(req.BioHashKey, wallet)
 		} else if req.BioHash != "" {
 			a.state.SaveBioHash(req.BioHash, wallet)
-		}
-		// Mirror path must also emit a block TX so secondary nodes learn about
-		// this registration. Without this, secondaries never see mirror-path
-		// registrations and their nullifier tables diverge, enabling double-spend.
-		mirrorCommitment := ""
-		if len(req.PubSignals) > 0 {
-			mirrorCommitment = req.PubSignals[0]
-		}
-		if effectiveNullifier != "" {
-			mirrorPAslice := []*big.Int{pA[0], pA[1]}
-			mirrorPCslice := []*big.Int{pC[0], pC[1]}
-			mirrorPSslice := []*big.Int{pubSignals[0], pubSignals[1]}
-			// FIX: same durability gap as the non-mirror path below —
-			// AddTransaction only queues in-memory; SavePendingTx survives a
-			// restart between now and the next ProduceBlock tick.
-			pendingRegTx := Transaction{
-				Type:       "register_human",
-				Wallet:     wallet,
-				TxHash:     txHash,
-				Nullifier:  effectiveNullifier,
-				Commitment: mirrorCommitment,
-				ProofA:     bigIntsToHexStrings(mirrorPAslice),
-				ProofB:     bigInt2x2ToHexStrings(pB),
-				ProofC:     bigIntsToHexStrings(mirrorPCslice),
-				PubSignals: bigIntsToHexStrings(mirrorPSslice),
-			}
-			if outboxErr := a.state.SavePendingTx(pendingRegTx); outboxErr != nil {
-				fmt.Printf("[ALERT] register_human for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this registration\n", wallet, outboxErr)
-				// Best-effort fallback: mutually exclusive with the DB path
-				// above, never both, so this can't double-apply.
-				a.blockchain.AddTransaction(pendingRegTx)
-			}
 		}
 		return txHash, nil
 	}
@@ -662,35 +659,16 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// delay the registration response.
 		go notifyProofServer(bioHashKey, wallet)
 	}
-	// FIX: the comment that used to sit here claimed "TryClaimNullifier
-	// (called in RegisterHuman flow) already writes the nullifier
-	// atomically" — that's false. RegisterHuman(wallet) takes no nullifier
-	// argument and never touches the nullifiers table; nothing on this
-	// (non-mirror, successful) path ever wrote to Go-state's nullifiers
-	// table or cs.nullifiers in-memory map. Only the mirror fallback
-	// (persistRegisterWithSigMirror) and secondary-node replay
-	// (replayTransactions, via TryClaimNullifier) ever populated it —
-	// meaning the PRIMARY's own direct registrations were silently absent
-	// from its own nullifiers bookkeeping forever, while every SECONDARY
-	// that replayed the same registration correctly added it. Since
-	// StateRoot() hashes the sorted set of nullifier keys, this guaranteed
-	// a permanent StateRoot mismatch between primary and any secondary for
-	// every single block following any successful direct registration —
-	// confirmed in production (registration-debug showed nullifier_exists:
-	// false on the primary despite chain_is_human/balance being correct).
-	// The EVM contract has already proven this nullifier is unique
-	// on-chain (registerWithSig reverts otherwise), so a plain insert here
-	// (not a re-claim) is correct — it mirrors what replay does on every
-	// secondary.
-	// NOTE: still a separate (non-atomic) write from the registration
-	// above — see the file-level note on known residual scope at the top
-	// of this function's atomic handling; cs.nullifiers DOES feed
-	// StateRoot, so a failure here specifically remains a real, if rare,
-	// gap. Tracked as a follow-up rather than expanding runAtomicWithOutbox
-	// to cover a fourth subsystem (nullifiers) in this pass.
-	if nullifierToStore != "" {
-		a.state.SaveNullifier(nullifierToStore, wallet)
-	}
+	// FIX (audit recheck 2, P1 #7/#10): SaveNullifier used to be called
+	// here, as a separate, non-atomic step AFTER RegisterHumanAtomic's
+	// transaction had already committed — a failure here left this node's
+	// own nullifiers bookkeeping permanently missing this entry despite
+	// the registration itself having succeeded (StateRoot hashes the
+	// sorted set of nullifier keys, so this caused a permanent mismatch
+	// against any secondary that correctly replayed the same registration).
+	// RegisterHumanAtomic now claims the nullifier itself, inside the same
+	// DB transaction as the account mutation and the outbox insert — see
+	// its comment. Nothing left to do here.
 
 	return txHash, nil
 }
@@ -746,7 +724,7 @@ func notifyProofServer(bioHashKey, wallet string) {
 	}
 }
 
-func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractAddr, claimedHuman common.Address, pA [2]*big.Int, pB [2][2]*big.Int, pC [2]*big.Int, pubSignals [2]*big.Int, sigBytes []byte, calldata []byte, nullifierHex string) (string, error) {
+func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractAddr, claimedHuman common.Address, pA [2]*big.Int, pB [2][2]*big.Int, pC [2]*big.Int, pubSignals [2]*big.Int, sigBytes []byte, calldata []byte, nullifierHex string, pendingTx Transaction) (string, error) {
 	if nullifierHex == "" {
 		return "", fmt.Errorf("nullifier required")
 	}
@@ -850,7 +828,15 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 	// state for that user. Calling it here means a failure can undo the
 	// EVM-mirror slot writes above in the same place that knows their old
 	// values, leaving no partial state for the caller to deal with at all.
-	if regErr := a.state.RegisterHuman(wallet); regErr != nil {
+	//
+	// FIX (audit recheck 2, P1 #8/#11): now RegisterHumanAtomic instead of
+	// RegisterHuman — the Go-state mutation and the register_human outbox
+	// insert (pendingTx, built by the caller before this call) commit or
+	// roll back together as one DB transaction, closing the same
+	// non-atomic-outbox gap RegisterHumanAtomic already closed for the
+	// non-mirror path. A failure here still triggers the EVM-mirror-slot
+	// rollback below exactly as before.
+	if regErr := a.state.RegisterHumanAtomic(wallet, pendingTx); regErr != nil {
 		a.state.SaveStorageSlot(addrStr, common.BigToHash(big.NewInt(0)).Hex(), common.BigToHash(totalSupply).Hex())
 		a.state.SaveStorageSlot(addrStr, common.BigToHash(big.NewInt(1)).Hex(), common.BigToHash(totalHumans).Hex())
 		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 4).Hex(), common.Hash{}.Hex())
@@ -864,7 +850,11 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 		return "", fmt.Errorf("mirror EVM slots written but Go-state RegisterHuman failed (rolled back): %w", regErr)
 	}
 
-	txHash := crypto.Keccak256Hash(append(calldata, claimedHuman.Bytes()...)).Hex()
+	// txHash is the same value the caller already put in pendingTx.TxHash
+	// (computed there, before this call, so it could be included in the
+	// same atomic transaction above) — reuse it rather than recomputing,
+	// guaranteeing they can never disagree.
+	txHash := pendingTx.TxHash
 	fmt.Printf("[REGISTER] Native V7 mirror persisted for %s, tx=%s\n", wallet, txHash)
 	return txHash, nil
 }

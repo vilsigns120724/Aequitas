@@ -1648,17 +1648,31 @@ func (cs *ChainState) RegisterHuman(address string) error {
 	return cs.registerHumanLocked(address)
 }
 
-// RegisterHumanAtomic behaves like RegisterHuman, except the state mutation
-// and the resulting outbox insert commit or roll back together as one DB
-// transaction — see TransferAtomic's comment / runAtomicWithOutbox.
-// pendingTxTemplate should have every field already set (RegisterHuman's
-// result carries no extra fields the way Transfer's demurrage amounts do,
-// so there's nothing to fill in after the fact here).
+// RegisterHumanAtomic behaves like RegisterHuman, except the state
+// mutation, the nullifier claim, and the resulting outbox insert commit or
+// roll back together as one DB transaction — see TransferAtomic's comment
+// / runAtomicWithOutbox. pendingTxTemplate should have every field already
+// set (RegisterHuman's result carries no extra fields the way Transfer's
+// demurrage amounts do, so there's nothing to fill in after the fact
+// here).
+//
+// FIX (audit recheck 2, P1 #7/#10): SaveNullifier used to be called by
+// register.go as a separate, non-atomic step AFTER this function's
+// transaction had already committed — see SaveNullifier's comment for the
+// permanent-StateRoot-mismatch consequence that had. It's now called HERE,
+// inside fn(), while cs.activeTx is set, so it participates in the exact
+// same commit-or-rollback unit as the account mutation and the outbox
+// insert.
 func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction) error {
 	address = strings.ToLower(address)
 	return cs.runAtomicWithOutbox([]string{address}, false, func() (Transaction, error) {
 		if err := cs.registerHumanLocked(address); err != nil {
 			return Transaction{}, err
+		}
+		if pendingTx.Nullifier != "" {
+			if err := cs.SaveNullifier(pendingTx.Nullifier, address); err != nil {
+				return Transaction{}, err
+			}
 		}
 		return pendingTx, nil
 	})

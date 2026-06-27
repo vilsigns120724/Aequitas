@@ -863,25 +863,40 @@ func (cs *ChainState) TryClaimNullifier(nullifier, walletAddress string) bool {
 	return true
 }
 
-func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) {
+// SaveNullifier records nullifier as used. Caller must already hold cs.mu
+// (it mutates cs.nullifiers directly, like the other "Locked"-style
+// helpers in this file) — see RegisterHumanAtomic's closure for the
+// expected call site.
+//
+// FIX (audit recheck 2, P1 #7/#10): this used to be void and use cs.db
+// directly, called as a separate, non-atomic step AFTER
+// RegisterHumanAtomic's transaction had already committed (register.go).
+// A failure here — or a crash between the two calls — left Go-state and
+// the outbox correct while StateRoot (which hashes the sorted set of
+// nullifier keys) had no record of this nullifier, a permanent
+// inconsistency no later retry could fix (the registration itself had
+// already succeeded). Now returns an error and uses cs.dbExec(), so when
+// called from inside RegisterHumanAtomic's fn() closure (which holds
+// cs.activeTx for that call), this write commits or rolls back together
+// with the account mutation and the outbox insert as one DB transaction.
+func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) error {
 	if nullifier == "" {
-		return
+		return nil
 	}
 	walletAddress = strings.ToLower(walletAddress)
-	cs.mu.Lock()
 	if len(cs.nullifiers) < maxInMemNullifiers {
 		cs.nullifiers[nullifier] = walletAddress
 	}
-	cs.mu.Unlock()
 	if cs.db == nil {
-		return
+		return nil
 	}
-	if _, err := cs.db.Exec(
+	if _, err := cs.dbExec().Exec(
 		`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT (nullifier) DO NOTHING`,
 		nullifier, walletAddress,
 	); err != nil {
-		fmt.Printf("[NULLIFIER] Warning: could not persist nullifier: %v\n", err)
+		return fmt.Errorf("could not persist nullifier: %w", err)
 	}
+	return nil
 }
 
 // ReleaseNullifier undoes a TryClaimNullifier claim. Used when a

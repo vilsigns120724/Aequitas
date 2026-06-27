@@ -729,35 +729,16 @@ dag.replayMu.Unlock()
 // FIX (block-level atomicity): replayTransactions now rolls back and
 // returns false if any of this block's transactions hit a genuine
 // state-inconsistency failure (not an expected idempotent skip like
-// "already registered") — see its own comment. Treat that exactly like
-// any other validation failure: the block is rejected outright, never
+// "already registered"), OR if the post-replay StateRoot doesn't match
+// the producer's claimed root (audit recheck 2, P0 #1 — moved into
+// replayTransactions itself so a mismatch can use that function's own
+// rollback snapshot; see its comment). Treat either exactly like any
+// other validation failure: the block is rejected outright, never
 // inserted into dag.blocks/dag.tips. A later sync cycle or orphan-retry
 // may succeed once local state has caught up with whatever caused the
 // mismatch.
 if !replayOK {
 	return false
-}
-
-// State-root integrity check — now comparing the RECEIVER's post-replay
-// state against the PRODUCER's post-state, the comparison it was always
-// supposed to be. Still warn-only rather than reject-on-mismatch: any
-// remaining non-determinism source (not yet found) would otherwise halt
-// sync entirely rather than just logging a now-meaningful warning. The
-// ECDSA signature check above already prevents forged blocks; this is a
-// state-consistency signal, not a forgery defense.
-if block.StateRoot != "" {
-	localRoot := dag.state.StateRoot()
-	if block.StateRoot != localRoot {
-		fmt.Printf("[DAG] ⚠ StateRoot mismatch on peer block #%d (proposer=%s..., local=%s...) — accepted (warn only)\n",
-			block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
-		// FIX 4: Track mismatches per proposer.
-		dag.stateRootMismatches[block.Proposer]++
-		if dag.stateRootMismatches[block.Proposer] >= 5 {
-			fmt.Printf("[ALERT] 5+ consecutive StateRoot mismatches from proposer %s — state may have diverged. Consider resync.\n", block.Proposer)
-		}
-	} else {
-		dag.stateRootMismatches[block.Proposer] = 0 // reset on match
-	}
 }
 
 dag.mu.Lock()
@@ -1188,6 +1169,40 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 		}
 		fmt.Printf("[REPLAY] ✗ Block #%d rolled back due to a genuine state-inconsistency failure — block rejected\n", block.Height)
 		return false
+	}
+
+	// FIX (audit recheck 2, P0 #1): StateRoot comparison moved here (from
+	// AddPeerBlock, after this function returned) so a mismatch can use
+	// THIS function's own rollbackSnap to actually undo the replay, not
+	// just log it. This used to be warn-only: the block was accepted into
+	// dag.blocks/dag.tips regardless, meaning a node could build on top of
+	// a block whose state it could not itself reproduce. Sequenced after
+	// the distribution-atomicity and per-human demurrage-replay fixes
+	// (audit recheck 2, P0 #2-#6) specifically because those were the
+	// known, frequent divergence sources that made this check fire on
+	// nearly every block in practice — rejecting on every block would have
+	// halted sync entirely rather than catching genuine divergence.
+	// Known residual divergence sources (non-atomic nullifier persistence,
+	// mirror-path outbox — audit recheck 2, P1 #7/#8) can still trigger
+	// this; a rejected block is retried by a later sync cycle once local
+	// state catches up, the same recovery path hardFailure above already
+	// relies on.
+	if block.StateRoot != "" {
+		localRoot := dag.state.StateRoot()
+		if block.StateRoot != localRoot {
+			dag.state.restoreFromRollback(rollbackSnap)
+			for _, n := range claimedNullifiers {
+				dag.state.ReleaseNullifier(n)
+			}
+			fmt.Printf("[REPLAY] ✗ StateRoot mismatch on block #%d (proposer=%s..., local=%s...) — rolled back, block rejected\n",
+				block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
+			dag.stateRootMismatches[block.Proposer]++
+			if dag.stateRootMismatches[block.Proposer] >= 5 {
+				fmt.Printf("[ALERT] 5+ consecutive StateRoot mismatches from proposer %s — state may have diverged. Consider resync.\n", block.Proposer)
+			}
+			return false
+		}
+		dag.stateRootMismatches[block.Proposer] = 0 // reset on match
 	}
 
 	dag.replayedMu.Lock()
