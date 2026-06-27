@@ -279,7 +279,14 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 	// however many duplicate-height siblings either side has accumulated.
 	if minHeightStr := r.URL.Query().Get("min_height"); minHeightStr != "" {
 		var minHeight int64
-		fmt.Sscanf(minHeightStr, "%d", &minHeight)
+		// FIX: an unparseable min_height silently became 0 (fmt.Sscanf leaves
+		// the destination at its zero value on error, and the error itself
+		// was discarded) — that returns the ENTIRE chain instead of failing
+		// loudly, which is exactly the wrong default for a malformed request.
+		if _, err := fmt.Sscanf(minHeightStr, "%d", &minHeight); err != nil {
+			http.Error(w, `{"error":"invalid min_height parameter"}`, http.StatusBadRequest)
+			return
+		}
 		result := make([]*Block, 0, limit)
 		for _, b := range blocks {
 			if b.Height > minHeight {

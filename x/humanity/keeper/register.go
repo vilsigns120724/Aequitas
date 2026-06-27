@@ -343,6 +343,23 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// already has a v2 ZK-bound nullifier. bioHash, if supplied, is still
 	// checked for duplicates below (secondary defense-in-depth dedup layer,
 	// independent of the nullifier).
+	// FIX: BioHashKey used to be trusted as-is from the client/proof-server
+	// response, with nothing on the chain verifying it actually equals
+	// keccak256(BioHash). The nullifier remains the real on-chain uniqueness
+	// guarantee (the EVM contract enforces that), so this isn't a way to
+	// double-register — but a buggy or manipulated client could submit a
+	// BioHashKey that doesn't correspond to its own BioHash, desyncing the
+	// chain's bio_hashes bookkeeping from the proof-server's (which always
+	// computes the key itself, never trusts a caller-supplied one) and
+	// making duplicate-biometric diagnostics unreliable. Recompute and
+	// compare whenever both are present; reject on mismatch rather than
+	// silently trusting whichever one the client decided to claim.
+	if req.BioHash != "" && req.BioHashKey != "" {
+		expectedKey, keyErr := computeBioHashKeyFromBioHash(req.BioHash)
+		if keyErr == nil && !strings.EqualFold(expectedKey, req.BioHashKey) {
+			return "", fmt.Errorf("bioHashKey does not match keccak256(bioHash)")
+		}
+	}
 	// FIX: GetWalletByBioHash only checks bio_registrations. The chain also
 	// maintains its own, separate bio_hashes table (see SaveBioHash) — check
 	// that too, using whichever key SaveBioHash would have used (BioHashKey
@@ -669,6 +686,19 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	}
 
 	return txHash, nil
+}
+
+// computeBioHashKeyFromBioHash replicates the proof server's
+// computeBioHashKey(bioNum): keccak256(0x + bioNum left-padded to 32 bytes),
+// where bioNum is the raw decimal biometric value. Used to verify a
+// client-supplied BioHashKey actually corresponds to its BioHash instead of
+// trusting it unconditionally.
+func computeBioHashKeyFromBioHash(bioHash string) (string, error) {
+	bioNum, ok := new(big.Int).SetString(strings.TrimSpace(bioHash), 10)
+	if !ok {
+		return "", fmt.Errorf("bioHash is not a valid decimal integer")
+	}
+	return crypto.Keccak256Hash(common.LeftPadBytes(bioNum.Bytes(), 32)).Hex(), nil
 }
 
 // notifyProofServer POSTs the registered bioHashKey to the proof server's

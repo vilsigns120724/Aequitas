@@ -149,6 +149,17 @@ func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, limit int
 		return nil, err
 	}
 	defer resp.Body.Close()
+	// FIX: this used to decode resp.Body unconditionally regardless of HTTP
+	// status — a 500/403/429/HTML error page got handed to json.Unmarshal
+	// and surfaced as an opaque decode error indistinguishable from "peer
+	// sent malformed JSON". Checking the status explicitly means operators
+	// see the real cause (e.g. "peer returned 503") instead of a generic
+	// decode failure during exactly the kind of outage/drift situation
+	// where that distinction matters most.
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		return nil, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	var blocks []*Block
 	if err := json.Unmarshal(body, &blocks); err != nil {
@@ -158,15 +169,24 @@ func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, limit int
 }
 
 // fetchBlockByHash fetches exactly one block by hash from nodeURL's
-// /api/block endpoint, or nil if the peer doesn't have it (404) / on error.
+// /api/block endpoint, or nil if the peer genuinely doesn't have it (404).
+// Any OTHER non-200 (500/403/429/...) is returned as an error rather than
+// silently treated the same as "not found" — those mean something is wrong
+// with the peer or the request, not that the block doesn't exist, and
+// fetchMissingAncestors' caller should be able to tell the difference in
+// its logs instead of just "block not found" for every failure mode.
 func (dag *BlockDAG) fetchBlockByHash(nodeURL, hash string) (*Block, error) {
 	resp, err := httpSyncClient.Get(fmt.Sprintf("%s/api/block?hash=%s", nodeURL, hash))
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		return nil, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	var block Block
@@ -216,8 +236,12 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 				continue
 			}
 			block, err := dag.fetchBlockByHash(nodeURL, hash)
-			if err != nil || block == nil {
+			if err != nil {
+				fmt.Printf("[HTTP-SYNC] ✗ Could not fetch missing ancestor %s from %s: %v\n", hash[:min(16, len(hash))], nodeURL, err)
 				continue
+			}
+			if block == nil {
+				continue // peer genuinely doesn't have this block (404)
 			}
 			fetched++
 			progressed = true
