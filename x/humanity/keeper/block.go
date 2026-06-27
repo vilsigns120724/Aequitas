@@ -265,6 +265,25 @@ if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	fmt.Println("[BLOCK] ⚠ RELAYER_PRIVATE_KEY not set — blocks will be unsigned. Peer nodes will reject unsigned blocks.")
 }
 dag.createGenesisBlock()
+// FIX (double-apply): dag.height/dag.blocks/dag.tips are purely
+// in-memory — ReconstructState is a no-op when using Postgres, so they
+// reset to genesis on every process restart regardless of how much
+// chain history cs.accounts (loaded fresh from the DB above) actually
+// reflects. Resume dag.height from the last persisted value instead of
+// 0, so ExportSnapshot reports the chain's true cumulative height, not
+// "blocks observed since this process last started" — see the same
+// fix's writes in ProduceBlock/AddPeerBlock and StateSnapshot.Height's
+// comment for the bug this caused (a fresh-bootstrapped secondary's
+// snapshot cutoff was reported far too low, so it still re-replayed —
+// and double-applied — every block between the true height and the
+// process-local one).
+if persisted := state.getConfigValue("max_block_height"); persisted != "" {
+	var h int64
+	fmt.Sscanf(persisted, "%d", &h)
+	if h > dag.height {
+		dag.height = h
+	}
+}
 return dag
 }
 
@@ -419,6 +438,12 @@ delete(dag.tips, ph)
 }
 dag.tips[block.Hash] = true
 dag.height = block.Height
+// FIX (double-apply): persist so a restart can resume from the true
+// cumulative height instead of dag.height resetting to 0 — see
+// createGenesisBlock's restoration of this value and the comment on
+// StateSnapshot.Height for why an in-memory-only height broke snapshot
+// bootstrap.
+dag.state.setConfigValue("max_block_height", fmt.Sprintf("%d", dag.height))
 
 if len(parentHashes) > 1 {
 fmt.Printf("[DAG] 🔀 Merged %d tips into block #%d\n", len(parentHashes), block.Height)
@@ -714,6 +739,9 @@ dag.tips[block.Hash] = true
 
 if block.Height > dag.height {
 	dag.height = block.Height
+	// FIX (double-apply): see the matching comment in ProduceBlock — persist
+	// so a restart resumes from the true cumulative height.
+	dag.state.setConfigValue("max_block_height", fmt.Sprintf("%d", dag.height))
 }
 
 tipCount := len(dag.tips)
