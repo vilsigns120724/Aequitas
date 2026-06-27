@@ -553,27 +553,44 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 	fmt.Println("[CLEAR-REG] ⚠ Remove CLEAR_REGISTRATIONS=true from env vars and redeploy once more.")
 }
 
-// setConfigValue persists a key/value pair to chain_config (upsert).
-// P2-AUDIT: Log errors instead of silently ignoring them. A failed write to
-// last_ubi_at would allow double-distribution if the DB is temporarily
-// unavailable — the error must be visible in logs for operators to act on.
-func (cs *ChainState) setConfigValue(key, value string) {
+// setConfigValue persists a key/value pair to chain_config (upsert) and
+// returns an error if the write failed.
+//
+// FIX (audit recheck3, P0 #2): this used to call cs.db.Exec directly instead
+// of cs.dbExec(), and returned nothing. Both mattered: last_ubi_at is
+// StateRoot-relevant and written from inside runAtomicDistributionWithOutbox
+// (via applyUBIFinalizeDeltaLocked) — calling cs.db.Exec there opened a
+// SEPARATE auto-committing connection instead of joining cs.activeTx, so
+// this write landed permanently the instant it ran, regardless of whether
+// the surrounding distribution transaction later committed or rolled back.
+// A rollback after this point reverted every account/pool change but left
+// last_ubi_at changed anyway — a real, undetected gap in the atomic
+// distribution work earlier this session. Now routes through cs.dbExec()
+// like every other write in this file, and returns the error instead of
+// only logging it, so callers that need to know (ResyncFromSnapshotURL,
+// restoreFromRollback, applyUBIFinalizeDeltaLocked) actually can.
+func (cs *ChainState) setConfigValue(key, value string) error {
 	if cs.db == nil {
-		return
+		return nil
 	}
-	if _, err := cs.db.Exec(`INSERT INTO chain_config (key, value) VALUES ($1, $2)
+	if _, err := cs.dbExec().Exec(`INSERT INTO chain_config (key, value) VALUES ($1, $2)
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value); err != nil {
 		fmt.Printf("[DB] Warning: setConfigValue(%q) failed: %v\n", key, err)
+		return fmt.Errorf("could not set config %q: %w", key, err)
 	}
+	return nil
 }
 
 // getConfigValue reads a key from chain_config, returning "" if missing.
+// Uses cs.dbExec() so a read during an active transaction sees that
+// transaction's own uncommitted writes instead of cs.db's separate
+// connection, which wouldn't see them yet under Postgres MVCC.
 func (cs *ChainState) getConfigValue(key string) string {
 	if cs.db == nil {
 		return ""
 	}
 	var v string
-	cs.db.QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+	cs.dbExec().QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
 	return v
 }
 
@@ -587,24 +604,27 @@ func (cs *ChainState) getConfigValueExists(key string) (string, bool) {
 		return "", false
 	}
 	var v string
-	err := cs.db.QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+	err := cs.dbExec().QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
 	if err != nil {
 		return "", false
 	}
 	return v, true
 }
 
-// deleteConfigValue removes key from chain_config entirely. Used by
-// restoreFromRollback to undo a block that set a StateRoot-relevant config
-// key for the first time (setConfigValue alone can't represent "this key
-// must not exist" — see configValueSnapshot).
-func (cs *ChainState) deleteConfigValue(key string) {
+// deleteConfigValue removes key from chain_config entirely and returns an
+// error if the write failed. Used by restoreFromRollback to undo a block
+// that set a StateRoot-relevant config key for the first time (setConfigValue
+// alone can't represent "this key must not exist" — see configValueSnapshot).
+// Routes through cs.dbExec() for the same reason as setConfigValue.
+func (cs *ChainState) deleteConfigValue(key string) error {
 	if cs.db == nil {
-		return
+		return nil
 	}
-	if _, err := cs.db.Exec(`DELETE FROM chain_config WHERE key = $1`, key); err != nil {
+	if _, err := cs.dbExec().Exec(`DELETE FROM chain_config WHERE key = $1`, key); err != nil {
 		fmt.Printf("[DB] Warning: deleteConfigValue(%q) failed: %v\n", key, err)
+		return fmt.Errorf("could not delete config %q: %w", key, err)
 	}
+	return nil
 }
 
 // GetLastUBIAt returns the Unix timestamp of the most recent UBI distribution,
@@ -3116,6 +3136,22 @@ func (cs *ChainState) StateRoot() string {
 	// holding RLock across a blocking DB query (deadlock / latency risk).
 	lastUBIAt := cs.getConfigValue("last_ubi_at")
 	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	return cs.stateRootLocked(lastUBIAt)
+}
+
+// stateRootLocked is StateRoot's body, for callers that already hold cs.mu
+// (audit recheck3, P0/P1 — replayTransactions holds cs.mu continuously
+// across an entire block's snapshot/deltas/StateRoot-comparison instead of
+// taking its own separate RLock here, which would deadlock against an
+// exclusive Lock already held by the same goroutine). lastUBIAt is passed
+// in rather than read here because getConfigValue's DB call should still
+// happen before any lock is taken when called from the public StateRoot()
+// — replayTransactions, which already holds cs.mu for unrelated writes by
+// the time it needs this, accepts that one extra blocking DB read during
+// its critical section, matching the same tradeoff every atomic operation
+// in this file already makes (see runAtomicWithOutbox).
+func (cs *ChainState) stateRootLocked(lastUBIAt string) string {
 	addrs := make([]string, 0, len(cs.accounts))
 	for a := range cs.accounts {
 		addrs = append(addrs, a)
@@ -3161,7 +3197,6 @@ func (cs *ChainState) StateRoot() string {
 	}
 	// Include last UBI distribution timestamp (pre-fetched before RLock — P1-1).
 	fmt.Fprintf(&sb, "|ubi:%s", lastUBIAt)
-	cs.mu.RUnlock()
 	hash := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(hash[:])
 }
@@ -3448,6 +3483,25 @@ func (cs *ChainState) snapshotForRollbackLocked(addrs []string, full bool, chain
 // now, making the failure visible is the honest, scoped improvement.
 func (cs *ChainState) restoreFromRollback(snap *blockRollbackSnapshot) error {
 	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	return cs.restoreFromRollbackLocked(snap)
+}
+
+// restoreFromRollbackLocked is restoreFromRollback's body, for callers that
+// already hold cs.mu for the ENTIRE surrounding operation (audit recheck3,
+// P0/P1 — replayTransactions). Unlike the public restoreFromRollback, this
+// does NOT release cs.mu before its DB writes: replayTransactions needs the
+// lock held continuously from its snapshot through to either a successful
+// StateRoot match or this rollback, so no concurrent API/distribution
+// operation can mutate the same accounts in the gap and then get its own
+// already-committed change silently reverted by a rollback using a
+// snapshot taken before that change happened — exactly the race the public
+// restoreFromRollback's per-call locking still leaves open for replay
+// specifically (every other caller of the public version already releases
+// cs.mu beforehand for unrelated reasons, e.g. runAtomicWithOutbox, so this
+// duplication is intentional, not copy-paste: the two functions hold the
+// lock for genuinely different durations on purpose).
+func (cs *ChainState) restoreFromRollbackLocked(snap *blockRollbackSnapshot) error {
 	var toDelete []string
 	for _, s := range snap.accounts {
 		if s.existed {
@@ -3462,9 +3516,8 @@ func (cs *ChainState) restoreFromRollback(snap *blockRollbackSnapshot) error {
 		poolCopy := *snap.pool
 		cs.pool = &poolCopy
 	}
-	// Copy out what needs DB writes before releasing the lock — saveAccountToDB
-	// and the delete query below do their own DB I/O and must not run while
-	// holding cs.mu (matches the existing pattern elsewhere in this file).
+	// Unlike the public restoreFromRollback, cs.mu stays held through the DB
+	// writes below — see this function's own doc comment for why.
 	var toSave []*AccountState
 	for _, s := range snap.accounts {
 		if s.existed {
@@ -3472,7 +3525,6 @@ func (cs *ChainState) restoreFromRollback(snap *blockRollbackSnapshot) error {
 		}
 	}
 	poolToSave := cs.pool
-	cs.mu.Unlock()
 
 	var firstErr error
 	for _, acc := range toSave {
@@ -3497,18 +3549,24 @@ func (cs *ChainState) restoreFromRollback(snap *blockRollbackSnapshot) error {
 	}
 	// FIX (audit3, P0 #2; audit recheck2, P0 #4): restore StateRoot-relevant
 	// chain_config too — see blockRollbackSnapshot.chainConfig's comment.
-	// Done outside cs.mu (already released above) since setConfigValue/
-	// deleteConfigValue do their own blocking DB I/O. A key that didn't
-	// exist before this block must be DELETED, not skipped — skipping it
+	// setConfigValue/deleteConfigValue do their own blocking DB I/O, now run
+	// with cs.mu still held (see this function's doc comment for why that's
+	// now intentional, not the latency bug it would have been before audit
+	// recheck3). A key that didn't exist before this block must be DELETED,
+	// not skipped — skipping it
 	// left a block's first-ever write to that key permanently in place even
 	// after a full rollback (the original bug: an empty string was treated
 	// as "nothing to restore", indistinguishable from "key never existed").
 	for key, cv := range snap.chainConfig {
 		if !cv.existed {
-			cs.deleteConfigValue(key)
+			if err := cs.deleteConfigValue(key); err != nil && firstErr == nil {
+				firstErr = fmt.Errorf("rollback: could not delete config %q: %w", key, err)
+			}
 			continue
 		}
-		cs.setConfigValue(key, cv.value)
+		if err := cs.setConfigValue(key, cv.value); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("rollback: could not restore config %q: %w", key, err)
+		}
 	}
 	return firstErr
 }
@@ -3524,6 +3582,15 @@ func (cs *ChainState) restoreFromRollback(snap *blockRollbackSnapshot) error {
 func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount, fromLost, toLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.applyTransferDeltaLocked(from, to, netAmount, fromLost, toLost)
+}
+
+// applyTransferDeltaLocked is ApplyTransferDelta's body, for callers that
+// already hold cs.mu (audit recheck3, P0/P1 — replayTransactions holds
+// cs.mu continuously across an entire block's snapshot/deltas/StateRoot
+// check instead of releasing and reacquiring it once per TX; see
+// replayTransactions' own comment for the isolation race this closes).
+func (cs *ChainState) applyTransferDeltaLocked(from, to string, netAmount, fromLost, toLost float64) error {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	fromAcc, ok := cs.accounts[from]
@@ -3580,6 +3647,11 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount, fromLost, t
 func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.applySwapDeltaLocked(wallet, amountIn, amountOut, aeqToTusd, demurrageLost)
+}
+
+// applySwapDeltaLocked is ApplySwapDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut float64, aeqToTusd bool, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	acc, ok := cs.accounts[wallet]
 	if !ok {
@@ -3651,6 +3723,11 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lpShares, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.addLiquidityDeltaLocked(wallet, aeqAmount, tusdAmount, lpShares, demurrageLost)
+}
+
+// addLiquidityDeltaLocked is AddLiquidityDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) addLiquidityDeltaLocked(wallet string, aeqAmount, tusdAmount, lpShares, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	acc, ok := cs.accounts[wallet]
 	if !ok {
@@ -3708,6 +3785,11 @@ func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lp
 func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.removeLiquidityDeltaLocked(wallet, sharesToBurn, demurrageLost)
+}
+
+// removeLiquidityDeltaLocked is RemoveLiquidityDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) removeLiquidityDeltaLocked(wallet string, sharesToBurn, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	acc, ok := cs.accounts[wallet]
 	if !ok {
@@ -3805,6 +3887,11 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64, ubiAt int64) error {
 	}
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.applyUBIDeltaLocked(amountPerHuman, ubiAt)
+}
+
+// applyUBIDeltaLocked is ApplyUBIDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyUBIDeltaLocked(amountPerHuman float64, ubiAt int64) error {
 	for addr, acc := range cs.accounts {
 		if !acc.IsHuman {
 			continue
@@ -3824,7 +3911,9 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64, ubiAt int64) error {
 		}
 	}
 	// Write last_ubi_at to secondary's chain_config so StateRoot matches primary.
-	cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", ubiAt))
+	if err := cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", ubiAt)); err != nil {
+		return fmt.Errorf("ubi (legacy flat): could not save last_ubi_at: %w", err)
+	}
 	return nil
 }
 
@@ -3841,6 +3930,11 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64, ubiAt int64) error {
 func (cs *ChainState) ApplyUBIRewardDelta(wallet string, amount, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.applyUBIRewardDeltaLocked(wallet, amount, demurrageLost)
+}
+
+// applyUBIRewardDeltaLocked is ApplyUBIRewardDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyUBIRewardDeltaLocked(wallet string, amount, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	acc, ok := cs.accounts[wallet]
 	if !ok {
@@ -3884,7 +3978,9 @@ func (cs *ChainState) applyUBIFinalizeDeltaLocked(ubiAt int64) error {
 			return fmt.Errorf("ubi finalize: could not save pool account: %w", err)
 		}
 	}
-	cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", ubiAt))
+	if err := cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", ubiAt)); err != nil {
+		return fmt.Errorf("ubi finalize: could not save last_ubi_at: %w", err)
+	}
 	return nil
 }
 
@@ -3900,6 +3996,11 @@ func (cs *ChainState) applyUBIFinalizeDeltaLocked(ubiAt int64) error {
 func (cs *ChainState) ApplyValidatorRewardDelta(wallet string, amount, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.applyValidatorRewardDeltaLocked(wallet, amount, demurrageLost)
+}
+
+// applyValidatorRewardDeltaLocked is ApplyValidatorRewardDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyValidatorRewardDeltaLocked(wallet string, amount, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	if _, ok := cs.accounts[wallet]; !ok {
 		cs.accounts[wallet] = &AccountState{Address: wallet}
@@ -3925,6 +4026,11 @@ func (cs *ChainState) ApplyValidatorRewardDelta(wallet string, amount, demurrage
 func (cs *ChainState) ApplyValidatorPoolZeroDelta() error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.applyValidatorPoolZeroDeltaLocked()
+}
+
+// applyValidatorPoolZeroDeltaLocked is ApplyValidatorPoolZeroDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyValidatorPoolZeroDeltaLocked() error {
 	if acc, ok := cs.accounts[validatorsPoolAddr]; ok {
 		acc.Balance = NewDecimal(0)
 		if err := cs.saveAccountToDB(acc); err != nil {
@@ -3953,6 +4059,11 @@ func (cs *ChainState) ApplyValidatorPoolZeroDelta() error {
 func (cs *ChainState) ApplyLPRewardDelta(wallet string, amount, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.applyLPRewardDeltaLocked(wallet, amount, demurrageLost)
+}
+
+// applyLPRewardDeltaLocked is ApplyLPRewardDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyLPRewardDeltaLocked(wallet string, amount, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	if _, ok := cs.accounts[wallet]; !ok {
 		cs.accounts[wallet] = &AccountState{Address: wallet}
@@ -3978,6 +4089,11 @@ func (cs *ChainState) ApplyLPRewardDelta(wallet string, amount, demurrageLost fl
 func (cs *ChainState) ApplyLPPoolZeroDelta() error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.applyLPPoolZeroDeltaLocked()
+}
+
+// applyLPPoolZeroDeltaLocked is ApplyLPPoolZeroDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyLPPoolZeroDeltaLocked() error {
 	if acc, ok := cs.accounts[lpPoolAddr]; ok {
 		acc.Balance = NewDecimal(0)
 		if err := cs.saveAccountToDB(acc); err != nil {
@@ -3997,6 +4113,11 @@ func (cs *ChainState) ApplyLPPoolZeroDelta() error {
 func (cs *ChainState) ApplyEscrowMoveDelta(wallet string, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.applyEscrowMoveDeltaLocked(wallet, demurrageLost)
+}
+
+// applyEscrowMoveDeltaLocked is ApplyEscrowMoveDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyEscrowMoveDeltaLocked(wallet string, demurrageLost float64) error {
 	wallet = strings.ToLower(wallet)
 	acc, ok := cs.accounts[wallet]
 	if !ok {
@@ -4017,6 +4138,11 @@ func (cs *ChainState) ApplyEscrowMoveDelta(wallet string, demurrageLost float64)
 func (cs *ChainState) ApplyEscrowReleaseDelta(amount float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.applyEscrowReleaseDeltaLocked(amount)
+}
+
+// applyEscrowReleaseDeltaLocked is ApplyEscrowReleaseDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyEscrowReleaseDeltaLocked(amount float64) error {
 	if _, ok := cs.accounts[ubiPoolAddr]; !ok {
 		cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
 	}
@@ -4033,6 +4159,11 @@ func (cs *ChainState) ApplyEscrowReleaseDelta(amount float64) error {
 func (cs *ChainState) ApplyFaucetDelta(wallet string, faucetAmount float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.applyFaucetDeltaLocked(wallet, faucetAmount)
+}
+
+// applyFaucetDeltaLocked is ApplyFaucetDelta's body — see applyTransferDeltaLocked's comment.
+func (cs *ChainState) applyFaucetDeltaLocked(wallet string, faucetAmount float64) error {
 	wallet = strings.ToLower(wallet)
 	if _, ok := cs.accounts[wallet]; !ok {
 		cs.accounts[wallet] = &AccountState{Address: wallet}

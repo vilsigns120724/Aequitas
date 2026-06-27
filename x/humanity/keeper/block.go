@@ -1114,7 +1114,32 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	}
 
 	touchedAddrs, needsFullSnapshot := blockTouchedAddresses(block)
-	rollbackSnap := dag.state.snapshotForRollback(touchedAddrs, needsFullSnapshot)
+	// FIX (audit recheck3, P0/P1 — "Block-Replay-Rollback ist nicht gegen
+	// parallele lokale Mutationen isoliert"): this used to take rollbackSnap
+	// via the lock-acquiring, lock-releasing snapshotForRollback, then let
+	// every individual Delta function below take and release cs.mu on its
+	// own for just that one call. Between any two of those calls — or
+	// between the snapshot and the first call — a concurrent API operation
+	// or distribution round (each its own complete runAtomicWithOutbox/
+	// runAtomicDistributionWithOutbox critical section) could mutate the
+	// very same account, fully commit, and report success to its own
+	// caller — and if THIS replay later hit a hardFailure or StateRoot
+	// mismatch unrelated to that account, rolling back with rollbackSnap
+	// would revert it anyway, silently erasing an already-committed,
+	// unrelated, successful operation. Holding cs.mu continuously from the
+	// snapshot below through either a successful StateRoot match or a
+	// rollback closes that gap: every Delta call in this loop now uses its
+	// "...Locked" sibling (assumes cs.mu already held) instead of the
+	// public lock-each-time wrapper, and the snapshot/rollback/StateRoot
+	// comparison below do the same.
+	dag.state.mu.Lock()
+	defer dag.state.mu.Unlock()
+	configBackup := make(map[string]configValueSnapshot, len(stateRootRelevantConfigKeys))
+	for _, key := range stateRootRelevantConfigKeys {
+		value, existed := dag.state.getConfigValueExists(key)
+		configBackup[key] = configValueSnapshot{value: value, existed: existed}
+	}
+	rollbackSnap := dag.state.snapshotForRollbackLocked(touchedAddrs, needsFullSnapshot, configBackup)
 	hardFailure := false
 	var claimedNullifiers []string
 
@@ -1181,16 +1206,16 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ ZK proof verified for %s (block #%d)\n", wallet, block.Height)
-			if !dag.state.TryClaimNullifier(nullifier, wallet) {
+			if !dag.state.tryClaimNullifierLocked(nullifier, wallet) {
 				continue // already registered
 			}
-			if err := dag.state.RegisterHuman(wallet); err != nil {
+			if err := dag.state.registerHumanLocked(wallet); err != nil {
 				// FIX: release the nullifier claimed two lines above on failure —
 				// it used to stay claimed forever ("nullifier recorded, balance
 				// NOT credited"), permanently burning that biometric for
 				// everyone even though no registration ever actually completed
 				// with it (e.g. wallet already human via a different nullifier).
-				dag.state.ReleaseNullifier(nullifier)
+				dag.state.releaseNullifierLocked(nullifier)
 				fmt.Printf("[REPLAY] ✗ RegisterHuman %s: %v (nullifier released, balance NOT credited)\n", wallet, err)
 				continue
 			}
@@ -1212,7 +1237,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping transfer in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.ApplyTransferDelta(wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost); err != nil {
+			if err := dag.state.applyTransferDeltaLocked(wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d) — rolling back whole block\n", wallet, to, tx.Amount, err, block.Height)
 				hardFailure = true
 				continue
@@ -1224,7 +1249,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping swap_aeq_tusd in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.ApplySwapDelta(wallet, tx.Amount, tx.AmountOut, true, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.applySwapDeltaLocked(wallet, tx.Amount, tx.AmountOut, true, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ swap_aeq_tusd %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -1236,7 +1261,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping swap_tusd_aeq in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.ApplySwapDelta(wallet, tx.Amount, tx.AmountOut, false, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.applySwapDeltaLocked(wallet, tx.Amount, tx.AmountOut, false, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ swap_tusd_aeq %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -1248,7 +1273,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping add_liquidity in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.AddLiquidityDelta(wallet, tx.Amount, tx.AmountOut, tx.LPShares, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.addLiquidityDeltaLocked(wallet, tx.Amount, tx.AmountOut, tx.LPShares, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ add_liquidity %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -1260,7 +1285,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping remove_liquidity in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.RemoveLiquidityDelta(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.removeLiquidityDeltaLocked(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ remove_liquidity %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -1272,7 +1297,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping faucet in block #%d: missing fields\n", block.Height)
 				continue
 			}
-			if err := dag.state.ApplyFaucetDelta(wallet, tx.Amount); err != nil {
+			if err := dag.state.applyFaucetDeltaLocked(wallet, tx.Amount); err != nil {
 				fmt.Printf("[REPLAY] ✗ faucet %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -1287,14 +1312,14 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			// produced by older node versions before this change; new blocks
 			// never set that field.
 			if tx.AmountPerHuman > 0 {
-				if err := dag.state.ApplyUBIDelta(tx.AmountPerHuman, block.Timestamp); err != nil {
+				if err := dag.state.applyUBIDeltaLocked(tx.AmountPerHuman, block.Timestamp); err != nil {
 					fmt.Printf("[REPLAY] ✗ legacy flat ubi_distribution: %v (block #%d) — rolling back whole block\n", err, block.Height)
 					hardFailure = true
 					continue
 				}
 				fmt.Printf("[REPLAY] ✓ Applied legacy flat UBI distribution %.6f AEQ/human (block #%d)\n", tx.AmountPerHuman, block.Height)
 			} else if wallet != "" && wallet != "0x0000000000000000000000000000000000000000" {
-				if err := dag.state.ApplyUBIRewardDelta(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+				if err := dag.state.applyUBIRewardDeltaLocked(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
 					fmt.Printf("[REPLAY] ✗ ubi_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 					hardFailure = true
 					continue
@@ -1313,7 +1338,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			}
 
 		case "ubi_distribution_finalize":
-			if err := dag.state.ApplyUBIFinalizeDelta(tx.DistributionAt); err != nil {
+			if err := dag.state.applyUBIFinalizeDeltaLocked(tx.DistributionAt); err != nil {
 				fmt.Printf("[REPLAY] ✗ ubi_distribution_finalize: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
@@ -1322,7 +1347,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 
 		case "validator_distribution":
 			wallet := strings.ToLower(tx.Wallet)
-			if err := dag.state.ApplyValidatorRewardDelta(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.applyValidatorRewardDeltaLocked(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ validator_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -1330,7 +1355,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			fmt.Printf("[REPLAY] ✓ Applied validator reward %.6f AEQ for %s (block #%d)\n", tx.Amount, wallet, block.Height)
 
 		case "validator_distribution_pool_zero":
-			if err := dag.state.ApplyValidatorPoolZeroDelta(); err != nil {
+			if err := dag.state.applyValidatorPoolZeroDeltaLocked(); err != nil {
 				fmt.Printf("[REPLAY] ✗ validator_distribution_pool_zero: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
@@ -1339,7 +1364,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 
 		case "lp_distribution":
 			wallet := strings.ToLower(tx.Wallet)
-			if err := dag.state.ApplyLPRewardDelta(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.applyLPRewardDeltaLocked(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ lp_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -1347,7 +1372,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			fmt.Printf("[REPLAY] ✓ Applied LP reward %.6f AEQ for %s (block #%d)\n", tx.Amount, wallet, block.Height)
 
 		case "lp_distribution_pool_zero":
-			if err := dag.state.ApplyLPPoolZeroDelta(); err != nil {
+			if err := dag.state.applyLPPoolZeroDeltaLocked(); err != nil {
 				fmt.Printf("[REPLAY] ✗ lp_distribution_pool_zero: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
@@ -1356,7 +1381,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 
 		case "escrow_move":
 			wallet := strings.ToLower(tx.Wallet)
-			if err := dag.state.ApplyEscrowMoveDelta(wallet, tx.FromDemurrageLost); err != nil {
+			if err := dag.state.applyEscrowMoveDeltaLocked(wallet, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ escrow_move %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
@@ -1364,7 +1389,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			fmt.Printf("[REPLAY] ✓ Applied escrow move for %s (block #%d)\n", wallet, block.Height)
 
 		case "escrow_release":
-			if err := dag.state.ApplyEscrowReleaseDelta(tx.Amount); err != nil {
+			if err := dag.state.applyEscrowReleaseDeltaLocked(tx.Amount); err != nil {
 				fmt.Printf("[REPLAY] ✗ escrow_release: %v (block #%d) — rolling back whole block\n", err, block.Height)
 				hardFailure = true
 				continue
@@ -1377,11 +1402,11 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	}
 
 	if hardFailure {
-		if rbErr := dag.state.restoreFromRollback(rollbackSnap); rbErr != nil {
+		if rbErr := dag.state.restoreFromRollbackLocked(rollbackSnap); rbErr != nil {
 			fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
 		}
 		for _, n := range claimedNullifiers {
-			dag.state.ReleaseNullifier(n)
+			dag.state.releaseNullifierLocked(n)
 		}
 		fmt.Printf("[REPLAY] ✗ Block #%d rolled back due to a genuine state-inconsistency failure — block rejected\n", block.Height)
 		return false
@@ -1404,13 +1429,13 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	// state catches up, the same recovery path hardFailure above already
 	// relies on.
 	if block.StateRoot != "" {
-		localRoot := dag.state.StateRoot()
+		localRoot := dag.state.stateRootLocked(dag.state.getConfigValue("last_ubi_at"))
 		if block.StateRoot != localRoot {
-			if rbErr := dag.state.restoreFromRollback(rollbackSnap); rbErr != nil {
+			if rbErr := dag.state.restoreFromRollbackLocked(rollbackSnap); rbErr != nil {
 				fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
 			}
 			for _, n := range claimedNullifiers {
-				dag.state.ReleaseNullifier(n)
+				dag.state.releaseNullifierLocked(n)
 			}
 			fmt.Printf("[REPLAY] ✗ StateRoot mismatch on block #%d (proposer=%s..., local=%s...) — rolled back, block rejected\n",
 				block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])

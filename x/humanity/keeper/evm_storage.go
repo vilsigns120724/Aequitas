@@ -775,9 +775,26 @@ func (cs *ChainState) GetWalletByStoredBioHash(bioHash string) string {
 // aequitas-proof-server/bio_store.js). Clearing or populating THIS table
 // has no effect on what the proof server blocks; it only affects
 // GetWalletByStoredBioHash above and the chain's own bookkeeping.
-func (cs *ChainState) SaveBioHash(bioHash, walletAddress string) {
+//
+// FIX (audit recheck2, P1 #6): the audit asked this project to pick one of
+// two paths for this table — either declare it explicitly UX/diagnostic
+// only, or make it atomic/consensus-relevant like the nullifier. This
+// project already chose the first path, deliberately: the comment above
+// (predating this fix) already establishes the REAL one-human-one-
+// registration guarantee is the ZK nullifier (see TryClaimNullifier /
+// RegisterHumanAtomic), checked and recorded atomically with the
+// registration itself; this table is a secondary, best-effort lookup index
+// for GetWalletByStoredBioHash, not itself a security boundary, and is not
+// replayed from block TXs (see block.go's register_human case calling
+// SaveBioRegistration, a different table, with bioHash deliberately empty —
+// this table is local bookkeeping per node, not consensus state). Given
+// that, returning an error here (instead of only logging) lets the one
+// caller that might care — the registration RPC handler — at least know a
+// write failed, without pretending a failure here should block or roll
+// back the registration it's diagnostic for.
+func (cs *ChainState) SaveBioHash(bioHash, walletAddress string) error {
 	if cs.db == nil || bioHash == "" {
-		return
+		return nil
 	}
 	walletAddress = strings.ToLower(walletAddress)
 	_, err := cs.db.Exec(
@@ -786,7 +803,9 @@ func (cs *ChainState) SaveBioHash(bioHash, walletAddress string) {
 	)
 	if err != nil {
 		fmt.Printf("[REGISTER] Warning: could not sync bio_hashes: %v\n", err)
+		return fmt.Errorf("could not sync bio_hashes for %s: %w", walletAddress, err)
 	}
+	return nil
 }
 
 // ─── NULLIFIERS ───────────────────────────────────────────────────────────────
@@ -829,18 +848,31 @@ const maxInMemNullifiers = 500_000
 // Using a DB-level INSERT … ON CONFLICT eliminates the TOCTOU window between
 // IsNullifierUsed and SaveNullifier — no separate mutex required.
 func (cs *ChainState) TryClaimNullifier(nullifier, walletAddress string) bool {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	return cs.tryClaimNullifierLocked(nullifier, walletAddress)
+}
+
+// tryClaimNullifierLocked is TryClaimNullifier's body, for callers that
+// already hold cs.mu (audit recheck3, P0/P1: replayTransactions needs this
+// so it can hold cs.mu continuously across snapshot/deltas/StateRoot-check
+// instead of releasing and reacquiring it once per call — see
+// replayTransactions' own comment for the race that isolation closes).
+// The DB write here still uses cs.db directly, not cs.dbExec() — this
+// claim is intentionally NOT part of any surrounding DB transaction (see
+// ReleaseNullifier's compensating-action pattern, used by callers when a
+// later step fails); this function only changes which mutex discipline
+// guards the in-memory map.
+func (cs *ChainState) tryClaimNullifierLocked(nullifier, walletAddress string) bool {
 	if nullifier == "" {
 		return false
 	}
 	walletAddress = strings.ToLower(walletAddress)
 	if cs.db == nil {
-		cs.mu.Lock()
 		if _, exists := cs.nullifiers[nullifier]; exists {
-			cs.mu.Unlock()
 			return false
 		}
 		cs.nullifiers[nullifier] = walletAddress
-		cs.mu.Unlock()
 		return true
 	}
 	res, err := cs.db.Exec(
@@ -855,11 +887,9 @@ func (cs *ChainState) TryClaimNullifier(nullifier, walletAddress string) bool {
 		return false // already existed
 	}
 	// Insert succeeded — update in-memory cache.
-	cs.mu.Lock()
 	if len(cs.nullifiers) < maxInMemNullifiers {
 		cs.nullifiers[nullifier] = walletAddress
 	}
-	cs.mu.Unlock()
 	return true
 }
 
@@ -905,12 +935,18 @@ func (cs *ChainState) SaveNullifier(nullifier, walletAddress string) error {
 // the nullifier would be permanently consumed and the legitimate human
 // behind it could never register again with a fresh attempt.
 func (cs *ChainState) ReleaseNullifier(nullifier string) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.releaseNullifierLocked(nullifier)
+}
+
+// releaseNullifierLocked is ReleaseNullifier's body, for callers that
+// already hold cs.mu — see tryClaimNullifierLocked's comment.
+func (cs *ChainState) releaseNullifierLocked(nullifier string) {
 	if nullifier == "" {
 		return
 	}
-	cs.mu.Lock()
 	delete(cs.nullifiers, nullifier)
-	cs.mu.Unlock()
 	if cs.db == nil {
 		return
 	}

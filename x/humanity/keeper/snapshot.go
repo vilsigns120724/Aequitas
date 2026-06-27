@@ -388,7 +388,172 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 
 	fmt.Printf("[RESYNC] ⚠ Authoritative resync: REPLACING local state with snapshot from %s (signed by %s)\n", peerURL, expectedSignerHex)
 
+	if cs.db == nil {
+		// No DB — nothing to make atomic with; replace in-memory only.
+		cs.mu.Lock()
+		cs.replaceInMemoryFromSnapshotLocked(&snap)
+		cs.mu.Unlock()
+		fmt.Printf("[RESYNC] ✓ Replaced local state with %d accounts, %d nullifiers, %d bio-registrations from snapshot\n",
+			len(snap.Accounts), len(snap.Nullifiers), len(snap.BioRegistrations))
+		return nil
+	}
+
+	// FIX (audit recheck3, P0 #1): this used to replace in-memory state
+	// FIRST, unconditionally, then run several separate, individually
+	// auto-committing cs.db.Exec calls (DELETE FROM chain_accounts, DELETE
+	// FROM nullifiers, ... re-INSERT each). A crash, DB error, or dropped
+	// connection between any two of those statements left the database
+	// partially cleared and partially repopulated — and by that point
+	// in-memory state had ALREADY been fully replaced, so memory and DB
+	// disagreed in two different ways simultaneously. Resync is supposed to
+	// be the tool that RESCUES a diverged node; a resync that can itself
+	// produce a worse, half-replaced state defeats its own purpose. Now:
+	// one real DB transaction for every write below, in-memory state backed
+	// up before being touched and restored verbatim on any failure (DB
+	// error OR commit failure), so this function's only two outcomes are
+	// "fully replaced, in DB and memory together" or "nothing changed at
+	// all" — never a partial state in either place.
+	tx, err := cs.db.Begin()
+	if err != nil {
+		return fmt.Errorf("resync: could not begin transaction: %w", err)
+	}
+
 	cs.mu.Lock()
+	backupAccounts := make(map[string]*AccountState, len(cs.accounts))
+	for addr, acc := range cs.accounts {
+		accCopy := *acc
+		backupAccounts[addr] = &accCopy
+	}
+	var backupPool *PoolState
+	if cs.pool != nil {
+		poolCopy := *cs.pool
+		backupPool = &poolCopy
+	}
+	backupNullifiers := make(map[string]string, len(cs.nullifiers))
+	for k, v := range cs.nullifiers {
+		backupNullifiers[k] = v
+	}
+	restoreInMemory := func() {
+		cs.accounts = backupAccounts
+		cs.pool = backupPool
+		cs.nullifiers = backupNullifiers
+	}
+
+	cs.activeTx = tx
+	cs.replaceInMemoryFromSnapshotLocked(&snap)
+
+	fail := func(stepErr error) error {
+		restoreInMemory()
+		cs.activeTx = nil
+		cs.mu.Unlock()
+		tx.Rollback()
+		return stepErr
+	}
+
+	// Replace, not merge: clear every table this snapshot covers before
+	// re-inserting its contents, so stale local rows that no longer exist
+	// in the (authoritative) snapshot don't survive — all within tx now.
+	if _, err := tx.Exec(`DELETE FROM chain_accounts`); err != nil {
+		return fail(fmt.Errorf("resync: could not clear chain_accounts: %w", err))
+	}
+	if _, err := tx.Exec(`DELETE FROM nullifiers`); err != nil {
+		return fail(fmt.Errorf("resync: could not clear nullifiers: %w", err))
+	}
+	if _, err := tx.Exec(`DELETE FROM bio_registrations`); err != nil {
+		return fail(fmt.Errorf("resync: could not clear bio_registrations: %w", err))
+	}
+	if _, err := tx.Exec(`DELETE FROM bio_hashes`); err != nil {
+		return fail(fmt.Errorf("resync: could not clear bio_hashes: %w", err))
+	}
+	for _, acc := range cs.accounts {
+		// saveAccountToDB routes through cs.dbExec(), which returns
+		// cs.activeTx (set above) instead of cs.db — joins this transaction.
+		if err := cs.saveAccountToDB(acc); err != nil {
+			return fail(fmt.Errorf("resync: could not save account %s: %w", acc.Address, err))
+		}
+	}
+	if snap.Pool != nil {
+		if err := cs.savePoolToDB(); err != nil {
+			return fail(fmt.Errorf("resync: could not save pool: %w", err))
+		}
+	}
+	for nullifier, wallet := range snap.Nullifiers {
+		if _, err := tx.Exec(
+			`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2)`,
+			nullifier, strings.ToLower(wallet),
+		); err != nil {
+			return fail(fmt.Errorf("resync: could not insert nullifier: %w", err))
+		}
+	}
+	for _, br := range snap.BioRegistrations {
+		if _, err := tx.Exec(
+			`INSERT INTO bio_registrations (commitment, wallet_address, bio_hash) VALUES ($1, $2, $3) ON CONFLICT (commitment) DO NOTHING`,
+			br.Commitment, strings.ToLower(br.WalletAddress), br.BioHash,
+		); err != nil {
+			return fail(fmt.Errorf("resync: could not insert bio_registration: %w", err))
+		}
+		if br.BioHash != "" {
+			if _, err := tx.Exec(
+				`INSERT INTO bio_hashes (hash, wallet_address) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+				br.BioHash, strings.ToLower(br.WalletAddress),
+			); err != nil {
+				return fail(fmt.Errorf("resync: could not insert bio_hash: %w", err))
+			}
+		}
+	}
+	// Authoritative: every StateRoot-relevant config key takes the
+	// snapshot's value unconditionally, unlike ImportSnapshotFromURL's
+	// merge mode which never overwrites an existing key. setConfigValue now
+	// routes through cs.dbExec() too (audit recheck3, P0 #2), so this joins
+	// the same transaction instead of auto-committing separately.
+	for key, val := range snap.ChainConfig {
+		if err := cs.setConfigValue(key, val); err != nil {
+			return fail(fmt.Errorf("resync: could not set config %q: %w", key, err))
+		}
+	}
+	if snap.Height > 0 {
+		if err := cs.setConfigValue("snapshot_import_height", fmt.Sprintf("%d", snap.Height)); err != nil {
+			return fail(fmt.Errorf("resync: could not set snapshot_import_height: %w", err))
+		}
+		if err := cs.setConfigValue("max_block_height", fmt.Sprintf("%d", snap.Height)); err != nil {
+			return fail(fmt.Errorf("resync: could not set max_block_height: %w", err))
+		}
+	}
+
+	cs.activeTx = nil
+	cs.mu.Unlock()
+
+	if err := tx.Commit(); err != nil {
+		// Commit itself failed — none of the above actually persisted, so
+		// in-memory (already replaced above) must be reverted too, or this
+		// node would believe it resynced while the DB never did.
+		cs.mu.Lock()
+		restoreInMemory()
+		cs.mu.Unlock()
+		return fmt.Errorf("resync: commit failed, state fully reverted: %w", err)
+	}
+
+	// FIX (audit recheck3, P0 #1): used to only log this and return success
+	// regardless — a resync could report "done" while the EVM mirror, which
+	// every eth_* RPC call and the V7 contract's own view of balances reads
+	// from, silently diverged from the Go-state the rest of this function
+	// just correctly resynced. The Go-state DB transaction above already
+	// committed by this point (EVM is a derived mirror, not the source of
+	// truth, so it can't reasonably be folded into the same SQL
+	// transaction) — but the caller must still be told this didn't fully
+	// succeed instead of seeing a bare "✓ Replaced local state" message.
+	if err := cs.MigrateEVMFromGoState(V7_CONTRACT_ADDR); err != nil {
+		return fmt.Errorf("resync: Go-state committed successfully, but EVM mirror migration failed (EVM state may now be inconsistent — re-run resync to retry the mirror step): %w", err)
+	}
+
+	fmt.Printf("[RESYNC] ✓ Replaced local state with %d accounts, %d nullifiers, %d bio-registrations from snapshot\n",
+		len(snap.Accounts), len(snap.Nullifiers), len(snap.BioRegistrations))
+	return nil
+}
+
+// replaceInMemoryFromSnapshotLocked overwrites cs.accounts/cs.pool/cs.nullifiers
+// with snap's contents. Caller must hold cs.mu.
+func (cs *ChainState) replaceInMemoryFromSnapshotLocked(snap *StateSnapshot) {
 	cs.accounts = make(map[string]*AccountState, len(snap.Accounts))
 	for _, acc := range snap.Accounts {
 		acc.Address = strings.ToLower(acc.Address)
@@ -401,81 +566,5 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	for nullifier, wallet := range snap.Nullifiers {
 		cs.nullifiers[nullifier] = strings.ToLower(wallet)
 	}
-	accountsToPersist := make([]*AccountState, 0, len(cs.accounts))
-	for _, acc := range cs.accounts {
-		accountsToPersist = append(accountsToPersist, acc)
-	}
-	cs.mu.Unlock()
-
-	if cs.db != nil {
-		// Replace, not merge: clear every table this snapshot covers before
-		// re-inserting its contents, so stale local rows that no longer
-		// exist in the (authoritative) snapshot don't survive.
-		if _, err := cs.db.Exec(`DELETE FROM chain_accounts`); err != nil {
-			return fmt.Errorf("resync: could not clear chain_accounts: %w", err)
-		}
-		if _, err := cs.db.Exec(`DELETE FROM nullifiers`); err != nil {
-			return fmt.Errorf("resync: could not clear nullifiers: %w", err)
-		}
-		if _, err := cs.db.Exec(`DELETE FROM bio_registrations`); err != nil {
-			return fmt.Errorf("resync: could not clear bio_registrations: %w", err)
-		}
-		if _, err := cs.db.Exec(`DELETE FROM bio_hashes`); err != nil {
-			return fmt.Errorf("resync: could not clear bio_hashes: %w", err)
-		}
-		for _, acc := range accountsToPersist {
-			if err := cs.saveAccountToDB(acc); err != nil {
-				return fmt.Errorf("resync: could not save account %s: %w", acc.Address, err)
-			}
-		}
-		if snap.Pool != nil {
-			if err := cs.savePoolToDB(); err != nil {
-				return fmt.Errorf("resync: could not save pool: %w", err)
-			}
-		}
-		for nullifier, wallet := range snap.Nullifiers {
-			if _, err := cs.db.Exec(
-				`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2)`,
-				nullifier, strings.ToLower(wallet),
-			); err != nil {
-				return fmt.Errorf("resync: could not insert nullifier: %w", err)
-			}
-		}
-		for _, br := range snap.BioRegistrations {
-			if _, err := cs.db.Exec(
-				`INSERT INTO bio_registrations (commitment, wallet_address, bio_hash) VALUES ($1, $2, $3) ON CONFLICT (commitment) DO NOTHING`,
-				br.Commitment, strings.ToLower(br.WalletAddress), br.BioHash,
-			); err != nil {
-				return fmt.Errorf("resync: could not insert bio_registration: %w", err)
-			}
-			if br.BioHash != "" {
-				if _, err := cs.db.Exec(
-					`INSERT INTO bio_hashes (hash, wallet_address) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-					br.BioHash, strings.ToLower(br.WalletAddress),
-				); err != nil {
-					return fmt.Errorf("resync: could not insert bio_hash: %w", err)
-				}
-			}
-		}
-		// Authoritative: every StateRoot-relevant config key takes the
-		// snapshot's value unconditionally, unlike ImportSnapshotFromURL's
-		// merge mode which never overwrites an existing key.
-		for key, val := range snap.ChainConfig {
-			cs.setConfigValue(key, val)
-		}
-		if snap.Height > 0 {
-			cs.setConfigValue("snapshot_import_height", fmt.Sprintf("%d", snap.Height))
-			cs.setConfigValue("max_block_height", fmt.Sprintf("%d", snap.Height))
-		}
-	}
-
-	if err := cs.MigrateEVMFromGoState(V7_CONTRACT_ADDR); err != nil {
-		fmt.Printf("[RESYNC] ERROR: EVM migration failed after resync: %v\n", err)
-		fmt.Printf("[RESYNC] WARNING: EVM state may be inconsistent — consider restarting and re-running resync\n")
-	}
-
-	fmt.Printf("[RESYNC] ✓ Replaced local state with %d accounts, %d nullifiers, %d bio-registrations from snapshot\n",
-		len(snap.Accounts), len(snap.Nullifiers), len(snap.BioRegistrations))
-	return nil
 }
 
