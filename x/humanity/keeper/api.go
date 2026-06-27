@@ -1215,7 +1215,7 @@ func (a *APIServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
-	snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey())
+	snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey(), a.blockchain.Height())
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(snap)
 }

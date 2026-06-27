@@ -873,6 +873,30 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	}
 	dag.replayedMu.Unlock()
 
+	// FIX (double-apply on snapshot bootstrap): a node that imported a
+	// snapshot already has the cumulative effect of every block up to and
+	// including snapshot_import_height baked into cs.accounts. Without
+	// this guard, the HTTP-SYNC catch-up that follows (which always starts
+	// from height 0, since dag.blocks is empty in memory after any
+	// restart regardless of what the snapshot seeded) would apply every
+	// pre-snapshot block's transactions a second time on top of the
+	// already-current balances — confirmed in production: two secondary
+	// nodes that bootstrapped from the same primary snapshot both ended up
+	// crediting one wallet +2 AEQ and debiting another -2 AEQ relative to
+	// the primary, exactly matching one historical transfer being replayed
+	// twice. Mark the block as replayed (so dedup/tips/hash-chain
+	// bookkeeping in the caller proceeds normally) without touching state.
+	if heightStr := dag.state.getConfigValue("snapshot_import_height"); heightStr != "" {
+		var snapshotHeight int64
+		fmt.Sscanf(heightStr, "%d", &snapshotHeight)
+		if snapshotHeight > 0 && block.Height <= snapshotHeight {
+			dag.replayedMu.Lock()
+			dag.replayedBlocks[block.Hash] = true
+			dag.replayedMu.Unlock()
+			return true
+		}
+	}
+
 	touchedAddrs, needsFullSnapshot := blockTouchedAddresses(block)
 	rollbackSnap := dag.state.snapshotForRollback(touchedAddrs, needsFullSnapshot)
 	hardFailure := false

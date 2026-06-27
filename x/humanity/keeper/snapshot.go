@@ -26,6 +26,18 @@ const SnapshotVersion = 1
 type StateSnapshot struct {
 	Version          int                       `json:"version"`
 	Timestamp        int64                     `json:"timestamp"`
+	// Height is the producer's BlockDAG height at export time. A node that
+	// bootstraps from this snapshot already reflects the cumulative effect
+	// of every block up to and including this height — without recording
+	// that cutoff, the importer's subsequent HTTP-SYNC catch-up (which
+	// always starts from height 0, since dag.blocks is empty in memory
+	// after any restart regardless of what the snapshot seeded into
+	// cs.accounts) would replay those same historical blocks' transactions
+	// a second time on top of the already-current imported balances —
+	// silently double-applying every transfer/swap/registration that ever
+	// happened before the snapshot was taken. See ImportSnapshotFromURL
+	// and replayTransactions' use of "snapshot_import_height".
+	Height           int64                     `json:"height"`
 	Accounts         []*AccountState           `json:"accounts"`
 	Pool             *PoolState                `json:"pool"`
 	Nullifiers       map[string]string         `json:"nullifiers"`           // nullifier → wallet
@@ -41,8 +53,12 @@ type SnapshotBioRegistration struct {
 }
 
 // ExportSnapshot captures the live Go-state and, if signingKey is non-nil,
-// signs the JSON payload so consumers can verify authenticity.
-func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey) *StateSnapshot {
+// signs the JSON payload so consumers can verify authenticity. height must
+// be the producer's current BlockDAG height (it's set here, before signing,
+// rather than by the caller afterward, so it's covered by the signature
+// like everything else in the snapshot) — see StateSnapshot.Height's
+// comment for why the importer needs this cutoff.
+func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64) *StateSnapshot {
 	cs.mu.RLock()
 	accounts := make([]*AccountState, 0, len(cs.accounts))
 	for _, acc := range cs.accounts {
@@ -62,6 +78,7 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey) *StateSnapsho
 	snap := &StateSnapshot{
 Version: SnapshotVersion,
 		Timestamp:  time.Now().Unix(),
+		Height:     height,
 		Accounts:   accounts,
 		Pool:       &pool,
 		Nullifiers: nullifiers,
@@ -287,6 +304,18 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 			if existing := cs.getConfigValue(key); existing == "" {
 				cs.setConfigValue(key, val)
 			}
+		}
+		// FIX (double-apply): on a genuine fresh bootstrap, record the height
+		// this snapshot was taken at. cs.accounts above already reflects the
+		// cumulative effect of every block up to and including this height —
+		// without this marker, the subsequent HTTP-SYNC catch-up (which
+		// always starts from height 0, since dag.blocks is empty in memory
+		// after any restart) would replay those same blocks' transactions a
+		// second time on top of the already-current imported balances.
+		// replayTransactions checks this value and skips applying deltas for
+		// any block at or below it. See StateSnapshot.Height's comment.
+		if existingHumans == 0 && snap.Height > 0 {
+			cs.setConfigValue("snapshot_import_height", fmt.Sprintf("%d", snap.Height))
 		}
 	}
 
