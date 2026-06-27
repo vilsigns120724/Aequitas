@@ -104,13 +104,18 @@ p2pNode.SetDAG(bc)
 	go api.Start(API_PORT)
 	fmt.Println()
 
-	// Bootstrap from a peer snapshot if this is a fresh node (no humans in DB).
+	// Bootstrap from a peer snapshot if this is a fresh node (no humans in DB),
+	// OR perform an authoritative resync if RESYNC_FROM_SNAPSHOT=true is set
+	// explicitly (audit recheck2, P1 #9 — see ResyncFromSnapshotURL's own
+	// comment for why a divergent node needs REPLACE semantics, not merge).
 	// Set BOOTSTRAP_SNAPSHOT_URL to the primary node's /api/snapshot endpoint.
 	// Set SNAPSHOT_TOKEN to match the primary node's SNAPSHOT_TOKEN env var.
 	// Set BOOTSTRAP_SIGNER to the primary node's signing address (0x...) to
-	// verify the snapshot's ECDSA signature before importing.
+	// verify the snapshot's ECDSA signature before importing — mandatory for
+	// resync mode regardless of this var's own emptiness check below.
 	// After startup, ongoing state sync happens via block TX replay in AddPeerBlock.
-	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && chainState.TotalHumans() == 0 {
+	resyncMode := os.Getenv("RESYNC_FROM_SNAPSHOT") == "true"
+	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && (chainState.TotalHumans() == 0 || resyncMode) {
 		// FIX 15: Validate URL scheme and host before fetching to prevent SSRF.
 		parsedBootstrap, urlErr := url.Parse(bootstrapURL)
 		if urlErr != nil || (parsedBootstrap.Scheme != "https" && parsedBootstrap.Scheme != "http") {
@@ -121,6 +126,11 @@ p2pNode.SetDAG(bc)
 			expectedSigner := os.Getenv("BOOTSTRAP_SIGNER")
 			if expectedSigner == "" {
 				fmt.Println("[BOOTSTRAP] ✗ Refused: BOOTSTRAP_SIGNER must be set to the primary node's signing address (0x...)")
+			} else if resyncMode {
+				fmt.Printf("[RESYNC] RESYNC_FROM_SNAPSHOT=true — replacing local state from %s\n", bootstrapURL)
+				if err := chainState.ResyncFromSnapshotURL(bootstrapURL, expectedSigner); err != nil {
+					fmt.Printf("[RESYNC] ✗ Resync failed: %v\n", err)
+				}
 			} else {
 				fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)
 				if err := chainState.ImportSnapshotFromURL(bootstrapURL, expectedSigner); err != nil {

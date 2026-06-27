@@ -128,19 +128,14 @@ Version: SnapshotVersion,
 	return snap
 }
 
-// ImportSnapshotFromURL downloads a StateSnapshot from peerURL and applies it
-// to cs. Only imports if the local DB is empty (TotalHumans == 0) to avoid
-// overwriting an already-populated state. Verifies the snapshot signature
-// against expectedSignerHex if non-empty.
-// ImportSnapshotFromURL downloads a StateSnapshot and merges it into local state.
-// The import is additive: existing accounts, nullifiers and bio-registrations
-// are not overwritten, so it is safe to call on partially-populated state
-// (e.g. after a crash mid-import) without regressing balances.
-func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) error {
-	local := cs.TotalHumans()
-	if local > 0 {
-		fmt.Printf("[SNAPSHOT] Merging into existing state (%d humans local) — adding missing entries\n", local)
-	}
+// fetchAndValidateSnapshot downloads a StateSnapshot from peerURL, checks its
+// age, and verifies its signature against expectedSignerHex if non-empty.
+// Shared by ImportSnapshotFromURL (merge mode) and ResyncFromSnapshotURL
+// (authoritative-replace mode) — every safety check here (SSRF-blocking
+// client, age window, signature verification) must apply identically to
+// both, so it lives in exactly one place instead of two copies that could
+// drift apart.
+func fetchAndValidateSnapshot(peerURL, expectedSignerHex string) (*StateSnapshot, error) {
 	// F18-FIX: use redirect-blocking client with IP validation to prevent
 	// SSRF if BOOTSTRAP_SNAPSHOT_URL is set to a private/cloud-metadata IP.
 	client := &http.Client{
@@ -153,7 +148,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 
 	req, reqErr := http.NewRequest("GET", peerURL, nil)
 	if reqErr != nil {
-		return fmt.Errorf("request build failed: %w", reqErr)
+		return nil, fmt.Errorf("request build failed: %w", reqErr)
 	}
 	if token := os.Getenv("SNAPSHOT_TOKEN"); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -161,26 +156,26 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("download failed: %w", err)
+		return nil, fmt.Errorf("download failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("snapshot server returned HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("snapshot server returned HTTP %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 50<<20))
 	if err != nil {
-		return fmt.Errorf("read failed: %w", err)
+		return nil, fmt.Errorf("read failed: %w", err)
 	}
 
 	var snap StateSnapshot
 	if err := json.Unmarshal(body, &snap); err != nil {
-		return fmt.Errorf("parse failed: %w", err)
+		return nil, fmt.Errorf("parse failed: %w", err)
 	}
 
 	now := time.Now().Unix()
 	if snap.Timestamp > now+60 {
-		return fmt.Errorf("snapshot timestamp is in the future (%d seconds ahead)", snap.Timestamp-now)
+		return nil, fmt.Errorf("snapshot timestamp is in the future (%d seconds ahead)", snap.Timestamp-now)
 	}
 	maxAge := int64(86400) // 24 hours default
 	if v := os.Getenv("SNAPSHOT_MAX_AGE_SECONDS"); v != "" {
@@ -189,13 +184,13 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		}
 	}
 	if now-snap.Timestamp > maxAge {
-		return fmt.Errorf("snapshot is too old (%d seconds, max %d) — set SNAPSHOT_MAX_AGE_SECONDS to override", now-snap.Timestamp, maxAge)
+		return nil, fmt.Errorf("snapshot is too old (%d seconds, max %d) — set SNAPSHOT_MAX_AGE_SECONDS to override", now-snap.Timestamp, maxAge)
 	}
 
 	// Signature verification is mandatory when BOOTSTRAP_SIGNER is configured.
 	if expectedSignerHex != "" {
 		if snap.Signature == "" {
-			return fmt.Errorf("snapshot has no signature but BOOTSTRAP_SIGNER is set — import rejected")
+			return nil, fmt.Errorf("snapshot has no signature but BOOTSTRAP_SIGNER is set — import rejected")
 		}
 		sigCopy := snap.Signature
 		snap.Signature = ""
@@ -205,23 +200,49 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		hash := sha256.Sum256(unsigned)
 		sigBytes, err := hex.DecodeString(snap.Signature)
 		if err != nil || len(sigBytes) != 65 {
-			return fmt.Errorf("invalid snapshot signature format")
+			return nil, fmt.Errorf("invalid snapshot signature format")
 		}
 		pubBytes, err := crypto.Ecrecover(hash[:], sigBytes)
 		if err != nil {
-			return fmt.Errorf("snapshot signature recovery failed: %w", err)
+			return nil, fmt.Errorf("snapshot signature recovery failed: %w", err)
 		}
 		pubKey, err := crypto.UnmarshalPubkey(pubBytes)
 		if err != nil {
-			return fmt.Errorf("snapshot public key invalid: %w", err)
+			return nil, fmt.Errorf("snapshot public key invalid: %w", err)
 		}
 		recovered := strings.ToLower(crypto.PubkeyToAddress(*pubKey).Hex())
 		expected := strings.ToLower(expectedSignerHex)
 		if recovered != expected {
-			return fmt.Errorf("snapshot signed by %s, expected %s", recovered, expected)
+			return nil, fmt.Errorf("snapshot signed by %s, expected %s", recovered, expected)
 		}
 		fmt.Printf("[SNAPSHOT] ✓ Signature verified (signer: %s)\n", recovered)
 	}
+	return &snap, nil
+}
+
+// ImportSnapshotFromURL downloads a StateSnapshot from peerURL and merges it
+// into local state. The import is additive: existing accounts, nullifiers
+// and bio-registrations are not overwritten, so it is safe to call on
+// partially-populated state (e.g. after a crash mid-import) without
+// regressing balances. Verifies the snapshot signature against
+// expectedSignerHex if non-empty.
+//
+// FIX (audit recheck2, P1 #9): this merge-only behavior is exactly right for
+// a fresh node bootstrapping (nothing to lose by only ever adding), but is
+// NOT a resync — a node with divergent/incorrect local state keeps every
+// wrong value, since merge only fills gaps, never corrects existing entries.
+// See ResyncFromSnapshotURL below for the authoritative-replace counterpart
+// this audit asked for; this function's own merge behavior is unchanged.
+func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) error {
+	local := cs.TotalHumans()
+	if local > 0 {
+		fmt.Printf("[SNAPSHOT] Merging into existing state (%d humans local) — adding missing entries\n", local)
+	}
+	snapPtr, err := fetchAndValidateSnapshot(peerURL, expectedSignerHex)
+	if err != nil {
+		return err
+	}
+	snap := *snapPtr
 
 	// Apply in-memory under lock, then persist outside lock to avoid deadlock.
 	// Existing accounts are NOT overwritten — only missing ones are added.
@@ -325,6 +346,135 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	}
 
 	fmt.Printf("[SNAPSHOT] ✓ Applied %d accounts, %d nullifiers, %d bio-registrations\n",
+		len(snap.Accounts), len(snap.Nullifiers), len(snap.BioRegistrations))
+	return nil
+}
+
+// ResyncFromSnapshotURL is ImportSnapshotFromURL's authoritative-replace
+// counterpart (audit recheck2, P1 #9): instead of merging (adding only
+// missing entries, never correcting existing ones — see
+// ImportSnapshotFromURL's own comment), it REPLACES local accounts, pool,
+// nullifiers, bio-registrations/hashes, and every StateRoot-relevant
+// chain_config key with exactly what the snapshot contains. This is the
+// correct operation for a node KNOWN to have diverged — merge mode cannot
+// fix that, by construction, since it only ever adds.
+//
+// Two safety properties apply here that merge mode doesn't need, precisely
+// because this can discard local data:
+//  1. expectedSignerHex is MANDATORY, with no "proceed unsigned" fallback —
+//     resync without a verified signer would let anyone who can reach this
+//     URL overwrite this node's entire state with arbitrary data.
+//  2. The call site (main.go) gates this behind an explicit
+//     RESYNC_FROM_SNAPSHOT=true env var — this must be a deliberate operator
+//     action, never triggered by ordinary node startup.
+//
+// Combine with RESET_DB_STATE=true and a restart for the cleanest result —
+// the live BlockDAG's in-memory tips/orphans aren't touched here (this runs
+// before block production starts, same timing as ImportSnapshotFromURL),
+// but max_block_height/snapshot_import_height ARE set to the snapshot's
+// height so the restart's bootHeight calculation (block.go) picks it up
+// correctly — this is the same signed-snapshot recovery this session
+// already used twice in production for CD20/the VPS via a full DB wipe;
+// this gives operators a way to do it without one.
+func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) error {
+	if expectedSignerHex == "" {
+		return fmt.Errorf("RESYNC_FROM_SNAPSHOT requires BOOTSTRAP_SIGNER set — refusing to replace local state from an unverified source")
+	}
+	snapPtr, err := fetchAndValidateSnapshot(peerURL, expectedSignerHex)
+	if err != nil {
+		return err
+	}
+	snap := *snapPtr
+
+	fmt.Printf("[RESYNC] ⚠ Authoritative resync: REPLACING local state with snapshot from %s (signed by %s)\n", peerURL, expectedSignerHex)
+
+	cs.mu.Lock()
+	cs.accounts = make(map[string]*AccountState, len(snap.Accounts))
+	for _, acc := range snap.Accounts {
+		acc.Address = strings.ToLower(acc.Address)
+		cs.accounts[acc.Address] = acc
+	}
+	if snap.Pool != nil {
+		cs.pool = snap.Pool
+	}
+	cs.nullifiers = make(map[string]string, len(snap.Nullifiers))
+	for nullifier, wallet := range snap.Nullifiers {
+		cs.nullifiers[nullifier] = strings.ToLower(wallet)
+	}
+	accountsToPersist := make([]*AccountState, 0, len(cs.accounts))
+	for _, acc := range cs.accounts {
+		accountsToPersist = append(accountsToPersist, acc)
+	}
+	cs.mu.Unlock()
+
+	if cs.db != nil {
+		// Replace, not merge: clear every table this snapshot covers before
+		// re-inserting its contents, so stale local rows that no longer
+		// exist in the (authoritative) snapshot don't survive.
+		if _, err := cs.db.Exec(`DELETE FROM chain_accounts`); err != nil {
+			return fmt.Errorf("resync: could not clear chain_accounts: %w", err)
+		}
+		if _, err := cs.db.Exec(`DELETE FROM nullifiers`); err != nil {
+			return fmt.Errorf("resync: could not clear nullifiers: %w", err)
+		}
+		if _, err := cs.db.Exec(`DELETE FROM bio_registrations`); err != nil {
+			return fmt.Errorf("resync: could not clear bio_registrations: %w", err)
+		}
+		if _, err := cs.db.Exec(`DELETE FROM bio_hashes`); err != nil {
+			return fmt.Errorf("resync: could not clear bio_hashes: %w", err)
+		}
+		for _, acc := range accountsToPersist {
+			if err := cs.saveAccountToDB(acc); err != nil {
+				return fmt.Errorf("resync: could not save account %s: %w", acc.Address, err)
+			}
+		}
+		if snap.Pool != nil {
+			if err := cs.savePoolToDB(); err != nil {
+				return fmt.Errorf("resync: could not save pool: %w", err)
+			}
+		}
+		for nullifier, wallet := range snap.Nullifiers {
+			if _, err := cs.db.Exec(
+				`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2)`,
+				nullifier, strings.ToLower(wallet),
+			); err != nil {
+				return fmt.Errorf("resync: could not insert nullifier: %w", err)
+			}
+		}
+		for _, br := range snap.BioRegistrations {
+			if _, err := cs.db.Exec(
+				`INSERT INTO bio_registrations (commitment, wallet_address, bio_hash) VALUES ($1, $2, $3) ON CONFLICT (commitment) DO NOTHING`,
+				br.Commitment, strings.ToLower(br.WalletAddress), br.BioHash,
+			); err != nil {
+				return fmt.Errorf("resync: could not insert bio_registration: %w", err)
+			}
+			if br.BioHash != "" {
+				if _, err := cs.db.Exec(
+					`INSERT INTO bio_hashes (hash, wallet_address) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+					br.BioHash, strings.ToLower(br.WalletAddress),
+				); err != nil {
+					return fmt.Errorf("resync: could not insert bio_hash: %w", err)
+				}
+			}
+		}
+		// Authoritative: every StateRoot-relevant config key takes the
+		// snapshot's value unconditionally, unlike ImportSnapshotFromURL's
+		// merge mode which never overwrites an existing key.
+		for key, val := range snap.ChainConfig {
+			cs.setConfigValue(key, val)
+		}
+		if snap.Height > 0 {
+			cs.setConfigValue("snapshot_import_height", fmt.Sprintf("%d", snap.Height))
+			cs.setConfigValue("max_block_height", fmt.Sprintf("%d", snap.Height))
+		}
+	}
+
+	if err := cs.MigrateEVMFromGoState(V7_CONTRACT_ADDR); err != nil {
+		fmt.Printf("[RESYNC] ERROR: EVM migration failed after resync: %v\n", err)
+		fmt.Printf("[RESYNC] WARNING: EVM state may be inconsistent — consider restarting and re-running resync\n")
+	}
+
+	fmt.Printf("[RESYNC] ✓ Replaced local state with %d accounts, %d nullifiers, %d bio-registrations from snapshot\n",
 		len(snap.Accounts), len(snap.Nullifiers), len(snap.BioRegistrations))
 	return nil
 }

@@ -1090,6 +1090,22 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	// dag.blocks/dag.tips (hash-chain/tips bookkeeping needs it as a valid
 	// parent for later blocks) but neither its transactions nor its
 	// StateRoot claim are touched.
+	// FIX (audit recheck2, P2 #4): naming this explicitly, since it's a real
+	// trust boundary, not just a performance shortcut. Every block ABOVE
+	// skipHeight is independently re-verified by replaying its transactions
+	// and checking the resulting StateRoot — this node never just trusts a
+	// peer's claim. Every block AT OR BELOW skipHeight is "snapshot trust
+	// mode": this node accepts cs.accounts' already-loaded state (from its
+	// own DB, or from a signed snapshot import) as correct for that range
+	// without re-deriving it from block history, because re-deriving it
+	// would require replaying transactions whose effects are already
+	// baked into that state by definition (see bootHeight's and
+	// snapshot_import_height's comments for why re-replaying them would
+	// double-apply, not re-verify, them). The actual trust anchor for
+	// snapshot-sourced state is ImportSnapshotFromURL/ResyncFromSnapshotURL's
+	// mandatory ECDSA signature check against BOOTSTRAP_SIGNER — this skip
+	// doesn't grant any trust itself, it just avoids re-deriving what that
+	// signature check already vouched for.
 	if skipHeight > 0 && block.Height <= skipHeight {
 		dag.replayedMu.Lock()
 		dag.replayedBlocks[block.Hash] = true
