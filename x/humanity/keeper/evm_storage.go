@@ -1147,18 +1147,45 @@ func (cs *ChainState) RegisterValidatorKey(signingAddress, humanWallet string) e
 // LoadValidatorKeysIntoDAG reads all registered validator signing addresses
 // from the DB and adds them to the DAG's authorized validators set.
 // Called at startup so keys registered before the node restarted are effective.
+//
+// FIX (audit recheck2, P1 #8): this used to read ONLY validator_keys —
+// validator_slots (the wallet-bound, signature-verified binding BindValidatorSlot
+// writes, the mechanism this project's Sybil-resistance redesign actually
+// relies on) was never reloaded here. A validator authorized purely through
+// the BindValidatorSlot/handlePeerRegister flow (AddAuthorizedValidator
+// called in-memory at bind time, never via RegisterValidatorKey) lost its
+// block-signing authorization on every single restart — it would have to
+// re-bind (re-sign and re-submit) before it could propose another block,
+// even though its binding was still valid and present in validator_slots
+// the whole time. Now loads both tables; either one authorizing a signing
+// address is sufficient, matching handlePeerRegister's own "PEER_SECRET OR
+// signature" acceptance logic.
 func (cs *ChainState) LoadValidatorKeysIntoDAG(dag interface{ AddAuthorizedValidator(string) }) {
 	if cs.db == nil {
 		return
 	}
 	rows, err := cs.db.Query(`SELECT signing_address FROM validator_keys`)
+	if err == nil {
+		for rows.Next() {
+			var addr string
+			rows.Scan(&addr)
+			dag.AddAuthorizedValidator(strings.ToLower(strings.TrimSpace(addr)))
+		}
+		rows.Close()
+	}
+	cs.db.Exec(`CREATE TABLE IF NOT EXISTS validator_slots (
+operator_wallet TEXT PRIMARY KEY,
+signing_address TEXT NOT NULL,
+claimed_at TIMESTAMP DEFAULT NOW()
+)`)
+	slotRows, err := cs.db.Query(`SELECT signing_address FROM validator_slots`)
 	if err != nil {
 		return
 	}
-	defer rows.Close()
-	for rows.Next() {
+	defer slotRows.Close()
+	for slotRows.Next() {
 		var addr string
-		rows.Scan(&addr)
+		slotRows.Scan(&addr)
 		dag.AddAuthorizedValidator(strings.ToLower(strings.TrimSpace(addr)))
 	}
 }

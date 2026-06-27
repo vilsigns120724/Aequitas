@@ -1202,6 +1202,43 @@ ON CONFLICT (operator_wallet) DO UPDATE SET signing_address = EXCLUDED.signing_a
 	if err != nil {
 		return fmt.Errorf("could not bind validator slot for %s: %w", operatorWallet, err)
 	}
+	// FIX (audit recheck2, P1 #8): registered_nodes.signing_address used to
+	// only ever be set from the RELAYER_ADDRESS env var (RegisterNode, at
+	// startup) — a value entirely unrelated to the verified signing address
+	// this function just bound. IncrementBlockCount credits blocks to
+	// whichever wallet/signing-address row matches the block's actual
+	// proposer (the signing key) — so any operator using the wallet-bound
+	// model this function exists for (operatorWallet != signingAddress,
+	// the whole point of the Sybil-resistance redesign) had a
+	// registered_nodes row whose signing_address never matched their real
+	// proposer address, and whose wallet_address didn't either (that's the
+	// OPERATOR's human wallet, not the signing key) — every block they
+	// produced credited zero rows, so they earned no validator-pool reward
+	// despite being correctly authorized to produce blocks. Updating the
+	// SAME row this bind authorizes, with the SAME verified address, keeps
+	// authorization and reward-eligibility from the one source instead of
+	// two unrelated ones that can never agree by construction.
+	//
+	// CREATE TABLE here too (not just in RegisterNode) — BindValidatorSlot
+	// can run on a node whose own NODE_OPERATOR_WALLET was never set (e.g.
+	// the primary, authorizing a remote secondary's bind via
+	// handlePeerRegister), meaning RegisterNode's own table creation may
+	// never have run on this node at all.
+	cs.db.Exec(`CREATE TABLE IF NOT EXISTS registered_nodes (
+wallet_address TEXT PRIMARY KEY,
+signing_address TEXT DEFAULT '',
+registered_at TIMESTAMP DEFAULT NOW(),
+blocks_produced BIGINT NOT NULL DEFAULT 0
+)`)
+	if _, err := cs.db.Exec(
+		`INSERT INTO registered_nodes (wallet_address, signing_address) VALUES ($1, $2)
+ON CONFLICT (wallet_address) DO UPDATE SET signing_address = EXCLUDED.signing_address`,
+		operatorWallet, signingAddress,
+	); err != nil {
+		// Non-fatal: block-signing authorization (validator_slots, already
+		// committed above) must not depend on reward bookkeeping succeeding.
+		fmt.Printf("[NODE] Warning: bound validator slot for %s but could not sync registered_nodes.signing_address: %v\n", operatorWallet, err)
+	}
 	return nil
 }
 

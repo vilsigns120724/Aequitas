@@ -586,6 +586,20 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 	} else {
 		dag.orphanFirstSeen[missingParent] = now
 	}
+	// FIX (audit recheck2, P2 #11): the same block can legitimately arrive
+	// more than once before its parent shows up — once via P2P broadcast,
+	// again via an HTTP-SYNC page that happens to cover the same height, and
+	// again on every syncWithNode retry while the gap persists. Without a
+	// hash check here, each delivery appended a fresh duplicate entry,
+	// burning through maxOrphans' budget on copies of a block already
+	// waiting rather than genuinely distinct blocks, and inflating the
+	// "N block(s) now waiting" counts in the logs above their real value.
+	for _, b := range dag.orphans[missingParent] {
+		if b.Hash == block.Hash {
+			dag.orphansMu.Unlock()
+			return
+		}
+	}
 	total := 0
 	for _, v := range dag.orphans {
 		total += len(v)
@@ -1102,12 +1116,27 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				fmt.Printf("[REPLAY] ⚠ Skipping register_human in block #%d: missing wallet or nullifier (older node version?)\n", block.Height)
 				continue
 			}
+			// FIX (audit recheck2, P1 #10): malformed wallet/nullifier, missing
+			// proof fields, and an invalid proof used to just `continue` (skip
+			// this TX, accept the rest of the block) instead of hardFailure.
+			// Unlike the wallet==""/nullifier=="" case above (genuine legacy
+			// compat — see its own comment), there is no legitimate node
+			// version that ever produces a malformed wallet/short nullifier or
+			// omits proof fields; register.go always populates them. A block
+			// containing one of these is either a bug in the producing node
+			// or a validator deliberately packing unverifiable "registrations"
+			// into otherwise-valid block history — permanently, since an
+			// accepted block is never revisited. Treating these as the same
+			// genuine state-inconsistency failure every other case in this
+			// switch already hardFails on closes that gap.
 			if len(wallet) != 42 || wallet[:2] != "0x" {
-				fmt.Printf("[REPLAY] ✗ Rejecting register_human in block #%d: malformed wallet %q\n", block.Height, wallet)
+				fmt.Printf("[REPLAY] ✗ register_human in block #%d: malformed wallet %q — rolling back whole block\n", block.Height, wallet)
+				hardFailure = true
 				continue
 			}
 			if len(nullifier) < 16 {
-				fmt.Printf("[REPLAY] ✗ Rejecting register_human in block #%d: nullifier too short %q\n", block.Height, nullifier)
+				fmt.Printf("[REPLAY] ✗ register_human in block #%d: nullifier too short %q — rolling back whole block\n", block.Height, nullifier)
+				hardFailure = true
 				continue
 			}
 			// Verify the ZK proof via BioVerifier before applying. This
@@ -1126,11 +1155,13 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			// with no biometric proof at all, defeating "one human, one
 			// registration" silently.
 			if len(tx.ProofA) != 2 || len(tx.ProofB) != 2 || len(tx.ProofC) != 2 || len(tx.PubSignals) < 2 {
-				fmt.Printf("[REPLAY] ✗ Rejecting register_human for %s (block #%d): missing ZK proof fields\n", wallet, block.Height)
+				fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): missing ZK proof fields — rolling back whole block\n", wallet, block.Height)
+				hardFailure = true
 				continue
 			}
 			if !dag.verifyZKProof(tx) {
-				fmt.Printf("[REPLAY] ✗ ZK proof verification failed for %s (block #%d) — skipping\n", wallet, block.Height)
+				fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): ZK proof verification failed — rolling back whole block\n", wallet, block.Height)
+				hardFailure = true
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ ZK proof verified for %s (block #%d)\n", wallet, block.Height)
@@ -1254,7 +1285,15 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				}
 				fmt.Printf("[REPLAY] ✓ Applied UBI reward %.6f AEQ for %s (block #%d)\n", tx.Amount, wallet, block.Height)
 			} else {
-				fmt.Printf("[REPLAY] ubi_distribution TX in block #%d has neither amount_per_human nor a wallet — skipping (malformed)\n", block.Height)
+				// FIX (audit recheck2, P1 #10): see register_human's matching
+				// comment — this TX type is only ever emitted internally by
+				// RunDailyDistributionAtomic, never user-submitted, so a
+				// malformed one (neither shape populated) means either a
+				// producer bug or a validator fabricating distribution
+				// history. hardFailure instead of a silent skip.
+				fmt.Printf("[REPLAY] ✗ ubi_distribution TX in block #%d has neither amount_per_human nor a wallet — rolling back whole block\n", block.Height)
+				hardFailure = true
+				continue
 			}
 
 		case "ubi_distribution_finalize":
