@@ -932,7 +932,10 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 		NodeOperatorWallet string `json:"node_operator_wallet"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+		return
+	}
 	// FIX: a peer's SELF_URL is often sourced from a hosting provider's
 	// "public domain" variable (e.g. Railway's RAILWAY_PUBLIC_DOMAIN), which
 	// never includes a scheme — that bare hostname fails isAllowedPeerURL's
