@@ -545,3 +545,33 @@ func TestApplyEscrowReleaseDelta_CreditsUBIPool(t *testing.T) {
 		t.Errorf("want UBI pool balance=35 (10+25), got %v", cs.accounts[ubiPoolAddr].Balance.Float())
 	}
 }
+
+func TestRunDailyDistributionAtomic_CreditsUBIAndValidators(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0x01", 0)
+	addHuman(cs, "0x02", 0)
+	cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(100)}
+
+	if err := cs.RunDailyDistributionAtomic(123456789); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cs.accounts["0x01"].Balance.Float() != 50 || cs.accounts["0x02"].Balance.Float() != 50 {
+		t.Errorf("want both humans credited 50, got 0x01=%v 0x02=%v",
+			cs.accounts["0x01"].Balance.Float(), cs.accounts["0x02"].Balance.Float())
+	}
+	if cs.accounts[ubiPoolAddr].Balance.Float() != 0 {
+		t.Errorf("want UBI pool zeroed, got %v", cs.accounts[ubiPoolAddr].Balance.Float())
+	}
+}
+
+func TestRunDailyDistributionAtomic_NoOpWhenPoolsEmpty(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0x01", 1000)
+
+	if err := cs.RunDailyDistributionAtomic(123456789); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cs.accounts["0x01"].Balance.Float() != 1000 {
+		t.Errorf("want unchanged balance 1000, got %v", cs.accounts["0x01"].Balance.Float())
+	}
+}

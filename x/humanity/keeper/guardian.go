@@ -332,91 +332,49 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 // caller can build "escrow_move" TXs for secondaries to replay — secondaries
 // never run this function themselves (see main.go's primary-only gate), so
 // they only need the resulting balance delta, not the escrow_accounts row.
-func (cs *ChainState) CheckAndMoveToEscrow() []DistributionShare {
+//
+// FIX (audit3, P0 #3): this used to run its own multi-phase RLock/Lock
+// cycling specifically so its (potentially slow) escrow_accounts DB calls
+// never held cs.mu — a deliberate latency tradeoff for a function that used
+// to run as an independent, non-atomic step. It is now ALWAYS called from
+// inside RunDailyDistributionAtomic's single locked+transactional scope (see
+// that function), so cs.mu is already held for the whole call and there is
+// no separate lock-juggling left to do. The escrow_accounts INSERT now goes
+// through cs.dbExec() instead of cs.db directly, so it commits or rolls back
+// as part of the SAME DB transaction as the balance zeroing and every other
+// distribution sub-step — replacing the old ad-hoc manual revert-on-failure
+// (which could only restore the in-memory balance, never undo an escrow
+// half-write) with a real, whole-round rollback via the caller.
+func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) {
 	if cs.db == nil {
-		return nil
+		return nil, nil
 	}
 	threshold := time.Now().Unix() - inactivityEscrowSeconds
 	now := time.Now().Unix()
 
-	// Phase 1: collect candidates from in-memory state under RLock (no DB calls).
-	type candidate struct {
-		addr    string
-		balance float64
-	}
-	var preCandiates []string
-	cs.mu.RLock()
-	for addr, acc := range cs.accounts {
-		if !acc.IsHuman { continue }
-		if acc.LastActivityAt == 0 || acc.LastActivityAt > threshold { continue }
-		bal := effectiveBalance(acc).Float()
-		if bal <= 0 { continue }
-		preCandiates = append(preCandiates, addr)
-	}
-	cs.mu.RUnlock()
-
-	if len(preCandiates) == 0 {
-		return nil
-	}
-
-	// Phase 2: filter out already-escrowed wallets via DB (outside RLock).
-	type candidateBalance struct{ addr string; balance float64 }
-	var candidates []candidateBalance
-	for _, addr := range preCandiates {
-		var existing float64
-		scanErr := cs.db.QueryRow(
-			`SELECT amount FROM escrow_accounts WHERE wallet_address = $1`, addr,
-		).Scan(&existing)
-		if scanErr == nil && existing > 0 {
-			continue // already escrowed
-		}
-		// Re-read balance under no lock (best-effort; confirmed under write lock below).
-		cs.mu.RLock()
-		acc, ok := cs.accounts[addr]
-		var bal float64
-		if ok { bal = effectiveBalance(acc).Float() }
-		cs.mu.RUnlock()
-		if bal <= 0 { continue }
-		candidates = append(candidates, candidateBalance{addr, bal})
-	}
-
-	if len(candidates) == 0 {
-		return nil
-	}
-
-	// FIX 1: Collect decisions under write lock; do DB writes OUTSIDE the lock
-	// to avoid blocking all chain operations during potentially slow DB I/O.
 	type escrowEntry struct {
-		acc            AccountState // value copy — safe to use after lock released
-		balance        float64
-		demurrageLost  float64
-		now            int64
-		inactiveSince  string
+		acc           AccountState
+		balance       float64
+		demurrageLost float64
+		inactiveSince string
 	}
 	var toEscrow []escrowEntry
-
-	cs.mu.Lock()
-	for _, c := range candidates {
-		acc, ok := cs.accounts[c.addr]
-		if !ok {
-			continue
-		}
-		// FIX 5: Re-check IsHuman under write lock. Between the candidate scan
-		// and here an account could theoretically have been de-registered or was
-		// never human (e.g. a pool address that slipped through the RLock scan).
-		// Non-human accounts must never be escrowed.
+	for addr, acc := range cs.accounts {
 		if !acc.IsHuman {
 			continue
 		}
-		// Re-check LastActivityAt under write lock — between the candidate scan
-		// and here, the account may have been touched by a Transfer/Swap/ConfirmAlive
-		// call, which would update LastActivityAt.
-		if acc.LastActivityAt > threshold {
-			continue // no longer inactive
+		if acc.LastActivityAt == 0 || acc.LastActivityAt > threshold {
+			continue
 		}
-		bal := round6(effectiveBalance(acc).Float())
+		bal := effectiveBalance(acc).Float()
 		if bal <= 0 {
 			continue
+		}
+		var existing float64
+		if scanErr := cs.dbExec().QueryRow(
+			`SELECT amount FROM escrow_accounts WHERE wallet_address = $1`, addr,
+		).Scan(&existing); scanErr == nil && existing > 0 {
+			continue // already escrowed
 		}
 
 		// Settle demurrage first so Balance reflects reality.
@@ -427,55 +385,42 @@ func (cs *ChainState) CheckAndMoveToEscrow() []DistributionShare {
 		}
 
 		inactiveSince := time.Unix(acc.LastActivityAt, 0).Format("2006-01-02")
-
-		// Update in-memory state NOW (under the lock).
 		acc.Balance = NewDecimal(0)
 
-		// Collect a value copy for DB writes after the lock is released.
 		toEscrow = append(toEscrow, escrowEntry{
 			acc:           *acc,
 			balance:       bal,
 			demurrageLost: lost.Float(),
-			now:           now,
 			inactiveSince: inactiveSince,
 		})
 	}
-	cs.mu.Unlock()
 
-	// FIX 1 (cont.) + FIX 2: DB writes outside the lock.
+	if len(toEscrow) == 0 {
+		return nil, nil
+	}
+
 	// FIX 2: Use ON CONFLICT DO NOTHING so an existing escrow row's moved_at
 	// clock is never reset — resetting it would restart the 1.5-year countdown.
 	var moved []DistributionShare
 	for _, entry := range toEscrow {
-		if _, err := cs.db.Exec(
+		if _, err := cs.dbExec().Exec(
 			`INSERT INTO escrow_accounts (wallet_address, amount, moved_at)
 			 VALUES ($1, $2, $3)
 			 ON CONFLICT (wallet_address) DO NOTHING`,
-			entry.acc.Address, entry.balance, entry.now,
+			entry.acc.Address, entry.balance, now,
 		); err != nil {
-			fmt.Printf("[ESCROW] Error writing escrow for %s: %v\n", entry.acc.Address, err)
-			// FIX (fund loss): the in-memory balance was already zeroed under
-			// the write lock above (entry.acc is a copy taken AFTER that
-			// zeroing). If this INSERT fails, the funds exist nowhere — not
-			// in the wallet (in-memory, already zeroed), not in escrow (this
-			// INSERT just failed), and saveAccountToDB below is correctly
-			// skipped so the zero isn't persisted, but the live in-memory
-			// account object is still zeroed and stays that way until a
-			// restart reloads it from DB. Roll it back here so the wallet
-			// balance is restored immediately and the next cycle can retry.
-			cs.mu.Lock()
-			if acc, ok := cs.accounts[entry.acc.Address]; ok {
-				acc.Balance = NewDecimal(entry.balance)
-			}
-			cs.mu.Unlock()
-			continue
+			return nil, fmt.Errorf("could not write escrow for %s: %w", entry.acc.Address, err)
 		}
-		cs.saveAccountToDB(&entry.acc)
+		acc := entry.acc
+		if err := cs.saveAccountToDB(&acc); err != nil {
+			return nil, fmt.Errorf("could not save escrowed account %s: %w", entry.acc.Address, err)
+		}
+		cs.accounts[entry.acc.Address] = &acc
 		fmt.Printf("[ESCROW] ✓ Moved %.6f AEQ from %s to escrow (inactive since %s)\n",
 			entry.balance, entry.acc.Address, entry.inactiveSince)
 		moved = append(moved, DistributionShare{Wallet: entry.acc.Address, Amount: entry.balance, DemurrageLost: entry.demurrageLost})
 	}
-	return moved
+	return moved, nil
 }
 
 // ReleaseEscrowToUBI is called once per day. It finds escrow entries older
@@ -485,23 +430,28 @@ func (cs *ChainState) CheckAndMoveToEscrow() []DistributionShare {
 // secondaries to replay — secondaries never run this function themselves
 // (see main.go's primary-only gate), and don't need an escrow_accounts
 // table at all since only the resulting UBI-pool credit affects StateRoot.
-func (cs *ChainState) ReleaseEscrowToUBI() []DistributionShare {
+//
+// FIX (audit3, P0 #3): now assumes cs.mu is already held by the caller
+// (RunDailyDistributionAtomic) and uses cs.dbExec() so the escrow DELETE and
+// the UBI-pool credit commit or roll back as part of the same DB transaction
+// as the rest of the distribution round — see checkAndMoveToEscrowLocked's
+// comment for the equivalent reasoning.
+func (cs *ChainState) releaseEscrowToUBILocked() ([]DistributionShare, error) {
 	if cs.db == nil {
-		return nil
+		return nil, nil
 	}
 	threshold := time.Now().Unix() - escrowToUBISeconds
 
 	// FIX 3: Use DELETE...RETURNING for an atomic claim — no other goroutine
 	// can claim the same row between a SELECT and a subsequent DELETE.
-	rows, err := cs.db.Query(
+	rows, err := cs.dbExec().Query(
 		`DELETE FROM escrow_accounts
 		 WHERE moved_at < $1
 		 RETURNING wallet_address, amount`,
 		threshold,
 	)
 	if err != nil {
-		fmt.Printf("[ESCROW] ReleaseEscrowToUBI query error: %v\n", err)
-		return nil
+		return nil, fmt.Errorf("could not release escrow: %w", err)
 	}
 	type escrowEntry struct {
 		addr   string
@@ -514,14 +464,11 @@ func (cs *ChainState) ReleaseEscrowToUBI() []DistributionShare {
 			entries = append(entries, e)
 		}
 	}
-	rows.Close() // close before acquiring cs.mu to avoid holding DB connection under lock
+	rows.Close()
 
 	if len(entries) == 0 {
-		return nil
+		return nil, nil
 	}
-
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
 
 	var released []DistributionShare
 	for _, e := range entries {
@@ -530,11 +477,13 @@ func (cs *ChainState) ReleaseEscrowToUBI() []DistributionShare {
 			cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
 		}
 		cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(round6(e.amount)))
-		cs.saveAccountToDB(cs.accounts[ubiPoolAddr])
+		if err := cs.saveAccountToDB(cs.accounts[ubiPoolAddr]); err != nil {
+			return nil, fmt.Errorf("could not save UBI pool: %w", err)
+		}
 		fmt.Printf("[ESCROW] ✓ Released %.6f AEQ from %s escrow → UBI pool\n", e.amount, e.addr)
 		released = append(released, DistributionShare{Wallet: e.addr, Amount: round6(e.amount)})
 	}
 
 	cs.save()
-	return released
+	return released, nil
 }

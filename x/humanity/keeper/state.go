@@ -114,6 +114,7 @@ type ChainState struct {
 type sqlExecutor interface {
 	Exec(query string, args ...interface{}) (sql.Result, error)
 	QueryRow(query string, args ...interface{}) *sql.Row
+	Query(query string, args ...interface{}) (*sql.Rows, error)
 }
 
 // dbExec returns the executor in-progress writes should use: the active
@@ -1229,20 +1230,38 @@ type DistributionShare struct {
 // to blocks produced and returns exactly what was credited to each — see
 // DistributionShare's comment for why the caller must use these returned
 // values (not recompute them) when building replay TXs.
+//
+// This public wrapper locks cs.mu itself and is kept for direct callers
+// (currently only tests) outside the atomic distribution path — production
+// distribution goes through RunDailyDistributionAtomic →
+// distributeValidatorsPoolLocked, which assumes cs.mu is already held by
+// the caller so it can run inside the SAME DB transaction as the rest of
+// the round (see audit3, P0 #3).
 func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
-	// Load registered nodes BEFORE acquiring the lock — GetRegisteredNodes
-	// only reads from PostgreSQL, not cs.accounts, so it doesn't need the
-	// mutex. Calling it inside the lock would be a deadlock risk if the DB
-	// driver itself tries to acquire any internal lock that chains back.
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	shares, err := cs.distributeValidatorsPoolLocked()
+	if err != nil {
+		fmt.Printf("[VALIDATORS] Error: %v\n", err)
+		return nil
+	}
+	return shares
+}
+
+func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, error) {
+	// GetRegisteredNodes/the blocks_produced query only read PostgreSQL, not
+	// cs.accounts — safe to run while cs.mu is held (no deadlock risk; the
+	// original "before acquiring cs.mu" ordering predates this function being
+	// called from inside an already-locked scope and is no longer required
+	// for correctness, only kept historically reachable via the public
+	// DistributeValidatorsPool wrapper above where cs.mu is also already held
+	// by the time this runs).
 	nodes := cs.GetRegisteredNodes()
 	if len(nodes) == 0 {
 		fmt.Println("[VALIDATORS] No registered node operators — pool left untouched")
-		return nil
+		return nil, nil
 	}
 
-	// P1-AUDIT: Query block counts BEFORE acquiring cs.mu. The old code ran this
-	// DB query inside the lock, creating the same deadlock risk warned about above
-	// for GetRegisteredNodes. Move it here so the lock section is DB-query-free.
 	type nodeShare struct {
 		wallet string
 		blocks int64
@@ -1250,7 +1269,7 @@ func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 	var nodeShares []nodeShare
 	var totalBlocks int64
 	if cs.db != nil {
-		rows, _ := cs.db.Query(`SELECT wallet_address, blocks_produced FROM registered_nodes WHERE wallet_address = ANY($1)`, pq.Array(nodes))
+		rows, _ := cs.dbExec().Query(`SELECT wallet_address, blocks_produced FROM registered_nodes WHERE wallet_address = ANY($1)`, pq.Array(nodes))
 		if rows != nil {
 			for rows.Next() {
 				var w string
@@ -1272,13 +1291,10 @@ func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 		}
 	}
 
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
 	poolAcc, ok := cs.accounts[validatorsPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[VALIDATORS] Pool is empty — nothing to distribute today")
-		return nil
+		return nil, nil
 	}
 
 	total := poolAcc.Balance.Float()
@@ -1306,7 +1322,9 @@ func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 		touchActivity(acc)
 		cs.enforceWealthCapLocked(acc)
-		cs.saveAccountToDB(acc)
+		if err := cs.saveAccountToDB(acc); err != nil {
+			return nil, fmt.Errorf("could not save validator reward for %s: %w", wallet, err)
+		}
 		totalDistributed += share
 		shares = append(shares, DistributionShare{Wallet: wallet, Amount: share, DemurrageLost: lost.Float()})
 	}
@@ -1315,13 +1333,15 @@ func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 	// pool balance when all shares rounded to zero).
 	if totalDistributed > 0 {
 		poolAcc.Balance = NewDecimal(0)
-		cs.saveAccountToDB(poolAcc)
+		if err := cs.saveAccountToDB(poolAcc); err != nil {
+			return nil, fmt.Errorf("could not zero validators pool: %w", err)
+		}
 	}
 	cs.save()
 
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(nodes, validatorsPoolAddr)...)
 	fmt.Printf("[VALIDATORS] Distributed %.6f AEQ proportionally (%d nodes, block-weighted)\n", total, len(nodeShares))
-	return shares
+	return shares, nil
 }
 
 // DistributeLPPool pays out the entire LP pool balance to liquidity
@@ -1331,10 +1351,22 @@ func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 // LP shares receive nothing. Returns exactly what was credited to each
 // holder — see DistributionShare's comment for why the caller must use
 // these returned values when building replay TXs.
+//
+// Public wrapper kept for direct callers (tests) outside the atomic
+// distribution path — see DistributeValidatorsPool's comment for why
+// production distribution uses distributeLPPoolLocked instead.
 func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	shares, err := cs.distributeLPPoolLocked()
+	if err != nil {
+		fmt.Printf("[LP] Error: %v\n", err)
+		return nil
+	}
+	return shares
+}
 
+func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 	// Collect all LP holders and their share counts BEFORE settling demurrage,
 	// so we know who participates.
 	type lpHolder struct {
@@ -1351,7 +1383,7 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	}
 	if totalShares <= 0 || len(holders) == 0 {
 		fmt.Println("[LP] No LP holders — pool left untouched")
-		return nil
+		return nil, nil
 	}
 
 	// E3 fix: settle demurrage for ALL LP holders FIRST. settleDemurrageLocked
@@ -1373,7 +1405,7 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	}
 	// Re-check totalShares after demurrage settlement — shares could have gone to zero.
 	if totalShares <= 0 {
-		return nil
+		return nil, nil
 	}
 
 	// P2-FIX: second totalShares guard after the demurrage loop. Recompute from
@@ -1387,14 +1419,14 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	}
 	if totalShares <= 0 {
 		fmt.Println("[LP] totalShares collapsed to zero after demurrage loop — pool left untouched")
-		return nil
+		return nil, nil
 	}
 
 	// NOW read the pool balance — it includes any demurrage credits just added.
 	poolAcc, ok := cs.accounts[lpPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[LP] Pool is empty — nothing to distribute today")
-		return nil
+		return nil, nil
 	}
 
 	total := poolAcc.Balance.Float()
@@ -1410,12 +1442,16 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 		touchActivity(acc)
 		cs.enforceWealthCapLocked(acc)
-		cs.saveAccountToDB(acc)
+		if err := cs.saveAccountToDB(acc); err != nil {
+			return nil, fmt.Errorf("could not save LP reward for %s: %w", h.addr, err)
+		}
 		shares = append(shares, DistributionShare{Wallet: h.addr, Amount: share, DemurrageLost: demurrageLost[h.addr]})
 	}
 	if totalDistributed > 0 {
 		poolAcc.Balance = NewDecimal(0)
-		cs.saveAccountToDB(poolAcc)
+		if err := cs.saveAccountToDB(poolAcc); err != nil {
+			return nil, fmt.Errorf("could not zero LP pool: %w", err)
+		}
 	} else {
 		fmt.Printf("[LP] All shares rounded to zero (%.9f AEQ total) — pool preserved\n", total)
 	}
@@ -1428,7 +1464,7 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(holderAddrs, lpPoolAddr)...)
 
 	fmt.Printf("[LP] ✓ Distributed %.6f AEQ across %d LP holders (proportional to shares)\n", total, len(holders))
-	return shares
+	return shares, nil
 }
 
 // DistributeUBIPool distributes the UBI pool equally across every
@@ -1452,14 +1488,25 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 // that human's own DemurrageLost, exactly like DistributeLPPool/
 // DistributeValidatorsPool already did — main.go emits one TX per human
 // instead of one flat broadcast TX.
+// Public wrapper kept for direct callers (tests) outside the atomic
+// distribution path — see DistributeValidatorsPool's comment for why
+// production distribution uses distributeUBIPoolLocked instead.
 func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	shares, err := cs.distributeUBIPoolLocked()
+	if err != nil {
+		fmt.Printf("[UBI] Error: %v\n", err)
+		return nil
+	}
+	return shares
+}
 
+func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 	poolAcc, ok := cs.accounts[ubiPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool is empty — nothing to distribute today")
-		return nil
+		return nil, nil
 	}
 
 	var humanAddrs []string
@@ -1470,7 +1517,7 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	}
 	if len(humanAddrs) == 0 {
 		fmt.Println("[UBI] No registered humans yet — pool left untouched")
-		return nil
+		return nil, nil
 	}
 
 	// E3-FIX for UBI: settle demurrage for ALL humans FIRST. settleDemurrageLocked
@@ -1486,7 +1533,7 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	poolAcc, ok = cs.accounts[ubiPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool empty after demurrage settlement — nothing to distribute")
-		return nil
+		return nil, nil
 	}
 	// P0-FIX: Do NOT call settleDemurrageLocked on the pool account itself —
 	// pool addresses are tokenomics infrastructure and must never have demurrage applied.
@@ -1495,7 +1542,7 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	// P0-5/P2-9: prevent funds vanishing via float rounding to 0
 	if round6(share) == 0 {
 		fmt.Printf("[UBI] Share %.10f rounds to zero — pool left intact for next distribution\n", share)
-		return nil
+		return nil, nil
 	}
 	// P0-2 + P1-6: credit humans BEFORE zeroing pool AND before last_ubi_at.
 	shares := make([]DistributionShare, 0, len(humanAddrs))
@@ -1504,11 +1551,15 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 		touchActivity(acc)
 		cs.enforceWealthCapLocked(acc)
-		cs.saveAccountToDB(acc)
+		if err := cs.saveAccountToDB(acc); err != nil {
+			return nil, fmt.Errorf("could not save UBI reward for %s: %w", addr, err)
+		}
 		shares = append(shares, DistributionShare{Wallet: addr, Amount: round6(share), DemurrageLost: demurrageLost[addr]})
 	}
 	poolAcc.Balance = NewDecimal(0)
-	cs.saveAccountToDB(poolAcc)
+	if err := cs.saveAccountToDB(poolAcc); err != nil {
+		return nil, fmt.Errorf("could not zero UBI pool: %w", err)
+	}
 	cs.save()
 	// FIX (audit recheck 2, P0 #4): last_ubi_at used to be set HERE via
 	// time.Now() — a different instant than whatever secondaries later
@@ -1523,7 +1574,7 @@ func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	capturedGini := cs.calcGiniLocked()
 	capturedHumans := len(humanAddrs)
 	go cs.SaveGiniSnapshotValues(capturedGini, capturedHumans)
-	return shares
+	return shares, nil
 }
 
 // getAverageBalanceLocked computes the mean AEQ balance across every
@@ -1857,6 +1908,146 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
 	}
 	return nil
+}
+
+// runAtomicDistributionWithOutbox is runAtomicWithOutbox's counterpart for
+// the daily distribution round: fn mutates state across several sub-steps
+// (UBI, validators, LP, escrow) and returns EVERY Transaction those
+// sub-steps produced; all of them are inserted into the pending_tx outbox
+// inside the SAME DB transaction as every account/pool/config write fn made
+// (via cs.activeTx — see dbExec), committed once at the end.
+//
+// FIX (audit3, P0 #3): distribution used to run each sub-step as its own
+// immediately-committing operation (cs.mu.Lock/Unlock per Distribute* call),
+// then separately call SavePendingTx per resulting TX afterward — main.go's
+// WithBlockProductionPaused (added earlier this session) only serialized
+// this against ProduceBlock's ticker, it never made the mutations and the
+// outbox inserts one atomic unit. A crash or DB error between any mutation
+// and its corresponding SavePendingTx call still produced state no other
+// node could ever replay. There is also deliberately NO in-memory
+// AddTransaction fallback here (unlike SavePendingTx's own retry-then-
+// fallback contract used elsewhere) — for a consensus event the size of a
+// full daily distribution, an outbox failure must roll back the whole
+// round, not be "rescued" by a queue that doesn't survive a restart.
+func (cs *ChainState) runAtomicDistributionWithOutbox(fn func() ([]Transaction, error)) error {
+	if cs.db == nil {
+		cs.mu.Lock()
+		_, err := fn()
+		cs.mu.Unlock()
+		return err
+	}
+
+	tx, err := cs.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not begin atomic distribution transaction: %w", err)
+	}
+
+	// Full snapshot: distribution can touch any number of humans/validators/
+	// LP holders/escrow wallets, none of which are known in advance — same
+	// reasoning blockTouchedAddresses already uses for ubi_distribution.
+	snap := cs.snapshotForRollback(nil, true)
+
+	cs.mu.Lock()
+	cs.activeTx = tx
+	txs, fnErr := fn()
+	var outboxErr error
+	if fnErr == nil {
+		for _, t := range txs {
+			if outboxErr = savePendingTxExec(tx, t); outboxErr != nil {
+				break
+			}
+		}
+	}
+	cs.activeTx = nil
+	cs.mu.Unlock()
+
+	if fnErr != nil || outboxErr != nil {
+		tx.Rollback()
+		cs.restoreFromRollback(snap)
+		if fnErr != nil {
+			return fnErr
+		}
+		return fmt.Errorf("outbox insert failed inside atomic distribution transaction (state mutation rolled back): %w", outboxErr)
+	}
+
+	if err := tx.Commit(); err != nil {
+		cs.restoreFromRollback(snap)
+		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
+	}
+	return nil
+}
+
+// RunDailyDistributionAtomic runs the complete daily distribution round —
+// UBI, validator pool, LP pool, escrow move/release — as ONE all-or-nothing
+// DB transaction together with every resulting outbox TX (see
+// runAtomicDistributionWithOutbox). ubiAt is the single timestamp the
+// caller (main.go) chose once for this round; it's used for both the
+// primary's own immediate last_ubi_at write and the
+// ubi_distribution_finalize TX every secondary replays — see
+// ApplyUBIFinalizeDelta's comment for why that must be one shared value,
+// not each side's own time.Now()/block.Timestamp.
+func (cs *ChainState) RunDailyDistributionAtomic(ubiAt int64) error {
+	return cs.runAtomicDistributionWithOutbox(func() ([]Transaction, error) {
+		var txs []Transaction
+
+		ubiShares, err := cs.distributeUBIPoolLocked()
+		if err != nil {
+			return nil, fmt.Errorf("UBI distribution failed: %w", err)
+		}
+		var ubiTotal float64
+		for _, s := range ubiShares {
+			txs = append(txs, Transaction{Type: "ubi_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+			ubiTotal += s.Amount
+		}
+		if ubiTotal > 0 {
+			cs.applyUBIFinalizeDeltaLocked(ubiAt)
+			txs = append(txs, Transaction{Type: "ubi_distribution_finalize", DistributionAt: ubiAt})
+		}
+
+		validatorShares, err := cs.distributeValidatorsPoolLocked()
+		if err != nil {
+			return nil, fmt.Errorf("validator distribution failed: %w", err)
+		}
+		var validatorTotal float64
+		for _, s := range validatorShares {
+			txs = append(txs, Transaction{Type: "validator_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+			validatorTotal += s.Amount
+		}
+		if validatorTotal > 0 {
+			txs = append(txs, Transaction{Type: "validator_distribution_pool_zero"})
+		}
+
+		lpShares, err := cs.distributeLPPoolLocked()
+		if err != nil {
+			return nil, fmt.Errorf("LP distribution failed: %w", err)
+		}
+		var lpTotal float64
+		for _, s := range lpShares {
+			txs = append(txs, Transaction{Type: "lp_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+			lpTotal += s.Amount
+		}
+		if lpTotal > 0 {
+			txs = append(txs, Transaction{Type: "lp_distribution_pool_zero"})
+		}
+
+		moved, err := cs.checkAndMoveToEscrowLocked()
+		if err != nil {
+			return nil, fmt.Errorf("escrow move failed: %w", err)
+		}
+		for _, s := range moved {
+			txs = append(txs, Transaction{Type: "escrow_move", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+		}
+
+		released, err := cs.releaseEscrowToUBILocked()
+		if err != nil {
+			return nil, fmt.Errorf("escrow release failed: %w", err)
+		}
+		for _, s := range released {
+			txs = append(txs, Transaction{Type: "escrow_release", Wallet: s.Wallet, Amount: s.Amount})
+		}
+
+		return txs, nil
+	})
 }
 
 // Transfer moves amount AEQ from->to on the primary node. Returns the AEQ
@@ -3449,6 +3640,13 @@ func (cs *ChainState) ApplyUBIRewardDelta(wallet string, amount, demurrageLost f
 func (cs *ChainState) ApplyUBIFinalizeDelta(ubiAt int64) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	cs.applyUBIFinalizeDeltaLocked(ubiAt)
+}
+
+// applyUBIFinalizeDeltaLocked is ApplyUBIFinalizeDelta's body, callable from
+// inside RunDailyDistributionAtomic where cs.mu is already held — see
+// DistributeValidatorsPool's comment for the same pattern.
+func (cs *ChainState) applyUBIFinalizeDeltaLocked(ubiAt int64) {
 	if ubiAcc, ok := cs.accounts[ubiPoolAddr]; ok {
 		ubiAcc.Balance = NewDecimal(0)
 		cs.saveAccountToDB(ubiAcc)
