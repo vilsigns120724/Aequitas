@@ -3744,6 +3744,10 @@ function startUBITimer(secsRemaining) {
 async function loadStatus() {
   try {
     const d = await (await fetch('/api/status')).json();
+    // Cache the true chain height so the block list's "N blocks" stat can
+    // show it directly instead of a deduped count of whatever page of
+    // blocks happens to be locally fetched (see loadBlocks).
+    latestChainHeight = d.height;
     document.getElementById('s-height').textContent = fmt(d.height);
     document.getElementById('s-humans').textContent = fmt(d.total_humans);
     document.getElementById('s-supply').textContent = d.total_supply || '—';
@@ -4357,6 +4361,7 @@ function drawPriceChart() {
 }
 
 let allBlocks = [];
+let latestChainHeight = 0;
 
 async function loadBlocks() {
   try {
@@ -4377,7 +4382,13 @@ async function loadBlocks() {
       if (!byHeight[h] || pc > (byHeight[h].parent_hashes || []).length) byHeight[h] = b;
     });
     const dedupedBlocks = Object.values(byHeight).sort(function(a, b) { return b.height - a.height; });
-    document.getElementById('block-count').textContent = dedupedBlocks.length + ' blocks';
+    // FIX: this used to show dedupedBlocks.length — the deduped count of
+    // whatever page of blocks was just fetched (capped at 50), not the
+    // true chain height. Once the chain passed 50 blocks that number
+    // stopped meaning anything ("47 blocks" forever while the real height
+    // climbed into the thousands). Prefer the real height from loadStatus().
+    document.getElementById('block-count').textContent =
+      (latestChainHeight || dedupedBlocks.length) + ' blocks';
     // Populate block table rows (latest 30)
     if (list) {
       list.innerHTML = dedupedBlocks.slice(0, 30).map(function(b) {
@@ -4430,16 +4441,40 @@ async function loadBlocks() {
   } catch (e) {}
 }
 
-function expSearch() {
+function expSearchFail() {
+  const msgEl = document.getElementById('exp-search-input');
+  if (msgEl) { msgEl.style.borderColor = 'var(--red)'; setTimeout(function() { msgEl.style.borderColor = ''; }, 1500); }
+}
+
+// FIX: this used to only search allBlocks — whatever ~50 most recent blocks
+// happened to be cached client-side from the live list. The chain has no
+// upper bound on height, so searching for anything older than the last 50
+// blocks silently found nothing, with no indication that the block might
+// simply not have been fetched yet (as opposed to not existing at all).
+// Now falls back to a direct server lookup (/api/block?height=/?hash=) for
+// anything not already cached, so search works for the entire chain
+// history without the live list itself needing to grow.
+async function expSearch() {
   const q = ((document.getElementById('exp-search-input') || {}).value || '').trim();
-  if (!q || !allBlocks.length) return;
+  if (!q) return;
   const byNum = allBlocks.find(function(b) { return String(b.height) === q; });
   if (byNum) { openBlock(byNum.hash); return; }
   const ql = q.toLowerCase();
   const byHash = allBlocks.find(function(b) { return b.hash && b.hash.toLowerCase().startsWith(ql); });
   if (byHash) { openBlock(byHash.hash); return; }
-  const msgEl = document.getElementById('exp-search-input');
-  if (msgEl) { msgEl.style.borderColor = 'var(--red)'; setTimeout(function() { msgEl.style.borderColor = ''; }, 1500); }
+
+  try {
+    const isHeight = /^\d+$/.test(q);
+    const url = isHeight ? ('/api/block?height=' + encodeURIComponent(q)) : ('/api/block?hash=' + encodeURIComponent(q));
+    const resp = await fetch(url);
+    if (!resp.ok) { expSearchFail(); return; }
+    const block = await resp.json();
+    if (!block || !block.hash) { expSearchFail(); return; }
+    allBlocks.push(block);
+    openBlock(block.hash);
+  } catch (e) {
+    expSearchFail();
+  }
 }
 
 function openBlock(hash) {

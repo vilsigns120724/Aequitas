@@ -779,6 +779,27 @@ func (dag *BlockDAG) GetBlockByHash(hash string) *Block {
 	return dag.blocks[hash]
 }
 
+// GetBlockByHeight returns a block at the given height, or nil if none
+// exists. Multiple validators can produce a sibling at the same height —
+// when that happens this prefers the one with the most parent hashes (the
+// merge block), matching the explorer UI's own dedup-by-height preference,
+// so a search for a specific height shows the same block the list view
+// would have shown for it.
+func (dag *BlockDAG) GetBlockByHeight(height int64) *Block {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	var best *Block
+	for _, b := range dag.blocks {
+		if b.Height != height {
+			continue
+		}
+		if best == nil || len(b.ParentHashes) > len(best.ParentHashes) {
+			best = b
+		}
+	}
+	return best
+}
+
 func (dag *BlockDAG) TotalBlocks() int {
 dag.mu.RLock()
 defer dag.mu.RUnlock()

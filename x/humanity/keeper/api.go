@@ -318,23 +318,35 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(blocks[offset:end])
 }
 
-// handleBlockByHash serves GET /api/block?hash=0x... — a single block by
-// its exact hash, or 404. Used by fetchMissingAncestors (sync_blocks.go) to
-// resolve a specific missing-parent hash directly: /api/blocks' min_height
-// pagination only ever looks near the calling node's OWN current height,
-// so once a node's chain has drifted from a peer's by more than the sync
-// overlap window, the actual common-ancestor blocks it needs to bridge the
-// gap fall permanently outside that window and can never be fetched by
-// height alone. Fetching the exact hash sidesteps that entirely.
+// handleBlockByHash serves GET /api/block?hash=0x... or /api/block?height=N
+// — a single block by exact hash or height, or 404. The hash lookup is used
+// by fetchMissingAncestors (sync_blocks.go) to resolve a specific
+// missing-parent hash directly: /api/blocks' min_height pagination only
+// ever looks near the calling node's OWN current height, so once a node's
+// chain has drifted from a peer's by more than the sync overlap window, the
+// actual common-ancestor blocks it needs to bridge the gap fall permanently
+// outside that window and can never be fetched by height alone. The height
+// lookup backs the explorer's search box, which previously only searched
+// whatever ~50 most recent blocks happened to be cached client-side —
+// searching for any older block silently found nothing.
 func (a *APIServer) handleBlockByHash(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	hash := r.URL.Query().Get("hash")
-	if hash == "" {
-		http.Error(w, `{"error":"missing hash parameter"}`, http.StatusBadRequest)
+	var block *Block
+	if hash != "" {
+		block = a.blockchain.GetBlockByHash(hash)
+	} else if heightStr := r.URL.Query().Get("height"); heightStr != "" {
+		var height int64
+		if _, err := fmt.Sscanf(heightStr, "%d", &height); err != nil {
+			http.Error(w, `{"error":"invalid height parameter"}`, http.StatusBadRequest)
+			return
+		}
+		block = a.blockchain.GetBlockByHeight(height)
+	} else {
+		http.Error(w, `{"error":"missing hash or height parameter"}`, http.StatusBadRequest)
 		return
 	}
-	block := a.blockchain.GetBlockByHash(hash)
 	if block == nil {
 		http.Error(w, `{"error":"block not found"}`, http.StatusNotFound)
 		return
