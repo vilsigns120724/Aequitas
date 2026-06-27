@@ -179,9 +179,27 @@ func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, limit int
 func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	const pageSize = 500
 	const maxPagesPerCall = 2000 // hard cap: 1,000,000 blocks per call — headroom, not unbounded
+	// FIX: requesting strictly "height > my own height" misses SIBLINGS at
+	// or just below that height that other validators produced. A later
+	// block's parent can be one of those siblings (e.g. the peer's own
+	// previous block, at a height I already consider "done" because MY
+	// own block at that height got there first) — if I never fetched it,
+	// AddPeerBlock rejects every subsequent block built on top of it for
+	// missing a parent I don't have, forever. Confirmed in production:
+	// three concurrent validators each kept seeing ONLY their own
+	// single-parent chain in their own /api/blocks output — never each
+	// other's blocks — because the height-exclusive fetch never pulled in
+	// the sibling branches needed to resolve later parents. Re-requesting
+	// a small overlap window of already-"passed" heights each cycle is
+	// cheap (AddPeerBlock dedupes by hash) and guarantees sibling forks
+	// from other validators get imported before something builds on them.
+	const syncOverlap = 20
 	totalAdded := 0
 	for page := 0; page < maxPagesPerCall; page++ {
-		minHeight := dag.Height()
+		minHeight := dag.Height() - syncOverlap
+		if minHeight < 0 {
+			minHeight = 0
+		}
 		blocks, err := dag.fetchBlocksSince(nodeURL, minHeight, pageSize)
 		if err != nil {
 			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (min_height=%d) from %s: %v\n", minHeight, nodeURL, err)
@@ -215,13 +233,13 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		if len(blocks) < pageSize {
 			break // last page (peer's tip is within this page)
 		}
-		if dag.Height() <= minHeight {
-			// Fetched a full page (peer has more above this height) but our
-			// own height didn't move — e.g. every block in the page was
-			// rejected (bad signature/parent) or already known under a
-			// different lookup. Looping again would request the exact same
-			// min_height and get the exact same page forever.
-			fmt.Printf("[HTTP-SYNC] ⚠ Page above height %d added %d of %d blocks but height did not advance — stopping sync from %s for this cycle\n", minHeight, addedThisPage, len(blocks), nodeURL)
+		if addedThisPage == 0 {
+			// Fetched a full page (peer has more beyond this window) but
+			// nothing in it was new/acceptable — e.g. every block was
+			// already known, or rejected for a bad signature/parent.
+			// Looping again would request virtually the same overlap
+			// window and get the exact same page forever.
+			fmt.Printf("[HTTP-SYNC] ⚠ Page above height %d added 0 of %d blocks — stopping sync from %s for this cycle\n", minHeight, len(blocks), nodeURL)
 			break
 		}
 	}
