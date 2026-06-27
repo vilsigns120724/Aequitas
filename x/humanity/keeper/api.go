@@ -1000,6 +1000,21 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, `{"error":"NODE_OPERATOR_WALLET is not a registered human — register first via the AequitasBio app"}`, http.StatusForbidden)
 				return
 			}
+			// FIX (one-human-one-validator): NODE_OPERATOR_WALLET being a
+			// verified human is necessary but not sufficient — without this,
+			// the SAME verified wallet could be set as NODE_OPERATOR_WALLET
+			// on any number of separately-deployed nodes, each with its own
+			// signing key, all independently passing the IsHuman check above
+			// and becoming authorized validators. TryClaimValidatorSlot binds
+			// this wallet to the FIRST signing address it's ever seen with;
+			// see its comment for why this (identity-based) replaces
+			// PEER_SECRET/SNAPSHOT_TOKEN (shared-secret-based) as the actual
+			// Sybil-resistance mechanism.
+			if slotOK, boundTo := a.state.TryClaimValidatorSlot(nodeWallet, addr); !slotOK {
+				fmt.Printf("[PEERS] Rejected %s: NODE_OPERATOR_WALLET %s is already bound to validator %s — one human may run one validator node\n", addr, nodeWallet, boundTo)
+				http.Error(w, fmt.Sprintf(`{"error":"this wallet is already bound to a different validator node (%s) — one verified human may run exactly one validator"}`, boundTo), http.StatusForbidden)
+				return
+			}
 			a.blockchain.AddAuthorizedValidator(addr)
 			method := "PEER_SECRET"
 			if sigOK {
