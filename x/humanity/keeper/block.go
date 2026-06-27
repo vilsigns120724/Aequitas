@@ -12,18 +12,12 @@ import (
 "strings"
 "sort"
 "sync"
-"sync/atomic"
 "time"
-"context"
 
 "github.com/ethereum/go-ethereum/accounts/abi"
 "github.com/ethereum/go-ethereum/common"
 "github.com/ethereum/go-ethereum/crypto"
 )
-
-// FIX 2: droppedReplayBlocks counts blocks dropped from the replay queue
-// due to it being full. Accessed atomically.
-var droppedReplayBlocks int64
 
 type Transaction struct {
 	Type            string  `json:"type"`
@@ -97,9 +91,18 @@ syncPeerMu             sync.Mutex
 warnedUnknownProposers map[string]bool  // suppresses repeated "not authorized" log lines
 peerChallenges         map[string]peerChallenge // address → pending challenge (P1-3)
 challengeMu            sync.Mutex
-replayQueue            chan *Block       // serialized replay channel — ensures TX ordering across blocks
 replayedBlocks         map[string]bool  // tracks blocks already replayed — prevents double-credit on duplicate delivery
 replayedMu             sync.Mutex
+	// replayMu serializes replayTransactions calls across concurrent
+	// AddPeerBlock invocations (e.g. the same or different blocks arriving
+	// via P2P and HTTP sync at the same time) — replay must happen in a
+	// well-defined order since TX dependencies span blocks (a register_human
+	// in block N must be applied before a transfer in block N+1 from the
+	// same wallet). This replaces the old single-consumer-goroutine +
+	// channel design, which serialized replay the same way but ran it
+	// asynchronously — see AddPeerBlock for why that was a correctness bug,
+	// not just a latency tradeoff.
+	replayMu sync.Mutex
 stateRootMismatches map[string]int // FIX 4: per-proposer StateRoot mismatch counters
 	// orphans holds blocks whose parent isn't known yet, keyed by the missing
 	// parent's hash. When that parent is later added, every block waiting on
@@ -108,8 +111,6 @@ stateRootMismatches map[string]int // FIX 4: per-proposer StateRoot mismatch cou
 	// silently dropped forever, along with everything built on top of it.
 	orphans   map[string][]*Block
 	orphansMu sync.Mutex
-	replayCtx    context.Context    // FIX 6: governs replay goroutine lifetime
-	replayCancel context.CancelFunc // FIX 6: called by Close() to stop the goroutine
 }
 
 
@@ -246,29 +247,10 @@ authorizedValidators:   loadAuthorizedValidators(),
 activeSyncPeers:        make(map[string]bool),
 warnedUnknownProposers: make(map[string]bool),
 peerChallenges:         make(map[string]peerChallenge),
-replayQueue:            make(chan *Block, 1000),
 replayedBlocks:         make(map[string]bool),
 	stateRootMismatches:    make(map[string]int),
 	orphans:                make(map[string][]*Block),
 }
-// FIX 6: Context for replay goroutine shutdown via Close().
-dag.replayCtx, dag.replayCancel = context.WithCancel(context.Background())
-// Single consumer goroutine ensures blocks are replayed in the order received.
-// This preserves TX dependencies (e.g. register_human in block N must be
-// applied before a transfer in block N+1 that references the same wallet).
-go func() {
-	for {
-		select {
-		case <-dag.replayCtx.Done():
-			return
-		case b, ok := <-dag.replayQueue:
-			if !ok {
-				return
-			}
-			dag.replayTransactions(b)
-		}
-	}
-}()
 if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	if key, err := crypto.HexToECDSA(pk); err == nil {
 		dag.signingKey = key
@@ -643,72 +625,95 @@ return false
 }
 }
 
-// State-root integrity check — log a warning on mismatch but still accept
-// the block. Wall-clock differences, in-flight demurrage settlement, and
-// minor DB-sync lag can cause transient mismatches between honest nodes.
-// Rejecting on mismatch causes split-brain when two nodes process the same
-// transactions in slightly different orders or at different wall-clock times.
-// The ECDSA signature check above already prevents forged blocks.
+// Structural validation passed. Release dag.mu before replay — replay
+// uses dag.state's own lock (cs.mu), not dag.mu, and must never run while
+// holding dag.mu (ProduceBlock and other dag.mu users would block for the
+// duration of every peer block's replay otherwise).
+dag.mu.Unlock()
+
+// FIX (the actual BlockDAG correctness bug, not just a hardening pass):
+// this used to (1) compare block.StateRoot against dag.state.StateRoot()
+// BEFORE replaying this block's own transactions, and (2) insert the block
+// into dag.blocks/dag.tips unconditionally, with replay only queued
+// asynchronously onto a channel that could silently drop it if full.
+//
+// (1) is not just "risky" — it is structurally wrong and guaranteed to
+// "mismatch" on every single block that contains any transaction, even
+// between two perfectly healthy, fully-synced nodes: block.StateRoot is
+// computed by the PRODUCER *after* applying this block's own TXs (the
+// producer's RPC handlers apply state changes synchronously before queuing
+// them for inclusion — see evm_rpc.go/register.go/swap.go), so it is a
+// POST-state root. Comparing it against the RECEIVER's StateRoot at this
+// point — before the receiver has replayed this block's TXs — compares a
+// post-state against a pre-state. That's why "[DAG] StateRoot mismatch ...
+// accepted (warn only)" fired constantly throughout this project's history
+// on nearly every non-empty block: the check could never have detected real
+// divergence, it was comparing the wrong two snapshots by construction.
+//
+// (2) meant a block could be permanently "in the DAG" (counted in height,
+// returned by /api/blocks, used as a valid parent for later blocks) before
+// its own state changes were verified to apply cleanly, or even applied at
+// all if the replay queue happened to be full.
+//
+// Fixed by replaying SYNCHRONOUSLY, right here, before the block is
+// inserted anywhere — and only THEN comparing StateRoot, now correctly
+// post-state vs. post-state. replayMu serializes this across concurrent
+// AddPeerBlock calls (same ordering guarantee the old channel+goroutine
+// provided, without the "silently drop if busy" failure mode: this blocks
+// instead of dropping, and replayTransactions' own dedup guard makes that
+// safe even under concurrent delivery of the same block).
+dag.replayMu.Lock()
+dag.replayTransactions(block)
+dag.replayMu.Unlock()
+
+// State-root integrity check — now comparing the RECEIVER's post-replay
+// state against the PRODUCER's post-state, the comparison it was always
+// supposed to be. Still warn-only rather than reject-on-mismatch: any
+// remaining non-determinism source (not yet found) would otherwise halt
+// sync entirely rather than just logging a now-meaningful warning. The
+// ECDSA signature check above already prevents forged blocks; this is a
+// state-consistency signal, not a forgery defense.
 if block.StateRoot != "" {
-localRoot := dag.state.StateRoot()
-if block.StateRoot != localRoot {
-fmt.Printf("[DAG] ⚠ StateRoot mismatch on peer block #%d (proposer=%s..., local=%s...) — accepted (warn only)\n",
-block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
-// FIX 4: Track mismatches per proposer.
-dag.stateRootMismatches[block.Proposer]++
-if dag.stateRootMismatches[block.Proposer] >= 5 {
-fmt.Printf("[ALERT] 5+ consecutive StateRoot mismatches from proposer %s — state may have diverged. Consider resync.\n", block.Proposer)
-}
-} else {
-dag.stateRootMismatches[block.Proposer] = 0 // reset on match
-}
+	localRoot := dag.state.StateRoot()
+	if block.StateRoot != localRoot {
+		fmt.Printf("[DAG] ⚠ StateRoot mismatch on peer block #%d (proposer=%s..., local=%s...) — accepted (warn only)\n",
+			block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
+		// FIX 4: Track mismatches per proposer.
+		dag.stateRootMismatches[block.Proposer]++
+		if dag.stateRootMismatches[block.Proposer] >= 5 {
+			fmt.Printf("[ALERT] 5+ consecutive StateRoot mismatches from proposer %s — state may have diverged. Consider resync.\n", block.Proposer)
+		}
+	} else {
+		dag.stateRootMismatches[block.Proposer] = 0 // reset on match
+	}
 }
 
+dag.mu.Lock()
 dag.blocks[block.Hash] = block
 
 // Remove parents from tips
 for _, ph := range block.ParentHashes {
-delete(dag.tips, ph)
+	delete(dag.tips, ph)
 }
 
 // Add this block as new tip
 dag.tips[block.Hash] = true
 
 if block.Height > dag.height {
-dag.height = block.Height
+	dag.height = block.Height
 }
 
 tipCount := len(dag.tips)
-hasTxs := len(block.Transactions) > 0
-
-// Release lock BEFORE channel send — holding dag.mu while blocked on a
-// full channel would deadlock all other DAG operations (e.g. ProduceBlock).
 dag.mu.Unlock()
 
-// Now that this block exists, any blocks that were queued as orphans
-// waiting specifically on this hash as their missing parent can be
-// retried. Done via a fresh top-level AddPeerBlock call (after fully
-// releasing dag.mu above) rather than recursing while locked — this
-// naturally cascades: if a retried orphan succeeds, its own dependents
-// get resolved the same way when ITS insertion reaches this point.
+// Now that this block exists (and has been replayed), any blocks that were
+// queued as orphans waiting specifically on this hash as their missing
+// parent can be retried. Done via a fresh top-level AddPeerBlock call
+// rather than recursing — this naturally cascades: if a retried orphan
+// succeeds, its own dependents get resolved the same way when ITS
+// insertion reaches this point.
 for _, waiting := range dag.popOrphans(block.Hash) {
 	dag.AddPeerBlock(waiting)
-}
-
-if hasTxs {
-	// Non-blocking send: if the queue is full, drop the block with a warning.
-	// Dropping is safer than running replayTransactions concurrently (which
-	// would bypass the serialization guarantee and risk double-credits).
-	select {
-	case dag.replayQueue <- block:
-	default:
-		// FIX 2: Track drops atomically and escalate to ALERT after 10 drops.
-		dropped := atomic.AddInt64(&droppedReplayBlocks, 1)
-		fmt.Printf("[WARN] replayQueue full (%d capacity), dropping block #%d — state may diverge. Consider increasing queue capacity.\n", cap(dag.replayQueue), block.Height)
-		if dropped > 10 {
-			fmt.Printf("[ALERT] %d blocks dropped from replay queue — chain state MAY BE PERMANENTLY DIVERGED. Restart and re-sync from snapshot.\n", dropped)
-		}
-	}
 }
 
 fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, tipCount)
@@ -991,12 +996,11 @@ func (dag *BlockDAG) ReconstructState(state *ChainState) {
 	fmt.Printf("[CHAIN] State loaded from DB — skipping full block-replay reconstruction\n")
 }
 
-// Close shuts down the replay goroutine cleanly. Call on node shutdown.
-// FIX 6: context-based shutdown so the goroutine exits without leaking.
-func (dag *BlockDAG) Close() {
-	dag.replayCancel()
-	close(dag.replayQueue)
-}
+// Close is a no-op now that replay runs synchronously inside AddPeerBlock
+// (see its comment for why the old async channel+goroutine design was
+// removed) — there's no longer a background goroutine to shut down. Kept
+// for call-site compatibility (main.go may call this on shutdown).
+func (dag *BlockDAG) Close() {}
 
 // verifyZKProof reconstructs the Groth16 proof from the TX's decimal string
 // fields and calls the BioVerifier contract via the local EVM engine to check

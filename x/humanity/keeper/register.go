@@ -548,7 +548,21 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 			}
 		}
 		if !registered {
+			// FIX: this used to only log CRITICAL and fall through to return
+			// txHash (success) anyway. The on-chain EVM transaction has
+			// already been mined at this point and can't be undone without
+			// spending more gas on a nonexistent "unregister" function — but
+			// reporting success to the caller while Go-state's IsHuman is
+			// still false is worse: it hides a real, permanent divergence
+			// (chain_accounts says not human; the EVM mirror and every
+			// secondary that later replays this block's register_human TX
+			// will eventually say human) behind an API response that looked
+			// fine. Returning an error here at least surfaces it immediately
+			// instead of leaving an admin to discover it later via
+			// /api/admin/registration-debug after a user reports "already
+			// registered" with no balance.
 			Log.Error("CRITICAL: RegisterHuman failed 3x after EVM success — Go/EVM diverged", "wallet", wallet, "error", regErr)
+			return "", fmt.Errorf("registration succeeded on-chain (tx %s) but failed to sync locally after retries: %w — check /api/admin/registration-debug?wallet=%s", txHash, regErr, wallet)
 		}
 		a.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, wallet)
 	} else {
