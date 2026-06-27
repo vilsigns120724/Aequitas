@@ -814,16 +814,33 @@ func (cs *ChainState) loadFromFile(dataFile string) {
 	fmt.Printf("✓ Loaded chain state: %d accounts\n", len(accounts))
 }
 
+// save persists cs.accounts to the JSON state file in non-DB (file
+// fallback) mode. Caller must already hold cs.mu (read or write) — every
+// call site in this codebase is inside a "...Locked" function or an
+// already cs.mu.Lock()'d block (DistributeUBIPool/LP/ValidatorsPool,
+// transferLocked, registerHumanLocked, swapLocked, addLiquidityLocked,
+// removeLiquidityLocked, claimTUsdFaucetLocked, ReleaseEscrowToUBI).
+//
+// FIX (deadlock): this used to take cs.mu.RLock() itself before
+// marshaling. sync.RWMutex is not reentrant, so a caller that already
+// holds cs.mu.Lock() (every real caller, per the list above) would
+// deadlock forever the instant it reached this RLock — discovered via a
+// unit test that actually exercised the non-DB code path (cs.useDB=false)
+// for DistributeUBIPool with funds to distribute; "go test" caught it as
+// a 10-minute timeout with all goroutines blocked on this exact RLock.
+// In production this was silent because cs.useDB is true whenever
+// Postgres is configured (see NewChainState), so save() returns above
+// before ever reaching the lock — but any node that ever runs without a
+// reachable Postgres (misconfigured DATABASE_URL, Postgres briefly down
+// at startup) would freeze completely on the very first state-mutating
+// call. Removing the internal lock here is correct, not just convenient:
+// the caller's existing lock already guarantees a stable, exclusive view
+// of cs.accounts for the marshal below.
 func (cs *ChainState) save() {
 	if cs.useDB {
 		return // DB saves immediately in RegisterHuman/Transfer
 	}
-	// P2-AUDIT: Take a snapshot under RLock before serializing. Without the lock,
-	// a concurrent write to cs.accounts (Transfer, RegisterHuman) could produce
-	// a partially-modified map view in the JSON output.
-	cs.mu.RLock()
 	data, _ := json.Marshal(cs.accounts)
-	cs.mu.RUnlock()
 	// D8-FIX: atomic write via temp-file + rename to prevent partial file
 	// corruption if the process crashes mid-write.
 	tmpPath := "/tmp/aequitas_state.json.tmp"
@@ -1112,7 +1129,23 @@ func (cs *ChainState) IncrementBlockCount(proposerAddr string) {
 	}
 }
 
-func (cs *ChainState) DistributeValidatorsPool() {
+// DistributionShare is one recipient's actual credited amount from a pool
+// distribution (validator or LP rewards) — returned so the caller can
+// build exactly-replayable TXs from the REAL result, instead of having
+// secondaries try to recompute shares themselves from inputs (like
+// registered_nodes.blocks_produced) that could differ slightly node to
+// node and produce a different split.
+type DistributionShare struct {
+	Wallet        string
+	Amount        float64
+	DemurrageLost float64
+}
+
+// DistributeValidatorsPool credits registered node operators proportional
+// to blocks produced and returns exactly what was credited to each — see
+// DistributionShare's comment for why the caller must use these returned
+// values (not recompute them) when building replay TXs.
+func (cs *ChainState) DistributeValidatorsPool() []DistributionShare {
 	// Load registered nodes BEFORE acquiring the lock — GetRegisteredNodes
 	// only reads from PostgreSQL, not cs.accounts, so it doesn't need the
 	// mutex. Calling it inside the lock would be a deadlock risk if the DB
@@ -1120,7 +1153,7 @@ func (cs *ChainState) DistributeValidatorsPool() {
 	nodes := cs.GetRegisteredNodes()
 	if len(nodes) == 0 {
 		fmt.Println("[VALIDATORS] No registered node operators — pool left untouched")
-		return
+		return nil
 	}
 
 	// P1-AUDIT: Query block counts BEFORE acquiring cs.mu. The old code ran this
@@ -1161,13 +1194,14 @@ func (cs *ChainState) DistributeValidatorsPool() {
 	poolAcc, ok := cs.accounts[validatorsPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[VALIDATORS] Pool is empty — nothing to distribute today")
-		return
+		return nil
 	}
 
 	total := poolAcc.Balance.Float()
 	// P0-2: credit recipients BEFORE zeroing the pool so a crash mid-loop
 	// leaves money in the pool (re-distributable) rather than losing it.
 	var totalDistributed float64
+	var shares []DistributionShare
 	for _, ns := range nodeShares {
 		wallet := ns.wallet
 		// P2-FIX: validate wallet address before crediting — a malformed
@@ -1184,12 +1218,13 @@ func (cs *ChainState) DistributeValidatorsPool() {
 			cs.accounts[wallet] = &AccountState{Address: wallet}
 		}
 		acc := cs.accounts[wallet]
-		cs.settleDemurrageLocked(acc)
+		lost := cs.settleDemurrageLocked(acc)
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 		touchActivity(acc)
 		cs.enforceWealthCapLocked(acc)
 		cs.saveAccountToDB(acc)
 		totalDistributed += share
+		shares = append(shares, DistributionShare{Wallet: wallet, Amount: share, DemurrageLost: lost.Float()})
 	}
 	// Zero pool only after all recipients are successfully written,
 	// and only if something was actually distributed (prevents destroying
@@ -1202,14 +1237,17 @@ func (cs *ChainState) DistributeValidatorsPool() {
 
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(nodes, validatorsPoolAddr)...)
 	fmt.Printf("[VALIDATORS] Distributed %.6f AEQ proportionally (%d nodes, block-weighted)\n", total, len(nodeShares))
+	return shares
 }
 
 // DistributeLPPool pays out the entire LP pool balance to liquidity
 // providers, proportional to their LP share count. This mirrors how
 // real AMMs (Uniswap v2, etc.) reward LPs — the more of the pool you
 // provided, the larger your share of the fee income. Accounts with zero
-// LP shares receive nothing.
-func (cs *ChainState) DistributeLPPool() {
+// LP shares receive nothing. Returns exactly what was credited to each
+// holder — see DistributionShare's comment for why the caller must use
+// these returned values when building replay TXs.
+func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
@@ -1229,7 +1267,7 @@ func (cs *ChainState) DistributeLPPool() {
 	}
 	if totalShares <= 0 || len(holders) == 0 {
 		fmt.Println("[LP] No LP holders — pool left untouched")
-		return
+		return nil
 	}
 
 	// E3 fix: settle demurrage for ALL LP holders FIRST. settleDemurrageLocked
@@ -1243,7 +1281,7 @@ func (cs *ChainState) DistributeLPPool() {
 	}
 	// Re-check totalShares after demurrage settlement — shares could have gone to zero.
 	if totalShares <= 0 {
-		return
+		return nil
 	}
 
 	// P2-FIX: second totalShares guard after the demurrage loop. Recompute from
@@ -1257,14 +1295,14 @@ func (cs *ChainState) DistributeLPPool() {
 	}
 	if totalShares <= 0 {
 		fmt.Println("[LP] totalShares collapsed to zero after demurrage loop — pool left untouched")
-		return
+		return nil
 	}
 
 	// NOW read the pool balance — it includes any demurrage credits just added.
 	poolAcc, ok := cs.accounts[lpPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[LP] Pool is empty — nothing to distribute today")
-		return
+		return nil
 	}
 
 	total := poolAcc.Balance.Float()
@@ -1272,6 +1310,7 @@ func (cs *ChainState) DistributeLPPool() {
 	// E4 fix: track total distributed so we don't zero the pool if all shares
 	// rounded to zero (which would destroy micro-AEQ silently).
 	var totalDistributed float64
+	var shares []DistributionShare
 	for _, h := range holders {
 		share := round6((h.shares / totalShares) * total)
 		totalDistributed += share
@@ -1280,6 +1319,7 @@ func (cs *ChainState) DistributeLPPool() {
 		touchActivity(acc)
 		cs.enforceWealthCapLocked(acc)
 		cs.saveAccountToDB(acc)
+		shares = append(shares, DistributionShare{Wallet: h.addr, Amount: share})
 	}
 	if totalDistributed > 0 {
 		poolAcc.Balance = NewDecimal(0)
@@ -1296,16 +1336,32 @@ func (cs *ChainState) DistributeLPPool() {
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(holderAddrs, lpPoolAddr)...)
 
 	fmt.Printf("[LP] ✓ Distributed %.6f AEQ across %d LP holders (proportional to shares)\n", total, len(holders))
+	return shares
 }
 
-func (cs *ChainState) DistributeUBIPool() {
+// DistributeUBIPool distributes the UBI pool to every registered human and
+// returns the amountPerHuman actually credited and the human count it was
+// divided by — the caller (main.go) MUST use these returned values when
+// building the ubi_distribution TX for secondaries to replay, rather than
+// reading the pool balance separately beforehand.
+//
+// FIX: this used to be void, and main.go read the pool balance BEFORE
+// calling this function to compute the broadcast amountPerHuman. But this
+// function settles demurrage for every human FIRST (see the comment a few
+// lines down — that step alone can grow the pool, which main.go's earlier
+// read could never see), so the amount actually credited locally and the
+// amount broadcast to secondaries were two different numbers — guaranteed
+// StateRoot divergence on every single UBI distribution, independent of
+// the separate "every node runs this locally" bug (see DistributeUBIPool's
+// caller in main.go for that one).
+func (cs *ChainState) DistributeUBIPool() (amountPerHuman float64, totalHumans int) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
 	poolAcc, ok := cs.accounts[ubiPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool is empty — nothing to distribute today")
-		return
+		return 0, 0
 	}
 
 	var humanAddrs []string
@@ -1316,7 +1372,7 @@ func (cs *ChainState) DistributeUBIPool() {
 	}
 	if len(humanAddrs) == 0 {
 		fmt.Println("[UBI] No registered humans yet — pool left untouched")
-		return
+		return 0, 0
 	}
 
 	// E3-FIX for UBI: settle demurrage for ALL humans FIRST. settleDemurrageLocked
@@ -1330,7 +1386,7 @@ func (cs *ChainState) DistributeUBIPool() {
 	poolAcc, ok = cs.accounts[ubiPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool empty after demurrage settlement — nothing to distribute")
-		return
+		return 0, 0
 	}
 	// P0-FIX: Do NOT call settleDemurrageLocked on the pool account itself —
 	// pool addresses are tokenomics infrastructure and must never have demurrage applied.
@@ -1339,7 +1395,7 @@ func (cs *ChainState) DistributeUBIPool() {
 	// P0-5/P2-9: prevent funds vanishing via float rounding to 0
 	if round6(share) == 0 {
 		fmt.Printf("[UBI] Share %.10f rounds to zero — pool left intact for next distribution\n", share)
-		return
+		return 0, 0
 	}
 	// P0-2 + P1-6: credit humans BEFORE zeroing pool AND before last_ubi_at.
 	for _, addr := range humanAddrs {
@@ -1361,6 +1417,7 @@ func (cs *ChainState) DistributeUBIPool() {
 	capturedGini := cs.calcGiniLocked()
 	capturedHumans := len(humanAddrs)
 	go cs.SaveGiniSnapshotValues(capturedGini, capturedHumans)
+	return round6(share), len(humanAddrs)
 }
 
 // getAverageBalanceLocked computes the mean AEQ balance across every
@@ -3143,6 +3200,113 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64, ubiAt int64) {
 	}
 	// Write last_ubi_at to secondary's chain_config so StateRoot matches primary.
 	cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", ubiAt))
+}
+
+// ApplyValidatorRewardDelta credits a single validator-pool reward to
+// wallet, settling the EXACT demurrage loss the primary already computed
+// for that wallet (so secondaries don't need to — and can't — recompute
+// it independently). Used by secondary nodes replaying
+// "validator_distribution" TXs. The validators pool itself is zeroed by a
+// separate "validator_distribution_pool_zero" TX (see
+// ApplyValidatorPoolZeroDelta) emitted once per distribution round, not by
+// this per-recipient delta — mirrors DistributeValidatorsPool's own
+// structure (credit loop, then a single unconditional pool zero-out).
+func (cs *ChainState) ApplyValidatorRewardDelta(wallet string, amount, demurrageLost float64) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	wallet = strings.ToLower(wallet)
+	if _, ok := cs.accounts[wallet]; !ok {
+		cs.accounts[wallet] = &AccountState{Address: wallet}
+	}
+	acc := cs.accounts[wallet]
+	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
+	touchActivity(acc)
+	cs.enforceWealthCapLocked(acc)
+	cs.saveAccountToDB(acc)
+	return nil
+}
+
+// ApplyValidatorPoolZeroDelta zeroes the validators pool, mirroring the
+// unconditional zero-out DistributeValidatorsPool performs on the primary
+// after crediting every recipient.
+func (cs *ChainState) ApplyValidatorPoolZeroDelta() {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	if acc, ok := cs.accounts[validatorsPoolAddr]; ok {
+		acc.Balance = NewDecimal(0)
+		cs.saveAccountToDB(acc)
+	}
+}
+
+// ApplyLPRewardDelta credits a single LP-pool reward to wallet. Used by
+// secondary nodes replaying "lp_distribution" TXs. Unlike validator
+// rewards, DistributeLPPool's own credit loop does not re-settle the
+// recipient's demurrage at credit time (it was already settled in an
+// earlier pass over ALL holders, before the pool total was read) — so
+// this delta only credits the amount, matching that behavior exactly.
+// The LP pool itself is zeroed by a separate "lp_distribution_pool_zero"
+// TX (see ApplyLPPoolZeroDelta).
+func (cs *ChainState) ApplyLPRewardDelta(wallet string, amount float64) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	wallet = strings.ToLower(wallet)
+	if _, ok := cs.accounts[wallet]; !ok {
+		cs.accounts[wallet] = &AccountState{Address: wallet}
+	}
+	acc := cs.accounts[wallet]
+	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
+	touchActivity(acc)
+	cs.enforceWealthCapLocked(acc)
+	cs.saveAccountToDB(acc)
+	return nil
+}
+
+// ApplyLPPoolZeroDelta zeroes the LP pool, mirroring the unconditional
+// zero-out DistributeLPPool performs on the primary after crediting every
+// holder.
+func (cs *ChainState) ApplyLPPoolZeroDelta() {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	if acc, ok := cs.accounts[lpPoolAddr]; ok {
+		acc.Balance = NewDecimal(0)
+		cs.saveAccountToDB(acc)
+	}
+}
+
+// ApplyEscrowMoveDelta zeroes wallet's balance after settling the EXACT
+// demurrage loss the primary already computed, mirroring
+// CheckAndMoveToEscrow's effect on a single wallet. Used by secondary nodes
+// replaying "escrow_move" TXs. Secondaries don't maintain an
+// escrow_accounts row at all — only the balance zeroing affects StateRoot,
+// and secondaries never independently decide who to escrow (see
+// main.go's primary-only gate).
+func (cs *ChainState) ApplyEscrowMoveDelta(wallet string, demurrageLost float64) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	wallet = strings.ToLower(wallet)
+	acc, ok := cs.accounts[wallet]
+	if !ok {
+		return fmt.Errorf("escrow move: account not found: %s", wallet)
+	}
+	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	acc.Balance = NewDecimal(0)
+	cs.saveAccountToDB(acc)
+	return nil
+}
+
+// ApplyEscrowReleaseDelta credits amount to the UBI pool, mirroring
+// ReleaseEscrowToUBI's effect for a single released wallet. Used by
+// secondary nodes replaying "escrow_release" TXs.
+func (cs *ChainState) ApplyEscrowReleaseDelta(amount float64) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	if _, ok := cs.accounts[ubiPoolAddr]; !ok {
+		cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
+	}
+	cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(round6(amount)))
+	cs.saveAccountToDB(cs.accounts[ubiPoolAddr])
+	return nil
 }
 
 // ApplyFaucetDelta credits faucetAmount tUSD to wallet and marks FaucetClaimed.

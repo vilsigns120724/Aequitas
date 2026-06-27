@@ -8,6 +8,7 @@ import (
 "net/url"
 "os"
 "os/signal"
+"strings"
 "syscall"
 "time"
 _ "time/tzdata" // embed IANA timezone DB so Europe/Berlin works on Alpine without system tzdata
@@ -203,12 +204,28 @@ time.Unix(block.Timestamp, 0).Format("15:04:05"),
 	}()
 
 fmt.Println("── Starting Daily Pool Distributions ───")
-// IS_PRIMARY_NODE is no longer required. Every node schedules distributions
-// at 20:00 Berlin but uses a PostgreSQL CAS lock (TryLockDistribution) to
-// ensure only ONE node actually executes — the first to atomically claim
-// the lock wins; others see 0 rows updated and skip. This eliminates the
-// IS_PRIMARY_NODE env-var footgun where any operator could accidentally (or
-// maliciously) trigger double distributions by setting IS_PRIMARY_NODE=true.
+// FIX (P0, independent audit recheck 2026-06-27): the comment this replaced
+// claimed TryLockDistribution's PostgreSQL CAS lock "ensures only ONE node
+// actually executes" — that's false. Each node has its OWN, separate
+// Postgres database (by design — see CLAUDE.md/AGENTS.md architecture
+// notes), so the CAS lock only ever prevents the SAME node re-running
+// within 24h. It provides ZERO cross-node coordination. Every node was
+// independently winning its own local lock and running the full
+// distribution (UBI + validator pool + LP pool + escrow) on its own
+// state, then ALSO replaying the one TX that existed (ubi_distribution)
+// on top — multiplying distribution by however many nodes are running.
+//
+// Fix: gate actual execution to exactly one deterministically-identified
+// node — the configured primary — using the SAME "do I have a
+// PRIMARY_NODE_URL pointing at someone else" heuristic already used by
+// StartPeerDiscovery (sync_blocks.go) to decide primary-vs-secondary
+// behavior for peer registration. Secondaries now NEVER run the
+// distribution functions themselves; they only ever replay the resulting
+// TXs from blocks. TryLockDistribution is kept as defense-in-depth on the
+// primary itself (e.g. against the goroutine somehow firing twice), not
+// as the cross-node mechanism.
+primaryURL := strings.TrimRight(keeper.NormalizeNodeURL(os.Getenv("PRIMARY_NODE_URL")), "/")
+isPrimaryForDistribution := primaryURL == "" || primaryURL == selfURL
 // FIX 11: Create a cancellable context for the distribution goroutine so
 // it can be cleanly stopped on node shutdown.
 distCtx, distCancel := context.WithCancel(context.Background())
@@ -256,33 +273,76 @@ case <-ctx.Done():
 return
 case <-time.After(time.Until(firstTarget)):
 }
-// Distributed lock: only the node that atomically claims last_ubi_at proceeds.
-if chainState.TryLockDistribution() {
-// Read UBI pool balance and human count BEFORE distribution so the
-// TX carries the exact per-human share for secondary node replay.
-preUBIBalance := chainState.GetBalance("0x4a9b8f99f0d8cff0e510fef502100571203b054a")
-totalHumans := chainState.TotalHumans()
-chainState.DistributeUBIPool()
-chainState.DistributeValidatorsPool()
-chainState.DistributeLPPool()
-// Move inactive wallets to escrow, then release long-sitting escrow
-// balances to the UBI pool for the next distribution cycle.
-chainState.CheckAndMoveToEscrow()
-chainState.ReleaseEscrowToUBI()
-// Emit a ubi_distribution TX so secondary nodes can replay the exact
-// per-human UBI credit via ApplyUBIDelta instead of running the
-// distribution logic independently (which diverges if state differs).
-var amountPerHuman float64
-if totalHumans > 0 { amountPerHuman = preUBIBalance / float64(totalHumans) }
-bc.AddTransaction(keeper.Transaction{
-	Type:           "ubi_distribution",
-	Wallet:         "0x0000000000000000000000000000000000000000",
-	Amount:         preUBIBalance,
-	AmountPerHuman: amountPerHuman,
-})
-fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
+// Only the primary actually executes distribution — see the comment
+// above this goroutine for why every node previously did, and why
+// that was a critical bug. Secondaries fall straight to rescheduling
+// the next tick and rely entirely on replaying the TXs below.
+if !isPrimaryForDistribution {
+	fmt.Printf("[POOLS] Secondary node — distribution runs on the primary (%s) and is replayed via blocks, skipping local execution\n", primaryURL)
+} else if chainState.TryLockDistribution() {
+	// emitTx persists durably (survives a crash before the next block is
+	// produced) and falls back to the in-memory queue only if that fails —
+	// same pattern used by register.go/evm_rpc.go/swap.go this session.
+	emitTx := func(tx keeper.Transaction) {
+		if err := chainState.SavePendingTx(tx); err != nil {
+			fmt.Printf("[ALERT] %s TX for %q applied locally but SavePendingTx failed: %v — other nodes will NEVER see this unless the in-memory fallback survives to the next block\n", tx.Type, tx.Wallet, err)
+			bc.AddTransaction(tx)
+		}
+	}
+
+	// FIX (P0): DistributeUBIPool now returns the amount it ACTUALLY
+	// credited per human, instead of main.go reading the pool balance
+	// separately beforehand — that old read happened BEFORE the
+	// function's own demurrage-settlement pass, which can grow the pool,
+	// so the broadcast amount and the locally-applied amount used to be
+	// two different numbers (guaranteed StateRoot divergence).
+	amountPerHuman, totalHumans := chainState.DistributeUBIPool()
+	if totalHumans > 0 {
+		emitTx(keeper.Transaction{
+			Type:           "ubi_distribution",
+			Wallet:         "0x0000000000000000000000000000000000000000",
+			Amount:         amountPerHuman * float64(totalHumans),
+			AmountPerHuman: amountPerHuman,
+		})
+	}
+
+	// FIX (P0): validator/LP/escrow changes used to have NO replayable TX
+	// at all — secondaries could never reconstruct them. One TX per
+	// recipient, carrying the EXACT amount (and demurrage loss, where
+	// applicable) the primary computed, so secondaries credit identical
+	// values instead of recomputing shares from inputs (like
+	// registered_nodes.blocks_produced) that could differ slightly
+	// node-to-node.
+	var validatorTotal float64
+	for _, s := range chainState.DistributeValidatorsPool() {
+		emitTx(keeper.Transaction{Type: "validator_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+		validatorTotal += s.Amount
+	}
+	if validatorTotal > 0 {
+		emitTx(keeper.Transaction{Type: "validator_distribution_pool_zero"})
+	}
+
+	var lpTotal float64
+	for _, s := range chainState.DistributeLPPool() {
+		emitTx(keeper.Transaction{Type: "lp_distribution", Wallet: s.Wallet, Amount: s.Amount})
+		lpTotal += s.Amount
+	}
+	if lpTotal > 0 {
+		emitTx(keeper.Transaction{Type: "lp_distribution_pool_zero"})
+	}
+
+	// Move inactive wallets to escrow, then release long-sitting escrow
+	// balances to the UBI pool for the next distribution cycle.
+	for _, s := range chainState.CheckAndMoveToEscrow() {
+		emitTx(keeper.Transaction{Type: "escrow_move", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+	}
+	for _, s := range chainState.ReleaseEscrowToUBI() {
+		emitTx(keeper.Transaction{Type: "escrow_release", Wallet: s.Wallet, Amount: s.Amount})
+	}
+
+	fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
 } else {
-fmt.Printf("[POOLS] Another node ran distribution first — skipping\n")
+	fmt.Printf("[POOLS] Primary already ran distribution within the last 24h — skipping\n")
 }
 firstTarget = nextDaily20(time.Now())
 chainState.SetNextUBIAt(firstTarget.Unix())

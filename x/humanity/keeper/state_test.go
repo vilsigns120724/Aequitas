@@ -387,3 +387,123 @@ func TestSnapshotRestoreRollback_FullSnapshotCoversAllAccounts(t *testing.T) {
 		t.Errorf("0x02 not restored under full snapshot: got %v", cs.accounts["0x02"].Balance.Float())
 	}
 }
+
+// --- Daily distribution: primary computes real amounts, secondaries replay them exactly ---
+
+func TestDistributeUBIPool_ReturnsAmountActuallyCredited(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0x01", 0)
+	addHuman(cs, "0x02", 0)
+	cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(100)}
+
+	amountPerHuman, totalHumans := cs.DistributeUBIPool()
+
+	if totalHumans != 2 {
+		t.Fatalf("want totalHumans=2, got %d", totalHumans)
+	}
+	if amountPerHuman != 50 {
+		t.Fatalf("want amountPerHuman=50, got %v", amountPerHuman)
+	}
+	// The returned values must match what was ACTUALLY credited — this is
+	// the exact bug the audit flagged: main.go used to compute this number
+	// independently (reading the pool balance before calling this
+	// function), which could differ from what got applied here.
+	if cs.accounts["0x01"].Balance.Float() != amountPerHuman {
+		t.Errorf("returned amountPerHuman (%v) doesn't match actual credit (%v)", amountPerHuman, cs.accounts["0x01"].Balance.Float())
+	}
+	if cs.accounts[ubiPoolAddr].Balance.Float() != 0 {
+		t.Errorf("pool must be zeroed after distribution, got %v", cs.accounts[ubiPoolAddr].Balance.Float())
+	}
+}
+
+func TestDistributeLPPool_ReturnsSharesMatchingActualCredits(t *testing.T) {
+	cs := newTestState()
+	cs.accounts["0x01"] = &AccountState{Address: "0x01", LPShares: NewDecimal(3)}
+	cs.accounts["0x02"] = &AccountState{Address: "0x02", LPShares: NewDecimal(1)}
+	cs.accounts[lpPoolAddr] = &AccountState{Address: lpPoolAddr, Balance: NewDecimal(40)}
+
+	shares := cs.DistributeLPPool()
+
+	if len(shares) != 2 {
+		t.Fatalf("want 2 shares, got %d", len(shares))
+	}
+	got := map[string]float64{}
+	for _, s := range shares {
+		got[s.Wallet] = s.Amount
+	}
+	if got["0x01"] != 30 || got["0x02"] != 10 {
+		t.Errorf("want 0x01=30 0x02=10 (3:1 split of 40), got %v", got)
+	}
+	// Returned shares must equal the wallet's actual post-distribution balance.
+	if cs.accounts["0x01"].Balance.Float() != got["0x01"] {
+		t.Errorf("returned share for 0x01 (%v) doesn't match actual balance (%v)", got["0x01"], cs.accounts["0x01"].Balance.Float())
+	}
+	if cs.accounts[lpPoolAddr].Balance.Float() != 0 {
+		t.Errorf("pool must be zeroed after distribution, got %v", cs.accounts[lpPoolAddr].Balance.Float())
+	}
+}
+
+func TestApplyLPRewardDelta_CreditsExactAmount(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0xholder", 5)
+
+	if err := cs.ApplyLPRewardDelta("0xholder", 10); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cs.accounts["0xholder"].Balance.Float() != 15 {
+		t.Errorf("want balance=15, got %v", cs.accounts["0xholder"].Balance.Float())
+	}
+}
+
+func TestApplyValidatorRewardDelta_SettlesDemurrageThenCredits(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0xvalidator", 100)
+
+	// Primary settled 20 AEQ of demurrage loss before crediting a 5 AEQ reward.
+	if err := cs.ApplyValidatorRewardDelta("0xvalidator", 5, 20); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cs.accounts["0xvalidator"].Balance.Float() != 85 {
+		t.Errorf("want balance=85 (100-20+5), got %v", cs.accounts["0xvalidator"].Balance.Float())
+	}
+}
+
+func TestApplyValidatorPoolZeroDelta_ZeroesPool(t *testing.T) {
+	cs := newTestState()
+	cs.accounts[validatorsPoolAddr] = &AccountState{Address: validatorsPoolAddr, Balance: NewDecimal(50)}
+	cs.ApplyValidatorPoolZeroDelta()
+	if cs.accounts[validatorsPoolAddr].Balance.Float() != 0 {
+		t.Errorf("want pool zeroed, got %v", cs.accounts[validatorsPoolAddr].Balance.Float())
+	}
+}
+
+func TestApplyEscrowMoveDelta_SettlesDemurrageThenZeroesBalance(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0xinactive", 100)
+
+	if err := cs.ApplyEscrowMoveDelta("0xinactive", 30); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cs.accounts["0xinactive"].Balance.Float() != 0 {
+		t.Errorf("want balance=0 after escrow move, got %v", cs.accounts["0xinactive"].Balance.Float())
+	}
+}
+
+func TestApplyEscrowMoveDelta_UnknownWallet_Errors(t *testing.T) {
+	cs := newTestState()
+	if err := cs.ApplyEscrowMoveDelta("0xdoesnotexist", 0); err == nil {
+		t.Fatal("expected error for unknown wallet, got nil")
+	}
+}
+
+func TestApplyEscrowReleaseDelta_CreditsUBIPool(t *testing.T) {
+	cs := newTestState()
+	cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(10)}
+
+	if err := cs.ApplyEscrowReleaseDelta(25); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cs.accounts[ubiPoolAddr].Balance.Float() != 35 {
+		t.Errorf("want UBI pool balance=35 (10+25), got %v", cs.accounts[ubiPoolAddr].Balance.Float())
+	}
+}

@@ -616,7 +616,8 @@ return false
 // inject unrecognised state-change commands into the audit log.
 for _, tx := range block.Transactions {
 switch tx.Type {
-case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution":
+case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution",
+	"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release":
 // known / empty — OK
 default:
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
@@ -1029,6 +1030,49 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				// Legacy TX from an older node version — no AmountPerHuman stored.
 				fmt.Printf("[REPLAY] UBI distribution TX in block #%d — no amount_per_human field, skipping (old node format)\n", block.Height)
 			}
+
+		case "validator_distribution":
+			wallet := strings.ToLower(tx.Wallet)
+			if err := dag.state.ApplyValidatorRewardDelta(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+				fmt.Printf("[REPLAY] ✗ validator_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Applied validator reward %.6f AEQ for %s (block #%d)\n", tx.Amount, wallet, block.Height)
+
+		case "validator_distribution_pool_zero":
+			dag.state.ApplyValidatorPoolZeroDelta()
+			fmt.Printf("[REPLAY] ✓ Zeroed validators pool (block #%d)\n", block.Height)
+
+		case "lp_distribution":
+			wallet := strings.ToLower(tx.Wallet)
+			if err := dag.state.ApplyLPRewardDelta(wallet, tx.Amount); err != nil {
+				fmt.Printf("[REPLAY] ✗ lp_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Applied LP reward %.6f AEQ for %s (block #%d)\n", tx.Amount, wallet, block.Height)
+
+		case "lp_distribution_pool_zero":
+			dag.state.ApplyLPPoolZeroDelta()
+			fmt.Printf("[REPLAY] ✓ Zeroed LP pool (block #%d)\n", block.Height)
+
+		case "escrow_move":
+			wallet := strings.ToLower(tx.Wallet)
+			if err := dag.state.ApplyEscrowMoveDelta(wallet, tx.FromDemurrageLost); err != nil {
+				fmt.Printf("[REPLAY] ✗ escrow_move %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Applied escrow move for %s (block #%d)\n", wallet, block.Height)
+
+		case "escrow_release":
+			if err := dag.state.ApplyEscrowReleaseDelta(tx.Amount); err != nil {
+				fmt.Printf("[REPLAY] ✗ escrow_release: %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Applied escrow release %.6f AEQ → UBI pool (block #%d)\n", tx.Amount, block.Height)
 
 		default:
 			// empty string or other unknown types are silently ignored

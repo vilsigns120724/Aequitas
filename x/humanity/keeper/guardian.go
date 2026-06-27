@@ -327,10 +327,14 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 // last_activity_at is older than inactivityEscrowSeconds and moves their AEQ
 // balance to the escrow_accounts table. The balance is removed from the
 // wallet immediately but remains recoverable by the owner for up to 1.5 more
-// years (see ReleaseEscrowToUBI).
-func (cs *ChainState) CheckAndMoveToEscrow() {
+// years (see ReleaseEscrowToUBI). Returns exactly what was moved for each
+// wallet (balance zeroed + demurrage settled at the same moment) so the
+// caller can build "escrow_move" TXs for secondaries to replay — secondaries
+// never run this function themselves (see main.go's primary-only gate), so
+// they only need the resulting balance delta, not the escrow_accounts row.
+func (cs *ChainState) CheckAndMoveToEscrow() []DistributionShare {
 	if cs.db == nil {
-		return
+		return nil
 	}
 	threshold := time.Now().Unix() - inactivityEscrowSeconds
 	now := time.Now().Unix()
@@ -352,7 +356,7 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 	cs.mu.RUnlock()
 
 	if len(preCandiates) == 0 {
-		return
+		return nil
 	}
 
 	// Phase 2: filter out already-escrowed wallets via DB (outside RLock).
@@ -377,7 +381,7 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 	}
 
 	if len(candidates) == 0 {
-		return
+		return nil
 	}
 
 	// FIX 1: Collect decisions under write lock; do DB writes OUTSIDE the lock
@@ -385,6 +389,7 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 	type escrowEntry struct {
 		acc            AccountState // value copy — safe to use after lock released
 		balance        float64
+		demurrageLost  float64
 		now            int64
 		inactiveSince  string
 	}
@@ -415,7 +420,7 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 		}
 
 		// Settle demurrage first so Balance reflects reality.
-		cs.settleDemurrageLocked(acc)
+		lost := cs.settleDemurrageLocked(acc)
 		bal = round6(acc.Balance.Float())
 		if bal <= 0 {
 			continue
@@ -430,6 +435,7 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 		toEscrow = append(toEscrow, escrowEntry{
 			acc:           *acc,
 			balance:       bal,
+			demurrageLost: lost.Float(),
 			now:           now,
 			inactiveSince: inactiveSince,
 		})
@@ -439,6 +445,7 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 	// FIX 1 (cont.) + FIX 2: DB writes outside the lock.
 	// FIX 2: Use ON CONFLICT DO NOTHING so an existing escrow row's moved_at
 	// clock is never reset — resetting it would restart the 1.5-year countdown.
+	var moved []DistributionShare
 	for _, entry := range toEscrow {
 		if _, err := cs.db.Exec(
 			`INSERT INTO escrow_accounts (wallet_address, amount, moved_at)
@@ -466,15 +473,21 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 		cs.saveAccountToDB(&entry.acc)
 		fmt.Printf("[ESCROW] ✓ Moved %.6f AEQ from %s to escrow (inactive since %s)\n",
 			entry.balance, entry.acc.Address, entry.inactiveSince)
+		moved = append(moved, DistributionShare{Wallet: entry.acc.Address, Amount: entry.balance, DemurrageLost: entry.demurrageLost})
 	}
+	return moved
 }
 
 // ReleaseEscrowToUBI is called once per day. It finds escrow entries older
 // than escrowToUBISeconds (1.5 years from when the funds were escrowed) and
-// moves them into the UBI pool for distribution.
-func (cs *ChainState) ReleaseEscrowToUBI() {
+// moves them into the UBI pool for distribution. Returns exactly what was
+// released for each wallet so the caller can build "escrow_release" TXs for
+// secondaries to replay — secondaries never run this function themselves
+// (see main.go's primary-only gate), and don't need an escrow_accounts
+// table at all since only the resulting UBI-pool credit affects StateRoot.
+func (cs *ChainState) ReleaseEscrowToUBI() []DistributionShare {
 	if cs.db == nil {
-		return
+		return nil
 	}
 	threshold := time.Now().Unix() - escrowToUBISeconds
 
@@ -488,7 +501,7 @@ func (cs *ChainState) ReleaseEscrowToUBI() {
 	)
 	if err != nil {
 		fmt.Printf("[ESCROW] ReleaseEscrowToUBI query error: %v\n", err)
-		return
+		return nil
 	}
 	type escrowEntry struct {
 		addr   string
@@ -504,12 +517,13 @@ func (cs *ChainState) ReleaseEscrowToUBI() {
 	rows.Close() // close before acquiring cs.mu to avoid holding DB connection under lock
 
 	if len(entries) == 0 {
-		return
+		return nil
 	}
 
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
+	var released []DistributionShare
 	for _, e := range entries {
 		// Credit UBI pool.
 		if _, ok := cs.accounts[ubiPoolAddr]; !ok {
@@ -518,7 +532,9 @@ func (cs *ChainState) ReleaseEscrowToUBI() {
 		cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(round6(e.amount)))
 		cs.saveAccountToDB(cs.accounts[ubiPoolAddr])
 		fmt.Printf("[ESCROW] ✓ Released %.6f AEQ from %s escrow → UBI pool\n", e.amount, e.addr)
+		released = append(released, DistributionShare{Wallet: e.addr, Amount: round6(e.amount)})
 	}
 
 	cs.save()
+	return released
 }
