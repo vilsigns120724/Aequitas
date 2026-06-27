@@ -93,6 +93,18 @@ state                  *ChainState
 evm                    *EVMEngine       // set by EVMRPCServer after construction; used by replayTransactions for ZK proof verification
 nodeID                 string
 height                 int64
+// bootHeight is dag.height's value at construction time (after restoring
+// it from the persisted "max_block_height" — see createGenesisBlock's
+// caller), captured ONCE and never updated again. Used by
+// replayTransactions to recognize "ancestor catch-up" blocks: cs.accounts
+// is loaded fully from the DB at startup and already reflects every
+// block up to and including bootHeight, but dag.blocks/dag.tips are
+// purely in-memory and start empty on every restart — so the node must
+// still fetch and insert those ancestor blocks for hash-chain/tips
+// bookkeeping, WITHOUT re-applying their transactions (already accounted
+// for) or comparing their claimed StateRoot against cs.accounts' current,
+// much-later state (guaranteed to "mismatch" despite no real divergence).
+bootHeight             int64
 pendingTxs             []Transaction
 txMu                   sync.Mutex
 signingKey             *ecdsa.PrivateKey
@@ -295,6 +307,9 @@ if persisted := state.getConfigValue("max_block_height"); persisted != "" {
 		dag.height = h
 	}
 }
+// Captured ONCE, after the restoration above and before any block
+// processing begins — see bootHeight's field comment.
+dag.bootHeight = dag.height
 return dag
 }
 
@@ -929,15 +944,35 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	// the primary, exactly matching one historical transfer being replayed
 	// twice. Mark the block as replayed (so dedup/tips/hash-chain
 	// bookkeeping in the caller proceeds normally) without touching state.
+	skipHeight := dag.bootHeight
 	if heightStr := dag.state.getConfigValue("snapshot_import_height"); heightStr != "" {
 		var snapshotHeight int64
 		fmt.Sscanf(heightStr, "%d", &snapshotHeight)
-		if snapshotHeight > 0 && block.Height <= snapshotHeight {
-			dag.replayedMu.Lock()
-			dag.replayedBlocks[block.Hash] = true
-			dag.replayedMu.Unlock()
-			return true
+		if snapshotHeight > skipHeight {
+			skipHeight = snapshotHeight
 		}
+	}
+	// FIX (audit recheck 2, P0 #1 follow-up): bootHeight covers the more
+	// general case the snapshot_import_height guard above was written for
+	// — ANY node whose cs.accounts already reflects history that its
+	// in-memory dag.blocks/dag.tips don't, not just one that bootstrapped
+	// via snapshot. Confirmed in production within minutes of deploying
+	// the StateRoot hard-reject above: a plain node restart (no snapshot
+	// involved) immediately got stuck rejecting every single ancestor
+	// block during ordinary post-restart catch-up, because cs.accounts
+	// (loaded fully from the DB) was already at the LATEST state while
+	// each ancestor block's claimed StateRoot reflects state as of THAT
+	// historical height — comparing "now" against "back then" was always
+	// going to mismatch, with no real divergence involved. Below
+	// skipHeight, the block is still fetched and inserted into
+	// dag.blocks/dag.tips (hash-chain/tips bookkeeping needs it as a valid
+	// parent for later blocks) but neither its transactions nor its
+	// StateRoot claim are touched.
+	if skipHeight > 0 && block.Height <= skipHeight {
+		dag.replayedMu.Lock()
+		dag.replayedBlocks[block.Hash] = true
+		dag.replayedMu.Unlock()
+		return true
 	}
 
 	touchedAddrs, needsFullSnapshot := blockTouchedAddresses(block)
