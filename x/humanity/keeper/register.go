@@ -431,28 +431,16 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		if !a.state.TryClaimNullifier(effectiveNullifier, wallet) {
 			return "", fmt.Errorf("nullifier already claimed: %s", effectiveNullifier)
 		}
+		// persistRegisterWithSigMirror now also calls RegisterHuman (the
+		// Go-state side) itself and rolls back its own EVM-mirror slot
+		// writes if that fails — so on success here, both sides are already
+		// guaranteed consistent. No separate retry loop needed.
 		txHash, mirrorErr := a.persistRegisterWithSigMirror(evmRPC, to, claimedHuman, pA, pB, pC, pubSignals, sigBytes, calldata, effectiveNullifier)
 		if mirrorErr != nil {
 			// Registration didn't actually happen — release the claim so the
 			// legitimate owner of this nullifier isn't permanently locked out.
 			a.state.ReleaseNullifier(effectiveNullifier)
 			return "", fmt.Errorf("registration failed (V7 missing + mirror failed): %w; mirror: %v", dryRunErr, mirrorErr)
-		}
-		var regErr error
-		for attempt := 1; attempt <= 3; attempt++ {
-			regErr = a.state.RegisterHuman(wallet)
-			if regErr == nil {
-				break
-			}
-			if attempt < 3 {
-				time.Sleep(time.Duration(attempt) * 2 * time.Second)
-				fmt.Printf("[REGISTER] Mirror RegisterHuman attempt %d failed: %v, retrying...\n", attempt, regErr)
-			}
-		}
-		if regErr != nil {
-			fmt.Printf("[REGISTER] Mirror RegisterHuman permanently failed for %s after 3 attempts: %v\n", wallet, regErr)
-			// Note: nullifier is already claimed — user must contact support
-			return "", fmt.Errorf("registration failed after retries: %w", regErr)
 		}
 		if len(req.PubSignals) > 0 {
 			commitment := req.PubSignals[0]
@@ -479,7 +467,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 			// FIX: same durability gap as the non-mirror path below —
 			// AddTransaction only queues in-memory; SavePendingTx survives a
 			// restart between now and the next ProduceBlock tick.
-			a.state.SavePendingTx(Transaction{
+			if outboxErr := a.state.SavePendingTx(Transaction{
 				Type:       "register_human",
 				Wallet:     wallet,
 				TxHash:     txHash,
@@ -489,7 +477,9 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 				ProofB:     bigInt2x2ToHexStrings(pB),
 				ProofC:     bigIntsToHexStrings(mirrorPCslice),
 				PubSignals: bigIntsToHexStrings(mirrorPSslice),
-			})
+			}); outboxErr != nil {
+				fmt.Printf("[ALERT] register_human for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this registration\n", wallet, outboxErr)
+			}
 		}
 		return txHash, nil
 	}
@@ -649,7 +639,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// block onward, but zero secondary node could ever learn about it
 		// via replay, permanently diverging total_humans (and therefore
 		// StateRoot) between primary and every secondary, forever.
-		a.state.SavePendingTx(Transaction{
+		if outboxErr := a.state.SavePendingTx(Transaction{
 			Type:       "register_human",
 			Wallet:     wallet,
 			TxHash:     txHash,
@@ -659,7 +649,9 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 			ProofB:     bigInt2x2ToHexStrings(pB),
 			ProofC:     bigIntsToHexStrings(pCslice),
 			PubSignals: bigIntsToHexStrings(psSlice),
-		})
+		}); outboxErr != nil {
+			fmt.Printf("[ALERT] register_human for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this registration\n", wallet, outboxErr)
+		}
 	}
 
 	return txHash, nil
@@ -798,6 +790,28 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 	nullSlot := mappingSlotBytes32(nullKey, 8)
 	addrVal := common.BigToHash(claimedHuman.Big())
 	a.state.SaveStorageSlot(addrStr, nullSlot.Hex(), addrVal.Hex())
+
+	// FIX: RegisterHuman (the Go-state, authoritative side) used to be called
+	// separately by the caller, with a 3-retry loop and a "contact support"
+	// comment if all 3 failed. That left the wallet permanently EVM-mirror-
+	// registered (isHuman=true above) but NOT Go-state-registered, with its
+	// nullifier and commitment already consumed — an unrecoverable stuck
+	// state for that user. Calling it here means a failure can undo the
+	// EVM-mirror slot writes above in the same place that knows their old
+	// values, leaving no partial state for the caller to deal with at all.
+	if regErr := a.state.RegisterHuman(wallet); regErr != nil {
+		a.state.SaveStorageSlot(addrStr, common.BigToHash(big.NewInt(0)).Hex(), common.BigToHash(totalSupply).Hex())
+		a.state.SaveStorageSlot(addrStr, common.BigToHash(big.NewInt(1)).Hex(), common.BigToHash(totalHumans).Hex())
+		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 4).Hex(), common.Hash{}.Hex())
+		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 6).Hex(), common.Hash{}.Hex())
+		a.state.SaveStorageSlot(addrStr, usedSlot.Hex(), common.Hash{}.Hex())
+		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 9).Hex(), common.Hash{}.Hex())
+		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 10).Hex(), common.Hash{}.Hex())
+		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 11).Hex(), common.Hash{}.Hex())
+		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 12).Hex(), common.Hash{}.Hex())
+		a.state.SaveStorageSlot(addrStr, nullSlot.Hex(), common.Hash{}.Hex())
+		return "", fmt.Errorf("mirror EVM slots written but Go-state RegisterHuman failed (rolled back): %w", regErr)
+	}
 
 	txHash := crypto.Keccak256Hash(append(calldata, claimedHuman.Bytes()...)).Hex()
 	fmt.Printf("[REGISTER] Native V7 mirror persisted for %s, tx=%s\n", wallet, txHash)

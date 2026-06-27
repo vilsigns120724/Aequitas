@@ -161,13 +161,15 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 	// the next ProduceBlock tick — same durability bug fixed for register_human
 	// in register.go, never applied here even though swaps are likely the
 	// most frequent state-changing operation in the system.
-	a.state.SavePendingTx(Transaction{
+	if outboxErr := a.state.SavePendingTx(Transaction{
 		Type:              txType,
 		Wallet:            wallet,
 		Amount:            req.Amount,
 		AmountOut:         amountOut,
 		FromDemurrageLost: demurrageLost,
-	})
+	}); outboxErr != nil {
+		fmt.Printf("[ALERT] swap for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this swap\n", wallet, outboxErr)
+	}
 	json.NewEncoder(w).Encode(SwapResponse{
 		Success:   true,
 		Message:   "swap successful",
@@ -243,14 +245,16 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sharesAfter, _ := a.state.GetLPShares(wallet)
-	a.state.SavePendingTx(Transaction{
+	if outboxErr := a.state.SavePendingTx(Transaction{
 		Type:              "add_liquidity",
 		Wallet:            wallet,
 		Amount:            req.AmountAEQ,
 		AmountOut:         req.AmountTUSD,
 		LPShares:          sharesAfter - sharesBefore,
 		FromDemurrageLost: demurrageLost,
-	})
+	}); outboxErr != nil {
+		fmt.Printf("[ALERT] add_liquidity for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this\n", wallet, outboxErr)
+	}
 	json.NewEncoder(w).Encode(AddLiquidityResponse{Success: true, Message: "liquidity added"})
 }
 
@@ -319,12 +323,14 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
-	a.state.SavePendingTx(Transaction{
+	if outboxErr := a.state.SavePendingTx(Transaction{
 		Type:              "remove_liquidity",
 		Wallet:            wallet,
 		Amount:            req.SharesToBurn,
 		FromDemurrageLost: demurrageLost,
-	})
+	}); outboxErr != nil {
+		fmt.Printf("[ALERT] remove_liquidity for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this\n", wallet, outboxErr)
+	}
 	json.NewEncoder(w).Encode(RemoveLiquidityResponse{
 		Success:    true,
 		Message:    "liquidity removed",
@@ -434,11 +440,13 @@ func (a *APIServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.state.SavePendingTx(Transaction{
+	if outboxErr := a.state.SavePendingTx(Transaction{
 		Type:   "faucet",
 		Wallet: wallet,
 		Amount: tusdFaucetAmount,
-	})
+	}); outboxErr != nil {
+		fmt.Printf("[ALERT] faucet claim for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this\n", wallet, outboxErr)
+	}
 	json.NewEncoder(w).Encode(FaucetResponse{Success: true, Message: "faucet claimed", Granted: tusdFaucetAmount})
 }
 

@@ -1294,37 +1294,48 @@ func (cs *ChainState) GetTxReceipt(txHash string) (fromAddr, toAddr, status, con
 // ─── PENDING TXs (persistent — survive node restart) ─────────────────────────
 
 // SavePendingTx writes a Transaction to the DB so it survives node restarts.
-// ProduceBlock calls LoadAndClearPendingTxs to drain these and include them
-// in the next block, ensuring secondary nodes receive every state change.
-func (cs *ChainState) SavePendingTx(tx Transaction) {
+// ProduceBlock calls LoadPendingTxs/ClearPendingTxs to drain these and
+// include them in the next block, ensuring secondary nodes receive every
+// state change.
+// FIX: now returns error. By the time any caller invokes this, the
+// underlying state change has already been applied and committed locally —
+// there is nothing left to roll back. A failure here means no other node
+// will ever learn about that change (permanent divergence), so callers must
+// at minimum surface this loudly rather than silently continue. Returning
+// the error lets each caller decide how (most just log an [ALERT] today).
+func (cs *ChainState) SavePendingTx(tx Transaction) error {
 	if cs.db == nil {
-		return
+		return fmt.Errorf("no DB configured — pending TX outbox unavailable")
 	}
 	data, err := json.Marshal(tx)
 	if err != nil {
 		fmt.Printf("[TX] SavePendingTx marshal error: %v\n", err)
-		return
+		return err
 	}
 	if _, err := cs.db.Exec(
 		`INSERT INTO pending_txs (tx_json, created_at) VALUES ($1, $2)`,
 		string(data), time.Now().Unix(),
 	); err != nil {
 		fmt.Printf("[TX] SavePendingTx db error: %v\n", err)
+		return err
 	}
+	return nil
 }
 
-// LoadAndClearPendingTxs atomically reads all DB-pending TXs and deletes them.
-// Called by ProduceBlock so that restart-surviving TXs are included once.
+// LoadPendingTxs reads all DB-pending TXs without deleting them. Call
+// ClearPendingTxs with the returned ids only once the caller has durably
+// incorporated these TXs (e.g. into a produced block) — see the FIX note on
+// the old LoadAndClearPendingTxs below for why this split exists.
 // Note: pending_txs is only written by the primary node's EVM RPC layer.
 // Secondary nodes have separate DBs and their pending_txs table is always empty,
 // so calling this on a secondary is safe — it just returns nil immediately.
-func (cs *ChainState) LoadAndClearPendingTxs() []Transaction {
+func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 	if cs.db == nil {
-		return nil
+		return nil, nil
 	}
 	rows, err := cs.db.Query(`SELECT id, tx_json FROM pending_txs ORDER BY id`)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	defer rows.Close()
 	var txs []Transaction
@@ -1337,18 +1348,41 @@ func (cs *ChainState) LoadAndClearPendingTxs() []Transaction {
 		}
 		var tx Transaction
 		if err := json.Unmarshal([]byte(raw), &tx); err != nil {
-			fmt.Printf("[TX] LoadAndClearPendingTxs unmarshal error: %v\n", err)
+			fmt.Printf("[TX] LoadPendingTxs unmarshal error: %v\n", err)
 			continue
 		}
 		txs = append(txs, tx)
 		ids = append(ids, id)
 	}
-	rows.Close()
-	if len(ids) > 0 {
-		// Delete in a separate query after closing rows
-		for _, id := range ids {
-			cs.db.Exec(`DELETE FROM pending_txs WHERE id = $1`, id)
-		}
+	return txs, ids
+}
+
+// ClearPendingTxs deletes the given pending_txs rows by id. Call only after
+// the corresponding TXs are durably incorporated elsewhere (e.g. in a
+// produced block) — see LoadPendingTxs.
+func (cs *ChainState) ClearPendingTxs(ids []int64) {
+	if cs.db == nil {
+		return
 	}
+	for _, id := range ids {
+		cs.db.Exec(`DELETE FROM pending_txs WHERE id = $1`, id)
+	}
+}
+
+// LoadAndClearPendingTxs is kept for any external callers that don't need
+// the durability ordering LoadPendingTxs/ClearPendingTxs provides.
+//
+// FIX: ProduceBlock used to call this directly, which deletes the DB rows
+// BEFORE the block carrying these TXs is actually constructed. A crash in
+// that window (between this delete committing and the rest of ProduceBlock
+// finishing) permanently loses the TX from the outbox with no block ever
+// having included it — the primary's own local state already has the
+// change (it was applied synchronously when first processed), but no other
+// node ever learns about it: a permanent, silent divergence. ProduceBlock
+// now calls LoadPendingTxs/ClearPendingTxs directly instead, clearing only
+// after the block is fully built.
+func (cs *ChainState) LoadAndClearPendingTxs() []Transaction {
+	txs, ids := cs.LoadPendingTxs()
+	cs.ClearPendingTxs(ids)
 	return txs
 }

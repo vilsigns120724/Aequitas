@@ -498,7 +498,9 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		// LoadAndClearPendingTxs. Calling both would include the same TX twice
 		// in the block → double-credited transfers on secondary nodes.
 		pendingTx := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: valueFloat, TxHash: txHash, FromDemurrageLost: fromLost, ToDemurrageLost: toLost}
-		s.state.SavePendingTx(pendingTx)
+		if outboxErr := s.state.SavePendingTx(pendingTx); outboxErr != nil {
+			fmt.Printf("[ALERT] transfer %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this transfer\n", txHash, outboxErr)
+		}
 		fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
 		return txHash, nil
 	}
@@ -543,7 +545,9 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		// LoadAndClearPendingTxs. Calling both would include the same TX twice
 		// in the block → double-credited transfers on secondary nodes.
 		pendingTxV7 := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: netAmt, TxHash: txHash, FromDemurrageLost: fromLost, ToDemurrageLost: toLost}
-		s.state.SavePendingTx(pendingTxV7)
+		if outboxErr := s.state.SavePendingTx(pendingTxV7); outboxErr != nil {
+			fmt.Printf("[ALERT] token transfer %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this transfer\n", txHash, outboxErr)
+		}
 		fmt.Printf("[RPC] ✓ Token transfer %.4f AEQ (with V7 fee): %s → %s\n", amountFloat, senderAddr, toAddr)
 		return txHash, nil
 	}

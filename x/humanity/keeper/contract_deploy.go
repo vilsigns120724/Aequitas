@@ -135,8 +135,32 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 			}
 			return
 		}
-		upgradeTx.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, v7Addr)    //nolint:errcheck
-		upgradeTx.Exec(`DELETE FROM evm_storage WHERE lower(contract_address) = $1`, v7Addr) //nolint:errcheck
+		// FIX: this deleted from a column named "contract_address", which does
+		// not exist on evm_storage (the actual column is "address" — see
+		// state.go's CREATE TABLE). Every upgrade's storage wipe therefore
+		// silently failed (error was discarded via the old //nolint:errcheck),
+		// leaving the OLD contract's storage slots (isHuman, balanceOf,
+		// usedCommitments, nullifier slots, etc.) in the DB under the same
+		// address the new contract reuses — exactly the kind of stale state
+		// that resurfaces as "already registered" after a reset/redeploy.
+		if _, delErr := upgradeTx.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, v7Addr); delErr != nil {
+			upgradeTx.Rollback() //nolint:errcheck
+			if restoreOnFailure != nil {
+				restoreOnFailure("could not delete stale evm_contracts row: " + delErr.Error())
+			} else {
+				fmt.Printf("[DEPLOY] ERROR: could not delete stale evm_contracts row: %v\n", delErr)
+			}
+			return
+		}
+		if _, delErr := upgradeTx.Exec(`DELETE FROM evm_storage WHERE lower(address) = $1`, v7Addr); delErr != nil {
+			upgradeTx.Rollback() //nolint:errcheck
+			if restoreOnFailure != nil {
+				restoreOnFailure("could not delete stale evm_storage rows: " + delErr.Error())
+			} else {
+				fmt.Printf("[DEPLOY] ERROR: could not delete stale evm_storage rows: %v\n", delErr)
+			}
+			return
+		}
 		if commitErr := upgradeTx.Commit(); commitErr != nil {
 			upgradeTx.Rollback() //nolint:errcheck
 			if restoreOnFailure != nil {
@@ -201,9 +225,17 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 		// database doesn't hold orphaned rows that waste space and could confuse
 		// future contract lookups. The canonical copy is now at v7Addr above.
 		if state.db != nil {
-			state.db.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, deployedAddr)    //nolint:errcheck
-			state.db.Exec(`DELETE FROM evm_storage WHERE lower(contract_address) = $1`, deployedAddr) //nolint:errcheck
-			fmt.Printf("[DEPLOY] Removed stale evm_contracts/evm_storage entries at %s\n", deployedAddr)
+			// FIX: was deleting from non-existent column "contract_address"
+			// (evm_storage's actual column is "address") — silently failed,
+			// leaving orphaned rows at deployedAddr forever. Now checks errors
+			// and reports actual outcome instead of an unconditional success print.
+			_, cErr := state.db.Exec(`DELETE FROM evm_contracts WHERE lower(address) = $1`, deployedAddr)
+			_, sErr := state.db.Exec(`DELETE FROM evm_storage WHERE lower(address) = $1`, deployedAddr)
+			if cErr != nil || sErr != nil {
+				fmt.Printf("[DEPLOY] WARNING: failed to remove stale entries at %s (contracts: %v, storage: %v)\n", deployedAddr, cErr, sErr)
+			} else {
+				fmt.Printf("[DEPLOY] Removed stale evm_contracts/evm_storage entries at %s\n", deployedAddr)
+			}
 		}
 	} else {
 		fmt.Printf("[DEPLOY] ✓ V7 contract deployed at %s\n", V7_CONTRACT_ADDR)

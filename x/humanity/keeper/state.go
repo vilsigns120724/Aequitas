@@ -227,7 +227,6 @@ is_human BOOLEAN NOT NULL DEFAULT false
 	dbExec(`ALTER TABLE chain_accounts ALTER COLUMN balance TYPE NUMERIC(20,6) USING balance::NUMERIC(20,6)`)
 	dbExec(`ALTER TABLE chain_accounts ALTER COLUMN tusd_balance TYPE NUMERIC(20,6) USING tusd_balance::NUMERIC(20,6)`)
 	dbExec(`ALTER TABLE chain_accounts ALTER COLUMN lp_shares TYPE NUMERIC(20,6) USING lp_shares::NUMERIC(20,6)`)
-	dbExec(`UPDATE liquidity_pool SET reserve_aeq = ROUND(reserve_aeq::NUMERIC, 6), reserve_tusd = ROUND(reserve_tusd::NUMERIC, 6), total_lp_shares = ROUND(total_lp_shares::NUMERIC, 6) WHERE id = 1`)
 	// Links a ZK proof commitment to the wallet that successfully registered
 	// with it, so the app can ask "did MY proof get registered, and to which
 	// wallet?" instead of guessing from a global, unfiltered list.
@@ -370,10 +369,19 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 	}
 
 	fmt.Println("[DB-RESET] RESET_DB_STATE=true — truncating local secondary DB before snapshot bootstrap")
+	// FIX: track every failure instead of just printing an easy-to-miss
+	// "Warning" and continuing as if nothing happened. A reset whose whole
+	// purpose is to guarantee a clean slate before importing a snapshot must
+	// not silently end in "Done" when some tables were never actually
+	// truncated — that's exactly the kind of half-reset state that produced
+	// "already registered" / StateRoot-divergence bugs throughout this
+	// project's history.
+	var failed []string
 	for _, table := range tables {
 		var exists bool
 		if err := cs.db.QueryRow(`SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists); err != nil {
 			fmt.Printf("[DB-RESET] Warning: could not check table %s: %v\n", table, err)
+			failed = append(failed, table+" (existence check failed)")
 			continue
 		}
 		if !exists {
@@ -381,7 +389,12 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		}
 		if _, err := cs.db.Exec(fmt.Sprintf(`TRUNCATE TABLE %s RESTART IDENTITY CASCADE`, pq.QuoteIdentifier(table))); err != nil {
 			fmt.Printf("[DB-RESET] Warning: could not truncate %s: %v\n", table, err)
+			failed = append(failed, table)
 		}
+	}
+	if len(failed) > 0 {
+		fmt.Printf("[ALERT] [DB-RESET] %d table(s) FAILED to truncate: %v — DB is NOT cleanly reset. Do NOT remove RESET_DB_STATE yet; investigate before the next restart imports a snapshot on top of this half-cleared state.\n", len(failed), failed)
+		return
 	}
 	fmt.Println("[DB-RESET] Done")
 	fmt.Println("[DB-RESET] ⚠ IMPORTANT: remove RESET_DB_STATE=true from env vars after this deploy succeeds.")
@@ -479,6 +492,13 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 	// genuinely don't exist yet, and DELETE FROM a nonexistent table prints
 	// a scary "relation does not exist" warning that looks like a real
 	// problem but is actually a harmless no-op. Skip cleanly instead.
+	// FIX: track failures instead of printing an easy-to-miss "Warning" and
+	// unconditionally claiming success at the end. This reset's entire job
+	// is to guarantee no stale registration data survives it — a statement
+	// that fails partway through (e.g. a transient DB hiccup) used to leave
+	// some tables wiped and others not, while still printing "Done" with no
+	// way to tell the two outcomes apart in the logs.
+	var failed []string
 	for _, stmt := range stmts {
 		tableName := tableNameFromDelete(stmt)
 		if tableName != "" {
@@ -489,7 +509,13 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		}
 		if _, err := cs.db.Exec(stmt); err != nil {
 			fmt.Printf("[CLEAR-REG] Warning: %v\n", err)
+			failed = append(failed, stmt)
 		}
+	}
+	if len(failed) > 0 {
+		fmt.Printf("[ALERT] [CLEAR-REG] %d statement(s) FAILED — registrations are only PARTIALLY cleared: %v\n", len(failed), failed)
+		fmt.Println("[ALERT] [CLEAR-REG] Do not remove CLEAR_REGISTRATIONS yet — investigate and rerun, or this half-reset state can cause stale isHuman/nullifier entries to resurface.")
+		return
 	}
 	fmt.Println("[CLEAR-REG] Done — all registrations cleared.")
 	fmt.Println("[CLEAR-REG] ⚠ Remove CLEAR_REGISTRATIONS=true from env vars and redeploy once more.")

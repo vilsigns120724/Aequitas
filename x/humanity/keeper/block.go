@@ -381,10 +381,13 @@ dag.txMu.Unlock()
 // must now be included in a block so secondary nodes receive them.
 // Without this, a transfer applied just before a restart would never
 // reach secondary nodes and balances would diverge permanently.
+var pendingTxIDs []int64
 if dag.state != nil {
-	if dbTxs := dag.state.LoadAndClearPendingTxs(); len(dbTxs) > 0 {
+	dbTxs, ids := dag.state.LoadPendingTxs()
+	if len(dbTxs) > 0 {
 		fmt.Printf("[DAG] Including %d restart-surviving TX(s) from DB in block\n", len(dbTxs))
 		txs = append(txs, dbTxs...)
+		pendingTxIDs = ids
 	}
 }
 
@@ -416,6 +419,13 @@ if dag.signingKey != nil {
 }
 
 dag.blocks[block.Hash] = block
+
+// Only now that the block carrying them is durably stored in dag.blocks —
+// clear the DB outbox rows. See LoadAndClearPendingTxs's doc comment for
+// why this is no longer a single, earlier delete-then-build step.
+if len(pendingTxIDs) > 0 {
+	dag.state.ClearPendingTxs(pendingTxIDs)
+}
 
 // Record that this proposer produced a block — used for proportional
 // validator-reward distribution in DistributeValidatorsPool.
@@ -805,24 +815,41 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				fmt.Printf("[REPLAY] ✗ Rejecting register_human in block #%d: nullifier too short %q\n", block.Height, nullifier)
 				continue
 			}
-			// If proof data is present, verify it via BioVerifier before applying.
-			// This eliminates unconditional trust in the validator ECDSA key for
-			// registration TXs — a compromised validator key cannot inject fake
-			// registrations without also producing a valid Groth16 proof.
-			// Backward-compatible: blocks from old nodes omit proof fields and
-			// fall through to the existing trust-based path below.
-			if len(tx.ProofA) == 2 && len(tx.ProofB) == 2 && len(tx.ProofC) == 2 && len(tx.PubSignals) >= 2 {
-				if !dag.verifyZKProof(tx) {
-					fmt.Printf("[REPLAY] ✗ ZK proof verification failed for %s (block #%d) — skipping\n", wallet, block.Height)
-					continue
-				}
-				fmt.Printf("[REPLAY] ✓ ZK proof verified for %s (block #%d)\n", wallet, block.Height)
+			// Verify the ZK proof via BioVerifier before applying. This
+			// eliminates unconditional trust in the validator ECDSA key for
+			// registration TXs — a compromised validator key cannot inject
+			// fake registrations without also producing a valid Groth16 proof.
+			//
+			// FIX: this used to skip verification entirely (falling through to
+			// trust the block signature alone) whenever proof fields were
+			// absent, "for backward compatibility with old nodes". Both
+			// current TX-creation sites (register.go) always populate
+			// ProofA/B/C/PubSignals, so no legitimate code path produces a
+			// register_human TX without them anymore — that fallback was pure
+			// attack surface letting any authorized validator (or one whose
+			// signing key leaked) inject registrations for arbitrary wallets
+			// with no biometric proof at all, defeating "one human, one
+			// registration" silently.
+			if len(tx.ProofA) != 2 || len(tx.ProofB) != 2 || len(tx.ProofC) != 2 || len(tx.PubSignals) < 2 {
+				fmt.Printf("[REPLAY] ✗ Rejecting register_human for %s (block #%d): missing ZK proof fields\n", wallet, block.Height)
+				continue
 			}
+			if !dag.verifyZKProof(tx) {
+				fmt.Printf("[REPLAY] ✗ ZK proof verification failed for %s (block #%d) — skipping\n", wallet, block.Height)
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ ZK proof verified for %s (block #%d)\n", wallet, block.Height)
 			if !dag.state.TryClaimNullifier(nullifier, wallet) {
 				continue // already registered
 			}
 			if err := dag.state.RegisterHuman(wallet); err != nil {
-				fmt.Printf("[REPLAY] ✗ RegisterHuman %s: %v (nullifier recorded, balance NOT credited)\n", wallet, err)
+				// FIX: release the nullifier claimed two lines above on failure —
+				// it used to stay claimed forever ("nullifier recorded, balance
+				// NOT credited"), permanently burning that biometric for
+				// everyone even though no registration ever actually completed
+				// with it (e.g. wallet already human via a different nullifier).
+				dag.state.ReleaseNullifier(nullifier)
+				fmt.Printf("[REPLAY] ✗ RegisterHuman %s: %v (nullifier released, balance NOT credited)\n", wallet, err)
 				continue
 			}
 			if commitment != "" {
