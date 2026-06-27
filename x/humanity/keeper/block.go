@@ -134,6 +134,11 @@ stateRootMismatches map[string]int // FIX 4: per-proposer StateRoot mismatch cou
 	// silently dropped forever, along with everything built on top of it.
 	orphans   map[string][]*Block
 	orphansMu sync.Mutex
+	// orphanFirstSeen/orphanLastAttempt back orphan TTL + per-hash fetch
+	// cooldown — see queueOrphan's "abandon" comment and fetchMissingAncestors'
+	// cooldown skip for why both exist.
+	orphanFirstSeen   map[string]time.Time
+	orphanLastAttempt map[string]time.Time
 	// orphanResolveInFlight/orphanResolveAgain coordinate triggerOrphanResolve
 	// (sync_blocks.go): at most one resolution pass runs at a time, and if a
 	// new orphan arrives while one is running, exactly one more pass runs
@@ -280,6 +285,8 @@ peerChallenges:         make(map[string]peerChallenge),
 replayedBlocks:         make(map[string]bool),
 	stateRootMismatches:    make(map[string]int),
 	orphans:                make(map[string][]*Block),
+	orphanFirstSeen:        make(map[string]time.Time),
+	orphanLastAttempt:      make(map[string]time.Time),
 }
 if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	if key, err := crypto.HexToECDSA(pk); err == nil {
@@ -528,23 +535,72 @@ func (dag *BlockDAG) WithBlockProductionPaused(fn func()) {
 // resync from a signed snapshot, see ImportSnapshotFromURL).
 const maxOrphans = 50000
 
+// orphanAbandonAfter bounds how long this node will keep trying to resolve a
+// single missing-parent hash before giving up on it for good.
+//
+// FIX (the real completion of the orphan saga, not another mitigation): the
+// eager triggerOrphanResolve above fixed the *original* bug (an orphan
+// sitting idle for up to 6s before the next retry) but, confirmed live on
+// the VPS and CD20 immediately after deploying it, exposed a second one —
+// every NEW orphan re-triggers a resolution pass over EVERY pending
+// missing-parent hash, including ones that have been failing for minutes
+// because the block genuinely no longer exists on ANY reachable peer (it
+// was lost during the original pre-fix orphan-overflow incident: confirmed
+// by checking the VPS itself, which produced/relayed that exact chain, and
+// it doesn't have the ancestor either). With validators producing a new
+// block every ~6s, that's a fresh full sweep — including an HTTP request to
+// every peer for the dead hash — roughly 10x a minute, forever, compounding
+// across however many nodes are simultaneously stuck on the same dead
+// branch. That retry storm is what was timing out CD20→VPS requests, not a
+// network failure: confirmed by checking account balances on every node
+// (they match exactly, 1134/866 AEQ, total_supply 2000 everywhere) — the
+// stuck branch is provably an empty/no-value side-chain, not a transaction
+// any node still needs. Past this timeout, stop retrying a specific hash
+// and drop everything waiting on it, freeing the memory and ending the
+// storm, instead of retrying something proven unfetchable forever.
+const orphanAbandonAfter = 3 * time.Minute
+
+// orphanFetchCooldown is the minimum gap between fetch attempts for the same
+// missing-parent hash, checked by fetchMissingAncestors (sync_blocks.go).
+// Without it, every new orphan's triggerOrphanResolve pass re-attempts every
+// OTHER still-pending hash too, even ones whose last attempt was a second
+// ago — multiplying request volume by however often new orphans arrive.
+const orphanFetchCooldown = 10 * time.Second
+
 // queueOrphan stores block, which is waiting on missingParent to appear,
 // and logs the wait (the old code dropped this case with zero logging).
 func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 	dag.orphansMu.Lock()
-	defer dag.orphansMu.Unlock()
+	now := time.Now()
+	if first, ok := dag.orphanFirstSeen[missingParent]; ok {
+		if now.Sub(first) > orphanAbandonAfter {
+			abandoned := len(dag.orphans[missingParent]) + 1 // + this block
+			delete(dag.orphans, missingParent)
+			delete(dag.orphanFirstSeen, missingParent)
+			delete(dag.orphanLastAttempt, missingParent)
+			dag.orphansMu.Unlock()
+			fmt.Printf("[DAG] ⛔ Abandoning %d block(s) waiting on missing parent %s...: unresolvable after %s of retries (never found on any synced peer)\n",
+				abandoned, missingParent[:min(16, len(missingParent))], orphanAbandonAfter)
+			return
+		}
+	} else {
+		dag.orphanFirstSeen[missingParent] = now
+	}
 	total := 0
 	for _, v := range dag.orphans {
 		total += len(v)
 	}
 	if total >= maxOrphans {
+		dag.orphansMu.Unlock()
 		fmt.Printf("[DAG] ✗ Dropped peer block #%d: orphan buffer full (%d waiting), missing parent never arrived\n",
 			block.Height, total)
 		return
 	}
 	dag.orphans[missingParent] = append(dag.orphans[missingParent], block)
+	waitingCount := len(dag.orphans[missingParent])
+	dag.orphansMu.Unlock()
 	fmt.Printf("[DAG] ⏳ Block #%d from %s queued as orphan — missing parent %s... (%d block(s) now waiting on it)\n",
-		block.Height, block.Proposer, missingParent[:min(16, len(missingParent))], len(dag.orphans[missingParent]))
+		block.Height, block.Proposer, missingParent[:min(16, len(missingParent))], waitingCount)
 
 	// FIX (the actual completion of the orphan-buffer mitigation, not just a
 	// bigger cap): before this, a newly queued orphan sat untouched until the
@@ -566,6 +622,8 @@ func (dag *BlockDAG) popOrphans(parentHash string) []*Block {
 	defer dag.orphansMu.Unlock()
 	waiting := dag.orphans[parentHash]
 	delete(dag.orphans, parentHash)
+	delete(dag.orphanFirstSeen, parentHash)
+	delete(dag.orphanLastAttempt, parentHash)
 	return waiting
 }
 
@@ -580,6 +638,21 @@ func (dag *BlockDAG) MissingParentHashes() []string {
 		hashes = append(hashes, h)
 	}
 	return hashes
+}
+
+// shouldAttemptFetch reports whether enough time has passed since the last
+// fetch attempt for hash to try again, and records this attempt if so. See
+// orphanFetchCooldown for why this exists — without it, every new orphan's
+// resolve pass re-hits every other pending hash regardless of how recently
+// it was last tried.
+func (dag *BlockDAG) shouldAttemptFetch(hash string) bool {
+	dag.orphansMu.Lock()
+	defer dag.orphansMu.Unlock()
+	if last, ok := dag.orphanLastAttempt[hash]; ok && time.Since(last) < orphanFetchCooldown {
+		return false
+	}
+	dag.orphanLastAttempt[hash] = time.Now()
+	return true
 }
 
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {

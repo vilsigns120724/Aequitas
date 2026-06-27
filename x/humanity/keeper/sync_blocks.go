@@ -288,6 +288,12 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 			if dag.GetBlockByHash(hash) != nil {
 				continue
 			}
+			if !dag.shouldAttemptFetch(hash) {
+				// Tried this exact hash too recently (orphanFetchCooldown) —
+				// skip it this pass instead of re-hitting every peer for a
+				// hash that just failed moments ago. See orphanFetchCooldown.
+				continue
+			}
 			block, err := dag.fetchBlockByHash(nodeURL, hash)
 			if err != nil {
 				fmt.Printf("[HTTP-SYNC] ✗ Could not fetch missing ancestor %s from %s: %v\n", hash[:min(16, len(hash))], nodeURL, err)
