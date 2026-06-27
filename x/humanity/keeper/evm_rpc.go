@@ -483,7 +483,14 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		s.mu.Unlock()
 		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1", "")
 
-		fromLost, toLost, err := s.state.Transfer(senderAddr, toAddr, valueFloat)
+		// FIX (atomic outbox): TransferAtomic commits the state mutation and
+		// the pending_tx outbox insert as a single DB transaction — either
+		// both happen or neither does (see runAtomicWithOutbox), instead of
+		// the old Transfer()-then-SavePendingTx() sequence where the outbox
+		// write could fail independently after the transfer had already
+		// committed, permanently hiding it from every other node.
+		pendingTxTemplate := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: valueFloat, TxHash: txHash}
+		_, _, err := s.state.TransferAtomic(senderAddr, toAddr, valueFloat, pendingTxTemplate)
 		if err != nil {
 			// Transfer failed — mark receipt as failed so MetaMask shows correct status.
 			s.mu.Lock()
@@ -493,14 +500,6 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 		}
 		s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
-		// FIX P2-DOUBLE-TX: Only use DB persistence (SavePendingTx) — do NOT
-		// also call AddTransaction. ProduceBlock drains pending_txs from DB via
-		// LoadAndClearPendingTxs. Calling both would include the same TX twice
-		// in the block → double-credited transfers on secondary nodes.
-		pendingTx := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: valueFloat, TxHash: txHash, FromDemurrageLost: fromLost, ToDemurrageLost: toLost}
-		if outboxErr := s.state.SavePendingTx(pendingTx); outboxErr != nil {
-			fmt.Printf("[ALERT] transfer %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this transfer\n", txHash, outboxErr)
-		}
 		fmt.Printf("[RPC] ✓ Transfer %.4f AEQ: %s → %s\n", valueFloat, senderAddr, toAddr)
 		return txHash, nil
 	}
@@ -526,11 +525,15 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		s.mu.Unlock()
 		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1", "")
 
-		// E2-FIX: TransferWithV7Fee now returns the exact net amount credited to the
+		// E2-FIX: TransferWithV7Fee returns the exact net amount credited to the
 		// recipient (computed inside the lock), eliminating the TOCTOU race where
 		// preRecipientBalance/postRecipientBalance were read outside the lock and
 		// concurrent transfers to the same recipient could produce wrong netAmt.
-		netAmt, fromLost, toLost, err := s.state.TransferWithV7Fee(senderAddr, toAddr, amountFloat)
+		// FIX (atomic outbox): TransferWithV7FeeAtomic commits the state
+		// mutation and the pending_tx outbox insert as a single DB
+		// transaction — see TransferAtomic's comment.
+		pendingTxV7Template := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, TxHash: txHash}
+		_, _, _, err := s.state.TransferWithV7FeeAtomic(senderAddr, toAddr, amountFloat, pendingTxV7Template)
 		if err != nil {
 			// Mark as failed
 			s.mu.Lock()
@@ -540,14 +543,6 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 		}
 		s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
-		// FIX P2-DOUBLE-TX: Only use DB persistence (SavePendingTx) — do NOT
-		// also call AddTransaction. ProduceBlock drains pending_txs from DB via
-		// LoadAndClearPendingTxs. Calling both would include the same TX twice
-		// in the block → double-credited transfers on secondary nodes.
-		pendingTxV7 := Transaction{Type: "transfer", Wallet: senderAddr, To: toAddr, Amount: netAmt, TxHash: txHash, FromDemurrageLost: fromLost, ToDemurrageLost: toLost}
-		if outboxErr := s.state.SavePendingTx(pendingTxV7); outboxErr != nil {
-			fmt.Printf("[ALERT] token transfer %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this transfer\n", txHash, outboxErr)
-		}
 		fmt.Printf("[RPC] ✓ Token transfer %.4f AEQ (with V7 fee): %s → %s\n", amountFloat, senderAddr, toAddr)
 		return txHash, nil
 	}

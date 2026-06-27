@@ -97,6 +97,36 @@ type ChainState struct {
 	db         *sql.DB
 	useDB      bool
 	nullifiers map[string]string // nullifier hex → wallet address (in-memory cache)
+	// activeTx, when non-nil, is the transaction every DB write inside the
+	// CURRENT cs.mu-locked operation must use instead of cs.db directly —
+	// see dbExec() and runAtomicWithOutbox. Only ever set/cleared while
+	// cs.mu is held (write-locked), so reading it without separate
+	// synchronization is safe: at most one goroutine can be inside a
+	// cs.mu-locked region at a time, and that goroutine is the only one
+	// that could have set it.
+	activeTx *sql.Tx
+}
+
+// sqlExecutor is satisfied by both *sql.DB and *sql.Tx (identical method
+// sets for the subset used here) — lets every existing call site that
+// writes via cs.dbExec() transparently participate in an active
+// transaction without its own signature needing to change.
+type sqlExecutor interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	QueryRow(query string, args ...interface{}) *sql.Row
+}
+
+// dbExec returns the executor in-progress writes should use: the active
+// transaction if runAtomicWithOutbox started one for the current
+// operation, otherwise cs.db directly (today's existing behavior,
+// unchanged for every caller that isn't part of an atomic operation).
+// Callers must still guard on cs.useDB/cs.db==nil exactly as before this
+// existed — this does not change the no-DB-mode contract at all.
+func (cs *ChainState) dbExec() sqlExecutor {
+	if cs.activeTx != nil {
+		return cs.activeTx
+	}
+	return cs.db
 }
 
 // P3-FIX: stateMu, acquireStateLock, and releaseStateLock were dead code
@@ -845,15 +875,20 @@ func (cs *ChainState) saveAccountToDBInner(acc *AccountState) {
 	}
 	var result sql.Result
 	var err error
+	// FIX (atomic outbox): use cs.dbExec() instead of cs.db directly — when
+	// runAtomicWithOutbox has an active transaction open for the current
+	// operation, this write becomes part of it (committed or rolled back
+	// together with the pending_tx outbox insert) instead of always
+	// auto-committing on its own connection.
 	if acc.Version == 0 {
 		// First write: INSERT with version=1, or update if exists without version conflict check
-		result, err = cs.db.Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
+		result, err = cs.dbExec().Exec(`INSERT INTO chain_accounts (address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
 ON CONFLICT (address) DO UPDATE SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = COALESCE(chain_accounts.version,0) + 1`,
 			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed)
 	} else {
 		// Optimistic locking: only update if version matches what we read.
 		// If another node updated in parallel, rows affected = 0 → conflict detected.
-		result, err = cs.db.Exec(`UPDATE chain_accounts SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = $9 + 1
+		result, err = cs.dbExec().Exec(`UPDATE chain_accounts SET balance = $2, is_human = $3, tusd_balance = $4, lp_shares = $5, last_activity_at = $6, demurrage_14_day_warning_shown = $7, faucet_claimed = $8, version = $9 + 1
 WHERE address = $1 AND version = $9`,
 			acc.Address, acc.Balance.Float(), acc.IsHuman, acc.TUsdBalance.Float(), acc.LPShares.Float(), acc.LastActivityAt, acc.Demurrage14DayWarningShown, acc.FaucetClaimed, acc.Version)
 		if err == nil {
@@ -1516,6 +1551,29 @@ func (cs *ChainState) IsHuman(address string) bool {
 func (cs *ChainState) RegisterHuman(address string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.registerHumanLocked(address)
+}
+
+// RegisterHumanAtomic behaves like RegisterHuman, except the state mutation
+// and the resulting outbox insert commit or roll back together as one DB
+// transaction — see TransferAtomic's comment / runAtomicWithOutbox.
+// pendingTxTemplate should have every field already set (RegisterHuman's
+// result carries no extra fields the way Transfer's demurrage amounts do,
+// so there's nothing to fill in after the fact here).
+func (cs *ChainState) RegisterHumanAtomic(address string, pendingTx Transaction) error {
+	address = strings.ToLower(address)
+	return cs.runAtomicWithOutbox([]string{address}, false, func() (Transaction, error) {
+		if err := cs.registerHumanLocked(address); err != nil {
+			return Transaction{}, err
+		}
+		return pendingTx, nil
+	})
+}
+
+// registerHumanLocked is RegisterHuman's implementation; caller must
+// already hold cs.mu — see transferLocked's comment for why this split
+// exists.
+func (cs *ChainState) registerHumanLocked(address string) error {
 	address = strings.ToLower(address)
 
 	if acc, ok := cs.accounts[address]; ok && acc.IsHuman {
@@ -1551,6 +1609,77 @@ func (cs *ChainState) RegisterHuman(address string) error {
 	return nil
 }
 
+// runAtomicWithOutbox executes fn (a "Locked" variant of a state-mutation
+// function — assumes cs.mu is already held, and persists via
+// cs.dbExec()-aware saveAccountToDB/savePoolToDB internally) and queues the
+// Transaction it returns to the pending_tx outbox, as a single
+// all-or-nothing unit: one DB transaction, with the in-memory mutation
+// rolled back too if anything fails. fn returns the exact Transaction to
+// enqueue (built from whatever it just computed — e.g. the demurrage-loss
+// amounts a transfer settled — rather than a value the caller could have
+// supplied upfront, since those fields aren't known until fn runs) together
+// with its error; the Transaction is ignored if err != nil. touchedAddrs/
+// fullSnapshot are passed straight to snapshotForRollback (see block.go's
+// replayTransactions for the exact same pattern used for block-level
+// atomicity — this reuses it at the single-operation level).
+//
+// This exists because, before it, every state-mutating RPC handler called
+// its business-logic function (which commits its own DB writes immediately
+// on success) and ONLY THEN called SavePendingTx — so a failure in the
+// outbox write specifically (after the state mutation had already
+// committed) left a permanent, silent divergence: this node's own state
+// already reflected the change, but no other node would ever learn about
+// it. Wrapping both in one transaction means a failure at either step undoes
+// both.
+func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bool, fn func() (Transaction, error)) error {
+	if cs.db == nil {
+		// No DB configured — nothing to make atomic with. Every call site
+		// of TransferAtomic/SwapAtomic/etc. treats a non-nil error here as
+		// "the operation itself failed" (e.g. evm_rpc.go returns an RPC
+		// error to the caller) — so this must NOT return an error just
+		// because there's no outbox to use; the state mutation itself
+		// already genuinely succeeded. This matches the pre-existing
+		// no-DB-mode contract elsewhere in this file (e.g. saveAccountToDB
+		// treats !cs.useDB as "mark as saved", not a failure).
+		cs.mu.Lock()
+		_, err := fn()
+		cs.mu.Unlock()
+		return err
+	}
+
+	tx, err := cs.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not begin atomic transaction: %w", err)
+	}
+
+	snap := cs.snapshotForRollback(touchedAddrs, fullSnapshot)
+
+	cs.mu.Lock()
+	cs.activeTx = tx
+	pendingTx, fnErr := fn()
+	var outboxErr error
+	if fnErr == nil {
+		outboxErr = savePendingTxExec(tx, pendingTx)
+	}
+	cs.activeTx = nil
+	cs.mu.Unlock()
+
+	if fnErr != nil || outboxErr != nil {
+		tx.Rollback()
+		cs.restoreFromRollback(snap)
+		if fnErr != nil {
+			return fnErr
+		}
+		return fmt.Errorf("outbox insert failed inside atomic transaction (state mutation rolled back): %w", outboxErr)
+	}
+
+	if err := tx.Commit(); err != nil {
+		cs.restoreFromRollback(snap)
+		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
+	}
+	return nil
+}
+
 // Transfer moves amount AEQ from->to on the primary node. Returns the AEQ
 // amount demurrage-decayed off the sender and recipient respectively (0 if
 // neither was idle long enough to decay) — callers must attach these to the
@@ -1560,6 +1689,40 @@ func (cs *ChainState) RegisterHuman(address string) error {
 func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.transferLocked(from, to, amount)
+}
+
+// TransferAtomic behaves exactly like Transfer, except the state mutation
+// and the resulting outbox insert commit or roll back together as one DB
+// transaction (see runAtomicWithOutbox) instead of the outbox write being a
+// separate, independently-failable step after this one has already
+// committed. pendingTxTemplate should have Type/Wallet/To/Amount/TxHash
+// set; FromDemurrageLost/ToDemurrageLost are filled in here from the
+// transfer's actual result before it's queued — those aren't known until
+// transferLocked runs, so the caller can't supply them upfront. Use this
+// instead of calling Transfer + SavePendingTx separately whenever the
+// caller will queue a pendingTx describing this transfer right afterward.
+func (cs *ChainState) TransferAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (fromLost, toLost float64, err error) {
+	from = strings.ToLower(from)
+	to = strings.ToLower(to)
+	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
+		fromLost, toLost, err = cs.transferLocked(from, to, amount)
+		if err != nil {
+			return Transaction{}, err
+		}
+		pendingTxTemplate.FromDemurrageLost = fromLost
+		pendingTxTemplate.ToDemurrageLost = toLost
+		return pendingTxTemplate, nil
+	})
+	return fromLost, toLost, err
+}
+
+// transferLocked is Transfer's actual implementation; caller must already
+// hold cs.mu. Split out so TransferAtomic can run it under the SAME lock
+// acquisition it uses to set/clear cs.activeTx (see runAtomicWithOutbox) —
+// Transfer() itself locks cs.mu, so calling it from inside an already-locked
+// context would deadlock on Go's non-reentrant sync.Mutex.
+func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, float64, error) {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 	// P1-FIX: reject NaN/Inf amounts — these would corrupt balances via
@@ -1614,6 +1777,36 @@ func (cs *ChainState) Transfer(from, to string, amount float64) (float64, float6
 func (cs *ChainState) TransferWithV7Fee(from, to string, amount float64) (float64, float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.transferWithV7FeeLocked(from, to, amount)
+}
+
+// TransferWithV7FeeAtomic behaves like TransferWithV7Fee but commits or
+// rolls back together with pendingTx's outbox insert as one DB transaction
+// — see runAtomicWithOutbox / TransferAtomic's comment.
+// pendingTxTemplate should have Type/Wallet/To/TxHash set; Amount is set
+// here to the actual net amount credited (not the raw pre-fee amount), and
+// FromDemurrageLost/ToDemurrageLost from the transfer's result — none of
+// which are known until transferWithV7FeeLocked runs. See TransferAtomic.
+func (cs *ChainState) TransferWithV7FeeAtomic(from, to string, amount float64, pendingTxTemplate Transaction) (netAmount, fromLost, toLost float64, err error) {
+	from = strings.ToLower(from)
+	to = strings.ToLower(to)
+	err = cs.runAtomicWithOutbox([]string{from, to, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
+		netAmount, fromLost, toLost, err = cs.transferWithV7FeeLocked(from, to, amount)
+		if err != nil {
+			return Transaction{}, err
+		}
+		pendingTxTemplate.Amount = netAmount
+		pendingTxTemplate.FromDemurrageLost = fromLost
+		pendingTxTemplate.ToDemurrageLost = toLost
+		return pendingTxTemplate, nil
+	})
+	return netAmount, fromLost, toLost, err
+}
+
+// transferWithV7FeeLocked is TransferWithV7Fee's implementation; caller
+// must already hold cs.mu — see transferLocked's comment for why this split
+// exists.
+func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (float64, float64, float64, error) {
 	from = strings.ToLower(from)
 	to = strings.ToLower(to)
 
@@ -1745,6 +1938,25 @@ func (cs *ChainState) SwapTUSDForAEQ(address string, amountIn, minAmountOut floa
 	return cs.swapLocked(address, amountIn, false, minAmountOut)
 }
 
+// SwapAtomic behaves like SwapAEQForTUSD/SwapTUSDForAEQ, except the state
+// mutation and the resulting outbox insert commit or roll back together as
+// one DB transaction — see TransferAtomic's comment. pendingTxTemplate
+// should have Type/Wallet/Amount set; AmountOut and FromDemurrageLost are
+// filled in here from the swap's actual result.
+func (cs *ChainState) SwapAtomic(address string, amountIn float64, aeqToTusd bool, minAmountOut float64, pendingTxTemplate Transaction) (amountOut, demurrageLost float64, err error) {
+	address = strings.ToLower(address)
+	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
+		amountOut, demurrageLost, err = cs.swapLocked(address, amountIn, aeqToTusd, minAmountOut)
+		if err != nil {
+			return Transaction{}, err
+		}
+		pendingTxTemplate.AmountOut = amountOut
+		pendingTxTemplate.FromDemurrageLost = demurrageLost
+		return pendingTxTemplate, nil
+	})
+	return amountOut, demurrageLost, err
+}
+
 // swapLocked implements both swap directions. aeqToTusd=true means AEQ is
 // the input side and tUSD is the output side; false is the reverse.
 // minAmountOut, if > 0, rejects the swap before any state is mutated when
@@ -1839,6 +2051,22 @@ func sideLabel(aeqToTusd, isInput bool) string {
 
 func (cs *ChainState) savePoolToDB() {
 	if !cs.useDB || cs.pool == nil {
+		return
+	}
+	// FIX (atomic outbox): if runAtomicWithOutbox has an active transaction
+	// open for the current operation, use it directly instead of starting a
+	// SEPARATE one via cs.db.Begin() — that would open an independent
+	// connection-level transaction with no relationship to cs.activeTx,
+	// defeating the point (this write needs to commit/rollback together
+	// with the rest of the operation, not on its own), and risking a
+	// self-deadlock if both ever needed the same row lock concurrently.
+	// The outer transaction already provides the serialization the
+	// SELECT FOR UPDATE below exists for, so skip that dance entirely here.
+	if cs.activeTx != nil {
+		if _, err := cs.activeTx.Exec(`UPDATE liquidity_pool SET reserve_aeq = $1, reserve_tusd = $2, total_lp_shares = $3 WHERE id = 1`,
+			cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float(), cs.pool.TotalLPShares.Float()); err != nil {
+			fmt.Printf("[DB] Error saving pool inside active transaction: %v\n", err)
+		}
 		return
 	}
 	// Use a transaction so concurrent pool writes are serialized at the DB level.
@@ -1936,6 +2164,36 @@ func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) {
 func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64) (float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.addLiquidityLocked(address, amountAEQ, amountTUSD)
+}
+
+// AddLiquidityAtomic behaves like AddLiquidity, except the state mutation
+// and the resulting outbox insert commit or roll back together as one DB
+// transaction — see TransferAtomic's comment. pendingTxTemplate should
+// have Type/Wallet/Amount(AEQ)/AmountOut(tUSD) set; LPShares and
+// FromDemurrageLost are filled in here from the operation's actual result.
+func (cs *ChainState) AddLiquidityAtomic(address string, amountAEQ, amountTUSD float64, pendingTxTemplate Transaction) (demurrageLost float64, err error) {
+	address = strings.ToLower(address)
+	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
+		sharesBefore := 0.0
+		if acc, ok := cs.accounts[address]; ok {
+			sharesBefore = acc.LPShares.Float()
+		}
+		demurrageLost, err = cs.addLiquidityLocked(address, amountAEQ, amountTUSD)
+		if err != nil {
+			return Transaction{}, err
+		}
+		sharesAfter := cs.accounts[address].LPShares.Float()
+		pendingTxTemplate.LPShares = sharesAfter - sharesBefore
+		pendingTxTemplate.FromDemurrageLost = demurrageLost
+		return pendingTxTemplate, nil
+	})
+	return demurrageLost, err
+}
+
+// addLiquidityLocked is AddLiquidity's implementation; caller must already
+// hold cs.mu — see transferLocked's comment for why this split exists.
+func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD float64) (float64, error) {
 	address = strings.ToLower(address)
 
 	if amountAEQ <= 0 || amountTUSD <= 0 {
@@ -2023,6 +2281,34 @@ func (cs *ChainState) AddLiquidity(address string, amountAEQ, amountTUSD float64
 func (cs *ChainState) RemoveLiquidity(address string, sharesToBurn float64) (float64, float64, float64, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.removeLiquidityLocked(address, sharesToBurn)
+}
+
+// RemoveLiquidityAtomic behaves like RemoveLiquidity, except the state
+// mutation and the resulting outbox insert commit or roll back together as
+// one DB transaction — see TransferAtomic's comment. pendingTxTemplate
+// should have Type/Wallet/Amount(=sharesToBurn) set; FromDemurrageLost is
+// filled in here from the operation's actual result (RemoveLiquidityDelta,
+// the replay-side counterpart, re-derives outAEQ/outTUSD from the
+// secondary's own current pool state rather than replaying exact amounts,
+// so those aren't part of the queued Transaction either today).
+func (cs *ChainState) RemoveLiquidityAtomic(address string, sharesToBurn float64, pendingTxTemplate Transaction) (outAEQ, outTUSD, demurrageLost float64, err error) {
+	address = strings.ToLower(address)
+	err = cs.runAtomicWithOutbox([]string{address, validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr}, false, func() (Transaction, error) {
+		outAEQ, outTUSD, demurrageLost, err = cs.removeLiquidityLocked(address, sharesToBurn)
+		if err != nil {
+			return Transaction{}, err
+		}
+		pendingTxTemplate.FromDemurrageLost = demurrageLost
+		return pendingTxTemplate, nil
+	})
+	return outAEQ, outTUSD, demurrageLost, err
+}
+
+// removeLiquidityLocked is RemoveLiquidity's implementation; caller must
+// already hold cs.mu — see transferLocked's comment for why this split
+// exists.
+func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64) (float64, float64, float64, error) {
 	address = strings.ToLower(address)
 
 	if sharesToBurn <= 0 {
@@ -2246,6 +2532,26 @@ const tusdFaucetAmount = 1000.0
 func (cs *ChainState) ClaimTUsdFaucet(address string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	return cs.claimTUsdFaucetLocked(address)
+}
+
+// ClaimTUsdFaucetAtomic behaves like ClaimTUsdFaucet, except the state
+// mutation and the resulting outbox insert commit or roll back together as
+// one DB transaction — see TransferAtomic's comment.
+func (cs *ChainState) ClaimTUsdFaucetAtomic(address string, pendingTx Transaction) error {
+	address = strings.ToLower(address)
+	return cs.runAtomicWithOutbox([]string{address}, false, func() (Transaction, error) {
+		if err := cs.claimTUsdFaucetLocked(address); err != nil {
+			return Transaction{}, err
+		}
+		return pendingTx, nil
+	})
+}
+
+// claimTUsdFaucetLocked is ClaimTUsdFaucet's implementation; caller must
+// already hold cs.mu — see transferLocked's comment for why this split
+// exists.
+func (cs *ChainState) claimTUsdFaucetLocked(address string) error {
 	address = strings.ToLower(address)
 
 	acc, ok := cs.accounts[address]

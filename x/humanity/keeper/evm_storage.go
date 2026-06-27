@@ -1302,24 +1302,51 @@ func (cs *ChainState) GetTxReceipt(txHash string) (fromAddr, toAddr, status, con
 // there is nothing left to roll back. A failure here means no other node
 // will ever learn about that change (permanent divergence), so callers must
 // at minimum surface this loudly rather than silently continue. Returning
-// the error lets each caller decide how (most just log an [ALERT] today).
+// the error lets each caller decide how (most just log an [ALERT] today,
+// and fall back to the in-memory-only AddTransaction queue as a
+// best-effort second chance — see those call sites).
+//
+// FIX (durability): retries with a short backoff before giving up. The
+// realistic failure mode here is a transient DB hiccup — if the connection
+// were durably down, the state mutation that already happened just before
+// this call (in the same DB) would itself have failed too, so SavePendingTx
+// failing in isolation right after a successful state write is almost
+// always a brief blip. Retrying in-process closes that gap automatically
+// instead of requiring it to surface as a permanent divergence every time.
 func (cs *ChainState) SavePendingTx(tx Transaction) error {
 	if cs.db == nil {
 		return fmt.Errorf("no DB configured — pending TX outbox unavailable")
 	}
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		if err := savePendingTxExec(cs.db, tx); err != nil {
+			lastErr = err
+			fmt.Printf("[TX] SavePendingTx db error (attempt %d/3): %v\n", attempt, err)
+			if attempt < 3 {
+				time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
+			}
+			continue
+		}
+		return nil
+	}
+	return lastErr
+}
+
+// savePendingTxExec inserts tx via the given executor (cs.db or an active
+// transaction) with no retry — retrying individual statements inside an
+// already-failed SQL transaction doesn't make sense (Postgres aborts the
+// whole transaction on the first error until rolled back), so retry policy
+// belongs to the caller that owns the executor's lifetime: SavePendingTx
+// retries because it owns cs.db directly; runAtomicWithOutbox does not,
+// because a failure here means the whole atomic operation rolls back.
+func savePendingTxExec(ex sqlExecutor, tx Transaction) error {
 	data, err := json.Marshal(tx)
 	if err != nil {
 		fmt.Printf("[TX] SavePendingTx marshal error: %v\n", err)
 		return err
 	}
-	if _, err := cs.db.Exec(
-		`INSERT INTO pending_txs (tx_json, created_at) VALUES ($1, $2)`,
-		string(data), time.Now().Unix(),
-	); err != nil {
-		fmt.Printf("[TX] SavePendingTx db error: %v\n", err)
-		return err
-	}
-	return nil
+	_, err = ex.Exec(`INSERT INTO pending_txs (tx_json, created_at) VALUES ($1, $2)`, string(data), time.Now().Unix())
+	return err
 }
 
 // LoadPendingTxs reads all DB-pending TXs without deleting them. Call

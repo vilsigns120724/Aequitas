@@ -484,7 +484,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 			// FIX: same durability gap as the non-mirror path below —
 			// AddTransaction only queues in-memory; SavePendingTx survives a
 			// restart between now and the next ProduceBlock tick.
-			if outboxErr := a.state.SavePendingTx(Transaction{
+			pendingRegTx := Transaction{
 				Type:       "register_human",
 				Wallet:     wallet,
 				TxHash:     txHash,
@@ -494,8 +494,12 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 				ProofB:     bigInt2x2ToHexStrings(pB),
 				ProofC:     bigIntsToHexStrings(mirrorPCslice),
 				PubSignals: bigIntsToHexStrings(mirrorPSslice),
-			}); outboxErr != nil {
+			}
+			if outboxErr := a.state.SavePendingTx(pendingRegTx); outboxErr != nil {
 				fmt.Printf("[ALERT] register_human for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this registration\n", wallet, outboxErr)
+				// Best-effort fallback: mutually exclusive with the DB path
+				// above, never both, so this can't double-apply.
+				a.blockchain.AddTransaction(pendingRegTx)
 			}
 		}
 		return txHash, nil
@@ -553,44 +557,91 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// fully gasless regardless of this; granting a native balance here has
 	// no gas cost of its own, it's a direct database write, not a
 	// transaction the user pays for.
-	if regErr := a.state.RegisterHuman(wallet); regErr != nil {
-		// P0-4: retry RegisterHuman — EVM succeeded but Go-State failed.
-		// Without retry, the wallet has EVM balance but no native Go balance = permanent divergence.
-		registered := false
-		for retry := 1; retry <= 3; retry++ {
-			time.Sleep(time.Duration(retry) * 500 * time.Millisecond)
-			if err2 := a.state.RegisterHuman(wallet); err2 == nil {
-				registered = true
-				break
-			}
-		}
-		if !registered {
-			// FIX: this used to only log CRITICAL and fall through to return
-			// txHash (success) anyway. The on-chain EVM transaction has
-			// already been mined at this point and can't be undone without
-			// spending more gas on a nonexistent "unregister" function — but
-			// reporting success to the caller while Go-state's IsHuman is
-			// still false is worse: it hides a real, permanent divergence
-			// (chain_accounts says not human; the EVM mirror and every
-			// secondary that later replays this block's register_human TX
-			// will eventually say human) behind an API response that looked
-			// fine. Returning an error here at least surfaces it immediately
-			// instead of leaving an admin to discover it later via
-			// /api/admin/registration-debug after a user reports "already
-			// registered" with no balance.
-			Log.Error("CRITICAL: RegisterHuman failed 3x after EVM success — Go/EVM diverged", "wallet", wallet, "error", regErr)
-			return "", fmt.Errorf("registration succeeded on-chain (tx %s) but failed to sync locally after retries: %w — check /api/admin/registration-debug?wallet=%s", txHash, regErr, wallet)
-		}
-		a.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, wallet)
-	} else {
-		a.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, wallet)
+	// Always save effectiveNullifier (the ZK-derived one when using v2 circuit),
+	// not just req.Nullifier — req.Nullifier may be empty or the old SHA256 value
+	// while effectiveNullifier is the one actually stored on-chain. Computed
+	// here (before RegisterHuman, not after) so the pendingTx below can be
+	// built completely BEFORE the atomic call that needs it.
+	nullifierToStore := effectiveNullifier
+	if nullifierToStore == "" {
+		nullifierToStore = req.Nullifier
 	}
+	commitment := ""
+	if len(req.PubSignals) > 0 {
+		commitment = req.PubSignals[0]
+	}
+
+	// FIX (atomic outbox): RegisterHumanAtomic commits the Go-state
+	// registration and the pending_tx outbox insert as a single DB
+	// transaction (see runAtomicWithOutbox / TransferAtomic's comment),
+	// instead of the old RegisterHuman()-then-SavePendingTx() sequence
+	// where the outbox write could fail independently after the
+	// registration had already committed — permanently hiding a real
+	// registration from every other node (confirmed in production:
+	// "humans: 1" on the primary's own /api/status, with zero secondary
+	// ever learning about it). Only emit a pendingTx when we have a
+	// nullifier — secondary nodes use it as the idempotency key; a TX with
+	// an empty nullifier would be silently dropped by replay anyway.
+	var pendingRegTx Transaction
+	if nullifierToStore != "" {
+		pAslice := []*big.Int{pA[0], pA[1]}
+		pCslice := []*big.Int{pC[0], pC[1]}
+		psSlice := []*big.Int{pubSignals[0], pubSignals[1]}
+		pendingRegTx = Transaction{
+			Type:       "register_human",
+			Wallet:     wallet,
+			TxHash:     txHash,
+			Nullifier:  nullifierToStore,
+			Commitment: commitment,
+			ProofA:     bigIntsToHexStrings(pAslice),
+			ProofB:     bigInt2x2ToHexStrings(pB),
+			ProofC:     bigIntsToHexStrings(pCslice),
+			PubSignals: bigIntsToHexStrings(psSlice),
+		}
+	}
+
+	registered := false
+	var regErr error
+	for retry := 1; retry <= 3; retry++ {
+		if nullifierToStore != "" {
+			regErr = a.state.RegisterHumanAtomic(wallet, pendingRegTx)
+		} else {
+			regErr = a.state.RegisterHuman(wallet)
+		}
+		if regErr == nil {
+			registered = true
+			break
+		}
+		if retry < 3 {
+			time.Sleep(time.Duration(retry) * 500 * time.Millisecond)
+		}
+	}
+	if !registered {
+		// FIX: this used to only log CRITICAL and fall through to return
+		// txHash (success) anyway. The on-chain EVM transaction has
+		// already been mined at this point and can't be undone without
+		// spending more gas on a nonexistent "unregister" function — but
+		// reporting success to the caller while Go-state's IsHuman is
+		// still false is worse: it hides a real, permanent divergence
+		// (chain_accounts says not human; the EVM mirror and every
+		// secondary that later replays this block's register_human TX
+		// will eventually say human) behind an API response that looked
+		// fine. Returning an error here at least surfaces it immediately
+		// instead of leaving an admin to discover it later via
+		// /api/admin/registration-debug after a user reports "already
+		// registered" with no balance.
+		Log.Error("CRITICAL: RegisterHuman(Atomic) failed 3x after EVM success — Go/EVM diverged", "wallet", wallet, "error", regErr)
+		return "", fmt.Errorf("registration succeeded on-chain (tx %s) but failed to sync locally after retries: %w — check /api/admin/registration-debug?wallet=%s", txHash, regErr, wallet)
+	}
+	a.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, wallet)
 
 	// Record which wallet this proof's commitment actually registered to,
 	// so the app can later ask "did MY proof get registered, and where?"
 	// instead of reading the last entry in a global, unfiltered list.
+	// Deliberately NOT part of the atomic scope above: non-consensus side
+	// bookkeeping (doesn't affect StateRoot), same reasoning as block.go's
+	// replay-rollback excluding bio_registrations/bio_hashes.
 	if len(req.PubSignals) > 0 {
-		commitment := req.PubSignals[0]
 		if saveErr := a.state.SaveBioRegistration(commitment, wallet, txHash, req.BioHash); saveErr != nil {
 			fmt.Printf("[REGISTER] Warning: could not save bio registration link: %v\n", saveErr)
 		}
@@ -610,13 +661,6 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// is actually populated. Non-blocking — a slow proof server must not
 		// delay the registration response.
 		go notifyProofServer(bioHashKey, wallet)
-	}
-	// Always save effectiveNullifier (the ZK-derived one when using v2 circuit),
-	// not just req.Nullifier — req.Nullifier may be empty or the old SHA256 value
-	// while effectiveNullifier is the one actually stored on-chain.
-	nullifierToStore := effectiveNullifier
-	if nullifierToStore == "" {
-		nullifierToStore = req.Nullifier
 	}
 	// FIX: the comment that used to sit here claimed "TryClaimNullifier
 	// (called in RegisterHuman flow) already writes the nullifier
@@ -638,51 +682,14 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// on-chain (registerWithSig reverts otherwise), so a plain insert here
 	// (not a re-claim) is correct — it mirrors what replay does on every
 	// secondary.
+	// NOTE: still a separate (non-atomic) write from the registration
+	// above — see the file-level note on known residual scope at the top
+	// of this function's atomic handling; cs.nullifiers DOES feed
+	// StateRoot, so a failure here specifically remains a real, if rare,
+	// gap. Tracked as a follow-up rather than expanding runAtomicWithOutbox
+	// to cover a fourth subsystem (nullifiers) in this pass.
 	if nullifierToStore != "" {
 		a.state.SaveNullifier(nullifierToStore, wallet)
-	}
-
-	// Add a register_human TX to the DAG so secondary nodes learn about this
-	// registration via normal block sync and can apply it to their own state.
-	// Nullifier + Commitment are included so the secondary can replay the full
-	// state change (balance + nullifier + bio-registration) idempotently.
-	commitment := ""
-	if len(req.PubSignals) > 0 {
-		commitment = req.PubSignals[0]
-	}
-	// Only emit block TX when we have a nullifier — secondary nodes use it as
-	// the idempotency key. A TX with empty nullifier would be silently dropped
-	// by replayRegistrations, hiding the registration from all secondary nodes.
-	if nullifierToStore != "" {
-		pAslice := []*big.Int{pA[0], pA[1]}
-		pCslice := []*big.Int{pC[0], pC[1]}
-		psSlice := []*big.Int{pubSignals[0], pubSignals[1]}
-		// FIX: this used to call a.blockchain.AddTransaction(), which only
-		// appends to dag.pendingTxs — an in-memory slice with no DB backing.
-		// EVM-originated transfers were already moved to SavePendingTx (DB-
-		// durable, drained by ProduceBlock via LoadAndClearPendingTxs) for
-		// exactly this reason: a restart between AddTransaction and the next
-		// ProduceBlock tick silently loses the queued TX forever, with no
-		// error anywhere. register_human was never given the same treatment.
-		// Confirmed in production: a registration that succeeded in Go-state
-		// (chain_accounts, durable) never appeared in ANY block's
-		// transaction list — the chain showed "humans: 1" from the very next
-		// block onward, but zero secondary node could ever learn about it
-		// via replay, permanently diverging total_humans (and therefore
-		// StateRoot) between primary and every secondary, forever.
-		if outboxErr := a.state.SavePendingTx(Transaction{
-			Type:       "register_human",
-			Wallet:     wallet,
-			TxHash:     txHash,
-			Nullifier:  nullifierToStore,
-			Commitment: commitment,
-			ProofA:     bigIntsToHexStrings(pAslice),
-			ProofB:     bigInt2x2ToHexStrings(pB),
-			ProofC:     bigIntsToHexStrings(pCslice),
-			PubSignals: bigIntsToHexStrings(psSlice),
-		}); outboxErr != nil {
-			fmt.Printf("[ALERT] register_human for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this registration\n", wallet, outboxErr)
-		}
 	}
 
 	return txHash, nil

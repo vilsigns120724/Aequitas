@@ -139,36 +139,26 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var amountOut, demurrageLost float64
-	var err error
-	if req.Direction == "aeq_to_tusd" {
-		amountOut, demurrageLost, err = a.state.SwapAEQForTUSD(wallet, req.Amount, req.MinAmountOut)
-	} else {
-		amountOut, demurrageLost, err = a.state.SwapTUSDForAEQ(wallet, req.Amount, req.MinAmountOut)
+	txType := "swap_aeq_tusd"
+	aeqToTusd := req.Direction == "aeq_to_tusd"
+	if !aeqToTusd {
+		txType = "swap_tusd_aeq"
 	}
+	// FIX (atomic outbox): SwapAtomic commits the state mutation and the
+	// pending_tx outbox insert as a single DB transaction (see
+	// runAtomicWithOutbox / TransferAtomic's comment) — either both happen
+	// or neither does, instead of the old separate Swap-then-SavePendingTx
+	// sequence where the outbox write could fail independently after the
+	// swap had already committed (swaps are likely the most frequent
+	// state-changing operation in the system, so this was the most
+	// frequently-hit version of the durability gap).
+	pendingTxTemplate := Transaction{Type: txType, Wallet: wallet, Amount: req.Amount}
+	amountOut, _, err := a.state.SwapAtomic(wallet, req.Amount, aeqToTusd, req.MinAmountOut, pendingTxTemplate)
 	if err != nil {
 		// Swap failed — restore nonce so user can retry with the same nonce.
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(SwapResponse{Success: false, Message: err.Error()})
 		return
-	}
-
-	txType := "swap_aeq_tusd"
-	if req.Direction == "tusd_to_aeq" {
-		txType = "swap_tusd_aeq"
-	}
-	// FIX: AddTransaction only queues in-memory and is lost on restart before
-	// the next ProduceBlock tick — same durability bug fixed for register_human
-	// in register.go, never applied here even though swaps are likely the
-	// most frequent state-changing operation in the system.
-	if outboxErr := a.state.SavePendingTx(Transaction{
-		Type:              txType,
-		Wallet:            wallet,
-		Amount:            req.Amount,
-		AmountOut:         amountOut,
-		FromDemurrageLost: demurrageLost,
-	}); outboxErr != nil {
-		fmt.Printf("[ALERT] swap for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this swap\n", wallet, outboxErr)
 	}
 	json.NewEncoder(w).Encode(SwapResponse{
 		Success:   true,
@@ -237,23 +227,15 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
-	sharesBefore, _ := a.state.GetLPShares(wallet)
-	demurrageLost, err := a.state.AddLiquidity(wallet, req.AmountAEQ, req.AmountTUSD)
+	// FIX (atomic outbox): AddLiquidityAtomic commits the state mutation and
+	// the pending_tx outbox insert as a single DB transaction — see
+	// SwapAtomic's comment above / TransferAtomic's comment in state.go.
+	pendingTxTemplate := Transaction{Type: "add_liquidity", Wallet: wallet, Amount: req.AmountAEQ, AmountOut: req.AmountTUSD}
+	_, err := a.state.AddLiquidityAtomic(wallet, req.AmountAEQ, req.AmountTUSD, pendingTxTemplate)
 	if err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(AddLiquidityResponse{Success: false, Message: err.Error()})
 		return
-	}
-	sharesAfter, _ := a.state.GetLPShares(wallet)
-	if outboxErr := a.state.SavePendingTx(Transaction{
-		Type:              "add_liquidity",
-		Wallet:            wallet,
-		Amount:            req.AmountAEQ,
-		AmountOut:         req.AmountTUSD,
-		LPShares:          sharesAfter - sharesBefore,
-		FromDemurrageLost: demurrageLost,
-	}); outboxErr != nil {
-		fmt.Printf("[ALERT] add_liquidity for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this\n", wallet, outboxErr)
 	}
 	json.NewEncoder(w).Encode(AddLiquidityResponse{Success: true, Message: "liquidity added"})
 }
@@ -317,19 +299,15 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
-	outAEQ, outTUSD, demurrageLost, err := a.state.RemoveLiquidity(wallet, req.SharesToBurn)
+	// FIX (atomic outbox): RemoveLiquidityAtomic commits the state mutation
+	// and the pending_tx outbox insert as a single DB transaction — see
+	// SwapAtomic's comment above / TransferAtomic's comment in state.go.
+	pendingTxTemplate := Transaction{Type: "remove_liquidity", Wallet: wallet, Amount: req.SharesToBurn}
+	outAEQ, outTUSD, _, err := a.state.RemoveLiquidityAtomic(wallet, req.SharesToBurn, pendingTxTemplate)
 	if err != nil {
 		a.state.RestoreSwapNonce(wallet, req.Nonce)
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
 		return
-	}
-	if outboxErr := a.state.SavePendingTx(Transaction{
-		Type:              "remove_liquidity",
-		Wallet:            wallet,
-		Amount:            req.SharesToBurn,
-		FromDemurrageLost: demurrageLost,
-	}); outboxErr != nil {
-		fmt.Printf("[ALERT] remove_liquidity for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this\n", wallet, outboxErr)
 	}
 	json.NewEncoder(w).Encode(RemoveLiquidityResponse{
 		Success:    true,
@@ -435,17 +413,13 @@ func (a *APIServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.state.ClaimTUsdFaucet(wallet); err != nil {
+	// FIX (atomic outbox): ClaimTUsdFaucetAtomic commits the state mutation
+	// and the pending_tx outbox insert as a single DB transaction — see
+	// SwapAtomic's comment above / TransferAtomic's comment in state.go.
+	pendingTx := Transaction{Type: "faucet", Wallet: wallet, Amount: tusdFaucetAmount}
+	if err := a.state.ClaimTUsdFaucetAtomic(wallet, pendingTx); err != nil {
 		json.NewEncoder(w).Encode(FaucetResponse{Success: false, Message: err.Error()})
 		return
-	}
-
-	if outboxErr := a.state.SavePendingTx(Transaction{
-		Type:   "faucet",
-		Wallet: wallet,
-		Amount: tusdFaucetAmount,
-	}); outboxErr != nil {
-		fmt.Printf("[ALERT] faucet claim for %s applied locally but SavePendingTx failed: %v — other nodes will NEVER see this\n", wallet, outboxErr)
 	}
 	json.NewEncoder(w).Encode(FaucetResponse{Success: true, Message: "faucet claimed", Granted: tusdFaucetAmount})
 }
