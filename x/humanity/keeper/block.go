@@ -504,7 +504,22 @@ func (dag *BlockDAG) WithBlockProductionPaused(fn func()) {
 // maxOrphans caps total queued orphan blocks across all missing-parent keys,
 // so a malicious or buggy peer sending blocks that reference parents which
 // will never arrive can't grow this map without bound.
-const maxOrphans = 2000
+//
+// FIX: confirmed in production at 2000 — a node that fell significantly
+// behind (multiple validators producing every ~6s while it was still
+// catching up on a large historical gap) overflowed this buffer, silently
+// DROPPING individual blocks with no record of which hash was missing.
+// Once dropped, no mechanism (not even fetchMissingAncestors, which walks
+// back from recorded missing-parent hashes) can ever learn to re-fetch that
+// specific block — if the BlockDAG's multi-parent tolerance lets later tips
+// route around the gap via a sibling branch instead, that block's
+// transactions are gone from this node's view forever, a real, confirmed
+// divergence (a transfer present on two other nodes never landed on the
+// one that overflowed). Raised by 25x to make this far less likely to
+// trigger under the same catch-up load; does not fix the underlying
+// lossy-on-overflow design (tracked separately — recovery today is a full
+// resync from a signed snapshot, see ImportSnapshotFromURL).
+const maxOrphans = 50000
 
 // queueOrphan stores block, which is waiting on missingParent to appear,
 // and logs the wait (the old code dropped this case with zero logging).
