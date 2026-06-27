@@ -1240,7 +1240,11 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			// produced by older node versions before this change; new blocks
 			// never set that field.
 			if tx.AmountPerHuman > 0 {
-				dag.state.ApplyUBIDelta(tx.AmountPerHuman, block.Timestamp)
+				if err := dag.state.ApplyUBIDelta(tx.AmountPerHuman, block.Timestamp); err != nil {
+					fmt.Printf("[REPLAY] ✗ legacy flat ubi_distribution: %v (block #%d) — rolling back whole block\n", err, block.Height)
+					hardFailure = true
+					continue
+				}
 				fmt.Printf("[REPLAY] ✓ Applied legacy flat UBI distribution %.6f AEQ/human (block #%d)\n", tx.AmountPerHuman, block.Height)
 			} else if wallet != "" && wallet != "0x0000000000000000000000000000000000000000" {
 				if err := dag.state.ApplyUBIRewardDelta(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
@@ -1254,7 +1258,11 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			}
 
 		case "ubi_distribution_finalize":
-			dag.state.ApplyUBIFinalizeDelta(tx.DistributionAt)
+			if err := dag.state.ApplyUBIFinalizeDelta(tx.DistributionAt); err != nil {
+				fmt.Printf("[REPLAY] ✗ ubi_distribution_finalize: %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
 			fmt.Printf("[REPLAY] ✓ Finalized UBI round, last_ubi_at=%d (block #%d)\n", tx.DistributionAt, block.Height)
 
 		case "validator_distribution":
@@ -1267,7 +1275,11 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			fmt.Printf("[REPLAY] ✓ Applied validator reward %.6f AEQ for %s (block #%d)\n", tx.Amount, wallet, block.Height)
 
 		case "validator_distribution_pool_zero":
-			dag.state.ApplyValidatorPoolZeroDelta()
+			if err := dag.state.ApplyValidatorPoolZeroDelta(); err != nil {
+				fmt.Printf("[REPLAY] ✗ validator_distribution_pool_zero: %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
 			fmt.Printf("[REPLAY] ✓ Zeroed validators pool (block #%d)\n", block.Height)
 
 		case "lp_distribution":
@@ -1280,7 +1292,11 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			fmt.Printf("[REPLAY] ✓ Applied LP reward %.6f AEQ for %s (block #%d)\n", tx.Amount, wallet, block.Height)
 
 		case "lp_distribution_pool_zero":
-			dag.state.ApplyLPPoolZeroDelta()
+			if err := dag.state.ApplyLPPoolZeroDelta(); err != nil {
+				fmt.Printf("[REPLAY] ✗ lp_distribution_pool_zero: %v (block #%d) — rolling back whole block\n", err, block.Height)
+				hardFailure = true
+				continue
+			}
 			fmt.Printf("[REPLAY] ✓ Zeroed LP pool (block #%d)\n", block.Height)
 
 		case "escrow_move":
@@ -1306,7 +1322,9 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	}
 
 	if hardFailure {
-		dag.state.restoreFromRollback(rollbackSnap)
+		if rbErr := dag.state.restoreFromRollback(rollbackSnap); rbErr != nil {
+			fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
+		}
 		for _, n := range claimedNullifiers {
 			dag.state.ReleaseNullifier(n)
 		}
@@ -1333,7 +1351,9 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	if block.StateRoot != "" {
 		localRoot := dag.state.StateRoot()
 		if block.StateRoot != localRoot {
-			dag.state.restoreFromRollback(rollbackSnap)
+			if rbErr := dag.state.restoreFromRollback(rollbackSnap); rbErr != nil {
+				fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
+			}
 			for _, n := range claimedNullifiers {
 				dag.state.ReleaseNullifier(n)
 			}
