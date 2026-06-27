@@ -1082,34 +1082,32 @@ func (cs *ChainState) GetBalance(address string) float64 {
 // fresh, so there's no need to hold a standing reserve.
 // RegisterNode adds this node's operator wallet to the registered_nodes
 // table so it participates in future validators pool distributions.
-// TryClaimValidatorSlot binds operatorWallet to signingAddress the FIRST
-// time it's ever seen, and refuses a different signingAddress for the
-// same wallet on every subsequent call. Called from handlePeerRegister
-// right before AddAuthorizedValidator grants block-signing authority —
-// this is the actual Sybil-resistance mechanism: since NODE_OPERATOR_WALLET
-// must already be a verified, registered human (IsHuman check, enforced
-// by the ZK biometric proof system) before reaching this call, binding it
-// permanently to one signing address means one verified human can ever
-// become validator-authorized as one node, not an unlimited number of
-// them with different signing keys. Replaces PEER_SECRET/SNAPSHOT_TOKEN
-// as manually-distributed, unenforceable "join secrets" — there is
-// nothing to leak or share, since the limit is enforced by identity, not
-// a string anyone who learns it could reuse.
+// BindValidatorSlot binds operatorWallet to signingAddress, overwriting
+// any previous binding for that wallet. Called from handlePeerRegister
+// right before AddAuthorizedValidator grants block-signing authority,
+// and ONLY after the caller has verified an OperatorBindingSignature
+// proving operatorWallet's private-key owner specifically authorized
+// THIS signingAddress (see verifyPersonalSign and the "Aequitas:
+// authorize validator <addr>" message built in handlePeerRegister).
 //
-// Returns (true, "") on a fresh claim or a matching repeat (e.g. the same
-// node restarting with the same signing key). Returns (false,
-// boundSigningAddress) if this wallet is already bound to a DIFFERENT
-// signing address — the caller should reject the request.
-//
-// Deliberately permanent with no rotation path yet: an operator who needs
-// to replace a lost/compromised signing key has no self-service way to
-// release their old binding. Tracked as a known, bounded scope gap (would
-// need an explicit, authenticated revoke flow — e.g. signed by the
-// SAME wallet's biometric proof again — to avoid letting anyone hijack
-// someone else's slot just by claiming "key rotation").
-func (cs *ChainState) TryClaimValidatorSlot(operatorWallet, signingAddress string) (bool, string) {
+// FIX (audit recheck 2 follow-up): an earlier version of this function
+// (TryClaimValidatorSlot) bound on a first-come-first-served basis with
+// no proof of operatorWallet ownership at all — IsHuman(operatorWallet)
+// only confirms SOME registered human owns that address, not that the
+// requester does. Anyone who controlled a validator signing key could
+// have submitted any OTHER human's wallet as NODE_OPERATOR_WALLET,
+// permanently squatting that human's validator slot before they ever
+// got a chance to run their own node. Requiring a signature from
+// operatorWallet itself closes that hole AND gives operators a
+// self-service way to rebind to a new signing key (e.g. after losing
+// the old one): sign a fresh message naming the new address, no
+// biometric re-verification or admin intervention needed — the
+// signature alone re-proves the same ownership the original bind relied
+// on. Overwriting is therefore always safe to allow once the signature
+// checks out; there is no "permanent lock-in" to defend against anymore.
+func (cs *ChainState) BindValidatorSlot(operatorWallet, signingAddress string) error {
 	if cs.db == nil {
-		return true, "" // no DB → single-node mode, nothing to enforce
+		return nil // no DB → single-node mode, nothing to enforce
 	}
 	operatorWallet = strings.ToLower(operatorWallet)
 	signingAddress = strings.ToLower(signingAddress)
@@ -1118,26 +1116,15 @@ operator_wallet TEXT PRIMARY KEY,
 signing_address TEXT NOT NULL,
 claimed_at TIMESTAMP DEFAULT NOW()
 )`)
-	result, err := cs.db.Exec(
-		`INSERT INTO validator_slots (operator_wallet, signing_address) VALUES ($1, $2) ON CONFLICT (operator_wallet) DO NOTHING`,
+	_, err := cs.db.Exec(
+		`INSERT INTO validator_slots (operator_wallet, signing_address, claimed_at) VALUES ($1, $2, NOW())
+ON CONFLICT (operator_wallet) DO UPDATE SET signing_address = EXCLUDED.signing_address, claimed_at = NOW()`,
 		operatorWallet, signingAddress,
 	)
 	if err != nil {
-		fmt.Printf("[VALIDATOR-SLOT] DB error claiming slot for %s: %v\n", operatorWallet, err)
-		return false, ""
+		return fmt.Errorf("could not bind validator slot for %s: %w", operatorWallet, err)
 	}
-	if rows, _ := result.RowsAffected(); rows > 0 {
-		return true, "" // fresh claim
-	}
-	var bound string
-	if scanErr := cs.db.QueryRow(`SELECT signing_address FROM validator_slots WHERE operator_wallet = $1`, operatorWallet).Scan(&bound); scanErr != nil {
-		fmt.Printf("[VALIDATOR-SLOT] DB error reading existing slot for %s: %v\n", operatorWallet, scanErr)
-		return false, ""
-	}
-	if bound == signingAddress {
-		return true, "" // same node re-registering (e.g. restart) — not a new claim
-	}
-	return false, bound
+	return nil
 }
 
 // Called once at startup if NODE_OPERATOR_WALLET env var is set.

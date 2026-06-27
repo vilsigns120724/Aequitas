@@ -151,6 +151,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/proof/check", a.handleProofCheckProxy)
 	mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
 	mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
+	mux.HandleFunc("/node-binding", a.handleNodeBinding)
 	mux.HandleFunc("/api/register-validator-key", a.handleRegisterValidatorKey)
 	mux.HandleFunc("/api/set-guardian", a.handleSetGuardian)
 	mux.HandleFunc("/api/confirm-alive", a.handleConfirmAlive)
@@ -660,6 +661,91 @@ Return to the <span class="hl">Aequitas App</span> — it will confirm your regi
 </html>`, wallet)
 }
 
+// handleNodeBinding serves a small, self-contained signing tool so a
+// node operator can prove ownership of their NODE_OPERATOR_WALLET without
+// any code or wallet-connect library — just a browser with MetaMask (or
+// any EIP-1193 wallet) installed. The signature it produces is the
+// NODE_OPERATOR_BINDING_SIGNATURE value referenced in BindValidatorSlot's
+// comment: this page never talks to the chain or sends the signature
+// anywhere itself, it only computes it client-side via window.ethereum's
+// personal_sign and displays it for the operator to copy into their own
+// node's environment variables.
+func (a *APIServer) handleNodeBinding(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'")
+	fmt.Fprint(w, `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Validator Binding — Aequitas</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0A0E1A;color:#C9A84C;font-family:'Courier New',monospace;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.box{background:#111827;border:1px solid #1E2D45;border-radius:12px;padding:32px;max-width:520px;width:100%}
+.logo{font-size:1.6rem;font-weight:900;letter-spacing:6px;color:#C9A84C;margin-bottom:18px;text-align:center}
+.sub{color:#6B7A99;font-size:0.78rem;line-height:1.8;margin-bottom:18px}
+label{display:block;color:#C9A84C;font-size:0.72rem;margin-bottom:6px;margin-top:14px}
+input{width:100%;background:#0A0E1A;border:1px solid #1E2D45;border-radius:6px;color:#fff;padding:10px;font-family:'Courier New',monospace;font-size:0.78rem}
+.btn{display:block;width:100%;margin-top:18px;padding:12px;background:#C9A84C;color:#0A0E1A;border:none;border-radius:8px;font-weight:bold;font-size:0.82rem;letter-spacing:1px;cursor:pointer}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.out{margin-top:18px;padding:14px;background:#0A0E1A;border:1px solid #22C55E;border-radius:8px;word-break:break-all;font-size:0.7rem;color:#22C55E;display:none}
+.err{margin-top:18px;padding:14px;background:#0A0E1A;border:1px solid #f87171;border-radius:8px;font-size:0.75rem;color:#f87171;display:none}
+.hl{color:#C9A84C;font-weight:bold}
+</style>
+</head>
+<body>
+<div class="box">
+<div class="logo">AEQUITAS</div>
+<div class="sub">
+This page proves your <span class="hl">NODE_OPERATOR_WALLET</span> owns the signature your node needs to register as a validator. It signs a message locally in your wallet — nothing is sent anywhere by this page.
+</div>
+<label>Your node's signing address (find it via <code>/api/signing-address</code> on your own node, or in its startup logs)</label>
+<input id="signingAddr" placeholder="0x...">
+<button class="btn" id="connectBtn" onclick="signBinding()">Connect Wallet &amp; Sign</button>
+<div class="out" id="out"></div>
+<div class="err" id="err"></div>
+</div>
+<script>
+async function signBinding() {
+  const errEl = document.getElementById('err');
+  const outEl = document.getElementById('out');
+  errEl.style.display = 'none';
+  outEl.style.display = 'none';
+  const signingAddr = document.getElementById('signingAddr').value.trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(signingAddr)) {
+    errEl.textContent = 'Enter a valid signing address (0x followed by 40 hex characters).';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!window.ethereum) {
+    errEl.textContent = 'No wallet found. Install MetaMask or another browser wallet extension.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const wallet = accounts[0];
+    const message = 'Aequitas: authorize validator ' + signingAddr;
+    const signature = await window.ethereum.request({
+      method: 'personal_sign',
+      params: [message, wallet],
+    });
+    outEl.innerHTML = 'Wallet: <span class="hl">' + wallet + '</span><br><br>' +
+      'Set these on your node:<br><br>' +
+      'NODE_OPERATOR_WALLET=' + wallet + '<br>' +
+      'NODE_OPERATOR_BINDING_SIGNATURE=' + signature;
+    outEl.style.display = 'block';
+  } catch (e) {
+    errEl.textContent = 'Signing failed or was rejected: ' + (e && e.message ? e.message : e);
+    errEl.style.display = 'block';
+  }
+}
+</script>
+</body>
+</html>`)
+}
+
 func (a *APIServer) handleUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -930,6 +1016,16 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 		PeerSecret         string `json:"peer_secret"`
 		Signature          string `json:"signature"` // P1-3 challenge-response
 		NodeOperatorWallet string `json:"node_operator_wallet"`
+		// OperatorBindingSignature proves NODE_OPERATOR_WALLET ownership —
+		// see TryClaimValidatorSlot's old comment for why this was missing:
+		// nothing previously verified that the requester actually controls
+		// node_operator_wallet, only that SOME registered human owns that
+		// address. Generated out-of-band (the operator's wallet signs
+		// "Aequitas: authorize validator <signing_address>" via the web tool
+		// at /node-binding or any EIP-191 personal_sign-capable wallet) since
+		// the node process itself never has access to the operator's wallet
+		// private key — that key lives with the human, not the server.
+		OperatorBindingSignature string `json:"operator_binding_signature"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1000,19 +1096,29 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, `{"error":"NODE_OPERATOR_WALLET is not a registered human — register first via the AequitasBio app"}`, http.StatusForbidden)
 				return
 			}
-			// FIX (one-human-one-validator): NODE_OPERATOR_WALLET being a
-			// verified human is necessary but not sufficient — without this,
-			// the SAME verified wallet could be set as NODE_OPERATOR_WALLET
-			// on any number of separately-deployed nodes, each with its own
-			// signing key, all independently passing the IsHuman check above
-			// and becoming authorized validators. TryClaimValidatorSlot binds
-			// this wallet to the FIRST signing address it's ever seen with;
-			// see its comment for why this (identity-based) replaces
-			// PEER_SECRET/SNAPSHOT_TOKEN (shared-secret-based) as the actual
-			// Sybil-resistance mechanism.
-			if slotOK, boundTo := a.state.TryClaimValidatorSlot(nodeWallet, addr); !slotOK {
-				fmt.Printf("[PEERS] Rejected %s: NODE_OPERATOR_WALLET %s is already bound to validator %s — one human may run one validator node\n", addr, nodeWallet, boundTo)
-				http.Error(w, fmt.Sprintf(`{"error":"this wallet is already bound to a different validator node (%s) — one verified human may run exactly one validator"}`, boundTo), http.StatusForbidden)
+			// FIX (one-human-one-validator + ownership proof): NODE_OPERATOR_WALLET
+			// being a verified human is necessary but not sufficient — IsHuman
+			// only confirms SOME registered human owns that address, not that
+			// THIS requester does. Without proof, anyone controlling a
+			// validator signing key could submit any other human's wallet as
+			// NODE_OPERATOR_WALLET and permanently squat their validator slot.
+			// Require a signature from operatorWallet itself, over a message
+			// naming THIS specific signing address — generated out-of-band via
+			// the operator's own wallet (e.g. the /node-binding tool, any
+			// EIP-191 personal_sign-capable wallet), since the node process
+			// never has access to the human's wallet private key. The same
+			// mechanism doubles as self-service rebind: a fresh signature
+			// naming a new signing address overwrites the old binding, no
+			// admin or biometric re-verification needed.
+			bindingMsg := "Aequitas: authorize validator " + addr
+			if err := verifyPersonalSign(bindingMsg, req.OperatorBindingSignature, nodeWallet); err != nil {
+				fmt.Printf("[PEERS] Rejected %s: NODE_OPERATOR_WALLET %s ownership not proven: %v\n", addr, nodeWallet, err)
+				http.Error(w, `{"error":"operator_binding_signature missing or invalid — sign 'Aequitas: authorize validator <your signing address>' with your NODE_OPERATOR_WALLET to prove ownership (see /node-binding)"}`, http.StatusForbidden)
+				return
+			}
+			if err := a.state.BindValidatorSlot(nodeWallet, addr); err != nil {
+				fmt.Printf("[PEERS] Rejected %s: could not bind validator slot for %s: %v\n", addr, nodeWallet, err)
+				http.Error(w, `{"error":"internal error binding validator slot"}`, http.StatusInternalServerError)
 				return
 			}
 			a.blockchain.AddAuthorizedValidator(addr)

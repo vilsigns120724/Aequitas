@@ -530,6 +530,12 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) {
 		"signature":            signature,
 		"peer_secret":          os.Getenv("PEER_SECRET"),
 		"node_operator_wallet": strings.ToLower(os.Getenv("NODE_OPERATOR_WALLET")),
+		// NODE_OPERATOR_BINDING_SIGNATURE proves NODE_OPERATOR_WALLET
+		// ownership — generated out-of-band by signing
+		// "Aequitas: authorize validator <signerAddr>" with the operator's
+		// own wallet (see /node-binding), since this process never has
+		// access to that private key. See BindValidatorSlot's comment.
+		"operator_binding_signature": os.Getenv("NODE_OPERATOR_BINDING_SIGNATURE"),
 	})
 	resp, err := httpSyncClient.Post(
 		primaryURL+"/api/peers/register", "application/json", bytes.NewReader(body))
