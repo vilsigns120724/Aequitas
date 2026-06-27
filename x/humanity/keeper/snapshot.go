@@ -211,7 +211,18 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	// This makes the import safe to call on partially-populated state without
 	// regressing balances that have advanced via UBI/demurrage since the snapshot.
 	var accountsToPersist []*AccountState
-	// FIX 12: Skip system pool addresses -- snapshot must not override protocol-managed accounts.
+	// FIX 12: Skip system pool addresses when MERGING into an already-running
+	// node -- a stale snapshot must not override a pool balance that has
+	// already moved on locally (e.g. from fees credited since the snapshot
+	// was taken). This guard must NOT apply on a genuine fresh bootstrap
+	// (existingHumans == 0): there is nothing to "regress" on an empty node,
+	// and skipping these four addresses unconditionally meant a freshly
+	// bootstrapped node's validators/LP/UBI/treasury pool balances stayed at
+	// zero forever while the primary's kept accumulating real fees --
+	// guaranteeing a permanent StateRoot mismatch against the primary that
+	// looked exactly like ongoing divergence but was actually just this
+	// import never having happened. Mirrors the existing existingHumans==0
+	// gate already used for cs.pool a few lines below.
 	systemAddresses := map[string]bool{
 		validatorsPoolAddr: true,
 		lpPoolAddr:         true,
@@ -225,7 +236,7 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	cs.mu.Lock()
 	for _, acc := range snap.Accounts {
 		acc.Address = strings.ToLower(acc.Address)
-		if systemAddresses[acc.Address] {
+		if existingHumans > 0 && systemAddresses[acc.Address] {
 			continue
 		}
 		if _, exists := cs.accounts[acc.Address]; !exists {
