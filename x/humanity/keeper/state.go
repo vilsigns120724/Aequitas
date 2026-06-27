@@ -1275,9 +1275,17 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	// pool balance may increase during this loop. Reading poolAcc.Balance before
 	// this loop would miss those newly-credited fees, and zeroing the pool at
 	// the end would then destroy them.
+	//
+	// FIX (audit recheck 2, P0 #6): capture each holder's loss here so it can
+	// be attached to their DistributionShare below — secondaries replaying
+	// lp_distribution via ApplyLPRewardDelta need the EXACT same loss applied
+	// (not recomputed, which could differ from a node whose LastActivityAt
+	// view of this wallet has drifted) or their balance permanently diverges
+	// from the primary's by however much demurrage each holder had accrued.
+	demurrageLost := make(map[string]float64, len(holders))
 	for _, h := range holders {
 		acc := cs.accounts[h.addr]
-		cs.settleDemurrageLocked(acc)
+		demurrageLost[h.addr] = cs.settleDemurrageLocked(acc).Float()
 	}
 	// Re-check totalShares after demurrage settlement — shares could have gone to zero.
 	if totalShares <= 0 {
@@ -1319,7 +1327,7 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 		touchActivity(acc)
 		cs.enforceWealthCapLocked(acc)
 		cs.saveAccountToDB(acc)
-		shares = append(shares, DistributionShare{Wallet: h.addr, Amount: share})
+		shares = append(shares, DistributionShare{Wallet: h.addr, Amount: share, DemurrageLost: demurrageLost[h.addr]})
 	}
 	if totalDistributed > 0 {
 		poolAcc.Balance = NewDecimal(0)
@@ -1339,29 +1347,35 @@ func (cs *ChainState) DistributeLPPool() []DistributionShare {
 	return shares
 }
 
-// DistributeUBIPool distributes the UBI pool to every registered human and
-// returns the amountPerHuman actually credited and the human count it was
-// divided by — the caller (main.go) MUST use these returned values when
-// building the ubi_distribution TX for secondaries to replay, rather than
-// reading the pool balance separately beforehand.
+// DistributeUBIPool distributes the UBI pool equally across every
+// registered human and returns exactly what was credited to each —
+// including each human's individual demurrage loss, settled in the same
+// pass — so the caller (main.go) can build per-human "ubi_distribution"
+// TXs for secondaries to replay, rather than reading the pool balance
+// separately beforehand or broadcasting a single flat amount.
 //
-// FIX: this used to be void, and main.go read the pool balance BEFORE
-// calling this function to compute the broadcast amountPerHuman. But this
-// function settles demurrage for every human FIRST (see the comment a few
-// lines down — that step alone can grow the pool, which main.go's earlier
-// read could never see), so the amount actually credited locally and the
-// amount broadcast to secondaries were two different numbers — guaranteed
-// StateRoot divergence on every single UBI distribution, independent of
-// the separate "every node runs this locally" bug (see DistributeUBIPool's
-// caller in main.go for that one).
-func (cs *ChainState) DistributeUBIPool() (amountPerHuman float64, totalHumans int) {
+// FIX (audit recheck 2, P0 #5): this used to return a flat
+// (amountPerHuman, totalHumans) pair, broadcast as ONE TX that every
+// secondary applied via ApplyUBIDelta — crediting amountPerHuman to every
+// human, but never replaying the demurrage settlement below. On the
+// primary, settleDemurrageLocked reduces each human's balance AND credits
+// the pool BEFORE the equal split is computed; a human with zero accrued
+// demurrage and one with significant accrued demurrage both received the
+// exact same broadcast credit, but only the primary's own in-memory state
+// reflected the (different, per-human) loss each of them took first. Any
+// human with nonzero accrued demurrage at UBI time caused permanent
+// StateRoot divergence. Now returns one DistributionShare per human with
+// that human's own DemurrageLost, exactly like DistributeLPPool/
+// DistributeValidatorsPool already did — main.go emits one TX per human
+// instead of one flat broadcast TX.
+func (cs *ChainState) DistributeUBIPool() []DistributionShare {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
 	poolAcc, ok := cs.accounts[ubiPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool is empty — nothing to distribute today")
-		return 0, 0
+		return nil
 	}
 
 	var humanAddrs []string
@@ -1372,21 +1386,23 @@ func (cs *ChainState) DistributeUBIPool() (amountPerHuman float64, totalHumans i
 	}
 	if len(humanAddrs) == 0 {
 		fmt.Println("[UBI] No registered humans yet — pool left untouched")
-		return 0, 0
+		return nil
 	}
 
 	// E3-FIX for UBI: settle demurrage for ALL humans FIRST. settleDemurrageLocked
 	// credits 20% of each human's decay to ubiPoolAddr. Reading the pool balance
 	// BEFORE this loop would miss those credits; zeroing AFTER distributes them.
-	// Same fix applied to DistributeLPPool.
+	// Same fix applied to DistributeLPPool. Capture each human's own loss for
+	// the returned DistributionShare — see the function comment above.
+	demurrageLost := make(map[string]float64, len(humanAddrs))
 	for _, addr := range humanAddrs {
-		cs.settleDemurrageLocked(cs.accounts[addr])
+		demurrageLost[addr] = cs.settleDemurrageLocked(cs.accounts[addr]).Float()
 	}
 	// NOW read pool balance — includes any demurrage credits just added.
 	poolAcc, ok = cs.accounts[ubiPoolAddr]
 	if !ok || poolAcc.Balance <= 0 {
 		fmt.Println("[UBI] Pool empty after demurrage settlement — nothing to distribute")
-		return 0, 0
+		return nil
 	}
 	// P0-FIX: Do NOT call settleDemurrageLocked on the pool account itself —
 	// pool addresses are tokenomics infrastructure and must never have demurrage applied.
@@ -1395,21 +1411,27 @@ func (cs *ChainState) DistributeUBIPool() (amountPerHuman float64, totalHumans i
 	// P0-5/P2-9: prevent funds vanishing via float rounding to 0
 	if round6(share) == 0 {
 		fmt.Printf("[UBI] Share %.10f rounds to zero — pool left intact for next distribution\n", share)
-		return 0, 0
+		return nil
 	}
 	// P0-2 + P1-6: credit humans BEFORE zeroing pool AND before last_ubi_at.
+	shares := make([]DistributionShare, 0, len(humanAddrs))
 	for _, addr := range humanAddrs {
 		acc := cs.accounts[addr]
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 		touchActivity(acc)
 		cs.enforceWealthCapLocked(acc)
 		cs.saveAccountToDB(acc)
+		shares = append(shares, DistributionShare{Wallet: addr, Amount: round6(share), DemurrageLost: demurrageLost[addr]})
 	}
 	poolAcc.Balance = NewDecimal(0)
 	cs.saveAccountToDB(poolAcc)
 	cs.save()
-	// last_ubi_at only set after ALL writes succeed (P1-6).
-	cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", time.Now().Unix()))
+	// FIX (audit recheck 2, P0 #4): last_ubi_at used to be set HERE via
+	// time.Now() — a different instant than whatever secondaries later
+	// replayed (block.Timestamp, assigned whenever ProduceBlock's ticker
+	// next fired). The caller (main.go) now finalizes via
+	// ApplyUBIFinalizeDelta with a single explicit timestamp shared by the
+	// primary's own state and the TX every secondary replays.
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, append(humanAddrs, ubiPoolAddr)...)
 
 	fmt.Printf("[UBI] ✓ Distributed %.6f AEQ across %d registered humans (%.6f AEQ each)\n",
@@ -1417,7 +1439,7 @@ func (cs *ChainState) DistributeUBIPool() (amountPerHuman float64, totalHumans i
 	capturedGini := cs.calcGiniLocked()
 	capturedHumans := len(humanAddrs)
 	go cs.SaveGiniSnapshotValues(capturedGini, capturedHumans)
-	return round6(share), len(humanAddrs)
+	return shares
 }
 
 // getAverageBalanceLocked computes the mean AEQ balance across every
@@ -3175,6 +3197,13 @@ func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn, demurrag
 // StateRoot mismatch on every single UBI distribution. Pass 0 to fall back
 // to time.Now() only for callers that have no block context (none should,
 // post-fix, but this keeps the function safe to call directly).
+// ApplyUBIDelta is the LEGACY flat-broadcast replay path: credits the same
+// amountPerHuman to every current human and finalizes (pool zero +
+// last_ubi_at) in one call. Kept only so historical blocks already on the
+// chain (produced before the per-human fix below) still replay correctly —
+// main.go no longer emits this TX shape. It can never replay each human's
+// individual demurrage loss (see ApplyUBIRewardDelta's comment), which is
+// exactly the gap audit recheck 2 (P0 #5) flagged.
 func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64, ubiAt int64) {
 	if amountPerHuman <= 0 {
 		return
@@ -3199,6 +3228,50 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64, ubiAt int64) {
 		cs.saveAccountToDB(ubiAcc)
 	}
 	// Write last_ubi_at to secondary's chain_config so StateRoot matches primary.
+	cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", ubiAt))
+}
+
+// ApplyUBIRewardDelta credits a single human's UBI share, settling the
+// EXACT demurrage loss the primary already computed for that human in its
+// pre-pass over ALL humans (before the pool total was read) — see
+// DistributeUBIPool's comment. Used by secondary nodes replaying
+// "ubi_distribution" TXs (the per-human shape; see ApplyUBIDelta's comment
+// for the legacy flat shape this replaced). The pool itself is zeroed and
+// last_ubi_at finalized by a separate "ubi_distribution_finalize" TX (see
+// ApplyUBIFinalizeDelta) emitted once per distribution round, not by this
+// per-human delta — mirrors DistributeUBIPool's own structure (settle+
+// credit loop, then a single unconditional pool zero-out).
+func (cs *ChainState) ApplyUBIRewardDelta(wallet string, amount, demurrageLost float64) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	wallet = strings.ToLower(wallet)
+	acc, ok := cs.accounts[wallet]
+	if !ok {
+		return fmt.Errorf("ubi reward: account not found: %s", wallet)
+	}
+	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
+	touchActivity(acc)
+	cs.enforceWealthCapLocked(acc)
+	cs.saveAccountToDB(acc)
+	return nil
+}
+
+// ApplyUBIFinalizeDelta zeroes the UBI pool and records last_ubi_at,
+// mirroring the unconditional finalization DistributeUBIPool performs on
+// the primary after crediting every human. ubiAt must be the SAME value
+// for every node — main.go passes the producing block's Timestamp, never
+// time.Now(), so primary and secondaries agree exactly (see the audit
+// recheck 2, P0 #4 finding this addresses: the primary used to call
+// time.Now() directly inside DistributeUBIPool while secondaries replayed
+// block.Timestamp, two different instants).
+func (cs *ChainState) ApplyUBIFinalizeDelta(ubiAt int64) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	if ubiAcc, ok := cs.accounts[ubiPoolAddr]; ok {
+		ubiAcc.Balance = NewDecimal(0)
+		cs.saveAccountToDB(ubiAcc)
+	}
 	cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", ubiAt))
 }
 
@@ -3239,15 +3312,23 @@ func (cs *ChainState) ApplyValidatorPoolZeroDelta() {
 	}
 }
 
-// ApplyLPRewardDelta credits a single LP-pool reward to wallet. Used by
-// secondary nodes replaying "lp_distribution" TXs. Unlike validator
-// rewards, DistributeLPPool's own credit loop does not re-settle the
-// recipient's demurrage at credit time (it was already settled in an
-// earlier pass over ALL holders, before the pool total was read) — so
-// this delta only credits the amount, matching that behavior exactly.
+// ApplyLPRewardDelta credits a single LP-pool reward to wallet, settling
+// the EXACT demurrage loss the primary already computed for that wallet
+// in its pre-pass over ALL holders (before the pool total was read). Used
+// by secondary nodes replaying "lp_distribution" TXs.
+//
+// FIX (audit recheck 2, P0 #6): this used to only credit the reward amount,
+// on the theory that demurrage was "already settled" on the primary before
+// the pool was read — true for the PRIMARY's own in-memory state, but that
+// settlement (a balance reduction + pool credit) was never replayed on
+// secondaries at all, since DistributionShare didn't carry it. Any LP
+// holder with accrued demurrage caused permanent StateRoot divergence on
+// every single LP distribution. DistributeLPPool now returns DemurrageLost
+// per holder; this applies it via applyDemurrageLossLocked exactly like
+// ApplyValidatorRewardDelta already did for validator rewards.
 // The LP pool itself is zeroed by a separate "lp_distribution_pool_zero"
 // TX (see ApplyLPPoolZeroDelta).
-func (cs *ChainState) ApplyLPRewardDelta(wallet string, amount float64) error {
+func (cs *ChainState) ApplyLPRewardDelta(wallet string, amount, demurrageLost float64) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	wallet = strings.ToLower(wallet)
@@ -3255,6 +3336,7 @@ func (cs *ChainState) ApplyLPRewardDelta(wallet string, amount float64) error {
 		cs.accounts[wallet] = &AccountState{Address: wallet}
 	}
 	acc := cs.accounts[wallet]
+	cs.applyDemurrageLossLocked(acc, demurrageLost)
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
 	touchActivity(acc)
 	cs.enforceWealthCapLocked(acc)

@@ -396,23 +396,60 @@ func TestDistributeUBIPool_ReturnsAmountActuallyCredited(t *testing.T) {
 	addHuman(cs, "0x02", 0)
 	cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(100)}
 
-	amountPerHuman, totalHumans := cs.DistributeUBIPool()
+	shares := cs.DistributeUBIPool()
 
-	if totalHumans != 2 {
-		t.Fatalf("want totalHumans=2, got %d", totalHumans)
+	if len(shares) != 2 {
+		t.Fatalf("want 2 shares, got %d", len(shares))
 	}
-	if amountPerHuman != 50 {
-		t.Fatalf("want amountPerHuman=50, got %v", amountPerHuman)
+	got := map[string]float64{}
+	for _, s := range shares {
+		got[s.Wallet] = s.Amount
+	}
+	if got["0x01"] != 50 || got["0x02"] != 50 {
+		t.Errorf("want 0x01=50 0x02=50, got %v", got)
 	}
 	// The returned values must match what was ACTUALLY credited — this is
 	// the exact bug the audit flagged: main.go used to compute this number
 	// independently (reading the pool balance before calling this
 	// function), which could differ from what got applied here.
-	if cs.accounts["0x01"].Balance.Float() != amountPerHuman {
-		t.Errorf("returned amountPerHuman (%v) doesn't match actual credit (%v)", amountPerHuman, cs.accounts["0x01"].Balance.Float())
+	if cs.accounts["0x01"].Balance.Float() != got["0x01"] {
+		t.Errorf("returned amount (%v) doesn't match actual credit (%v)", got["0x01"], cs.accounts["0x01"].Balance.Float())
 	}
 	if cs.accounts[ubiPoolAddr].Balance.Float() != 0 {
 		t.Errorf("pool must be zeroed after distribution, got %v", cs.accounts[ubiPoolAddr].Balance.Float())
+	}
+}
+
+func TestApplyUBIRewardDelta_SettlesDemurrageThenCredits(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0xhuman", 100)
+
+	if err := cs.ApplyUBIRewardDelta("0xhuman", 50, 8); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cs.accounts["0xhuman"].Balance.Float() != 142 {
+		t.Errorf("want balance=142 (100-8+50), got %v", cs.accounts["0xhuman"].Balance.Float())
+	}
+}
+
+func TestApplyUBIRewardDelta_UnknownWallet_Errors(t *testing.T) {
+	cs := newTestState()
+	if err := cs.ApplyUBIRewardDelta("0xdoesnotexist", 50, 0); err == nil {
+		t.Fatal("expected error for unknown wallet, got nil")
+	}
+}
+
+func TestApplyUBIFinalizeDelta_ZeroesPool(t *testing.T) {
+	cs := newTestState()
+	cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr, Balance: NewDecimal(33)}
+
+	// setConfigValue/getConfigValue are no-ops without cs.db (newTestState
+	// has none) — this test only verifies the pool-zeroing half; last_ubi_at
+	// persistence is exercised against a real DB in production.
+	cs.ApplyUBIFinalizeDelta(123456789)
+
+	if cs.accounts[ubiPoolAddr].Balance.Float() != 0 {
+		t.Errorf("want pool zeroed, got %v", cs.accounts[ubiPoolAddr].Balance.Float())
 	}
 }
 
@@ -443,15 +480,16 @@ func TestDistributeLPPool_ReturnsSharesMatchingActualCredits(t *testing.T) {
 	}
 }
 
-func TestApplyLPRewardDelta_CreditsExactAmount(t *testing.T) {
+func TestApplyLPRewardDelta_SettlesDemurrageThenCredits(t *testing.T) {
 	cs := newTestState()
-	addHuman(cs, "0xholder", 5)
+	addHuman(cs, "0xholder", 100)
 
-	if err := cs.ApplyLPRewardDelta("0xholder", 10); err != nil {
+	// Primary settled 12 AEQ of demurrage loss before crediting a 10 AEQ reward.
+	if err := cs.ApplyLPRewardDelta("0xholder", 10, 12); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cs.accounts["0xholder"].Balance.Float() != 15 {
-		t.Errorf("want balance=15, got %v", cs.accounts["0xholder"].Balance.Float())
+	if cs.accounts["0xholder"].Balance.Float() != 98 {
+		t.Errorf("want balance=98 (100-12+10), got %v", cs.accounts["0xholder"].Balance.Float())
 	}
 }
 

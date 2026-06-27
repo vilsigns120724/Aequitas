@@ -215,17 +215,31 @@ fmt.Println("── Starting Daily Pool Distributions ───")
 // state, then ALSO replaying the one TX that existed (ubi_distribution)
 // on top — multiplying distribution by however many nodes are running.
 //
-// Fix: gate actual execution to exactly one deterministically-identified
-// node — the configured primary — using the SAME "do I have a
-// PRIMARY_NODE_URL pointing at someone else" heuristic already used by
-// StartPeerDiscovery (sync_blocks.go) to decide primary-vs-secondary
-// behavior for peer registration. Secondaries now NEVER run the
-// distribution functions themselves; they only ever replay the resulting
-// TXs from blocks. TryLockDistribution is kept as defense-in-depth on the
-// primary itself (e.g. against the goroutine somehow firing twice), not
-// as the cross-node mechanism.
+// FIX (P0, audit recheck 2 2026-06-27): the first fix gated execution to
+// "do I have a PRIMARY_NODE_URL pointing at someone else" — but that's
+// derived from two env vars that BOTH have silent, dangerous defaults:
+// SELF_URL defaults to "https://aequitas.digital" when unset (see above),
+// and an operator who simply forgets to set PRIMARY_NODE_URL on a
+// secondary gets primaryURL == "" — both cases make isPrimaryForDistribution
+// true on a node that is NOT supposed to distribute. A missing env var
+// must fail SAFE (no distribution) here, never fail DANGEROUS (duplicate
+// distribution) — exactly the failure class this whole fix exists to
+// eliminate. Require an explicit, single-purpose opt-in instead:
+// DISTRIBUTION_ENABLED=true, with no default and no derivation from any
+// other variable. Operators setting up a new node copy a documented
+// example that simply omits this var, so the safe behavior is also the
+// path of least resistance.
+distributionEnabled := os.Getenv("DISTRIBUTION_ENABLED") == "true"
 primaryURL := strings.TrimRight(keeper.NormalizeNodeURL(os.Getenv("PRIMARY_NODE_URL")), "/")
-isPrimaryForDistribution := primaryURL == "" || primaryURL == selfURL
+if distributionEnabled && primaryURL != "" && primaryURL != selfURL {
+	// Contradiction: this node both claims to run distribution AND points
+	// at a different node as its primary. Refuse rather than guess which
+	// setting the operator actually meant — this is exactly the kind of
+	// misconfiguration that caused duplicate distribution before.
+	fmt.Println("[POOLS] ✗ REFUSING to enable distribution: DISTRIBUTION_ENABLED=true but PRIMARY_NODE_URL points at a different node — this node has configured itself as both primary and secondary. Fix the env vars; distribution stays disabled until then.")
+	distributionEnabled = false
+}
+isPrimaryForDistribution := distributionEnabled
 // FIX 11: Create a cancellable context for the distribution goroutine so
 // it can be cleanly stopped on node shutdown.
 distCtx, distCancel := context.WithCancel(context.Background())
@@ -278,7 +292,11 @@ case <-time.After(time.Until(firstTarget)):
 // that was a critical bug. Secondaries fall straight to rescheduling
 // the next tick and rely entirely on replaying the TXs below.
 if !isPrimaryForDistribution {
-	fmt.Printf("[POOLS] Secondary node — distribution runs on the primary (%s) and is replayed via blocks, skipping local execution\n", primaryURL)
+	if primaryURL != "" {
+		fmt.Printf("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED not set) — runs on the primary (%s) and is replayed via blocks\n", primaryURL)
+	} else {
+		fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED not set) — set it on exactly one authorized node to run distribution")
+	}
 } else if chainState.TryLockDistribution() {
 	// emitTx persists durably (survives a crash before the next block is
 	// produced) and falls back to the in-memory queue only if that fails —
@@ -296,14 +314,26 @@ if !isPrimaryForDistribution {
 	// function's own demurrage-settlement pass, which can grow the pool,
 	// so the broadcast amount and the locally-applied amount used to be
 	// two different numbers (guaranteed StateRoot divergence).
-	amountPerHuman, totalHumans := chainState.DistributeUBIPool()
-	if totalHumans > 0 {
-		emitTx(keeper.Transaction{
-			Type:           "ubi_distribution",
-			Wallet:         "0x0000000000000000000000000000000000000000",
-			Amount:         amountPerHuman * float64(totalHumans),
-			AmountPerHuman: amountPerHuman,
-		})
+	//
+	// FIX (audit recheck 2, P0 #5+#4): one TX per human instead of a flat
+	// broadcast — each human's own DemurrageLost (settled on the primary
+	// before the equal split was computed) is now replayed exactly,
+	// instead of secondaries only ever applying the flat per-human credit
+	// with no demurrage counterpart. ubiAt is chosen ONCE here and used
+	// for both the primary's own immediate finalize call and the TX every
+	// secondary replays — not block.Timestamp (assigned later, whenever
+	// ProduceBlock's ticker next fires) and not each node's own
+	// time.Now() (the exact mismatch audit recheck 2 flagged as P0 #4).
+	ubiShares := chainState.DistributeUBIPool()
+	var ubiTotal float64
+	for _, s := range ubiShares {
+		emitTx(keeper.Transaction{Type: "ubi_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+		ubiTotal += s.Amount
+	}
+	if ubiTotal > 0 {
+		ubiAt := time.Now().Unix()
+		chainState.ApplyUBIFinalizeDelta(ubiAt)
+		emitTx(keeper.Transaction{Type: "ubi_distribution_finalize", DistributionAt: ubiAt})
 	}
 
 	// FIX (P0): validator/LP/escrow changes used to have NO replayable TX
@@ -324,7 +354,7 @@ if !isPrimaryForDistribution {
 
 	var lpTotal float64
 	for _, s := range chainState.DistributeLPPool() {
-		emitTx(keeper.Transaction{Type: "lp_distribution", Wallet: s.Wallet, Amount: s.Amount})
+		emitTx(keeper.Transaction{Type: "lp_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
 		lpTotal += s.Amount
 	}
 	if lpTotal > 0 {

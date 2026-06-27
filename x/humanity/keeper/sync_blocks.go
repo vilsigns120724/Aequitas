@@ -388,13 +388,13 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 // Environment variables:
 //   SELF_URL          — this node's own public URL (required for registration)
 //   PRIMARY_NODE_URL  — primary node to register with (omit on the primary itself).
-//                        Also gates daily pool distribution (UBI/validator/LP/
-//                        escrow, see main.go) to the primary only — secondaries
-//                        replay the resulting TXs instead of running it
-//                        themselves. Misconfiguring this on more than one node
-//                        (or omitting it on more than one) causes either
-//                        duplicate or missing distributions, not just a sync
-//                        quirk — set it deliberately.
+//                        Daily pool distribution (UBI/validator/LP/escrow, see
+//                        main.go) is gated separately by DISTRIBUTION_ENABLED,
+//                        NOT by this variable — a node missing PRIMARY_NODE_URL
+//                        used to silently self-identify as the distribution
+//                        authority, which is exactly the duplicate-distribution
+//                        failure class this whole mechanism exists to prevent.
+//                        Set DISTRIBUTION_ENABLED=true on exactly one node.
 //   PEER_NODES        — comma-separated static peer list (optional fallback)
 //
 // Flow for secondary nodes (Railway/VPS/self-hosted):

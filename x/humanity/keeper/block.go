@@ -38,6 +38,17 @@ type Transaction struct {
 	// StateRoot divergence identical in kind to the swap-fee bug fixed in 8e3f675.
 	FromDemurrageLost float64 `json:"from_demurrage_lost,omitempty"`
 	ToDemurrageLost   float64 `json:"to_demurrage_lost,omitempty"`
+	// DistributionAt carries the exact Unix timestamp the primary chose for
+	// a distribution round (e.g. the new last_ubi_at) on
+	// "ubi_distribution_finalize" TXs. Audit recheck 2 (P0 #4) found the
+	// primary used to call time.Now() directly inside DistributeUBIPool
+	// while secondaries replayed block.Timestamp instead — two different
+	// instants, guaranteeing a StateRoot mismatch on every UBI round even
+	// when every credited amount was correct. The primary now picks this
+	// value once and uses it for both its own immediate state and this
+	// field, so secondaries replay the IDENTICAL value instead of any
+	// wall-clock reading of their own.
+	DistributionAt int64 `json:"distribution_at,omitempty"`
 	TxHash          string  `json:"tx_hash"`
 	// Nullifier and Commitment are set on register_human TXs so secondary
 	// nodes can apply the registration to their local state when they receive
@@ -641,7 +652,7 @@ return false
 // inject unrecognised state-change commands into the audit log.
 for _, tx := range block.Transactions {
 switch tx.Type {
-case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution",
+case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution", "ubi_distribution_finalize",
 	"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release":
 // known / empty — OK
 default:
@@ -1075,13 +1086,29 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			fmt.Printf("[REPLAY] ✓ Applied faucet %.6f tUSD for %s (block #%d)\n", tx.Amount, wallet, block.Height)
 
 		case "ubi_distribution":
+			// FIX (audit recheck 2, P0 #5): main.go now emits ONE of these per
+			// human (Wallet set, AmountPerHuman omitted) instead of a single
+			// flat broadcast — see ApplyUBIRewardDelta's comment. The
+			// AmountPerHuman>0 branch below only fires for historical blocks
+			// produced by older node versions before this change; new blocks
+			// never set that field.
 			if tx.AmountPerHuman > 0 {
 				dag.state.ApplyUBIDelta(tx.AmountPerHuman, block.Timestamp)
-				fmt.Printf("[REPLAY] ✓ Applied UBI distribution %.6f AEQ/human (block #%d)\n", tx.AmountPerHuman, block.Height)
+				fmt.Printf("[REPLAY] ✓ Applied legacy flat UBI distribution %.6f AEQ/human (block #%d)\n", tx.AmountPerHuman, block.Height)
+			} else if wallet != "" && wallet != "0x0000000000000000000000000000000000000000" {
+				if err := dag.state.ApplyUBIRewardDelta(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
+					fmt.Printf("[REPLAY] ✗ ubi_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+					hardFailure = true
+					continue
+				}
+				fmt.Printf("[REPLAY] ✓ Applied UBI reward %.6f AEQ for %s (block #%d)\n", tx.Amount, wallet, block.Height)
 			} else {
-				// Legacy TX from an older node version — no AmountPerHuman stored.
-				fmt.Printf("[REPLAY] UBI distribution TX in block #%d — no amount_per_human field, skipping (old node format)\n", block.Height)
+				fmt.Printf("[REPLAY] ubi_distribution TX in block #%d has neither amount_per_human nor a wallet — skipping (malformed)\n", block.Height)
 			}
+
+		case "ubi_distribution_finalize":
+			dag.state.ApplyUBIFinalizeDelta(tx.DistributionAt)
+			fmt.Printf("[REPLAY] ✓ Finalized UBI round, last_ubi_at=%d (block #%d)\n", tx.DistributionAt, block.Height)
 
 		case "validator_distribution":
 			wallet := strings.ToLower(tx.Wallet)
@@ -1098,7 +1125,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 
 		case "lp_distribution":
 			wallet := strings.ToLower(tx.Wallet)
-			if err := dag.state.ApplyLPRewardDelta(wallet, tx.Amount); err != nil {
+			if err := dag.state.ApplyLPRewardDelta(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
 				fmt.Printf("[REPLAY] ✗ lp_distribution %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
 				hardFailure = true
 				continue
