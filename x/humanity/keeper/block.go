@@ -478,6 +478,19 @@ func (dag *BlockDAG) popOrphans(parentHash string) []*Block {
 	return waiting
 }
 
+// MissingParentHashes returns a snapshot of every hash currently blocking at
+// least one queued orphan. Used by fetchMissingAncestors (sync_blocks.go) to
+// know exactly which specific ancestor blocks to fetch by hash.
+func (dag *BlockDAG) MissingParentHashes() []string {
+	dag.orphansMu.Lock()
+	defer dag.orphansMu.Unlock()
+	hashes := make([]string, 0, len(dag.orphans))
+	for h := range dag.orphans {
+		hashes = append(hashes, h)
+	}
+	return hashes
+}
+
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 dag.mu.Lock()
 // NOTE: no defer — we manually unlock before the channel send below (Fix 2).
@@ -754,6 +767,16 @@ result = append(result, b)
 // P3-1: O(n log n) sort instead of O(n^2) bubble sort.
 sort.Slice(result, func(i, j int) bool { return result[i].Height < result[j].Height })
 return result
+}
+
+// GetBlockByHash returns the block with the given hash, or nil if unknown.
+// Used by /api/block/{hash} so a syncing peer can fetch one specific
+// missing-ancestor block directly instead of relying solely on the
+// height-windowed /api/blocks pagination (see fetchMissingAncestors).
+func (dag *BlockDAG) GetBlockByHash(hash string) *Block {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	return dag.blocks[hash]
 }
 
 func (dag *BlockDAG) TotalBlocks() int {

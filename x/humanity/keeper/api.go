@@ -123,6 +123,7 @@ func (a *APIServer) Start(port int) {
 	})
 	mux.HandleFunc("/api/status", a.handleStatus)
 	mux.HandleFunc("/api/blocks", a.handleBlocks)
+	mux.HandleFunc("/api/block", a.handleBlockByHash)
 	mux.HandleFunc("/api/humans", a.handleHumans)
 	mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 	mux.HandleFunc("/api/register", a.handleRegister)
@@ -315,6 +316,30 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 		offset = len(blocks)
 	}
 	json.NewEncoder(w).Encode(blocks[offset:end])
+}
+
+// handleBlockByHash serves GET /api/block?hash=0x... — a single block by
+// its exact hash, or 404. Used by fetchMissingAncestors (sync_blocks.go) to
+// resolve a specific missing-parent hash directly: /api/blocks' min_height
+// pagination only ever looks near the calling node's OWN current height,
+// so once a node's chain has drifted from a peer's by more than the sync
+// overlap window, the actual common-ancestor blocks it needs to bridge the
+// gap fall permanently outside that window and can never be fetched by
+// height alone. Fetching the exact hash sidesteps that entirely.
+func (a *APIServer) handleBlockByHash(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	hash := r.URL.Query().Get("hash")
+	if hash == "" {
+		http.Error(w, `{"error":"missing hash parameter"}`, http.StatusBadRequest)
+		return
+	}
+	block := a.blockchain.GetBlockByHash(hash)
+	if block == nil {
+		http.Error(w, `{"error":"block not found"}`, http.StatusNotFound)
+		return
+	}
+	json.NewEncoder(w).Encode(block)
 }
 
 func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {

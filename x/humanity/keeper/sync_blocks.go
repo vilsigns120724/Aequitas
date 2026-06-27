@@ -157,6 +157,78 @@ func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, limit int
 	return blocks, nil
 }
 
+// fetchBlockByHash fetches exactly one block by hash from nodeURL's
+// /api/block endpoint, or nil if the peer doesn't have it (404) / on error.
+func (dag *BlockDAG) fetchBlockByHash(nodeURL, hash string) (*Block, error) {
+	resp, err := httpSyncClient.Get(fmt.Sprintf("%s/api/block?hash=%s", nodeURL, hash))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var block Block
+	if err := json.Unmarshal(body, &block); err != nil {
+		return nil, err
+	}
+	return &block, nil
+}
+
+// fetchMissingAncestors resolves orphaned blocks by walking backward one
+// specific hash at a time, instead of waiting for them to fall inside
+// doSyncOnce's height-windowed (?min_height=) pagination.
+//
+// FIX: that height window only ever looks near THIS node's own current
+// frontier (dag.Height()-syncOverlap). Once a node's chain has drifted from
+// a peer's by more than the overlap window — which can start from any
+// transient gap, however brief — the actual common-ancestor blocks needed
+// to bridge the two chains permanently fall outside that window and are
+// never fetched again: every later block from that peer queues as an
+// orphan whose missing parent doSyncOnce will never ask for. Confirmed in
+// production: cd20 and a VPS secondary both briefly merged with the primary
+// right after first connecting (small gap, within the 20-block overlap),
+// then permanently regressed to fully isolated single-parent chains once
+// that gap — for whatever transient reason — exceeded 20 blocks. This walks
+// directly from "what hash is missing" instead of "what height window might
+// contain it", so it has no such ceiling: each resolved ancestor's own
+// AddPeerBlock call may reveal a further ancestor still missing, which gets
+// picked up on the next call here (capped at maxAncestorFetchPerCycle per
+// call to bound a single cycle's work, not the total depth reachable across
+// repeated calls). Re-snapshots the orphan set after each batch so a chain
+// of N missing ancestors in a row gets walked all the way back to a known
+// block within a single call, not one hop per call.
+func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
+	const maxAncestorFetchPerCycle = 200
+	fetched := 0
+	for fetched < maxAncestorFetchPerCycle {
+		hashes := dag.MissingParentHashes()
+		if len(hashes) == 0 {
+			return
+		}
+		progressed := false
+		for _, hash := range hashes {
+			if fetched >= maxAncestorFetchPerCycle {
+				break
+			}
+			if dag.GetBlockByHash(hash) != nil {
+				continue
+			}
+			block, err := dag.fetchBlockByHash(nodeURL, hash)
+			if err != nil || block == nil {
+				continue
+			}
+			fetched++
+			progressed = true
+			dag.AddPeerBlock(block)
+		}
+		if !progressed {
+			return // peer doesn't have any of these either — stop for this cycle
+		}
+	}
+}
+
 // doSyncOnce walks nodeURL's block history forward from our own current
 // height, fetching pageSize-sized pages until it catches up to the peer's
 // tip. Returns false on a network/decode error (used by syncWithNode to
@@ -249,6 +321,12 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		dag.mu.RUnlock()
 		fmt.Printf("[HTTP-SYNC] ✓ Added %d new blocks from %s | DAG tips: %d | height %d\n", totalAdded, nodeURL, tipCount, dag.Height())
 	}
+
+	// Resolve any orphans (this cycle's or earlier ones) by fetching their
+	// specific missing-parent hash directly — see fetchMissingAncestors for
+	// why the height-windowed pagination above can't reach them once the
+	// gap exceeds syncOverlap.
+	dag.fetchMissingAncestors(nodeURL)
 	return true
 }
 
