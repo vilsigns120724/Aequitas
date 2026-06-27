@@ -866,17 +866,39 @@ func (cs *ChainState) save() {
 	os.Rename(tmpPath, "/tmp/aequitas_state.json")
 }
 
-func (cs *ChainState) saveAccountToDB(acc *AccountState) {
+// saveAccountToDB persists acc and returns an error if it could not be
+// durably written after retries.
+//
+// FIX (audit3, P1 #4): this used to return nothing — a caller had no way
+// to know a write silently failed (DB error) or hit a version conflict
+// that exhausted all retries. runAtomicWithOutbox's fn() closures (and
+// the "...Locked" functions they call: transferLocked, swapLocked,
+// addLiquidityLocked, removeLiquidityLocked, claimTUsdFaucetLocked,
+// registerHumanLocked) now check this error and abort instead of
+// returning success while the underlying write never actually committed
+// — see each of those functions' updated saveAccountToDB call sites.
+// Call sites outside that atomic family (background EVM sync retries,
+// snapshot import, etc.) may still choose to log-and-continue by
+// discarding the returned error — Go allows ignoring it, and forcing
+// every one of this function's ~50 call sites to handle failure
+// identically would mean changing many call sites that were never
+// claiming atomicity in the first place, for no behavioral change (they
+// already only logged on failure).
+func (cs *ChainState) saveAccountToDB(acc *AccountState) error {
 	// P0-1: retry up to 3 times on optimistic-lock conflict so callers don't
 	// silently lose writes when two nodes update the same account concurrently.
+	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		prevVer := acc.Version
-		cs.saveAccountToDBInner(acc)
+		lastErr = cs.saveAccountToDBInner(acc)
+		if lastErr != nil {
+			return lastErr
+		}
 		if acc.Version != prevVer {
-			return
+			return nil
 		} // version incremented = success
 		if acc.Version == 0 {
-			return
+			return nil
 		} // new account (INSERT path)
 		// Conflict: reload from DB and retry with current state
 		if attempt < 2 {
@@ -898,12 +920,13 @@ func (cs *ChainState) saveAccountToDB(acc *AccountState) {
 			}
 		}
 	}
+	return fmt.Errorf("version conflict for account %s persisted after 3 attempts", acc.Address)
 }
 
-func (cs *ChainState) saveAccountToDBInner(acc *AccountState) {
+func (cs *ChainState) saveAccountToDBInner(acc *AccountState) error {
 	if !cs.useDB {
 		acc.Version++ // no-DB mode: mark as saved
-		return
+		return nil
 	}
 	var result sql.Result
 	var err error
@@ -931,16 +954,17 @@ WHERE address = $1 AND version = $9`,
 				cs.db.QueryRow(`SELECT version FROM chain_accounts WHERE lower(address) = $1`, acc.Address).Scan(&dbVer)
 				acc.Version = dbVer // resync in-memory; do NOT increment
 				fmt.Printf("[DB] Conflict: account %s modified by another node — local version reset to DB version %d\n", acc.Address, dbVer)
-				return // caller must decide whether to retry
+				return nil // caller must decide whether to retry
 			}
 		}
 	}
 	if err != nil {
 		fmt.Printf("[DB] Error saving account %s: %v\n", acc.Address, err)
-		return
+		return fmt.Errorf("could not save account %s: %w", acc.Address, err)
 	}
 	// P0-1 fix: only increment version after a confirmed successful write
 	acc.Version++
+	return nil
 }
 
 // Demurrage parameters. AEQ balances that haven't been touched (no
@@ -1741,7 +1765,9 @@ func (cs *ChainState) registerHumanLocked(address string) error {
 	cs.accounts[address].Balance = cs.accounts[address].Balance.Add(NewDecimal(1000))
 	touchActivity(cs.accounts[address]) // starts this 1,000 AEQ's own grace period fresh
 	cs.enforceWealthCapLocked(cs.accounts[address])
-	cs.saveAccountToDB(cs.accounts[address])
+	if err := cs.saveAccountToDB(cs.accounts[address]); err != nil {
+		return fmt.Errorf("could not save account: %w", err)
+	}
 	cs.save()
 
 	fmt.Printf("[STATE] ✓ Human registered: %s | Balance: %.2f AEQ\n",
@@ -1900,7 +1926,12 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 
 	fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - amount))
 	touchActivity(fromAcc) // sending counts as "using" the money — resets its decay clock
-	cs.saveAccountToDB(fromAcc)
+	// FIX (audit3, P1 #4): saveAccountToDB now returns an error — checked here
+	// so a DB failure aborts the transfer (causing runAtomicWithOutbox to roll
+	// back) instead of returning success while the debit was never persisted.
+	if err := cs.saveAccountToDB(fromAcc); err != nil {
+		return 0, 0, fmt.Errorf("could not save sender account: %w", err)
+	}
 
 	if _, ok := cs.accounts[to]; !ok {
 		cs.accounts[to] = &AccountState{Address: to}
@@ -1909,7 +1940,9 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 	cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + amount))
 	touchActivity(cs.accounts[to]) // receiving also resets the clock on the recipient's whole balance
 	cs.enforceWealthCapLocked(cs.accounts[to])
-	cs.saveAccountToDB(cs.accounts[to])
+	if err := cs.saveAccountToDB(cs.accounts[to]); err != nil {
+		return 0, 0, fmt.Errorf("could not save recipient account: %w", err)
+	}
 	cs.save()
 
 	fmt.Printf("[STATE] ✓ Transfer %.2f AEQ: %s → %s\n", amount, from, to)
@@ -1995,7 +2028,9 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 
 	fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - amount))
 	touchActivity(fromAcc)
-	cs.saveAccountToDB(fromAcc)
+	if err := cs.saveAccountToDB(fromAcc); err != nil {
+		return 0, 0, 0, fmt.Errorf("could not save sender account: %w", err)
+	}
 
 	if _, ok := cs.accounts[to]; !ok {
 		cs.accounts[to] = &AccountState{Address: to}
@@ -2004,14 +2039,18 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 	cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + netToRecipient))
 	touchActivity(cs.accounts[to])
 	cs.enforceWealthCapLocked(cs.accounts[to])
-	cs.saveAccountToDB(cs.accounts[to])
+	if err := cs.saveAccountToDB(cs.accounts[to]); err != nil {
+		return 0, 0, 0, fmt.Errorf("could not save recipient account: %w", err)
+	}
 
 	if ubiContrib > 0 {
 		if _, ok := cs.accounts[ubiPoolAddr]; !ok {
 			cs.accounts[ubiPoolAddr] = &AccountState{Address: ubiPoolAddr}
 		}
 		cs.accounts[ubiPoolAddr].Balance = cs.accounts[ubiPoolAddr].Balance.Add(NewDecimal(ubiContrib))
-		cs.saveAccountToDB(cs.accounts[ubiPoolAddr])
+		if err := cs.saveAccountToDB(cs.accounts[ubiPoolAddr]); err != nil {
+			return 0, 0, 0, fmt.Errorf("could not save UBI pool: %w", err)
+		}
 	}
 	cs.save()
 
@@ -2182,8 +2221,12 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 		cs.enforceWealthCapLocked(acc) // AEQ just arrived via this swap direction — check the cap
 	}
 
-	cs.saveAccountToDB(acc)
-	cs.savePoolToDB()
+	if err := cs.saveAccountToDB(acc); err != nil {
+		return 0, 0, fmt.Errorf("could not save account: %w", err)
+	}
+	if err := cs.savePoolToDB(); err != nil {
+		return 0, 0, fmt.Errorf("could not save pool: %w", err)
+	}
 	cs.distributeSwapFee(fee, aeqToTusd)
 	cs.save()
 
@@ -2202,9 +2245,12 @@ func sideLabel(aeqToTusd, isInput bool) string {
 	return "tUSD"
 }
 
-func (cs *ChainState) savePoolToDB() {
+// savePoolToDB persists cs.pool and returns an error on failure — see
+// saveAccountToDB's comment (audit3, P1 #4) for why this now returns
+// error and which callers are expected to actually check it.
+func (cs *ChainState) savePoolToDB() error {
 	if !cs.useDB || cs.pool == nil {
-		return
+		return nil
 	}
 	// FIX (atomic outbox): if runAtomicWithOutbox has an active transaction
 	// open for the current operation, use it directly instead of starting a
@@ -2219,8 +2265,9 @@ func (cs *ChainState) savePoolToDB() {
 		if _, err := cs.activeTx.Exec(`UPDATE liquidity_pool SET reserve_aeq = $1, reserve_tusd = $2, total_lp_shares = $3 WHERE id = 1`,
 			cs.pool.ReserveAEQ.Float(), cs.pool.ReserveTUSD.Float(), cs.pool.TotalLPShares.Float()); err != nil {
 			fmt.Printf("[DB] Error saving pool inside active transaction: %v\n", err)
+			return fmt.Errorf("could not save pool inside active transaction: %w", err)
 		}
-		return
+		return nil
 	}
 	// Use a transaction so concurrent pool writes are serialized at the DB level.
 	// This prevents two nodes from simultaneously distributing UBI or running swaps
@@ -2228,7 +2275,7 @@ func (cs *ChainState) savePoolToDB() {
 	tx, err := cs.db.Begin()
 	if err != nil {
 		fmt.Printf("[DB] Error starting pool tx: %v\n", err)
-		return
+		return fmt.Errorf("could not start pool tx: %w", err)
 	}
 	// Lock the pool row for this transaction (other writers block until we commit)
 	var dummy int
@@ -2238,11 +2285,13 @@ func (cs *ChainState) savePoolToDB() {
 	if err != nil {
 		tx.Rollback()
 		fmt.Printf("[DB] Error saving pool: %v\n", err)
-		return
+		return fmt.Errorf("could not save pool: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		fmt.Printf("[DB] Error committing pool: %v\n", err)
+		return fmt.Errorf("could not commit pool tx: %w", err)
 	}
+	return nil
 }
 
 // reloadPoolFromDB loads the current pool state from PostgreSQL with SELECT FOR UPDATE
@@ -2413,8 +2462,12 @@ func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD f
 	cs.pool.ReserveTUSD = NewDecimal(round6(cs.pool.ReserveTUSD.Float() + amountTUSD))
 	cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() + mintedShares))
 
-	cs.saveAccountToDB(acc)
-	cs.savePoolToDB()
+	if err := cs.saveAccountToDB(acc); err != nil {
+		return 0, fmt.Errorf("could not save account: %w", err)
+	}
+	if err := cs.savePoolToDB(); err != nil {
+		return 0, fmt.Errorf("could not save pool: %w", err)
+	}
 	cs.save()
 
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
@@ -2497,8 +2550,12 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 			cs.pool.ReserveAEQ = NewDecimal(0)
 			cs.pool.ReserveTUSD = NewDecimal(0)
 			cs.pool.TotalLPShares = NewDecimal(0)
-			cs.saveAccountToDB(acc)
-			cs.savePoolToDB()
+			if err := cs.saveAccountToDB(acc); err != nil {
+				return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
+			}
+			if err := cs.savePoolToDB(); err != nil {
+				return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
+			}
 			cs.save()
 			cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
 			go cs.SavePriceSnapshot()
@@ -2552,8 +2609,12 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 		cs.pool.ReserveAEQ = NewDecimal(newResAEQ17)
 		cs.pool.ReserveTUSD = NewDecimal(newResTUSD17)
 		cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
-		cs.saveAccountToDB(acc)
-		cs.savePoolToDB()
+		if err := cs.saveAccountToDB(acc); err != nil {
+			return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
+		}
+		if err := cs.savePoolToDB(); err != nil {
+			return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
+		}
 		cs.save()
 		cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
 		go cs.SavePriceSnapshot()
@@ -2591,8 +2652,12 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 	cs.pool.ReserveTUSD = NewDecimal(newReserveTUSD)
 	cs.pool.TotalLPShares = NewDecimal(round6(cs.pool.TotalLPShares.Float() - sharesToBurn))
 
-	cs.saveAccountToDB(acc)
-	cs.savePoolToDB()
+	if err := cs.saveAccountToDB(acc); err != nil {
+		return 0, 0, 0, fmt.Errorf("could not save account: %w", err)
+	}
+	if err := cs.savePoolToDB(); err != nil {
+		return 0, 0, 0, fmt.Errorf("could not save pool: %w", err)
+	}
 	cs.save()
 
 	cs.syncBalanceLocked(V7_CONTRACT_ADDR, address)
@@ -2720,7 +2785,9 @@ func (cs *ChainState) claimTUsdFaucetLocked(address string) error {
 	// received tUSD via another path (pool payout, migration) before claiming the
 	// faucet would have had their entire tUSD balance zeroed by the old Set.
 	acc.TUsdBalance = acc.TUsdBalance.Add(NewDecimal(tusdFaucetAmount))
-	cs.saveAccountToDB(acc)
+	if err := cs.saveAccountToDB(acc); err != nil {
+		return fmt.Errorf("could not save account: %w", err)
+	}
 	cs.save()
 
 	fmt.Printf("[FAUCET] ✓ %s claimed %.2f test-tUSD\n", address, tusdFaucetAmount)
@@ -2907,7 +2974,26 @@ type accountSnapshot struct {
 type blockRollbackSnapshot struct {
 	accounts []accountSnapshot
 	pool     *PoolState // nil if cs.pool was nil
+	// chainConfig captures StateRoot-relevant chain_config keys (currently
+	// just last_ubi_at — see StateRoot's getConfigValue("last_ubi_at") call)
+	// before a block's transactions are replayed.
+	//
+	// FIX (audit3, P0 #2): this used to be entirely absent. ApplyUBIFinalizeDelta
+	// writes last_ubi_at directly via setConfigValue — bypassing
+	// cs.accounts/cs.pool entirely, so it was invisible to this rollback
+	// mechanism. If a block contains ubi_distribution_finalize AND a LATER
+	// transaction in that same block then genuinely hard-fails (or the
+	// post-replay StateRoot check itself fails), restoreFromRollback reverted
+	// accounts/pool but left last_ubi_at changed — a rejected block could
+	// permanently mutate a StateRoot-relevant value anyway, a real consensus
+	// bug independent of whether any TX actually committed.
+	chainConfig map[string]string
 }
+
+// stateRootRelevantConfigKeys lists every chain_config key StateRoot()
+// reads. Kept as a single list so snapshotForRollback/restoreFromRollback
+// can't drift out of sync with StateRoot as new keys are added there.
+var stateRootRelevantConfigKeys = []string{"last_ubi_at"}
 
 // blockTouchedAddresses returns the wallets a block's transactions can
 // mutate, and whether a full-account snapshot is needed instead. A
@@ -2942,6 +3028,14 @@ func blockTouchedAddresses(block *Block) (addrs []string, needsFullSnapshot bool
 // snapshotForRollback captures the current state of the given addresses
 // plus the liquidity pool, before a block's transactions are replayed.
 func (cs *ChainState) snapshotForRollback(addrs []string, full bool) *blockRollbackSnapshot {
+	// Read StateRoot-relevant config BEFORE acquiring cs.mu — getConfigValue
+	// does a blocking DB query, and StateRoot() itself already established
+	// the pattern of never holding cs.mu across one (see its own
+	// last_ubi_at read and P1-1 comment).
+	chainConfig := make(map[string]string, len(stateRootRelevantConfigKeys))
+	for _, key := range stateRootRelevantConfigKeys {
+		chainConfig[key] = cs.getConfigValue(key)
+	}
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 	snap := &blockRollbackSnapshot{}
@@ -2982,6 +3076,7 @@ func (cs *ChainState) snapshotForRollback(addrs []string, full bool) *blockRollb
 		poolCopy := *cs.pool
 		snap.pool = &poolCopy
 	}
+	snap.chainConfig = chainConfig
 	return snap
 }
 
@@ -3030,6 +3125,18 @@ func (cs *ChainState) restoreFromRollback(snap *blockRollbackSnapshot) {
 				fmt.Printf("[ROLLBACK] Warning: could not delete rolled-back account %s: %v\n", addr, err)
 			}
 		}
+	}
+	// FIX (audit3, P0 #2): restore StateRoot-relevant chain_config too — see
+	// blockRollbackSnapshot.chainConfig's comment. Done outside cs.mu (already
+	// released above) since setConfigValue does its own blocking DB I/O.
+	for key, value := range snap.chainConfig {
+		if value == "" {
+			// Key didn't exist before this block — nothing meaningful to
+			// restore it to (chain_config has no DELETE helper, and an empty
+			// string is what getConfigValue already returns for "missing").
+			continue
+		}
+		cs.setConfigValue(key, value)
 	}
 }
 
