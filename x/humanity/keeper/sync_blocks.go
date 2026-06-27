@@ -221,6 +221,57 @@ func (dag *BlockDAG) fetchBlockByHash(nodeURL, hash string) (*Block, error) {
 // repeated calls). Re-snapshots the orphan set after each batch so a chain
 // of N missing ancestors in a row gets walked all the way back to a known
 // block within a single call, not one hop per call.
+// triggerOrphanResolve runs fetchMissingAncestors against every peer this
+// node is currently syncing with, in parallel, right now — instead of
+// waiting for each peer's own up-to-6s syncWithNode ticker to come around.
+//
+// Coordination: at most one resolve pass runs at a time (orphanResolveInFlight),
+// since concurrent passes would just duplicate the same peer requests. If a
+// new orphan triggers this while a pass is already running, that arrival is
+// recorded (orphanResolveAgain) and the in-flight pass loops once more
+// immediately after finishing — so a burst of orphans arriving faster than
+// one pass can complete still gets a fresh attempt covering all of them,
+// rather than silently relying on the next periodic tick.
+func (dag *BlockDAG) triggerOrphanResolve() {
+	dag.orphanResolveMu.Lock()
+	if dag.orphanResolveInFlight {
+		dag.orphanResolveAgain = true
+		dag.orphanResolveMu.Unlock()
+		return
+	}
+	dag.orphanResolveInFlight = true
+	dag.orphanResolveMu.Unlock()
+
+	for {
+		dag.syncPeerMu.Lock()
+		peers := make([]string, 0, len(dag.activeSyncPeers))
+		for p := range dag.activeSyncPeers {
+			peers = append(peers, p)
+		}
+		dag.syncPeerMu.Unlock()
+
+		var wg sync.WaitGroup
+		for _, peerURL := range peers {
+			wg.Add(1)
+			go func(p string) {
+				defer wg.Done()
+				dag.fetchMissingAncestors(p)
+			}(peerURL)
+		}
+		wg.Wait()
+
+		dag.orphanResolveMu.Lock()
+		if !dag.orphanResolveAgain {
+			dag.orphanResolveInFlight = false
+			dag.orphanResolveMu.Unlock()
+			return
+		}
+		dag.orphanResolveAgain = false
+		dag.orphanResolveMu.Unlock()
+		// loop again — another orphan arrived mid-pass
+	}
+}
+
 func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 	const maxAncestorFetchPerCycle = 200
 	fetched := 0

@@ -134,6 +134,13 @@ stateRootMismatches map[string]int // FIX 4: per-proposer StateRoot mismatch cou
 	// silently dropped forever, along with everything built on top of it.
 	orphans   map[string][]*Block
 	orphansMu sync.Mutex
+	// orphanResolveInFlight/orphanResolveAgain coordinate triggerOrphanResolve
+	// (sync_blocks.go): at most one resolution pass runs at a time, and if a
+	// new orphan arrives while one is running, exactly one more pass runs
+	// immediately after instead of being dropped — see triggerOrphanResolve.
+	orphanResolveInFlight bool
+	orphanResolveAgain    bool
+	orphanResolveMu       sync.Mutex
 }
 
 
@@ -538,6 +545,19 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 	dag.orphans[missingParent] = append(dag.orphans[missingParent], block)
 	fmt.Printf("[DAG] ⏳ Block #%d from %s queued as orphan — missing parent %s... (%d block(s) now waiting on it)\n",
 		block.Height, block.Proposer, missingParent[:min(16, len(missingParent))], len(dag.orphans[missingParent]))
+
+	// FIX (the actual completion of the orphan-buffer mitigation, not just a
+	// bigger cap): before this, a newly queued orphan sat untouched until the
+	// next periodic syncWithNode tick — up to 6s later, PER peer, and only
+	// one peer's fetchMissingAncestors ran per tick. Under sustained load
+	// (multiple validators producing every ~6s while a node is still deep in
+	// catch-up) new orphans can arrive faster than that cadence drains them,
+	// which is exactly how the buffer reached its cap in production. Kicking
+	// off resolution immediately, against every currently-syncing peer in
+	// parallel, the instant a gap is detected — instead of waiting for the
+	// next tick — closes that race instead of just buying more headroom
+	// before it recurs.
+	go dag.triggerOrphanResolve()
 }
 
 // popOrphans returns and removes every block that was waiting on parentHash.
