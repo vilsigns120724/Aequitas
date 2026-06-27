@@ -344,6 +344,16 @@ contract AequitasV7 {
         if (escrowOf[human] > 0) {
             uint256 amount = escrowOf[human];
             escrowOf[human] = 0;
+            // FIX: lastDemurrage was never reset on escrow release. Without
+            // this, the very next _applyDemurrage(human) call computes
+            // elapsed = block.timestamp - lastDemurrage[human] over the ENTIRE
+            // span since before the account went inactive (inactivity period
+            // + up to 1.5 years in escrow) — easily years. The resulting fee
+            // is capped at the full excess-over-fairShare(), so the recovering
+            // human's balance (their returned escrow + wake-up bonus) would
+            // be taxed down to fairShare() almost immediately, defeating the
+            // entire point of the wake-up incentive below.
+            lastDemurrage[human] = block.timestamp;
             uint256 fs = fairShare();
             // NOTE (FIX 5 / FIX 9): When recovering from escrow, the human receives their
             // escrowed amount PLUS one fairShare() of newly minted AEQ as an incentive to
