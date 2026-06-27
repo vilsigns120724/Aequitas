@@ -77,13 +77,34 @@ func isValidWalletAddr(addr string) bool {
 	return true
 }
 
-const defaultProofServerURL = "https://aequitas-proof-server-production.up.railway.app"
-
+// FIX (audit recheck2, P2 #1): this used to fall back to a specific,
+// hardcoded Railway URL (the project's own original deployment) whenever
+// PROOF_SERVER_URL was unset. For a project whose whole point is letting
+// independent operators run their own node, silently routing proof
+// requests — and CHAIN_SERVICE_TOKEN, via addProofServerAuth — to a
+// specific third party's infrastructure on a misconfiguration is exactly
+// backwards: it should fail loudly and locally, not succeed quietly
+// against someone else's server. proofServerBaseURL now returns "" if
+// unset; every caller below checks that explicitly via
+// requireProofServerConfigured instead of building a request against an
+// empty/wrong base URL.
 func proofServerBaseURL() string {
-	if proofBase := strings.TrimRight(os.Getenv("PROOF_SERVER_URL"), "/"); proofBase != "" {
-		return proofBase
+	return strings.TrimRight(os.Getenv("PROOF_SERVER_URL"), "/")
+}
+
+// requireProofServerConfigured writes a clear 503 and returns ok=false if
+// PROOF_SERVER_URL isn't set, so callers can bail out before constructing a
+// request against an empty base URL (http.NewRequest with a schemeless,
+// hostless URL like "/prove" fails, and the discarded error from that would
+// otherwise nil-panic on the very next line that sets a header on the
+// request).
+func requireProofServerConfigured(w http.ResponseWriter) (string, bool) {
+	base := proofServerBaseURL()
+	if base == "" {
+		http.Error(w, `{"error":"PROOF_SERVER_URL not configured on this node"}`, 503)
+		return "", false
 	}
-	return defaultProofServerURL
+	return base, true
 }
 
 func addProofServerAuth(req *http.Request) {
@@ -94,8 +115,13 @@ func addProofServerAuth(req *http.Request) {
 
 func (a *APIServer) syncProofServerStatus() {
 	for {
+		base := proofServerBaseURL()
+		if base == "" {
+			time.Sleep(30 * time.Second)
+			continue
+		}
 		proofHTTP := &http.Client{Timeout: 8 * time.Second}
-		resp, err := proofHTTP.Get(proofServerBaseURL() + "/health")
+		resp, err := proofHTTP.Get(base + "/health")
 		if err == nil {
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
@@ -386,8 +412,12 @@ func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {
 func (a *APIServer) handleSepoliaHumans(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	base, ok := requireProofServerConfigured(w)
+	if !ok {
+		return
+	}
 	proofHTTP2 := &http.Client{Timeout: 8 * time.Second}
-	proofReq, _ := http.NewRequest("GET", proofServerBaseURL()+"/humans", nil)
+	proofReq, _ := http.NewRequest("GET", base+"/humans", nil)
 	addProofServerAuth(proofReq)
 	resp, err := proofHTTP2.Do(proofReq)
 	if err != nil {
@@ -1176,10 +1206,14 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"read error"}`, 500)
 		return
 	}
+	base, ok := requireProofServerConfigured(w)
+	if !ok {
+		return
+	}
 	// Add CHAIN_SERVICE_TOKEN so the proof server's auth check passes.
 	// The token lives only in the chain node's env var and is never exposed to
 	// browser clients — the proxy is the sole caller of the proof server.
-	proofReq, _ := http.NewRequest("POST", proofServerBaseURL()+"/prove", bytes.NewReader(body))
+	proofReq, _ := http.NewRequest("POST", base+"/prove", bytes.NewReader(body))
 	proofReq.Header.Set("Content-Type", "application/json")
 	addProofServerAuth(proofReq)
 	resp, err := (&http.Client{Timeout: 120 * time.Second}).Do(proofReq)
@@ -1204,7 +1238,11 @@ func (a *APIServer) handleProveGetProxy(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, `{"error":"invalid proof id"}`, 400)
 		return
 	}
-	getReq, _ := http.NewRequest("GET", proofServerBaseURL()+"/get/"+id, nil)
+	base, ok := requireProofServerConfigured(w)
+	if !ok {
+		return
+	}
+	getReq, _ := http.NewRequest("GET", base+"/get/"+id, nil)
 	addProofServerAuth(getReq)
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(getReq)
 	if err != nil {
@@ -1236,7 +1274,11 @@ func (a *APIServer) handleProofCheckProxy(w http.ResponseWriter, r *http.Request
 		http.Error(w, `{"error":"read error"}`, 500)
 		return
 	}
-	proofReq, _ := http.NewRequest("POST", proofServerBaseURL()+"/check", bytes.NewReader(body))
+	base, ok := requireProofServerConfigured(w)
+	if !ok {
+		return
+	}
+	proofReq, _ := http.NewRequest("POST", base+"/check", bytes.NewReader(body))
 	proofReq.Header.Set("Content-Type", "application/json")
 	addProofServerAuth(proofReq)
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(proofReq)

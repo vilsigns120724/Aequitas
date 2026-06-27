@@ -691,9 +691,15 @@ func computeBioHashKeyFromBioHash(bioHash string) (string, error) {
 // Requires PROOF_SERVER_URL and CHAIN_SERVICE_TOKEN env vars on the chain node;
 // if either is missing the call is skipped silently (registration already succeeded).
 func notifyProofServer(bioHashKey, wallet string) {
+	// FIX (audit recheck2, P2 #1): used to fall back to this project's own
+	// original Railway URL when PROOF_SERVER_URL was unset — see api.go's
+	// proofServerBaseURL comment for why that's backwards for a
+	// decentralized-operator project. If unset, skip exactly like the
+	// existing "missing CHAIN_SERVICE_TOKEN" skip below already does
+	// (registration already succeeded; this notify is best-effort sync).
 	proofServerURL := os.Getenv("PROOF_SERVER_URL")
 	if proofServerURL == "" {
-		proofServerURL = "https://aequitas-proof-server-production.up.railway.app"
+		return
 	}
 	token := os.Getenv("CHAIN_SERVICE_TOKEN")
 	if token == "" {

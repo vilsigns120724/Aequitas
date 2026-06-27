@@ -24,7 +24,6 @@ VERSION       = "v0.3.0"
 // addresses here; a previous version of this file had a stale CONTRACT_V6
 // and BIO_VERIFIER value that didn't match what was actually deployed and
 // was never even referenced anywhere in this file.
-PROOF_SERVER  = "https://aequitas-proof-server-production.up.railway.app"
 INITIAL_GRANT = 1000
 CHAIN_ID      = "aequitas-1"
 BLOCK_TIME    = 6 * time.Second
