@@ -272,3 +272,118 @@ func TestEnforceWealthCap_PoolAddresses_Exempt(t *testing.T) {
 		t.Errorf("pool address must be exempt from cap, balance changed to %v", acc.Balance.Float())
 	}
 }
+
+// --- Delta functions: fail-clean on insufficient balance (no partial mutation) ---
+
+func TestApplyTransferDelta_InsufficientAfterDemurrage_NoMutation(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0xfrom", 100)
+	addHuman(cs, "0xto", 0)
+	// Demurrage decay of 95 leaves only 5 available — insufficient for a 10 transfer.
+	err := cs.ApplyTransferDelta("0xfrom", "0xto", 10, 95, 0)
+	if err == nil {
+		t.Fatal("expected insufficient-balance error, got nil")
+	}
+	if cs.accounts["0xfrom"].Balance.Float() != 100 {
+		t.Errorf("sender balance must be unchanged on failure, got %v", cs.accounts["0xfrom"].Balance.Float())
+	}
+	if cs.accounts["0xto"].Balance.Float() != 0 {
+		t.Errorf("recipient balance must be unchanged on failure, got %v", cs.accounts["0xto"].Balance.Float())
+	}
+	for _, addr := range []string{validatorsPoolAddr, lpPoolAddr, ubiPoolAddr, treasuryPoolAddr} {
+		if acc, ok := cs.accounts[addr]; ok && acc.Balance.Float() != 0 {
+			t.Errorf("pool %s must not be credited when the transfer fails, got %v", addr, acc.Balance.Float())
+		}
+	}
+}
+
+func TestApplySwapDelta_InsufficientAfterDemurrage_NoMutation(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0xswapper", 100)
+	err := cs.ApplySwapDelta("0xswapper", 10, 5, true, 95)
+	if err == nil {
+		t.Fatal("expected insufficient-balance error, got nil")
+	}
+	if cs.accounts["0xswapper"].Balance.Float() != 100 {
+		t.Errorf("balance must be unchanged on failure, got %v", cs.accounts["0xswapper"].Balance.Float())
+	}
+	if cs.accounts["0xswapper"].TUsdBalance.Float() != 0 {
+		t.Errorf("tUSD balance must be unchanged on failure, got %v", cs.accounts["0xswapper"].TUsdBalance.Float())
+	}
+}
+
+func TestAddLiquidityDelta_InsufficientAfterDemurrage_NoMutation(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0xlp", 100)
+	err := cs.AddLiquidityDelta("0xlp", 10, 10, 0, 95)
+	if err == nil {
+		t.Fatal("expected insufficient-balance error, got nil")
+	}
+	if cs.accounts["0xlp"].Balance.Float() != 100 {
+		t.Errorf("balance must be unchanged on failure, got %v", cs.accounts["0xlp"].Balance.Float())
+	}
+	if cs.pool.ReserveAEQ.Float() != 0 {
+		t.Errorf("pool reserves must be unchanged on failure, got %v", cs.pool.ReserveAEQ.Float())
+	}
+}
+
+// --- Block-level rollback snapshot/restore ---
+
+func TestSnapshotRestoreRollback_RevertsExistingAccountAndPool(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0xa", 1000)
+	cs.pool.ReserveAEQ = NewDecimal(500)
+	cs.pool.ReserveTUSD = NewDecimal(500)
+
+	snap := cs.snapshotForRollback([]string{"0xa"}, false)
+
+	// Mutate as if a TX had partially applied.
+	cs.accounts["0xa"].Balance = NewDecimal(1)
+	cs.pool.ReserveAEQ = NewDecimal(999999)
+
+	cs.restoreFromRollback(snap)
+
+	if cs.accounts["0xa"].Balance.Float() != 1000 {
+		t.Errorf("account balance not restored: got %v, want 1000", cs.accounts["0xa"].Balance.Float())
+	}
+	if cs.pool.ReserveAEQ.Float() != 500 {
+		t.Errorf("pool reserve not restored: got %v, want 500", cs.pool.ReserveAEQ.Float())
+	}
+}
+
+func TestSnapshotRestoreRollback_RemovesAccountCreatedDuringBlock(t *testing.T) {
+	cs := newTestState()
+	// "0xnew" does not exist yet at snapshot time.
+	snap := cs.snapshotForRollback([]string{"0xnew"}, false)
+
+	// Simulate a transfer creating the recipient mid-block.
+	cs.accounts["0xnew"] = &AccountState{Address: "0xnew", Balance: NewDecimal(50)}
+
+	cs.restoreFromRollback(snap)
+
+	if _, exists := cs.accounts["0xnew"]; exists {
+		t.Error("account created during a rolled-back block must be removed, but still exists")
+	}
+}
+
+func TestSnapshotRestoreRollback_FullSnapshotCoversAllAccounts(t *testing.T) {
+	cs := newTestState()
+	addHuman(cs, "0x01", 1000)
+	addHuman(cs, "0x02", 1000)
+
+	// full=true (the ubi_distribution case) must capture every account,
+	// not just ones explicitly named.
+	snap := cs.snapshotForRollback(nil, true)
+
+	cs.accounts["0x01"].Balance = NewDecimal(5000)
+	cs.accounts["0x02"].Balance = NewDecimal(5000)
+
+	cs.restoreFromRollback(snap)
+
+	if cs.accounts["0x01"].Balance.Float() != 1000 {
+		t.Errorf("0x01 not restored under full snapshot: got %v", cs.accounts["0x01"].Balance.Float())
+	}
+	if cs.accounts["0x02"].Balance.Float() != 1000 {
+		t.Errorf("0x02 not restored under full snapshot: got %v", cs.accounts["0x02"].Balance.Float())
+	}
+}

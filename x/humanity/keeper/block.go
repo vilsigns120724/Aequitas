@@ -663,8 +663,20 @@ dag.mu.Unlock()
 // instead of dropping, and replayTransactions' own dedup guard makes that
 // safe even under concurrent delivery of the same block).
 dag.replayMu.Lock()
-dag.replayTransactions(block)
+replayOK := dag.replayTransactions(block)
 dag.replayMu.Unlock()
+
+// FIX (block-level atomicity): replayTransactions now rolls back and
+// returns false if any of this block's transactions hit a genuine
+// state-inconsistency failure (not an expected idempotent skip like
+// "already registered") — see its own comment. Treat that exactly like
+// any other validation failure: the block is rejected outright, never
+// inserted into dag.blocks/dag.tips. A later sync cycle or orphan-retry
+// may succeed once local state has caught up with whatever caused the
+// mismatch.
+if !replayOK {
+	return false
+}
 
 // State-root integrity check — now comparing the RECEIVER's post-replay
 // state against the PRODUCER's post-state, the comparison it was always
@@ -829,23 +841,46 @@ return tips
 // rather than re-running business logic. This avoids divergence from
 // pool-state differences, floating-point order sensitivity, and
 // demurrage timing differences between nodes.
-func (dag *BlockDAG) replayTransactions(block *Block) {
+// replayTransactions applies block's transactions to local state and
+// returns false if the block was rolled back due to a genuine
+// state-inconsistency failure (and should therefore NOT be considered
+// applied — see AddPeerBlock, which rejects the whole block in that case).
+//
+// FIX (block-level atomicity): this used to apply each TX with continue-on-
+// error and no way to undo TXs that had already succeeded earlier in the
+// SAME block. A block with TX1 (succeeds) and TX2 (genuinely fails —
+// insufficient balance, missing account; NOT an expected idempotent skip
+// like "already registered") ended up partially applied: this node's state
+// reflected less than what the producer's block.StateRoot was computed
+// against. Money-moving TX types (transfer/swap/add_liquidity/
+// remove_liquidity/faucet) now snapshot the touched accounts + pool before
+// replay and roll back to that snapshot if any of them hits a genuine
+// failure, so a failed block changes nothing instead of changing some of
+// what it intended to. register_human's existing per-TX skip conditions
+// (already registered, invalid proof, malformed data) are deliberately
+// NOT treated as block-wide failures — those are intentional content
+// rejections, not signs of state divergence, and were already
+// self-consistent (TryClaimNullifier/ReleaseNullifier are already a
+// correctly paired claim/release).
+func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	// Fix 4: Deduplication guard — if this block has already been replayed,
 	// skip it. Prevents double-credits when a block is delivered more than once.
 	dag.replayedMu.Lock()
 	if dag.replayedBlocks[block.Hash] {
 		dag.replayedMu.Unlock()
-		return // already replayed
+		return true // already successfully replayed
 	}
-	// FIX 1: Cap the cache to prevent unbounded growth (memory leak).
-	// dag.blocks is the authoritative deduplication store; this is a fast-path cache.
-	if len(dag.replayedBlocks) > 50000 {
-		dag.replayedBlocks = make(map[string]bool, 1000)
-	}
-	dag.replayedBlocks[block.Hash] = true
 	dag.replayedMu.Unlock()
 
+	touchedAddrs, needsFullSnapshot := blockTouchedAddresses(block)
+	rollbackSnap := dag.state.snapshotForRollback(touchedAddrs, needsFullSnapshot)
+	hardFailure := false
+	var claimedNullifiers []string
+
 	for _, tx := range block.Transactions {
+		if hardFailure {
+			break // stop applying further TXs once we know this block is being rolled back
+		}
 		wallet := strings.ToLower(strings.TrimSpace(tx.Wallet))
 		switch tx.Type {
 
@@ -901,6 +936,13 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				fmt.Printf("[REPLAY] ✗ RegisterHuman %s: %v (nullifier released, balance NOT credited)\n", wallet, err)
 				continue
 			}
+			// Track this claim so it can be released too if a LATER TX in
+			// this same block hard-fails and the whole block gets rolled
+			// back — the account-balance/IsHuman side of this registration
+			// is already covered by rollbackSnap (this wallet is in
+			// blockTouchedAddresses via tx.Wallet), but cs.nullifiers is a
+			// separate map the account snapshot doesn't touch.
+			claimedNullifiers = append(claimedNullifiers, nullifier)
 			if commitment != "" {
 				_ = dag.state.SaveBioRegistration(commitment, wallet, tx.TxHash, "")
 			}
@@ -913,7 +955,8 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				continue
 			}
 			if err := dag.state.ApplyTransferDelta(wallet, to, tx.Amount, tx.FromDemurrageLost, tx.ToDemurrageLost); err != nil {
-				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d)\n", wallet, to, tx.Amount, err, block.Height)
+				fmt.Printf("[REPLAY] ✗ Transfer %s->%s %.6f: %v (block #%d) — rolling back whole block\n", wallet, to, tx.Amount, err, block.Height)
+				hardFailure = true
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ Applied transfer %.6f AEQ: %s->%s (block #%d)\n", tx.Amount, wallet, to, block.Height)
@@ -924,7 +967,8 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				continue
 			}
 			if err := dag.state.ApplySwapDelta(wallet, tx.Amount, tx.AmountOut, true, tx.FromDemurrageLost); err != nil {
-				fmt.Printf("[REPLAY] ✗ swap_aeq_tusd %s: %v (block #%d)\n", wallet, err, block.Height)
+				fmt.Printf("[REPLAY] ✗ swap_aeq_tusd %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ Applied swap_aeq_tusd %.6f AEQ->%.6f tUSD for %s (block #%d)\n", tx.Amount, tx.AmountOut, wallet, block.Height)
@@ -935,7 +979,8 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				continue
 			}
 			if err := dag.state.ApplySwapDelta(wallet, tx.Amount, tx.AmountOut, false, tx.FromDemurrageLost); err != nil {
-				fmt.Printf("[REPLAY] ✗ swap_tusd_aeq %s: %v (block #%d)\n", wallet, err, block.Height)
+				fmt.Printf("[REPLAY] ✗ swap_tusd_aeq %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ Applied swap_tusd_aeq %.6f tUSD->%.6f AEQ for %s (block #%d)\n", tx.Amount, tx.AmountOut, wallet, block.Height)
@@ -946,7 +991,8 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				continue
 			}
 			if err := dag.state.AddLiquidityDelta(wallet, tx.Amount, tx.AmountOut, tx.LPShares, tx.FromDemurrageLost); err != nil {
-				fmt.Printf("[REPLAY] ✗ add_liquidity %s: %v (block #%d)\n", wallet, err, block.Height)
+				fmt.Printf("[REPLAY] ✗ add_liquidity %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ Applied add_liquidity %.6f AEQ + %.6f tUSD for %s (block #%d)\n", tx.Amount, tx.AmountOut, wallet, block.Height)
@@ -957,7 +1003,8 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				continue
 			}
 			if err := dag.state.RemoveLiquidityDelta(wallet, tx.Amount, tx.FromDemurrageLost); err != nil {
-				fmt.Printf("[REPLAY] ✗ remove_liquidity %s: %v (block #%d)\n", wallet, err, block.Height)
+				fmt.Printf("[REPLAY] ✗ remove_liquidity %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ Applied remove_liquidity %.6f shares for %s (block #%d)\n", tx.Amount, wallet, block.Height)
@@ -968,7 +1015,8 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 				continue
 			}
 			if err := dag.state.ApplyFaucetDelta(wallet, tx.Amount); err != nil {
-				fmt.Printf("[REPLAY] ✗ faucet %s: %v (block #%d)\n", wallet, err, block.Height)
+				fmt.Printf("[REPLAY] ✗ faucet %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ Applied faucet %.6f tUSD for %s (block #%d)\n", tx.Amount, wallet, block.Height)
@@ -986,6 +1034,25 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 			// empty string or other unknown types are silently ignored
 		}
 	}
+
+	if hardFailure {
+		dag.state.restoreFromRollback(rollbackSnap)
+		for _, n := range claimedNullifiers {
+			dag.state.ReleaseNullifier(n)
+		}
+		fmt.Printf("[REPLAY] ✗ Block #%d rolled back due to a genuine state-inconsistency failure — block rejected\n", block.Height)
+		return false
+	}
+
+	dag.replayedMu.Lock()
+	// FIX 1: Cap the cache to prevent unbounded growth (memory leak).
+	// dag.blocks is the authoritative deduplication store; this is a fast-path cache.
+	if len(dag.replayedBlocks) > 50000 {
+		dag.replayedBlocks = make(map[string]bool, 1000)
+	}
+	dag.replayedBlocks[block.Hash] = true
+	dag.replayedMu.Unlock()
+	return true
 }
 
 // ReconstructState is a no-op: the PostgreSQL database is the authoritative

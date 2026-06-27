@@ -2418,6 +2418,162 @@ func (cs *ChainState) SetBalance(address string, amount float64) {
 // They apply pre-computed amounts directly, without re-running business logic,
 // to avoid pool-state divergence and floating-point ordering differences.
 
+// ─── BLOCK-LEVEL REPLAY ROLLBACK ─────────────────────────────────────────────
+//
+// A block can carry more than one transaction. Each individual Apply*Delta
+// call above is internally "fail-clean" (mutates nothing if it returns an
+// error — see the FIX comments on each), but that alone doesn't make a
+// MULTI-transaction block atomic: TX1 in a block could succeed (mutate +
+// persist) while TX2 in the SAME block then genuinely fails (real
+// insufficient-balance / missing-account divergence, not an expected
+// idempotent skip like "already registered"). Without rolling TX1 back too,
+// the block ends up partially applied — this node's state reflects less
+// than what the producer's StateRoot was computed against.
+//
+// snapshotForRollback/restoreFromRollback let block.go's replayTransactions
+// capture exactly the accounts and pool state a block's transactions can
+// touch BEFORE processing it, and restore that snapshot if any transaction
+// in the block hits a genuine failure — so a failed block changes nothing
+// at all, rather than partially changing things. Scoped to what StateRoot()
+// actually hashes (accounts, pool, nullifier keys) — bio_registrations/
+// bio_hashes are deliberately out of scope, they're non-consensus side
+// bookkeeping that doesn't affect StateRoot.
+
+type accountSnapshot struct {
+	address string
+	existed bool
+	state   AccountState
+}
+
+type blockRollbackSnapshot struct {
+	accounts []accountSnapshot
+	pool     *PoolState // nil if cs.pool was nil
+}
+
+// blockTouchedAddresses returns the wallets a block's transactions can
+// mutate, and whether a full-account snapshot is needed instead. A
+// ubi_distribution TX credits EVERY registered human (see ApplyUBIDelta) —
+// none of which appear in that TX's own Wallet/To fields (Wallet is the
+// zero address) — so a block containing one needs every account snapshotted,
+// not just the ones named in its transactions, for rollback to be complete
+// if some OTHER TX in the same block later hard-fails.
+func blockTouchedAddresses(block *Block) (addrs []string, needsFullSnapshot bool) {
+	seen := make(map[string]bool)
+	add := func(a string) {
+		a = strings.ToLower(strings.TrimSpace(a))
+		if a != "" && !seen[a] {
+			seen[a] = true
+			addrs = append(addrs, a)
+		}
+	}
+	for _, tx := range block.Transactions {
+		if tx.Type == "ubi_distribution" {
+			needsFullSnapshot = true
+		}
+		add(tx.Wallet)
+		add(tx.To)
+	}
+	add(validatorsPoolAddr)
+	add(lpPoolAddr)
+	add(ubiPoolAddr)
+	add(treasuryPoolAddr)
+	return addrs, needsFullSnapshot
+}
+
+// snapshotForRollback captures the current state of the given addresses
+// plus the liquidity pool, before a block's transactions are replayed.
+func (cs *ChainState) snapshotForRollback(addrs []string, full bool) *blockRollbackSnapshot {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	snap := &blockRollbackSnapshot{}
+	if full {
+		// ubi_distribution touches every human's account (see ApplyUBIDelta) —
+		// snapshot all of them rather than trying to enumerate which wallets
+		// are currently human (that set is itself part of what we're
+		// snapshotting, and could race against ApplyUBIDelta's own enumeration).
+		existing := make(map[string]bool, len(cs.accounts))
+		snap.accounts = make([]accountSnapshot, 0, len(cs.accounts)+len(addrs))
+		for a, acc := range cs.accounts {
+			existing[a] = true
+			snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: true, state: *acc})
+		}
+		// addrs (the block's OTHER, non-ubi TXs' wallets) may name an
+		// account that doesn't exist yet but could be CREATED during this
+		// block's replay (e.g. a transfer to a brand-new wallet). Without
+		// also tracking those as existed:false, a rollback wouldn't know to
+		// remove them — they're absent from the existing-accounts loop above
+		// precisely because they don't exist yet.
+		for _, a := range addrs {
+			if !existing[a] {
+				snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: false})
+				existing[a] = true
+			}
+		}
+	} else {
+		snap.accounts = make([]accountSnapshot, 0, len(addrs))
+		for _, a := range addrs {
+			if acc, ok := cs.accounts[a]; ok {
+				snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: true, state: *acc})
+			} else {
+				snap.accounts = append(snap.accounts, accountSnapshot{address: a, existed: false})
+			}
+		}
+	}
+	if cs.pool != nil {
+		poolCopy := *cs.pool
+		snap.pool = &poolCopy
+	}
+	return snap
+}
+
+// restoreFromRollback reverts cs.accounts/cs.pool to a previously captured
+// snapshot and persists the reverted values, undoing whatever a failed
+// block's transactions had already mutated and saved. Accounts that didn't
+// exist before the block are removed from memory and the DB so a failed
+// block can't leave behind a fresh, empty-but-present row either.
+func (cs *ChainState) restoreFromRollback(snap *blockRollbackSnapshot) {
+	cs.mu.Lock()
+	var toDelete []string
+	for _, s := range snap.accounts {
+		if s.existed {
+			restored := s.state
+			cs.accounts[s.address] = &restored
+		} else {
+			delete(cs.accounts, s.address)
+			toDelete = append(toDelete, s.address)
+		}
+	}
+	if snap.pool != nil {
+		poolCopy := *snap.pool
+		cs.pool = &poolCopy
+	}
+	// Copy out what needs DB writes before releasing the lock — saveAccountToDB
+	// and the delete query below do their own DB I/O and must not run while
+	// holding cs.mu (matches the existing pattern elsewhere in this file).
+	var toSave []*AccountState
+	for _, s := range snap.accounts {
+		if s.existed {
+			toSave = append(toSave, cs.accounts[s.address])
+		}
+	}
+	poolToSave := cs.pool
+	cs.mu.Unlock()
+
+	for _, acc := range toSave {
+		cs.saveAccountToDB(acc)
+	}
+	if poolToSave != nil {
+		cs.savePoolToDB()
+	}
+	if cs.db != nil {
+		for _, addr := range toDelete {
+			if _, err := cs.db.Exec(`DELETE FROM chain_accounts WHERE lower(address) = $1`, addr); err != nil {
+				fmt.Printf("[ROLLBACK] Warning: could not delete rolled-back account %s: %v\n", addr, err)
+			}
+		}
+	}
+}
+
 // ApplyTransferDelta directly adjusts AEQ balances by the net amount that
 // reached the recipient (after any fee that was applied on the primary).
 // Used by secondary nodes replaying transfer TXs from blocks. fromLost/toLost
@@ -2435,10 +2591,19 @@ func (cs *ChainState) ApplyTransferDelta(from, to string, netAmount, fromLost, t
 	if !ok {
 		return fmt.Errorf("from account not found: %s", from)
 	}
-	cs.applyDemurrageLossLocked(fromAcc, fromLost)
-	if fromAcc.Balance.Float() < netAmount {
-		return fmt.Errorf("insufficient balance (have %.6f, need %.6f)", fromAcc.Balance.Float(), netAmount)
+	// FIX: applyDemurrageLossLocked mutates fromAcc.Balance AND credits the
+	// tokenomics pools (via distributeSwapFee, persisted to DB immediately)
+	// as a side effect — it used to run BEFORE this sufficiency check, so a
+	// transfer that turned out insufficient AFTER decay still left the pools
+	// permanently credited in the DB while the sender's matching decay was
+	// only ever applied in-memory, never persisted (since the early return
+	// skipped the saveAccountToDB call below). Check against the
+	// post-decay balance FIRST, without mutating anything, so a failing
+	// transfer truly changes nothing.
+	if fromAcc.Balance.Float()-fromLost < netAmount {
+		return fmt.Errorf("insufficient balance (have %.6f after demurrage, need %.6f)", fromAcc.Balance.Float()-fromLost, netAmount)
 	}
+	cs.applyDemurrageLossLocked(fromAcc, fromLost)
 	fromAcc.Balance = NewDecimal(round6(fromAcc.Balance.Float() - netAmount))
 	cs.saveAccountToDB(fromAcc)
 
@@ -2468,17 +2633,26 @@ func (cs *ChainState) ApplySwapDelta(wallet string, amountIn, amountOut float64,
 	if !ok {
 		return fmt.Errorf("account not found: %s", wallet)
 	}
-	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	// FIX: same class of bug as ApplyTransferDelta — applyDemurrageLossLocked
+	// has DB-persisted side effects (pool credits) and used to run before
+	// the sufficiency check below, leaving those side effects committed even
+	// when the swap itself then failed. Check against the post-decay
+	// balance first.
 	if aeqToTusd {
-		if acc.Balance.Float() < amountIn {
+		if acc.Balance.Float()-demurrageLost < amountIn {
 			return fmt.Errorf("insufficient AEQ balance")
 		}
+	} else {
+		if acc.TUsdBalance.Float() < amountIn {
+			// tUSD balance is unaffected by AEQ demurrage, no projection needed.
+			return fmt.Errorf("insufficient tUSD balance")
+		}
+	}
+	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	if aeqToTusd {
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() - amountIn))
 		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + amountOut))
 	} else {
-		if acc.TUsdBalance.Float() < amountIn {
-			return fmt.Errorf("insufficient tUSD balance")
-		}
 		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() - amountIn))
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountOut))
 	}
@@ -2524,13 +2698,18 @@ func (cs *ChainState) AddLiquidityDelta(wallet string, aeqAmount, tusdAmount, lp
 		return fmt.Errorf("account not found: %s", wallet)
 	}
 	cs.reloadPoolFromDB()
-	cs.applyDemurrageLossLocked(acc, demurrageLost)
-	if acc.Balance.Float() < aeqAmount {
+	// FIX: same class of bug as ApplyTransferDelta — check against the
+	// post-decay balance before calling applyDemurrageLossLocked (which has
+	// DB-persisted side effects via distributeSwapFee), so a failing
+	// add-liquidity truly changes nothing instead of leaving a phantom pool
+	// credit committed.
+	if acc.Balance.Float()-demurrageLost < aeqAmount {
 		return fmt.Errorf("insufficient AEQ balance")
 	}
 	if acc.TUsdBalance.Float() < tusdAmount {
 		return fmt.Errorf("insufficient tUSD balance")
 	}
+	cs.applyDemurrageLossLocked(acc, demurrageLost)
 
 	// Use the stored LP shares from the primary node when available.
 	// Fall back to recomputing (from pool state or geometric mean) for
@@ -2571,13 +2750,18 @@ func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn, demurrag
 		return fmt.Errorf("account not found: %s", wallet)
 	}
 	cs.reloadPoolFromDB()
-	cs.applyDemurrageLossLocked(acc, demurrageLost)
+	// FIX: same class of bug as ApplyTransferDelta — these two checks don't
+	// even depend on AEQ demurrage (they're about LP shares, not Balance),
+	// so there was never a reason for applyDemurrageLossLocked's DB-persisted
+	// side effects (pool credits via distributeSwapFee) to run before them.
+	// Moved below the checks so a failing remove-liquidity changes nothing.
 	if cs.pool == nil || cs.pool.TotalLPShares.Float() <= 0 {
 		return fmt.Errorf("liquidity pool is empty")
 	}
 	if acc.LPShares.Float() < sharesToBurn {
 		return fmt.Errorf("insufficient LP shares")
 	}
+	cs.applyDemurrageLossLocked(acc, demurrageLost)
 	// Mirror F17 + F18 caps from primary RemoveLiquidity
 	if sharesToBurn > cs.pool.TotalLPShares.Float() {
 		sharesToBurn = cs.pool.TotalLPShares.Float()
