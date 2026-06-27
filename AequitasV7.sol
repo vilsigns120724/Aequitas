@@ -408,6 +408,13 @@ contract AequitasV7 {
     }
 
     function confirmGuardian() external {
+        // FIX: a human de-registered via triggerEscrowToUBI while a guardian
+        // proposal was still pending could call this afterward (isHuman was
+        // never checked here, unlike revokeGuardian) and permanently consume
+        // a wardCount slot on the proposed guardian — one that can then never
+        // be released, since both revokeGuardian and triggerEscrowToUBI
+        // require isHuman[msg.sender]==true to release a wardCount slot.
+        require(isHuman[msg.sender], "Not human");
         require(pendingGuardian[msg.sender] != address(0), "No pending guardian");
         require(block.timestamp >= guardianRequestedAt[msg.sender] + GUARDIAN_TIMELOCK, "Timelock active");
         address oldGuardian = guardianOf[msg.sender];

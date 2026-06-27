@@ -134,9 +134,13 @@ func (cs *ChainState) SetGuardian(wallet, guardian string) error {
 	}
 
 	if existingSetAt > 0 && setAt-existingSetAt < guardianTimelockSeconds {
-		daysLeft := (guardianTimelockSeconds - (setAt - existingSetAt)) / 86400
-		return fmt.Errorf("guardian was set %d days ago — must wait 7 days before changing (%.0f days remaining)",
-			(setAt-existingSetAt)/86400, float64(daysLeft))
+		// Round UP (ceiling division): flooring understated the wait — e.g. 6
+		// days 23 hours remaining showed as "6 days remaining" even though a
+		// retry exactly 6 days later would still fail the timelock check.
+		remaining := guardianTimelockSeconds - (setAt - existingSetAt)
+		daysLeft := (remaining + 86399) / 86400
+		return fmt.Errorf("guardian was set %d days ago — must wait 7 days before changing (%d days remaining)",
+			(setAt-existingSetAt)/86400, daysLeft)
 	}
 
 	// FIX 5: Re-check ward count inside the transaction (under the lock) to
@@ -443,6 +447,20 @@ func (cs *ChainState) CheckAndMoveToEscrow() {
 			entry.acc.Address, entry.balance, entry.now,
 		); err != nil {
 			fmt.Printf("[ESCROW] Error writing escrow for %s: %v\n", entry.acc.Address, err)
+			// FIX (fund loss): the in-memory balance was already zeroed under
+			// the write lock above (entry.acc is a copy taken AFTER that
+			// zeroing). If this INSERT fails, the funds exist nowhere — not
+			// in the wallet (in-memory, already zeroed), not in escrow (this
+			// INSERT just failed), and saveAccountToDB below is correctly
+			// skipped so the zero isn't persisted, but the live in-memory
+			// account object is still zeroed and stays that way until a
+			// restart reloads it from DB. Roll it back here so the wallet
+			// balance is restored immediately and the next cycle can retry.
+			cs.mu.Lock()
+			if acc, ok := cs.accounts[entry.acc.Address]; ok {
+				acc.Balance = NewDecimal(entry.balance)
+			}
+			cs.mu.Unlock()
 			continue
 		}
 		cs.saveAccountToDB(&entry.acc)

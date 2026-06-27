@@ -157,7 +157,11 @@ func (a *APIServer) handleSwap(w http.ResponseWriter, r *http.Request) {
 	if req.Direction == "tusd_to_aeq" {
 		txType = "swap_tusd_aeq"
 	}
-	a.blockchain.AddTransaction(Transaction{
+	// FIX: AddTransaction only queues in-memory and is lost on restart before
+	// the next ProduceBlock tick — same durability bug fixed for register_human
+	// in register.go, never applied here even though swaps are likely the
+	// most frequent state-changing operation in the system.
+	a.state.SavePendingTx(Transaction{
 		Type:              txType,
 		Wallet:            wallet,
 		Amount:            req.Amount,
@@ -239,7 +243,7 @@ func (a *APIServer) handleAddLiquidity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sharesAfter, _ := a.state.GetLPShares(wallet)
-	a.blockchain.AddTransaction(Transaction{
+	a.state.SavePendingTx(Transaction{
 		Type:              "add_liquidity",
 		Wallet:            wallet,
 		Amount:            req.AmountAEQ,
@@ -315,7 +319,7 @@ func (a *APIServer) handleRemoveLiquidity(w http.ResponseWriter, r *http.Request
 		json.NewEncoder(w).Encode(RemoveLiquidityResponse{Success: false, Message: err.Error()})
 		return
 	}
-	a.blockchain.AddTransaction(Transaction{
+	a.state.SavePendingTx(Transaction{
 		Type:              "remove_liquidity",
 		Wallet:            wallet,
 		Amount:            req.SharesToBurn,
@@ -430,7 +434,7 @@ func (a *APIServer) handleFaucet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.blockchain.AddTransaction(Transaction{
+	a.state.SavePendingTx(Transaction{
 		Type:   "faucet",
 		Wallet: wallet,
 		Amount: tusdFaucetAmount,

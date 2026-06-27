@@ -294,6 +294,12 @@ to_addr    TEXT,
 status     TEXT NOT NULL DEFAULT '0x1',
 created_at BIGINT NOT NULL
 )`)
+	// FIX: contract_addr was never persisted, so getTransactionReceipt lost
+	// "contractAddress" for deployment TXs after every restart (deployedContracts
+	// is in-memory only) — MetaMask/explorers would then show a deployment
+	// receipt with contractAddress: null. ADD COLUMN IF NOT EXISTS is safe to
+	// run against an existing table created before this column existed.
+	dbExec(`ALTER TABLE evm_tx_receipts ADD COLUMN IF NOT EXISTS contract_addr TEXT`)
 	// Keep only the last 10000 receipts to prevent unbounded growth.
 	// Old receipts are pruned in SaveTxReceipt.
 
@@ -2587,9 +2593,21 @@ func (cs *ChainState) RemoveLiquidityDelta(wallet string, sharesToBurn, demurrag
 
 // ApplyUBIDelta credits amountPerHuman AEQ to every registered human on this node.
 // Used by secondary nodes replaying ubi_distribution TXs from blocks.
-func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64) {
+//
+// FIX (StateRoot divergence): ubiAt must be the timestamp the PRIMARY used
+// when it ran DistributeUBIPool (i.e. the block's Timestamp), not this
+// node's own wall clock. last_ubi_at feeds directly into StateRoot(), so
+// every secondary independently calling time.Now() here wrote a different
+// value than the primary and than every OTHER secondary — guaranteeing a
+// StateRoot mismatch on every single UBI distribution. Pass 0 to fall back
+// to time.Now() only for callers that have no block context (none should,
+// post-fix, but this keeps the function safe to call directly).
+func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64, ubiAt int64) {
 	if amountPerHuman <= 0 {
 		return
+	}
+	if ubiAt <= 0 {
+		ubiAt = time.Now().Unix()
 	}
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
@@ -2608,7 +2626,7 @@ func (cs *ChainState) ApplyUBIDelta(amountPerHuman float64) {
 		cs.saveAccountToDB(ubiAcc)
 	}
 	// Write last_ubi_at to secondary's chain_config so StateRoot matches primary.
-	cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", time.Now().Unix()))
+	cs.setConfigValue("last_ubi_at", fmt.Sprintf("%d", ubiAt))
 }
 
 // ApplyFaucetDelta credits faucetAmount tUSD to wallet and marks FaucetClaimed.

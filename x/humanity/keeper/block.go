@@ -101,6 +101,13 @@ replayQueue            chan *Block       // serialized replay channel — ensure
 replayedBlocks         map[string]bool  // tracks blocks already replayed — prevents double-credit on duplicate delivery
 replayedMu             sync.Mutex
 stateRootMismatches map[string]int // FIX 4: per-proposer StateRoot mismatch counters
+	// orphans holds blocks whose parent isn't known yet, keyed by the missing
+	// parent's hash. When that parent is later added, every block waiting on
+	// it is retried automatically. See AddPeerBlock for why this exists —
+	// without it, a block whose parent arrived even one sync cycle late was
+	// silently dropped forever, along with everything built on top of it.
+	orphans   map[string][]*Block
+	orphansMu sync.Mutex
 	replayCtx    context.Context    // FIX 6: governs replay goroutine lifetime
 	replayCancel context.CancelFunc // FIX 6: called by Close() to stop the goroutine
 }
@@ -242,6 +249,7 @@ peerChallenges:         make(map[string]peerChallenge),
 replayQueue:            make(chan *Block, 1000),
 replayedBlocks:         make(map[string]bool),
 	stateRootMismatches:    make(map[string]int),
+	orphans:                make(map[string][]*Block),
 }
 // FIX 6: Context for replay goroutine shutdown via Close().
 dag.replayCtx, dag.replayCancel = context.WithCancel(context.Background())
@@ -427,6 +435,39 @@ fmt.Printf("[DAG] 🔀 Merged %d tips into block #%d\n", len(parentHashes), bloc
 return block
 }
 
+// maxOrphans caps total queued orphan blocks across all missing-parent keys,
+// so a malicious or buggy peer sending blocks that reference parents which
+// will never arrive can't grow this map without bound.
+const maxOrphans = 2000
+
+// queueOrphan stores block, which is waiting on missingParent to appear,
+// and logs the wait (the old code dropped this case with zero logging).
+func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
+	dag.orphansMu.Lock()
+	defer dag.orphansMu.Unlock()
+	total := 0
+	for _, v := range dag.orphans {
+		total += len(v)
+	}
+	if total >= maxOrphans {
+		fmt.Printf("[DAG] ✗ Dropped peer block #%d: orphan buffer full (%d waiting), missing parent never arrived\n",
+			block.Height, total)
+		return
+	}
+	dag.orphans[missingParent] = append(dag.orphans[missingParent], block)
+	fmt.Printf("[DAG] ⏳ Block #%d from %s queued as orphan — missing parent %s... (%d block(s) now waiting on it)\n",
+		block.Height, block.Proposer, missingParent[:min(16, len(missingParent))], len(dag.orphans[missingParent]))
+}
+
+// popOrphans returns and removes every block that was waiting on parentHash.
+func (dag *BlockDAG) popOrphans(parentHash string) []*Block {
+	dag.orphansMu.Lock()
+	defer dag.orphansMu.Unlock()
+	waiting := dag.orphans[parentHash]
+	delete(dag.orphans, parentHash)
+	return waiting
+}
+
 func (dag *BlockDAG) AddPeerBlock(block *Block) bool {
 dag.mu.Lock()
 // NOTE: no defer — we manually unlock before the channel send below (Fix 2).
@@ -513,9 +554,28 @@ if block.Signature != "" && !block.IsGenesis {
 }
 
 // Integrity check 3: parent-existence and height validation.
-// Height-1 blocks only need the genesis as parent; for all higher heights
-// we always validate parents exist. During initial sync, missing parents
-// are tolerated (logged but block accepted) when we have few blocks.
+//
+// FIX (orphan buffer): this used to tolerate a missing parent only while
+// len(dag.blocks) <= 10 — i.e. only during the first ~minute of a fresh
+// node's life, since every node produces its own block every 6s regardless
+// of sync status. Past that point, ANY block whose parent wasn't already
+// in dag.blocks was silently dropped with NO log line (this branch had no
+// fmt.Printf, unlike every other reject path in this function) and NEVER
+// retried — and everything built on top of that block inherited the same
+// fate, since ITS parent (the dropped block) would also never exist
+// locally. Confirmed in production with 3 concurrent validators: every
+// node's own /api/blocks ended up showing ONLY its own single-parent
+// chain, never the other validators' blocks, because somewhere in their
+// ancestry a single missing parent (a brief P2P gap, a sync page that
+// didn't cover it, anything transient) permanently blocked the entire
+// subtree above it — with no error anywhere to even reveal why.
+//
+// Now: a block with a missing parent is queued in dag.orphans, keyed by
+// the missing hash, instead of being dropped. When that parent later
+// arrives (via AddPeerBlock, below), every block waiting on it is
+// automatically retried — and if THAT retry succeeds, its own dependents
+// get retried too, recursively. A transient gap now costs one retry
+// instead of permanently orphaning an entire branch.
 if len(block.ParentHashes) == 0 {
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: no parent hashes\n", block.Height)
 dag.mu.Unlock()
@@ -523,20 +583,21 @@ return false
 }
 if block.Height > 1 {
 maxParentHeight := int64(-1)
+missingParent := ""
 for _, ph := range block.ParentHashes {
 parent, parentExists := dag.blocks[ph]
 if !parentExists {
-	// During initial sync, missing parents are expected — log but accept.
-	// Only reject if we have substantial state (not during initial sync).
-	if len(dag.blocks) > 10 {
-		dag.mu.Unlock()
-		return false
-	}
-	continue
+	missingParent = ph
+	break
 }
 if parent.Height > maxParentHeight {
 maxParentHeight = parent.Height
 }
+}
+if missingParent != "" {
+	dag.mu.Unlock()
+	dag.queueOrphan(missingParent, block)
+	return false
 }
 if maxParentHeight >= 0 && block.Height != maxParentHeight+1 {
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: invalid height (parent max %d)\n",
@@ -600,6 +661,16 @@ hasTxs := len(block.Transactions) > 0
 // Release lock BEFORE channel send — holding dag.mu while blocked on a
 // full channel would deadlock all other DAG operations (e.g. ProduceBlock).
 dag.mu.Unlock()
+
+// Now that this block exists, any blocks that were queued as orphans
+// waiting specifically on this hash as their missing parent can be
+// retried. Done via a fresh top-level AddPeerBlock call (after fully
+// releasing dag.mu above) rather than recursing while locked — this
+// naturally cascades: if a retried orphan succeeds, its own dependents
+// get resolved the same way when ITS insertion reaches this point.
+for _, waiting := range dag.popOrphans(block.Hash) {
+	dag.AddPeerBlock(waiting)
+}
 
 if hasTxs {
 	// Non-blocking send: if the queue is full, drop the block with a warning.
@@ -828,7 +899,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) {
 
 		case "ubi_distribution":
 			if tx.AmountPerHuman > 0 {
-				dag.state.ApplyUBIDelta(tx.AmountPerHuman)
+				dag.state.ApplyUBIDelta(tx.AmountPerHuman, block.Timestamp)
 				fmt.Printf("[REPLAY] ✓ Applied UBI distribution %.6f AEQ/human (block #%d)\n", tx.AmountPerHuman, block.Height)
 			} else {
 				// Legacy TX from an older node version — no AmountPerHuman stored.

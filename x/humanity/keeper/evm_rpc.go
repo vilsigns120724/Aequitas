@@ -481,7 +481,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		s.mu.Lock()
 		s.txStatus[txHash] = true
 		s.mu.Unlock()
-		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1")
+		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1", "")
 
 		fromLost, toLost, err := s.state.Transfer(senderAddr, toAddr, valueFloat)
 		if err != nil {
@@ -489,7 +489,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 			s.mu.Lock()
 			s.txStatus[txHash] = false
 			s.mu.Unlock()
-			s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x0")
+			s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x0", "")
 			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 		}
 		s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
@@ -522,7 +522,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		s.mu.Lock()
 		s.txStatus[txHash] = true
 		s.mu.Unlock()
-		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1")
+		s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x1", "")
 
 		// E2-FIX: TransferWithV7Fee now returns the exact net amount credited to the
 		// recipient (computed inside the lock), eliminating the TOCTOU race where
@@ -534,7 +534,7 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 			s.mu.Lock()
 			s.txStatus[txHash] = false
 			s.mu.Unlock()
-			s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x0")
+			s.state.SaveTxReceipt(txHash, senderAddr, toAddr, "0x0", "")
 			return nil, &RPCError{Code: -32603, Message: "Transfer failed: " + err.Error()}
 		}
 		s.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, senderAddr, toAddr)
@@ -576,7 +576,10 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		s.txStatus[txHash] = true
 		s.mu.Unlock()
 		// FIX 7: Persist receipt so post-restart MetaMask gets correct status for deployment.
-		s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x1")
+		// FIX: contractAddrStr is now persisted too (see SaveTxReceipt) — it used
+		// to be dropped here, so getTransactionReceipt's DB fallback after a
+		// restart returned contractAddress: null for every old deployment TX.
+		s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x1", contractAddrStr)
 		fmt.Printf("[RPC] ✓ Contract deployed: %s tx=%s\n", contractAddrStr, txHash)
 		return txHash, nil
 	}
@@ -709,10 +712,13 @@ func (s *EVMRPCServer) getTransactionReceipt(params []json.RawMessage) (interfac
 	// This prevents MetaMask from showing successful transactions as "failed"
 	// after a node restart clears the in-memory maps.
 	if !inMemory {
-		if dbFrom, dbTo, dbStatus, found := s.state.GetTxReceipt(txHash); found {
+		if dbFrom, dbTo, dbStatus, dbContract, found := s.state.GetTxReceipt(txHash); found {
 			fromAddr = dbFrom
 			toAddrMem = dbTo
 			status = dbStatus
+			if dbContract != "" {
+				contractAddr = dbContract
+			}
 			inMemory = true // treat DB hit same as memory hit
 		}
 	}
@@ -769,6 +775,19 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 	fromAddr, known := s.txSenders[txHash]
 	toAddr := s.txTos[txHash]
 	s.mu.Unlock()
+	// FIX: unlike getTransactionReceipt, this never fell back to the DB-persisted
+	// receipt when the in-memory txSenders map didn't have the hash (i.e. after
+	// a node restart) — so MetaMask/explorers would get a receipt (status
+	// known via getTransactionReceipt's DB fallback) but getTransactionByHash
+	// for the same hash returned null, an inconsistent pair of RPC responses
+	// for one transaction.
+	if !known {
+		if dbFrom, dbTo, _, _, found := s.state.GetTxReceipt(txHash); found {
+			fromAddr = dbFrom
+			toAddr = dbTo
+			known = true
+		}
+	}
 	if !known {
 		// Unknown txHash — return null per Ethereum spec (not a synthetic object)
 		return nil, nil

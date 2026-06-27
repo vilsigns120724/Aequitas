@@ -1249,16 +1249,21 @@ func (cs *ChainState) ConsumeSwapNonce(wallet string, nonce int64) error {
 // can retrieve it after a node restart. Without this, restarts cleared the
 // in-memory txStatus map and MetaMask would show successful transactions as
 // "Senden fehlgeschlagen" (failed) because receipts returned null.
-func (cs *ChainState) SaveTxReceipt(txHash, fromAddr, toAddr, status string) {
+// SaveTxReceipt persists an EVM transaction receipt. contractAddr is the
+// deployed contract's address for a deployment TX, or "" for everything else
+// — passing it through means getTransactionReceipt can still report
+// "contractAddress" correctly after a node restart, when it falls back to
+// this DB-persisted row instead of the in-memory-only deployedContracts map.
+func (cs *ChainState) SaveTxReceipt(txHash, fromAddr, toAddr, status, contractAddr string) {
 	if cs.db == nil {
 		return
 	}
 	_, err := cs.db.Exec(
-		`INSERT INTO evm_tx_receipts (tx_hash, from_addr, to_addr, status, created_at)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO evm_tx_receipts (tx_hash, from_addr, to_addr, status, contract_addr, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (tx_hash) DO UPDATE SET status = $4`,
 		strings.ToLower(txHash), strings.ToLower(fromAddr),
-		strings.ToLower(toAddr), status, time.Now().Unix(),
+		strings.ToLower(toAddr), status, strings.ToLower(contractAddr), time.Now().Unix(),
 	)
 	if err != nil {
 		fmt.Printf("[EVM] SaveTxReceipt error for %s: %v\n", txHash, err)
@@ -1270,20 +1275,20 @@ func (cs *ChainState) SaveTxReceipt(txHash, fromAddr, toAddr, status string) {
 	)`)
 }
 
-// GetTxReceipt looks up a persisted receipt. Returns (fromAddr, toAddr, status, found).
-// Called by getTransactionReceipt when the txHash is not in the in-memory cache.
-func (cs *ChainState) GetTxReceipt(txHash string) (fromAddr, toAddr, status string, found bool) {
+// GetTxReceipt looks up a persisted receipt. Returns (fromAddr, toAddr, status, contractAddr, found).
+// Called by getTransactionReceipt/getTransactionByHash when the txHash is not in the in-memory cache.
+func (cs *ChainState) GetTxReceipt(txHash string) (fromAddr, toAddr, status, contractAddr string, found bool) {
 	if cs.db == nil {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
 	err := cs.db.QueryRow(
-		`SELECT from_addr, COALESCE(to_addr, ''), status FROM evm_tx_receipts WHERE tx_hash = $1`,
+		`SELECT from_addr, COALESCE(to_addr, ''), status, COALESCE(contract_addr, '') FROM evm_tx_receipts WHERE tx_hash = $1`,
 		strings.ToLower(txHash),
-	).Scan(&fromAddr, &toAddr, &status)
+	).Scan(&fromAddr, &toAddr, &status, &contractAddr)
 	if err == sql.ErrNoRows || err != nil {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
-	return fromAddr, toAddr, status, true
+	return fromAddr, toAddr, status, contractAddr, true
 }
 
 // ─── PENDING TXs (persistent — survive node restart) ─────────────────────────
