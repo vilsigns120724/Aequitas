@@ -463,6 +463,29 @@ fmt.Printf("[DAG] 🔀 Merged %d tips into block #%d\n", len(parentHashes), bloc
 return block
 }
 
+// WithBlockProductionPaused runs fn while holding the same lock
+// ProduceBlock takes for its entire body (tip/parent selection, pending-TX
+// drain, and the final dag.state.StateRoot() read are all done under
+// dag.mu — see ProduceBlock above).
+//
+// FIX (audit recheck 2, P0 #2): daily distribution (main.go) mutates state
+// across several separate calls (DistributeUBIPool, then
+// DistributeValidatorsPool, then DistributeLPPool, then escrow) and only
+// persists the TX explaining each mutation a moment later via SavePendingTx
+// — without this guard, ProduceBlock's 6-second ticker could fire in the
+// gap between a mutation and its TX, assembling a block whose StateRoot
+// already reflects the mutation but whose Transactions list doesn't yet
+// include the TX that explains it. No other node could ever reproduce
+// that StateRoot by replaying that block. Wrapping the entire distribution
+// round (every mutation AND every corresponding SavePendingTx call) in
+// this guard makes ProduceBlock block until the round finishes, the same
+// way it already serializes against AddPeerBlock's replay via replayMu.
+func (dag *BlockDAG) WithBlockProductionPaused(fn func()) {
+	dag.mu.Lock()
+	defer dag.mu.Unlock()
+	fn()
+}
+
 // maxOrphans caps total queued orphan blocks across all missing-parent keys,
 // so a malicious or buggy peer sending blocks that reference parents which
 // will never arrive can't grow this map without bound.

@@ -298,77 +298,89 @@ if !isPrimaryForDistribution {
 		fmt.Println("[POOLS] Distribution disabled on this node (DISTRIBUTION_ENABLED not set) — set it on exactly one authorized node to run distribution")
 	}
 } else if chainState.TryLockDistribution() {
-	// emitTx persists durably (survives a crash before the next block is
-	// produced) and falls back to the in-memory queue only if that fails —
-	// same pattern used by register.go/evm_rpc.go/swap.go this session.
-	emitTx := func(tx keeper.Transaction) {
-		if err := chainState.SavePendingTx(tx); err != nil {
-			fmt.Printf("[ALERT] %s TX for %q applied locally but SavePendingTx failed: %v — other nodes will NEVER see this unless the in-memory fallback survives to the next block\n", tx.Type, tx.Wallet, err)
-			bc.AddTransaction(tx)
+	// FIX (audit recheck 2, P0 #2): the entire distribution round — every
+	// state mutation (DistributeUBIPool, DistributeValidatorsPool,
+	// DistributeLPPool, escrow) AND every corresponding emitTx call — now
+	// runs inside WithBlockProductionPaused. Without this, ProduceBlock's
+	// 6-second ticker could fire in the gap between any one of these
+	// mutations and the SavePendingTx call that explains it, assembling a
+	// block whose StateRoot already reflects the mutation but whose
+	// Transactions list doesn't yet include the TX — a StateRoot no other
+	// node could ever reproduce by replaying that block. See
+	// WithBlockProductionPaused's comment in block.go.
+	bc.WithBlockProductionPaused(func() {
+		// emitTx persists durably (survives a crash before the next block is
+		// produced) and falls back to the in-memory queue only if that fails —
+		// same pattern used by register.go/evm_rpc.go/swap.go this session.
+		emitTx := func(tx keeper.Transaction) {
+			if err := chainState.SavePendingTx(tx); err != nil {
+				fmt.Printf("[ALERT] %s TX for %q applied locally but SavePendingTx failed: %v — other nodes will NEVER see this unless the in-memory fallback survives to the next block\n", tx.Type, tx.Wallet, err)
+				bc.AddTransaction(tx)
+			}
 		}
-	}
 
-	// FIX (P0): DistributeUBIPool now returns the amount it ACTUALLY
-	// credited per human, instead of main.go reading the pool balance
-	// separately beforehand — that old read happened BEFORE the
-	// function's own demurrage-settlement pass, which can grow the pool,
-	// so the broadcast amount and the locally-applied amount used to be
-	// two different numbers (guaranteed StateRoot divergence).
-	//
-	// FIX (audit recheck 2, P0 #5+#4): one TX per human instead of a flat
-	// broadcast — each human's own DemurrageLost (settled on the primary
-	// before the equal split was computed) is now replayed exactly,
-	// instead of secondaries only ever applying the flat per-human credit
-	// with no demurrage counterpart. ubiAt is chosen ONCE here and used
-	// for both the primary's own immediate finalize call and the TX every
-	// secondary replays — not block.Timestamp (assigned later, whenever
-	// ProduceBlock's ticker next fires) and not each node's own
-	// time.Now() (the exact mismatch audit recheck 2 flagged as P0 #4).
-	ubiShares := chainState.DistributeUBIPool()
-	var ubiTotal float64
-	for _, s := range ubiShares {
-		emitTx(keeper.Transaction{Type: "ubi_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
-		ubiTotal += s.Amount
-	}
-	if ubiTotal > 0 {
-		ubiAt := time.Now().Unix()
-		chainState.ApplyUBIFinalizeDelta(ubiAt)
-		emitTx(keeper.Transaction{Type: "ubi_distribution_finalize", DistributionAt: ubiAt})
-	}
+		// FIX (P0): DistributeUBIPool now returns the amount it ACTUALLY
+		// credited per human, instead of main.go reading the pool balance
+		// separately beforehand — that old read happened BEFORE the
+		// function's own demurrage-settlement pass, which can grow the pool,
+		// so the broadcast amount and the locally-applied amount used to be
+		// two different numbers (guaranteed StateRoot divergence).
+		//
+		// FIX (audit recheck 2, P0 #5+#4): one TX per human instead of a flat
+		// broadcast — each human's own DemurrageLost (settled on the primary
+		// before the equal split was computed) is now replayed exactly,
+		// instead of secondaries only ever applying the flat per-human credit
+		// with no demurrage counterpart. ubiAt is chosen ONCE here and used
+		// for both the primary's own immediate finalize call and the TX every
+		// secondary replays — not block.Timestamp (assigned later, whenever
+		// ProduceBlock's ticker next fires) and not each node's own
+		// time.Now() (the exact mismatch audit recheck 2 flagged as P0 #4).
+		ubiShares := chainState.DistributeUBIPool()
+		var ubiTotal float64
+		for _, s := range ubiShares {
+			emitTx(keeper.Transaction{Type: "ubi_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+			ubiTotal += s.Amount
+		}
+		if ubiTotal > 0 {
+			ubiAt := time.Now().Unix()
+			chainState.ApplyUBIFinalizeDelta(ubiAt)
+			emitTx(keeper.Transaction{Type: "ubi_distribution_finalize", DistributionAt: ubiAt})
+		}
 
-	// FIX (P0): validator/LP/escrow changes used to have NO replayable TX
-	// at all — secondaries could never reconstruct them. One TX per
-	// recipient, carrying the EXACT amount (and demurrage loss, where
-	// applicable) the primary computed, so secondaries credit identical
-	// values instead of recomputing shares from inputs (like
-	// registered_nodes.blocks_produced) that could differ slightly
-	// node-to-node.
-	var validatorTotal float64
-	for _, s := range chainState.DistributeValidatorsPool() {
-		emitTx(keeper.Transaction{Type: "validator_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
-		validatorTotal += s.Amount
-	}
-	if validatorTotal > 0 {
-		emitTx(keeper.Transaction{Type: "validator_distribution_pool_zero"})
-	}
+		// FIX (P0): validator/LP/escrow changes used to have NO replayable TX
+		// at all — secondaries could never reconstruct them. One TX per
+		// recipient, carrying the EXACT amount (and demurrage loss, where
+		// applicable) the primary computed, so secondaries credit identical
+		// values instead of recomputing shares from inputs (like
+		// registered_nodes.blocks_produced) that could differ slightly
+		// node-to-node.
+		var validatorTotal float64
+		for _, s := range chainState.DistributeValidatorsPool() {
+			emitTx(keeper.Transaction{Type: "validator_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+			validatorTotal += s.Amount
+		}
+		if validatorTotal > 0 {
+			emitTx(keeper.Transaction{Type: "validator_distribution_pool_zero"})
+		}
 
-	var lpTotal float64
-	for _, s := range chainState.DistributeLPPool() {
-		emitTx(keeper.Transaction{Type: "lp_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
-		lpTotal += s.Amount
-	}
-	if lpTotal > 0 {
-		emitTx(keeper.Transaction{Type: "lp_distribution_pool_zero"})
-	}
+		var lpTotal float64
+		for _, s := range chainState.DistributeLPPool() {
+			emitTx(keeper.Transaction{Type: "lp_distribution", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+			lpTotal += s.Amount
+		}
+		if lpTotal > 0 {
+			emitTx(keeper.Transaction{Type: "lp_distribution_pool_zero"})
+		}
 
-	// Move inactive wallets to escrow, then release long-sitting escrow
-	// balances to the UBI pool for the next distribution cycle.
-	for _, s := range chainState.CheckAndMoveToEscrow() {
-		emitTx(keeper.Transaction{Type: "escrow_move", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
-	}
-	for _, s := range chainState.ReleaseEscrowToUBI() {
-		emitTx(keeper.Transaction{Type: "escrow_release", Wallet: s.Wallet, Amount: s.Amount})
-	}
+		// Move inactive wallets to escrow, then release long-sitting escrow
+		// balances to the UBI pool for the next distribution cycle.
+		for _, s := range chainState.CheckAndMoveToEscrow() {
+			emitTx(keeper.Transaction{Type: "escrow_move", Wallet: s.Wallet, Amount: s.Amount, FromDemurrageLost: s.DemurrageLost})
+		}
+		for _, s := range chainState.ReleaseEscrowToUBI() {
+			emitTx(keeper.Transaction{Type: "escrow_release", Wallet: s.Wallet, Amount: s.Amount})
+		}
+	})
 
 	fmt.Printf("[POOLS] ✓ Distribution done at %s\n", time.Now().In(berlin).Format("02.01. 15:04:05"))
 } else {

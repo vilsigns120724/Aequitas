@@ -612,6 +612,21 @@ func (cs *ChainState) GetWealthCapInfo() (capAEQ float64, mult float64, avg floa
 // the current value is > 23 hours old (or missing). Returns true if this node
 // won the lock — only then should it actually run the distribution.
 // This replaces the IS_PRIMARY_NODE env-var, which any operator could set.
+// TryLockDistribution claims the right to run THIS process's daily
+// distribution attempt, returning false if this node already claimed it
+// within the last ~24h (e.g. the goroutine somehow fired twice).
+//
+// FIX (audit recheck 2, P0 #3): this used to claim the lock by writing
+// directly to chain_config's "last_ubi_at" key — the SAME key that feeds
+// StateRoot (see StateRoot's read of last_ubi_at) and that
+// ApplyUBIFinalizeDelta now sets as the actual, consensus-relevant
+// distribution timestamp. A crash or any other interruption between this
+// lock claim and the real distribution completing would leave
+// last_ubi_at set to the LOCK's timestamp despite no distribution (and no
+// explaining TX) having actually happened — a StateRoot field with no
+// TX history behind it. Lock bookkeeping now lives in its own key,
+// "distribution_lock_at", entirely separate from the value StateRoot
+// reads.
 func (cs *ChainState) TryLockDistribution() bool {
 	if cs.db == nil {
 		return true // no DB → single-node mode, always proceed
@@ -620,7 +635,7 @@ func (cs *ChainState) TryLockDistribution() bool {
 	now := fmt.Sprintf("%d", time.Now().Unix())
 	// Insert if missing, update if older than threshold
 	result, err := cs.db.Exec(
-		`INSERT INTO chain_config (key, value) VALUES ('last_ubi_at', $1)
+		`INSERT INTO chain_config (key, value) VALUES ('distribution_lock_at', $1)
 ON CONFLICT (key) DO UPDATE SET value = $1
 WHERE chain_config.value = '' OR COALESCE(NULLIF(regexp_replace(chain_config.value, '[^0-9]', '', 'g'), ''), '0')::BIGINT < $2`,
 		now, threshold,
