@@ -293,9 +293,25 @@ func (dag *BlockDAG) syncWithNode(nodeURL string) {
 //
 // Flow for the primary node (IS_PRIMARY_NODE=true):
 //   - Accepts registrations, serves peer list — no outbound registration needed
+// NormalizeNodeURL prepends "https://" to rawURL if it has no http(s) scheme.
+// Several hosting providers' "public domain" variables (e.g. Railway's
+// RAILWAY_PUBLIC_DOMAIN) are bare hostnames with no scheme; SELF_URL/
+// PRIMARY_NODE_URL set from those would otherwise fail isAllowedPeerURL's
+// "must be public HTTPS" check and silently break peer registration.
+func NormalizeNodeURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return rawURL
+	}
+	if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
+		return rawURL
+	}
+	return "https://" + rawURL
+}
+
 func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
-	selfURL = strings.TrimRight(selfURL, "/")
-	primaryURL := strings.TrimRight(os.Getenv("PRIMARY_NODE_URL"), "/")
+	selfURL = strings.TrimRight(NormalizeNodeURL(selfURL), "/")
+	primaryURL := strings.TrimRight(NormalizeNodeURL(os.Getenv("PRIMARY_NODE_URL")), "/")
 
 	fmt.Println("── Starting Peer Discovery ──────────────")
 	if selfURL == "" {

@@ -889,6 +889,14 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	json.NewDecoder(r.Body).Decode(&req)
+	// FIX: a peer's SELF_URL is often sourced from a hosting provider's
+	// "public domain" variable (e.g. Railway's RAILWAY_PUBLIC_DOMAIN), which
+	// never includes a scheme — that bare hostname fails isAllowedPeerURL's
+	// "must be public HTTPS" check below and the registration is silently
+	// dropped with no indication on the PEER's own side that anything is
+	// wrong (only this node's logs show the rejection). Normalize defensively
+	// here so a scheme-less but otherwise valid public hostname still works.
+	req.URL = NormalizeNodeURL(req.URL)
 
 	// Secret check comes FIRST. URL registration and sync goroutines are only
 	// started for authenticated peers — prevents goroutine exhaustion via

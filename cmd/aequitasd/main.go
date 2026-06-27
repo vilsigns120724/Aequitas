@@ -147,6 +147,17 @@ p2pNode.SetDAG(bc)
 	if selfURL == "" {
 		selfURL = "https://aequitas.digital" // default; override with SELF_URL env var
 	}
+	// FIX: Railway's RAILWAY_PUBLIC_DOMAIN variable (commonly used to set
+	// SELF_URL, e.g. SELF_URL=${{RAILWAY_PUBLIC_DOMAIN}}) never includes a
+	// scheme — it's just "myservice.up.railway.app". A scheme-less SELF_URL
+	// fails isAllowedPeerURL's "must be public HTTPS" check, so the primary
+	// rejects this node's peer registration entirely (silently — the node
+	// itself prints nothing wrong, only the PRIMARY's logs show "URL
+	// rejected"). Confirmed in production: a secondary's SELF_URL kept
+	// reverting to the bare hostname even after manually adding "https://"
+	// in Railway's UI. Normalize here instead of fighting that — any
+	// SELF_URL without an http(s) scheme gets "https://" prepended.
+	selfURL = keeper.NormalizeNodeURL(selfURL)
 	bc.StartHTTPBlockSync(selfURL)
 	p2pNode.Start()
 	bc.ReconstructState(chainState)
