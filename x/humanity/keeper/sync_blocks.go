@@ -3,6 +3,8 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -454,14 +456,71 @@ func (dag *BlockDAG) StartPeerDiscovery(selfURL string) {
 // /api/peers/register. The primary adds our signing address to its authorized
 // validator set so our blocks are accepted without any manual configuration.
 // We receive the peer list and the current authorized validator addresses back.
+// fetchAndSignPeerChallenge implements the same manual flow the node
+// operator UI already documents (GET a challenge, sign it, send the
+// signature back) automatically: fetches a fresh challenge for signerAddr
+// from primaryURL and signs it with signingKey using the personal_sign /
+// "Ethereum Signed Message" scheme VerifyPeerChallenge expects (see
+// block.go). Returns "" (not an error) on any failure — signing is a
+// best-effort upgrade over PEER_SECRET, not a hard requirement, since a
+// node with PEER_SECRET configured should keep working exactly as before
+// even if the challenge round-trip fails for some transient reason.
+func fetchAndSignPeerChallenge(primaryURL, signerAddr string, signingKey *ecdsa.PrivateKey) string {
+	if signingKey == nil || signerAddr == "" {
+		return ""
+	}
+	resp, err := httpSyncClient.Get(primaryURL + "/api/peers/challenge?address=" + signerAddr)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	var result struct {
+		Challenge string `json:"challenge"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || result.Challenge == "" {
+		return ""
+	}
+	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(result.Challenge), result.Challenge)
+	hash := crypto.Keccak256Hash([]byte(msg))
+	sig, err := crypto.Sign(hash.Bytes(), signingKey)
+	if err != nil {
+		return ""
+	}
+	return "0x" + hex.EncodeToString(sig)
+}
+
+// registerAndDiscover POSTs our URL and signing address to the primary's
+// /api/peers/register, automatically proving private-key ownership via a
+// signed challenge (see fetchAndSignPeerChallenge) rather than relying on
+// PEER_SECRET alone.
+//
+// FIX (decentralization): this used to send peer_secret but never a
+// signature, even though api.go's handlePeerRegister already accepts EITHER
+// a matching PEER_SECRET OR a valid challenge-response signature
+// (secretOK || sigOK) — the signature path existed only for the
+// manual/operator-documented flow, never wired into the automatic one. In
+// practice this meant a single shared secret was the ONLY thing that
+// determined whether a new node could join: leaking it lets anyone register
+// as a peer, and rotating it (e.g. after a leak) breaks every legitimate
+// node's auto-join until each one is individually updated. Every node that
+// can sign its own blocks (RELAYER_PRIVATE_KEY, required for block
+// production anyway) can now prove ownership of its signing address the
+// same way the manual flow always could, making PEER_SECRET an optional
+// bootstrap fallback instead of the only practical path.
 func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) {
 	signerAddr := ""
 	if dag.signingKey != nil {
 		signerAddr = strings.ToLower(crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex())
 	}
+	signature := fetchAndSignPeerChallenge(primaryURL, signerAddr, dag.signingKey)
 	body, _ := json.Marshal(map[string]string{
 		"url":                  selfURL,
 		"signing_address":      signerAddr,
+		"signature":            signature,
 		"peer_secret":          os.Getenv("PEER_SECRET"),
 		"node_operator_wallet": strings.ToLower(os.Getenv("NODE_OPERATOR_WALLET")),
 	})
