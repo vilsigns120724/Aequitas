@@ -470,7 +470,14 @@ if len(pendingTxIDs) > 0 {
 
 // Record that this proposer produced a block — used for proportional
 // validator-reward distribution in DistributeValidatorsPool.
-go dag.state.IncrementBlockCount(proposer)
+//
+// FIX (audit recheck3, P2): used to fire via `go` — if this process died
+// right after producing the block (before the goroutine's single DB
+// UPDATE ran), that block silently never counted toward this validator's
+// own reward weight, with no error anywhere to reveal it. Synchronous now;
+// it's one UPDATE statement, the same cost ProduceBlock already pays for
+// setConfigValue("max_block_height", ...) a few lines below.
+dag.state.IncrementBlockCount(proposer)
 
 // Remove all parents from tips, add this block as new tip
 for _, ph := range parentHashes {
@@ -898,6 +905,24 @@ if block.Height > dag.height {
 
 tipCount := len(dag.tips)
 dag.mu.Unlock()
+
+// FIX (audit recheck3, P2 — "IncrementBlockCount laeuft asynchron und
+// ist nicht konsensual deterministisch"): this was worse than just
+// asynchronous — it was never called here at all. ProduceBlock only
+// ever incremented blocks_produced for blocks THIS node itself
+// produced; a peer block accepted here never touched the counter for
+// ITS proposer. distributeValidatorsPoolLocked reads blocks_produced
+// as the proportional reward weight (falling back to a minimum of 1
+// for any registered node stuck at 0) — so on whichever single node
+// actually runs distribution (DISTRIBUTION_ENABLED=true), every OTHER
+// validator's real block production was invisible and they were
+// floored to the same token "1" weight regardless of how active they
+// actually were, while the distribution node's own blocks counted
+// fully. Real fix, not just "make it synchronous": count every
+// accepted block here too, for whichever proposer signed it — that's
+// the only way this node's blocks_produced table ends up reflecting
+// every validator's actual production, not just its own.
+dag.state.IncrementBlockCount(block.Proposer)
 
 // Now that this block exists (and has been replayed), any blocks that were
 // queued as orphans waiting specifically on this hash as their missing

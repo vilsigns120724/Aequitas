@@ -1308,19 +1308,25 @@ func (cs *ChainState) GetRegisteredNodes() []string {
 	return wallets
 }
 
-// IncrementBlockCount records that the given proposer wallet produced a block.
-// Used by DistributeValidatorsPool to distribute rewards proportionally.
+// IncrementBlockCount records that the given proposer wallet produced a
+// block. Used by distributeValidatorsPoolLocked to distribute rewards
+// proportionally. Called for EVERY accepted block (own AND peer-produced —
+// see block.go's two call sites) so this node's blocks_produced table
+// reflects every validator's actual production, not just its own.
 func (cs *ChainState) IncrementBlockCount(proposerAddr string) {
 	if cs.db == nil || proposerAddr == "" {
 		return
 	}
 	proposerAddr = strings.ToLower(proposerAddr)
 	res, err := cs.db.Exec(`UPDATE registered_nodes SET blocks_produced = blocks_produced + 1 WHERE lower(signing_address) = lower($1)`, proposerAddr)
-	if err != nil || res == nil {
+	if err != nil {
+		fmt.Printf("[BLOCKCOUNT] Warning: could not increment block count for %s: %v\n", proposerAddr, err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		cs.db.Exec(`UPDATE registered_nodes SET blocks_produced = blocks_produced + 1 WHERE lower(wallet_address) = lower($1)`, proposerAddr)
+		if _, err := cs.db.Exec(`UPDATE registered_nodes SET blocks_produced = blocks_produced + 1 WHERE lower(wallet_address) = lower($1)`, proposerAddr); err != nil {
+			fmt.Printf("[BLOCKCOUNT] Warning: could not increment block count (wallet fallback) for %s: %v\n", proposerAddr, err)
+		}
 	}
 }
 

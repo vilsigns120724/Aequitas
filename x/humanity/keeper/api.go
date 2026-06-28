@@ -113,6 +113,34 @@ func addProofServerAuth(req *http.Request) {
 	}
 }
 
+// proofProxyClient returns an http.Client for calling out to PROOF_SERVER_URL
+// with pinningDialer (sync_blocks.go) and redirect-blocking, instead of a
+// bare http.Client.
+//
+// FIX (audit recheck3, P2 — "Chain-Proof-Proxy validiert PROOF_SERVER_URL
+// nicht gegen SSRF-Klasse"): notifyProofServer (register.go) already used
+// httpSyncClient for exactly this reason, but every proof-proxy handler
+// below (syncProofServerStatus, handleSepoliaHumans, handleProveProxy,
+// handleProveGetProxy, handleProofCheckProxy) built a bare *http.Client
+// with no IP validation and no redirect blocking. PROOF_SERVER_URL is an
+// operator-set config value, not directly attacker-controlled, so this
+// isn't remotely exploitable on its own — but a misconfigured value (or a
+// proof server that starts redirecting) could make this chain node issue
+// requests to a private/internal address, and CHAIN_SERVICE_TOKEN
+// (addProofServerAuth) would be sent along with them. Each call site needs
+// its own timeout (proof generation can legitimately take up to 120s),
+// so this takes one instead of being a single shared client like
+// httpSyncClient.
+func proofProxyClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Transport: &http.Transport{DialContext: pinningDialer},
+	}
+}
+
 func (a *APIServer) syncProofServerStatus() {
 	for {
 		base := proofServerBaseURL()
@@ -120,7 +148,7 @@ func (a *APIServer) syncProofServerStatus() {
 			time.Sleep(30 * time.Second)
 			continue
 		}
-		proofHTTP := &http.Client{Timeout: 8 * time.Second}
+		proofHTTP := proofProxyClient(8 * time.Second)
 		resp, err := proofHTTP.Get(base + "/health")
 		if err == nil {
 			body, _ := io.ReadAll(resp.Body)
@@ -416,7 +444,7 @@ func (a *APIServer) handleSepoliaHumans(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	proofHTTP2 := &http.Client{Timeout: 8 * time.Second}
+	proofHTTP2 := proofProxyClient(8 * time.Second)
 	proofReq, _ := http.NewRequest("GET", base+"/humans", nil)
 	addProofServerAuth(proofReq)
 	resp, err := proofHTTP2.Do(proofReq)
@@ -1216,7 +1244,7 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	proofReq, _ := http.NewRequest("POST", base+"/prove", bytes.NewReader(body))
 	proofReq.Header.Set("Content-Type", "application/json")
 	addProofServerAuth(proofReq)
-	resp, err := (&http.Client{Timeout: 120 * time.Second}).Do(proofReq)
+	resp, err := proofProxyClient(120 * time.Second).Do(proofReq)
 	if err != nil {
 		http.Error(w, `{"error":"proof server unreachable"}`, 502)
 		return
@@ -1244,7 +1272,7 @@ func (a *APIServer) handleProveGetProxy(w http.ResponseWriter, r *http.Request) 
 	}
 	getReq, _ := http.NewRequest("GET", base+"/get/"+id, nil)
 	addProofServerAuth(getReq)
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(getReq)
+	resp, err := proofProxyClient(30 * time.Second).Do(getReq)
 	if err != nil {
 		http.Error(w, `{"error":"proof server unreachable"}`, 502)
 		return
@@ -1281,7 +1309,7 @@ func (a *APIServer) handleProofCheckProxy(w http.ResponseWriter, r *http.Request
 	proofReq, _ := http.NewRequest("POST", base+"/check", bytes.NewReader(body))
 	proofReq.Header.Set("Content-Type", "application/json")
 	addProofServerAuth(proofReq)
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(proofReq)
+	resp, err := proofProxyClient(30 * time.Second).Do(proofReq)
 	if err != nil {
 		http.Error(w, `{"error":"proof server unreachable"}`, 502)
 		return
@@ -1363,7 +1391,32 @@ func (a *APIServer) handleRegistrationDebug(w http.ResponseWriter, r *http.Reque
 // handleSnapshot exports the full Go-state as a signed JSON snapshot.
 // Protected by SNAPSHOT_TOKEN env var if set. A new node can bootstrap
 // itself by setting BOOTSTRAP_SNAPSHOT_URL to this endpoint's URL.
+//
+// FIX (audit recheck3, P2 — "Snapshot-Endpoint ist token-geschuetzt, aber
+// nicht netzwerkgebunden"): unlike handleSignValidatorChallenge, this
+// endpoint genuinely needs to stay reachable over the public internet by
+// design — every cross-cloud-provider bootstrap/resync this project relies
+// on (a Railway node pulling from another Railway node, or from a
+// self-hosted VPS, and vice versa) calls this exact endpoint across the
+// open internet; restricting it to loopback/private by default the way
+// handleSignValidatorChallenge does would break that mechanism outright,
+// not harden it. So this adds the audit's second suggested option instead
+// of its first: SNAPSHOT_RESTRICT_TO_PRIVATE_NETWORK=true is an opt-in for
+// operators who don't need cross-network bootstrap and want the extra
+// defense-in-depth layer; default behavior (this var unset) is unchanged
+// from before — public reachability gated by SNAPSHOT_TOKEN alone, exactly
+// as already documented above and already relied on in production.
 func (a *APIServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
+	if os.Getenv("SNAPSHOT_RESTRICT_TO_PRIVATE_NETWORK") == "true" {
+		peerHost, _, splitErr := net.SplitHostPort(r.RemoteAddr)
+		if splitErr != nil {
+			peerHost = r.RemoteAddr
+		}
+		if !isPrivateOrLoopback(peerHost) {
+			http.Error(w, `{"error":"this node restricts /api/snapshot to its local/private network (SNAPSHOT_RESTRICT_TO_PRIVATE_NETWORK=true)"}`, http.StatusForbidden)
+			return
+		}
+	}
 	// SNAPSHOT_TOKEN is mandatory — the snapshot contains nullifier-to-wallet
 	// mappings and bio-registration data. Without a token, all requests are
 	// rejected so the endpoint is never accidentally left open.
