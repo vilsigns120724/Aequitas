@@ -210,8 +210,8 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	// used to live only in printf logs — surfaced here so a stuck backlog
 	// (proof-server unreachable, EVM mirror writes failing repeatedly) is
 	// visible to an operator checking health instead of requiring a log dive.
-	proofQueueCount, proofQueueOldestSecs := a.state.CountProofServerSyncQueue()
-	evmQueueCount, evmQueueOldestSecs := a.state.CountEVMMirrorSyncQueue()
+	proofQueueCount, proofQueueDeadCount, proofQueueOldestSecs := a.state.CountProofServerSyncQueue()
+	evmQueueCount, evmQueueDeadCount, evmQueueOldestSecs := a.state.CountEVMMirrorSyncQueue()
 	// FIX (audit 2026-06-28 recheck 5, P2-5): "Beim Start klar in
 	// /api/health/combined anzeigen, ob destruktive Maintenance-Flags
 	// gesetzt sind." A destructive var that was refused at startup (e.g.
@@ -260,6 +260,17 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	if evmQueueCount > 0 && status == "healthy" {
 		status = "warn"
 	}
+	if proofQueueDeadCount > 0 || evmQueueDeadCount > 0 {
+		if status == "healthy" {
+			status = "warn"
+		}
+		notes = append(notes, fmt.Sprintf(
+			"%d proof-server sync and %d EVM-mirror sync entries hit the %d-attempt dead-letter limit — "+
+				"retry has permanently stopped; fix the underlying issue and run: "+
+				"UPDATE proof_server_sync_queue SET dead=FALSE; UPDATE evm_mirror_sync_queue SET dead=FALSE",
+			proofQueueDeadCount, evmQueueDeadCount, retryQueueMaxAttempts,
+		))
+	}
 	if len(destructiveFlagsSet) > 0 {
 		status = "warn"
 		notes = append(notes, "a destructive maintenance flag is set in this node's environment — see destructive_flags_set")
@@ -286,10 +297,12 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"chain_bio_hashes": a.state.CountChainBioHashes(),
 			"proof_server_sync_queue": map[string]interface{}{
 				"pending":         proofQueueCount,
+				"dead":            proofQueueDeadCount,
 				"oldest_age_secs": proofQueueOldestSecs,
 			},
 			"evm_mirror_sync_queue": map[string]interface{}{
 				"pending":         evmQueueCount,
+				"dead":            evmQueueDeadCount,
 				"oldest_age_secs": evmQueueOldestSecs,
 			},
 		},

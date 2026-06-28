@@ -667,21 +667,34 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 	}
 }
 
+// retryQueueMaxAttempts is the number of retry attempts after which a queue
+// entry is moved to dead-letter (dead=TRUE). Dead entries are no longer picked
+// up by Load* and require manual intervention (UPDATE ... SET dead=FALSE to
+// requeue). Exposed via /api/health/combined dead counts.
+const retryQueueMaxAttempts = 20
+
 // QueueEVMMirrorSync persists a failed syncBalanceLocked slot write so
 // RetryEVMMirrorSyncQueue can catch up later — see syncBalanceLocked's own
 // comment (audit 2026-06-28 recheck 4, P1-6).
+// P2-4 fix: sets next_retry_at using exponential backoff capped at 4 hours,
+// and marks dead=TRUE after retryQueueMaxAttempts failures so the queue does
+// not grow unbounded and dead entries are visible in the health endpoint.
 func (cs *ChainState) QueueEVMMirrorSync(addr, contractAddr, lastErr string) {
 	if cs.db == nil {
 		return
 	}
+	initialNextRetry := time.Now().Unix() + 60 // 2^1 * 30 = first retry after 60s
 	if _, err := cs.db.Exec(
-		`INSERT INTO evm_mirror_sync_queue (address, contract_addr, last_error)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO evm_mirror_sync_queue (address, contract_addr, last_error, next_retry_at, dead)
+		 VALUES ($1, $2, $3, $4, FALSE)
 		 ON CONFLICT (address, contract_addr) DO UPDATE SET
-		   attempts = evm_mirror_sync_queue.attempts + 1,
-		   last_error = EXCLUDED.last_error,
-		   last_attempt_at = NOW()`,
-		addr, contractAddr, lastErr,
+		   attempts      = evm_mirror_sync_queue.attempts + 1,
+		   last_error    = EXCLUDED.last_error,
+		   last_attempt_at = NOW(),
+		   next_retry_at = (EXTRACT(EPOCH FROM NOW())::bigint
+		                    + LEAST(POWER(2, evm_mirror_sync_queue.attempts + 1)::bigint * 30, 14400)),
+		   dead          = (evm_mirror_sync_queue.attempts + 1) >= $5`,
+		addr, contractAddr, lastErr, initialNextRetry, retryQueueMaxAttempts,
 	); err != nil {
 		fmt.Printf("[EVM] Warning: could not queue mirror sync retry for %s: %v\n", addr, err)
 	}
@@ -693,31 +706,42 @@ type evmMirrorSyncQueueEntry struct {
 	ContractAddr string
 }
 
-// CountEVMMirrorSyncQueue returns the number of pending entries and the
-// age in seconds of the oldest one (0 if empty) — see
-// CountProofServerSyncQueue's matching comment.
-func (cs *ChainState) CountEVMMirrorSyncQueue() (count int, oldestAgeSecs int64) {
+// CountEVMMirrorSyncQueue returns pending (non-dead) entry count, dead-letter
+// count, and age in seconds of the oldest pending entry (0 if empty).
+// P2-4 fix: now distinguishes pending from dead-letter so /api/health/combined
+// can tell an operator whether retries are still ongoing or have permanently
+// stalled and need manual intervention.
+func (cs *ChainState) CountEVMMirrorSyncQueue() (count int, deadCount int, oldestAgeSecs int64) {
 	if cs.db == nil {
-		return 0, 0
+		return 0, 0, 0
 	}
 	var oldest sql.NullInt64
 	if err := cs.db.QueryRow(
-		`SELECT COUNT(*), MIN(EXTRACT(EPOCH FROM created_at))::bigint FROM evm_mirror_sync_queue`,
-	).Scan(&count, &oldest); err != nil {
-		return 0, 0
+		`SELECT COUNT(*) FILTER (WHERE NOT dead),
+		        COUNT(*) FILTER (WHERE dead),
+		        MIN(EXTRACT(EPOCH FROM created_at))::bigint FILTER (WHERE NOT dead)
+		 FROM evm_mirror_sync_queue`,
+	).Scan(&count, &deadCount, &oldest); err != nil {
+		return 0, 0, 0
 	}
 	if oldest.Valid {
 		oldestAgeSecs = time.Now().Unix() - oldest.Int64
 	}
-	return count, oldestAgeSecs
+	return count, deadCount, oldestAgeSecs
 }
 
-// LoadEVMMirrorSyncQueue returns up to 200 pending retry entries, oldest first.
+// LoadEVMMirrorSyncQueue returns up to 200 pending retry entries whose
+// next_retry_at is in the past (or NULL for pre-migration rows) and that have
+// not yet hit the dead-letter limit, oldest first.
 func (cs *ChainState) LoadEVMMirrorSyncQueue() []evmMirrorSyncQueueEntry {
 	if cs.db == nil {
 		return nil
 	}
-	rows, err := cs.db.Query(`SELECT address, contract_addr FROM evm_mirror_sync_queue ORDER BY created_at LIMIT 200`)
+	rows, err := cs.db.Query(
+		`SELECT address, contract_addr FROM evm_mirror_sync_queue
+		 WHERE NOT dead
+		   AND (next_retry_at IS NULL OR next_retry_at <= EXTRACT(EPOCH FROM NOW())::bigint)
+		 ORDER BY created_at LIMIT 200`)
 	if err != nil {
 		fmt.Printf("[EVM] Warning: could not load mirror sync queue: %v\n", err)
 		return nil
@@ -1027,21 +1051,26 @@ func (cs *ChainState) SaveBioHash(bioHash, walletAddress string) error {
 // RetryProofServerSyncQueue can catch up later instead of the sync gap
 // being permanent — see proof_server_sync_queue's own table comment
 // (state.go) for why this exists (audit 2026-06-28 recheck 4, P1-5).
-// ON CONFLICT bumps attempts/last_error/last_attempt_at rather than
-// inserting a duplicate row, so repeated failures for the same biometric
-// don't grow the table unbounded.
+// P2-4 fix: ON CONFLICT now also sets next_retry_at using exponential
+// backoff (capped at 4h) and marks dead=TRUE after retryQueueMaxAttempts
+// failures so permanently-unreachable proof-servers don't grow the queue
+// unbounded and dead entries surface in /api/health/combined.
 func (cs *ChainState) QueueProofServerSync(bioHashKey, wallet, lastErr string) {
 	if cs.db == nil || bioHashKey == "" {
 		return
 	}
+	initialNextRetry := time.Now().Unix() + 60 // 2^1 * 30 = first retry after 60s
 	if _, err := cs.db.Exec(
-		`INSERT INTO proof_server_sync_queue (bio_hash_key, wallet_address, last_error)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO proof_server_sync_queue (bio_hash_key, wallet_address, last_error, next_retry_at, dead)
+		 VALUES ($1, $2, $3, $4, FALSE)
 		 ON CONFLICT (bio_hash_key) DO UPDATE SET
-		   attempts = proof_server_sync_queue.attempts + 1,
-		   last_error = EXCLUDED.last_error,
-		   last_attempt_at = NOW()`,
-		bioHashKey, strings.ToLower(wallet), lastErr,
+		   attempts      = proof_server_sync_queue.attempts + 1,
+		   last_error    = EXCLUDED.last_error,
+		   last_attempt_at = NOW(),
+		   next_retry_at = (EXTRACT(EPOCH FROM NOW())::bigint
+		                    + LEAST(POWER(2, proof_server_sync_queue.attempts + 1)::bigint * 30, 14400)),
+		   dead          = (proof_server_sync_queue.attempts + 1) >= $5`,
+		bioHashKey, strings.ToLower(wallet), lastErr, initialNextRetry, retryQueueMaxAttempts,
 	); err != nil {
 		fmt.Printf("[REGISTER] Warning: could not queue proof-server sync retry for %s: %v\n", wallet, err)
 	}
@@ -1054,34 +1083,40 @@ type proofServerSyncQueueEntry struct {
 	Attempts   int
 }
 
-// CountProofServerSyncQueue returns the number of pending entries and the
-// age in seconds of the oldest one (0 if empty) — exposed via
-// /api/health/combined so a stuck sync backlog is visible instead of only
-// living in logs (audit 2026-06-28 recheck 5, P2-1/P2-4: "Health-Endpoint
-// muss bio_hash_sync_lag/missing_chain_bio_hashes sichtbar machen").
-func (cs *ChainState) CountProofServerSyncQueue() (count int, oldestAgeSecs int64) {
+// CountProofServerSyncQueue returns pending (non-dead) entry count, dead-letter
+// count, and age in seconds of the oldest pending entry (0 if empty).
+// P2-4 fix: distinguishes pending from dead-letter; see CountEVMMirrorSyncQueue.
+func (cs *ChainState) CountProofServerSyncQueue() (count int, deadCount int, oldestAgeSecs int64) {
 	if cs.db == nil {
-		return 0, 0
+		return 0, 0, 0
 	}
 	var oldest sql.NullInt64
 	if err := cs.db.QueryRow(
-		`SELECT COUNT(*), MIN(EXTRACT(EPOCH FROM created_at))::bigint FROM proof_server_sync_queue`,
-	).Scan(&count, &oldest); err != nil {
-		return 0, 0
+		`SELECT COUNT(*) FILTER (WHERE NOT dead),
+		        COUNT(*) FILTER (WHERE dead),
+		        MIN(EXTRACT(EPOCH FROM created_at))::bigint FILTER (WHERE NOT dead)
+		 FROM proof_server_sync_queue`,
+	).Scan(&count, &deadCount, &oldest); err != nil {
+		return 0, 0, 0
 	}
 	if oldest.Valid {
 		oldestAgeSecs = time.Now().Unix() - oldest.Int64
 	}
-	return count, oldestAgeSecs
+	return count, deadCount, oldestAgeSecs
 }
 
-// LoadProofServerSyncQueue returns up to 50 pending retry entries, oldest
-// first, for RetryProofServerSyncQueue to attempt.
+// LoadProofServerSyncQueue returns up to 50 pending retry entries whose
+// next_retry_at is in the past (or NULL for pre-migration rows) and that have
+// not yet hit the dead-letter limit, oldest first.
 func (cs *ChainState) LoadProofServerSyncQueue() []proofServerSyncQueueEntry {
 	if cs.db == nil {
 		return nil
 	}
-	rows, err := cs.db.Query(`SELECT bio_hash_key, wallet_address, attempts FROM proof_server_sync_queue ORDER BY created_at LIMIT 50`)
+	rows, err := cs.db.Query(
+		`SELECT bio_hash_key, wallet_address, attempts FROM proof_server_sync_queue
+		 WHERE NOT dead
+		   AND (next_retry_at IS NULL OR next_retry_at <= EXTRACT(EPOCH FROM NOW())::bigint)
+		 ORDER BY created_at LIMIT 50`)
 	if err != nil {
 		fmt.Printf("[REGISTER] Warning: could not load proof-server sync queue: %v\n", err)
 		return nil
@@ -1477,8 +1512,13 @@ func (cs *ChainState) InitValidatorKeysTable() {
 		  AND vk1.human_wallet = vk2.human_wallet`)
 	if _, err := cs.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_validator_keys_human_wallet
 		ON validator_keys (human_wallet)`); err != nil {
-		Log.Error("Could not enforce UNIQUE(human_wallet) on validator_keys", "error", err)
-		// Node continues but duplicate keys may affect reward distribution
+		// N2 fix: mark node degraded instead of silently continuing. A missing
+		// UNIQUE constraint on human_wallet means one wallet can hold multiple
+		// signing keys and reward distribution can be counted twice. This is
+		// surfaced in /api/health/combined via SetBootstrapDegraded.
+		reason := fmt.Sprintf("validator_keys UNIQUE(human_wallet) index could not be created — duplicate validator key bindings possible, reward distribution may be incorrect: %v", err)
+		Log.Error(reason)
+		cs.SetBootstrapDegraded(reason)
 	}
 }
 

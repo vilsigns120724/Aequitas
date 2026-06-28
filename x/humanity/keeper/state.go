@@ -403,6 +403,12 @@ last_error TEXT NOT NULL DEFAULT '',
 created_at TIMESTAMP DEFAULT NOW(),
 last_attempt_at TIMESTAMP DEFAULT NOW()
 )`)
+	// P2-4 fix: exponential-backoff columns. next_retry_at is the unix
+	// timestamp after which the entry is eligible for retry (NULL = due now,
+	// for rows created before this migration). dead=TRUE means the entry
+	// has hit retryQueueMaxAttempts and requires manual intervention.
+	dbExec(`ALTER TABLE proof_server_sync_queue ADD COLUMN IF NOT EXISTS next_retry_at BIGINT`)
+	dbExec(`ALTER TABLE proof_server_sync_queue ADD COLUMN IF NOT EXISTS dead BOOLEAN NOT NULL DEFAULT FALSE`)
 
 	// FIX (audit 2026-06-28 recheck 4, P1-6): syncBalanceLocked's
 	// SaveStorageSlot writes (balanceOf/isHuman/lastActivity/lastDemurrage
@@ -421,6 +427,9 @@ created_at TIMESTAMP DEFAULT NOW(),
 last_attempt_at TIMESTAMP DEFAULT NOW(),
 PRIMARY KEY (address, contract_addr)
 )`)
+	// Same P2-4 backoff columns as proof_server_sync_queue above.
+	dbExec(`ALTER TABLE evm_mirror_sync_queue ADD COLUMN IF NOT EXISTS next_retry_at BIGINT`)
+	dbExec(`ALTER TABLE evm_mirror_sync_queue ADD COLUMN IF NOT EXISTS dead BOOLEAN NOT NULL DEFAULT FALSE`)
 
 	// EVM transaction receipts — persisted so MetaMask can get correct
 	// receipts after a node restart (avoids "Senden fehlgeschlagen" for
@@ -695,7 +704,16 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 	// that fails partway through (e.g. a transient DB hiccup) used to leave
 	// some tables wiped and others not, while still printing "Done" with no
 	// way to tell the two outcomes apart in the logs.
-	var failed []string
+	// FIX (N1): wrap all DELETE/UPDATE statements in a single transaction so a
+	// failure on statement N rolls back statements 1..N-1 too — identical to
+	// the fix applied to resetDBStateForBootstrap. Previously, a mid-loop DB
+	// error left some tables wiped and others not (half-reset state), which is
+	// exactly the scenario the surrounding comment chain documents as catastrophic.
+	clearTx, txErr := cs.db.Begin()
+	if txErr != nil {
+		fmt.Printf("[ALERT] [CLEAR-REG] Could not begin transaction: %v — no data changed.\n", txErr)
+		return
+	}
 	for _, stmt := range stmts {
 		tableName := tableNameFromDelete(stmt)
 		if tableName != "" {
@@ -704,17 +722,20 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 				continue
 			}
 		}
-		if _, err := cs.db.Exec(stmt); err != nil {
-			fmt.Printf("[CLEAR-REG] Warning: %v\n", err)
-			failed = append(failed, stmt)
+		if _, err := clearTx.Exec(stmt); err != nil {
+			clearTx.Rollback()
+			fmt.Printf("[ALERT] [CLEAR-REG] Statement FAILED — rolled back, no data changed: %v\n", err)
+			fmt.Printf("[ALERT] [CLEAR-REG] Failed statement: %.100s\n", stmt)
+			fmt.Println("[ALERT] [CLEAR-REG] Do not remove CLEAR_REGISTRATIONS yet — investigate and rerun.")
+			return
 		}
 	}
-	if len(failed) > 0 {
-		fmt.Printf("[ALERT] [CLEAR-REG] %d statement(s) FAILED — registrations are only PARTIALLY cleared: %v\n", len(failed), failed)
-		fmt.Println("[ALERT] [CLEAR-REG] Do not remove CLEAR_REGISTRATIONS yet — investigate and rerun, or this half-reset state can cause stale isHuman/nullifier entries to resurface.")
+	if err := clearTx.Commit(); err != nil {
+		clearTx.Rollback()
+		fmt.Printf("[ALERT] [CLEAR-REG] Transaction commit FAILED — no data changed: %v\n", err)
 		return
 	}
-	fmt.Println("[CLEAR-REG] Done — all registrations cleared.")
+	fmt.Println("[CLEAR-REG] Done — all registrations cleared (transaction committed).")
 	// FIX (audit 2026-06-28 recheck 5, P2-5): see resetDBStateForBootstrap's
 	// matching comment — exits cleanly instead of relying on the operator
 	// to remember to remove these vars before the node serves traffic again.
