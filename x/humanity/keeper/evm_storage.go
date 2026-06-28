@@ -145,12 +145,54 @@ func (cs *ChainState) LoadNonce(address string) uint64 {
 
 // ─── CONTRACT STORAGE SLOTS ───────────────────────────────────────────────────
 
+// SaveStorageSlot writes via cs.db directly — safe to call without holding
+// cs.mu (used by EVM contract execution, V6 mirror, contract deploy, and
+// MigrateEVMFromGoState, none of which run inside a cs.mu-held critical
+// section). For callers that DO already hold cs.mu inside an atomic
+// Go-state operation and need this write to join that operation's
+// cs.activeTx, use saveStorageSlotLocked instead — see its own comment for
+// why these can't simply be the same function (audit 2026-06-28
+// Gesamtaudit, P0-1: reading cs.activeTx without holding cs.mu first is a
+// real data race against any concurrent cs.mu-locked operation, the same
+// class of bug already fixed for getConfigValue/tryClaimNullifierLocked
+// elsewhere this session).
 func (cs *ChainState) SaveStorageSlot(address, slot, value string) error {
 	if cs.db == nil {
 		return nil
 	}
 	address = strings.ToLower(address)
 	_, err := cs.db.Exec(
+		`INSERT INTO evm_storage (address, slot, value) VALUES ($1, $2, $3)
+ ON CONFLICT (address, slot) DO UPDATE SET value = $3`,
+		address, slot, value,
+	)
+	return err
+}
+
+// saveStorageSlotLocked is SaveStorageSlot's body for callers that already
+// hold cs.mu inside an atomic Go-state operation (e.g. syncBalanceLocked,
+// itself only ever called while cs.mu is held — see its own doc comment).
+// Routes through cs.dbExec() so this write joins cs.activeTx when one is
+// set, making the EVM mirror slot commit or roll back together with the
+// Go-state mutation it derives from, instead of auto-committing
+// independently a moment before a later step in the same operation fails.
+//
+// FIX (audit 2026-06-28 Gesamtaudit, P0-1): this is exactly the gap the
+// audit traced through registerHumanLocked → syncHumanRegistrationLocked →
+// syncBalanceLocked → SaveStorageSlot: balanceOf/isHuman could commit to
+// evm_storage immediately, then a LATER step in the same registration
+// (SaveNullifier, the outbox insert, or the final tx.Commit) could fail and
+// roll back Go-state and the outbox — while evm_storage stayed on
+// "isHuman=true" regardless, since SaveStorageSlot's plain cs.db.Exec had
+// already committed it on a separate connection. eth_call/V7 dry-runs/
+// wallet RPC reads from evm_storage, so this could surface as "already
+// registered" against a wallet whose actual registration never completed.
+func (cs *ChainState) saveStorageSlotLocked(address, slot, value string) error {
+	if cs.db == nil {
+		return nil
+	}
+	address = strings.ToLower(address)
+	_, err := cs.dbExec().Exec(
 		`INSERT INTO evm_storage (address, slot, value) VALUES ($1, $2, $3)
  ON CONFLICT (address, slot) DO UPDATE SET value = $3`,
 		address, slot, value,
@@ -541,15 +583,20 @@ func (cs *ChainState) syncHumanRegistrationLocked(contractAddr string, addr stri
 //
 // FIX (audit 2026-06-28 recheck 4, P1-6): every SaveStorageSlot call here
 // used to either discard its error outright (slots 6/10/11) or only log it
-// (slot 4), with nothing durable recording a failure. Go-state (the source
-// of truth) could be correct while eth_call/the V7 contract's own storage
-// silently kept showing stale data forever, with no path back to
-// consistency. syncBalanceLocked can't itself become a hard error for its
-// many callers — see ResyncFromSnapshotURL's comment on why the EVM mirror
-// can't reasonably join the same SQL transaction as the Go-state write it
-// mirrors — so instead, any address with a failed slot write is queued the
-// same way notifyProofServerWithRetryQueue queues failures (register.go),
-// and RetryEVMMirrorSyncQueue (started from NewAPIServer) catches up later.
+// (slot 4), with nothing durable recording a failure.
+//
+// FIX (audit 2026-06-28 Gesamtaudit, P0-1): these calls now use
+// saveStorageSlotLocked, not SaveStorageSlot — syncBalanceLocked's own
+// precondition (caller already holds cs.mu) is exactly what makes that
+// safe, and it's what lets the EVM mirror slot writes actually join the
+// SAME SQL transaction (cs.activeTx) as whatever atomic Go-state mutation
+// is calling this function (e.g. registerHumanLocked inside
+// RegisterHumanAtomic), instead of auto-committing independently a moment
+// before a later step in that same operation could fail and roll back.
+// Any address whose slot write STILL fails (activeTx itself aborted, or a
+// caller with cs.db set but no surrounding transaction) is queued the same
+// way notifyProofServerWithRetryQueue queues failures (register.go), and
+// RetryEVMMirrorSyncQueue (started from NewAPIServer) catches up later.
 func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 	if cs.db == nil {
 		return
@@ -575,7 +622,7 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		addrBytes := common.HexToAddress(addr).Bytes()
 		var firstErr error
 		// slot 4: balanceOf
-		if err := cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()); err != nil {
+		if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()); err != nil {
 			fmt.Printf("[EVM] Warning: could not sync balance for %s: %v\n", addr, err)
 			firstErr = err
 		}
@@ -590,7 +637,7 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		if acc.IsHuman {
 			isHumanVal = common.HexToHash("0x01")
 		}
-		if err := cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 6).Hex(), isHumanVal.Hex()); err != nil {
+		if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 6).Hex(), isHumanVal.Hex()); err != nil {
 			fmt.Printf("[EVM] Warning: could not sync isHuman for %s: %v\n", addr, err)
 			if firstErr == nil {
 				firstErr = err
@@ -599,13 +646,13 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		// slots 10 + 11: lastActivity / lastDemurrage
 		if acc.LastActivityAt > 0 {
 			ts := common.BigToHash(big.NewInt(acc.LastActivityAt))
-			if err := cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 10).Hex(), ts.Hex()); err != nil {
+			if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 10).Hex(), ts.Hex()); err != nil {
 				fmt.Printf("[EVM] Warning: could not sync lastActivity for %s: %v\n", addr, err)
 				if firstErr == nil {
 					firstErr = err
 				}
 			}
-			if err := cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 11).Hex(), ts.Hex()); err != nil {
+			if err := cs.saveStorageSlotLocked(contractAddr, mappingSlot(addrBytes, 11).Hex(), ts.Hex()); err != nil {
 				fmt.Printf("[EVM] Warning: could not sync lastDemurrage for %s: %v\n", addr, err)
 				if firstErr == nil {
 					firstErr = err
