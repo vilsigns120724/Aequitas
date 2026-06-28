@@ -145,6 +145,17 @@ p2pNode.SetDAG(bc)
 			}
 		}
 	}
+	// FIX (2026-06-28, root cause of Contabo VPS's permanent post-resync
+	// catch-up failure): bc was constructed above (before this whole
+	// bootstrap/resync block ran) from whatever max_block_height existed in
+	// the DB at that time — 0, on a freshly wiped DB. ImportSnapshotFromURL/
+	// ResyncFromSnapshotURL just wrote the real height into the DB, but the
+	// already-constructed bc never re-reads it on its own. Without this
+	// call, bc.StartHTTPBlockSync below starts paging from height 0 and
+	// walks the ENTIRE historical block backlog one HTTP page at a time —
+	// see RefreshBootHeightAfterSnapshotImport's own comment for why that's
+	// what caused the orphan-buffer abandonment storm during a large catch-up.
+	bc.RefreshBootHeightAfterSnapshotImport()
 
 	// Save price snapshots every 30 seconds so the chart interval buttons
 	// (1m/5m/30m/1h/4h) show meaningful historical data even without swaps.

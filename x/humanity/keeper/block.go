@@ -383,6 +383,54 @@ dag.bootHeight = dag.height
 return dag
 }
 
+// RefreshBootHeightAfterSnapshotImport re-reads max_block_height/
+// snapshot_import_height from the DB and raises dag.height/dag.bootHeight
+// to match, if higher than what NewBlockchain captured at construction time.
+//
+// FIX (root cause behind Contabo VPS's permanent post-resync catch-up
+// failure, found 2026-06-28): main.go constructs the BlockDAG (which seeds
+// dag.height/dag.bootHeight from whatever max_block_height already exists
+// in the DB) BEFORE RESYNC_FROM_SNAPSHOT/BOOTSTRAP_SNAPSHOT_URL ever runs.
+// On a freshly wiped DB, that means dag.height/dag.bootHeight are captured
+// as 0 — and bootHeight, not just height, matters here: replayTransactions'
+// skipHeight check (see its own comment) takes max(dag.bootHeight,
+// snapshot_import_height read live from DB), so in principle the live DB
+// read alone should have been enough. In practice dag.height itself (the
+// sync frontier doSyncOnce pages forward from) stayed frozen at 0, so the
+// node still had to fetch, hash-verify, and insert into dag.blocks/dag.tips
+// every single one of ~18,000 historical blocks one HTTP page at a time
+// before reaching its true frontier — needless work that starved
+// fetchMissingAncestors of cycles while validators kept producing new
+// blocks every ~6s, which is what caused the orphan buffer to fall behind
+// and start permanently abandoning blocks it could have resolved given
+// less contention (see orphanAbandonAfter's comment). Calling this right
+// after a successful snapshot import/resync, before HTTP sync starts, lets
+// the node begin paging from near its true height immediately — the only
+// blocks it then needs from peers are the handful actually referenced as
+// parents going forward, fetched on demand via fetchMissingAncestors,
+// never the full historical backlog.
+func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport() {
+	dag.mu.Lock()
+	defer dag.mu.Unlock()
+	var h int64
+	if persisted := dag.state.getConfigValueDB("max_block_height"); persisted != "" {
+		fmt.Sscanf(persisted, "%d", &h)
+	}
+	if snapHeightStr := dag.state.getConfigValueDB("snapshot_import_height"); snapHeightStr != "" {
+		var snapHeight int64
+		fmt.Sscanf(snapHeightStr, "%d", &snapHeight)
+		if snapHeight > h {
+			h = snapHeight
+		}
+	}
+	if h > dag.height {
+		dag.height = h
+	}
+	if h > dag.bootHeight {
+		dag.bootHeight = h
+	}
+}
+
 func (dag *BlockDAG) createGenesisBlock() {
 genesis := &Block{
 Height:       0,
