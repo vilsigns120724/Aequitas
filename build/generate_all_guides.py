@@ -174,7 +174,7 @@ vars = [
     ('RELAYER_PRIVATE_KEY', 'YES',         'The private key (0x…, 66 chars) of your dedicated node wallet. MetaMask: Account Details → Show Private Key → enter password → copy.'),
     ('RELAYER_ADDRESS',     'Recommended', 'The wallet address (0x…, 42 chars) matching RELAYER_PRIVATE_KEY. Copy from MetaMask. A fallback exists but setting this explicitly prevents startup errors.'),
     ('NODE_OPERATOR_WALLET','For rewards', 'Your Aequitas human wallet address — registered via the Android app. Receives your daily validator rewards (40% of all protocol fees). Must be a registered human.'),
-    ('PEER_SECRET',         'Multi-node',  'A shared secret that authorises your node as a validator. Every node in the same network must use the identical value. Get from the network operator — do not share publicly.'),
+    ('PEER_SECRET',         'Optional/Legacy', 'Legacy shared-secret fallback. No longer required — nodes authenticate automatically via cryptographic challenge-response (RELAYER_PRIVATE_KEY). Only needed for backward compatibility with older deployments.'),
     ('SELF_URL',            'Multi-node',  'Your node\'s own public HTTPS URL (e.g. https://my-node.up.railway.app). Required for peer discovery self-exclusion. Find in Railway: Settings → Networking → Public Networking.'),
     ('PRIMARY_NODE_URL',    'Multi-node',  'Set to: https://aequitas.digital — the primary node your node registers with for automatic peer discovery. On startup your node posts its URL + signing address to the primary, gets the full peer list back, and joins the network automatically.'),
     ('PORT',                'No',          'Leave unset on Railway — Railway sets this automatically. Default is 8080.'),
@@ -189,7 +189,7 @@ railway_steps = [
     'In your Railway project (from Step 2), click <b>+ New → GitHub Repo</b>',
     'Select your Aequitas fork (from Step 1) — Railway detects the Dockerfile automatically',
     'Click <b>Deploy Now</b> — a first build starts (may fail without env vars, that is normal)',
-    'Click your Aequitas service → <b>Variables</b> → add each variable (see table above). Minimum required: RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, PEER_SECRET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital',
+    'Click your Aequitas service → <b>Variables</b> → add each variable (see table above). Minimum required: RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital (PEER_SECRET is no longer required)',
     'Click <b>Deploy</b> (or save variables to trigger auto-redeploy). Build takes ~3 minutes while Go compiles the node binary.',
     'Watch <b>Deploy Logs</b>. Success looks like: <font name="Courier" color="#5B21B6">Aequitas Node Running</font> and <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
     'Go to <b>Settings → Networking → Generate Domain</b> to get your public URL',
@@ -200,7 +200,7 @@ railway_vars_code = (
     'RELAYER_PRIVATE_KEY    = 0xYOUR_PRIVATE_KEY\n'
     'RELAYER_ADDRESS        = 0xYOUR_NODE_WALLET_ADDRESS\n'
     'NODE_OPERATOR_WALLET   = 0xYOUR_HUMAN_WALLET\n'
-    'PEER_SECRET            = get-this-from-network-operator\n'
+    '# PEER_SECRET is no longer required — authentication is automatic\n'
     'SELF_URL               = https://YOUR-RAILWAY-DOMAIN.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
 ),
@@ -218,7 +218,7 @@ docker_code  = (
     '  -e RELAYER_PRIVATE_KEY="0xYOUR_PRIVATE_KEY" \\\n'
     '  -e RELAYER_ADDRESS="0xYOUR_NODE_WALLET_ADDRESS" \\\n'
     '  -e NODE_OPERATOR_WALLET="0xYOUR_HUMAN_WALLET" \\\n'
-    '  -e PEER_SECRET="get-from-network-operator" \\\n'
+    '  # -e PEER_SECRET="..." (optional/legacy, not required) \\\n'
     '  -e SELF_URL="https://YOUR-PUBLIC-URL" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'
@@ -299,7 +299,7 @@ vars = [
     ('RELAYER_PRIVATE_KEY', 'JA',           'Privater Schluessel deiner Node-Wallet (0x…, 66 Zeichen). MetaMask: Kontodetails → Privaten Schluessel anzeigen → Passwort → kopieren.'),
     ('RELAYER_ADDRESS',     'Empfohlen',    'Wallet-Adresse (0x…, 42 Zeichen) passend zu RELAYER_PRIVATE_KEY. Aus MetaMask kopieren. Verhindert Startfehler.'),
     ('NODE_OPERATOR_WALLET','Fuer Bel.',    'Deine Aequitas-Mensch-Wallet — die via Android-App registrierte. Erhaelt taeglich Validator-Belohnungen (40% aller Protokollgebuehren). Muss ein registrierter Mensch sein.'),
-    ('PEER_SECRET',         'Multi-Node',   'Gemeinsames Geheimnis das deinen Node als Validator autorisiert. Alle Nodes im Netzwerk muessen identischen Wert nutzen. Vom Netzwerkbetreiber erhalten — nicht teilen.'),
+    ('PEER_SECRET',         'Optional/Legacy', 'Legacy-Fallback. Nicht mehr erforderlich — Nodes authentifizieren sich automatisch per Challenge-Response (RELAYER_PRIVATE_KEY). Nur fuer Rueckwaertskompatibilitaet mit aelteren Deployments benoetigt.'),
     ('SELF_URL',            'Multi-Node',   'Eigene oeffentliche HTTPS-URL des Nodes (z.B. https://mein-node.up.railway.app). In Railway: Settings → Networking → Public Networking.'),
     ('PRIMARY_NODE_URL',    'Multi-Node',   'Auf https://aequitas.digital setzen — der Primaer-Node bei dem sich dein Node registriert. Beim Start postet der Node URL + Signing-Adresse und bekommt die Peer-Liste zurueck.'),
     ('PORT',                'Nein',         'Auf Railway nicht setzen — wird automatisch gesetzt. Standard ist 8080.'),
@@ -314,7 +314,7 @@ railway_steps = [
     'In deinem Railway-Projekt (aus Schritt 2): <b>+ New → GitHub Repo</b> klicken',
     'Deinen Aequitas-Fork auswaehlen (aus Schritt 1) — Railway erkennt das Dockerfile automatisch',
     '<b>Deploy Now</b> klicken — ein erster Build startet (kann ohne Env Vars fehlschlagen, das ist normal)',
-    'Aequitas-Service → <b>Variables</b> → Variablen hinzufuegen (siehe Tabelle oben). Mindest-Anforderung: RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, PEER_SECRET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital',
+    'Aequitas-Service → <b>Variables</b> → Variablen hinzufuegen (siehe Tabelle oben). Mindest-Anforderung: RELAYER_PRIVATE_KEY, RELAYER_ADDRESS, NODE_OPERATOR_WALLET, SELF_URL, PRIMARY_NODE_URL=https://aequitas.digital (PEER_SECRET nicht mehr erforderlich)',
     '<b>Deploy</b> klicken (oder Variablen speichern fuer Auto-Redeploy). Build dauert ~3 Minuten fuer Go-Kompilierung.',
     'Deploy-Logs beobachten. Erfolg sieht so aus: <font name="Courier" color="#5B21B6">Aequitas Node Running</font> und <font name="Courier" color="#0F766E">[NODE] Registered node operator wallet: 0x…</font>',
     '<b>Settings → Networking → Generate Domain</b> fuer deine oeffentliche URL',
@@ -325,7 +325,7 @@ railway_vars_code = (
     'RELAYER_PRIVATE_KEY    = 0xDEIN_PRIVATER_SCHLUESSEL\n'
     'RELAYER_ADDRESS        = 0xDEINE_NODE_WALLET_ADRESSE\n'
     'NODE_OPERATOR_WALLET   = 0xDEINE_MENSCH_WALLET\n'
-    'PEER_SECRET            = vom-Netzwerkbetreiber-erhalten\n'
+    '# PEER_SECRET ist nicht mehr erforderlich — Authentifizierung ist automatisch\n'
     'SELF_URL               = https://DEIN-RAILWAY-DOMAIN.up.railway.app\n'
     'PRIMARY_NODE_URL       = https://aequitas.digital'
 ),
@@ -343,7 +343,7 @@ docker_code  = (
     '  -e RELAYER_PRIVATE_KEY="0xDEIN_PRIVATER_SCHLUESSEL" \\\n'
     '  -e RELAYER_ADDRESS="0xDEINE_NODE_WALLET_ADRESSE" \\\n'
     '  -e NODE_OPERATOR_WALLET="0xDEINE_MENSCH_WALLET" \\\n'
-    '  -e PEER_SECRET="vom-Netzwerkbetreiber" \\\n'
+    '  # -e PEER_SECRET="..." (optional/legacy, nicht erforderlich) \\\n'
     '  -e SELF_URL="https://DEINE-OEFFENTLICHE-URL" \\\n'
     '  -e PRIMARY_NODE_URL="https://aequitas.digital" \\\n'
     '  -p 8080:8080 aequitas-node\n\n'

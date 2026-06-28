@@ -1854,7 +1854,19 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 		}
 		var tx Transaction
 		if err := json.Unmarshal([]byte(raw), &tx); err != nil {
-			fmt.Printf("[TX] LoadPendingTxs unmarshal error: %v\n", err)
+			// FIX (AQT-NEW-P2-02): a corrupt row must not stay in pending_txs.
+			// Without this, ResetStaleIncludedPendingTxs resets included_at,
+			// the next ProduceBlock picks it up again, fails again → infinite
+			// noise loop. Move it to pending_txs_dead_letter so it's preserved
+			// for diagnosis but can never re-enter the active queue.
+			fmt.Printf("[TX] LoadPendingTxs unmarshal error for id=%d — moving to dead-letter queue: %v\n", id, err)
+			cs.db.Exec(
+				`INSERT INTO pending_txs_dead_letter (id, tx_json, created_at, failed_at, fail_reason)
+				 SELECT id, tx_json, created_at, $1, $2 FROM pending_txs WHERE id = $3
+				 ON CONFLICT (id) DO NOTHING`,
+				time.Now().Unix(), err.Error(), id,
+			)
+			cs.db.Exec(`DELETE FROM pending_txs WHERE id = $1`, id)
 			continue
 		}
 		loaded = append(loaded, idTx{id: id, tx: tx})

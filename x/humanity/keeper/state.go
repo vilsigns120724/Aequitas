@@ -305,6 +305,39 @@ registered_at TIMESTAMP DEFAULT NOW()
 	// FIX: old index only excluded NULL but not '' — multiple rows with
 	// bio_hash='' (block-replay without real bio_hash) all conflicted.
 	// Drop and recreate with the correct partial condition.
+	// FIX (AQT-NEW-P2-01): if a legacy DB already has duplicate non-empty
+	// bio_hash values, CREATE UNIQUE INDEX silently fails (initDB only
+	// warns) and the node starts without the index. Deduplicate first:
+	// back up duplicates into bio_registrations_bio_hash_dedup_backup,
+	// keep the row with the earliest registered_at per bio_hash, delete
+	// the rest. DROP+CREATE then always succeeds.
+	dbExec(`CREATE TABLE IF NOT EXISTS bio_registrations_bio_hash_dedup_backup (
+commitment    TEXT PRIMARY KEY,
+wallet_address TEXT NOT NULL,
+bio_hash      TEXT,
+registered_at TIMESTAMP,
+backed_up_at  TIMESTAMP DEFAULT NOW()
+)`)
+	dbExec(`INSERT INTO bio_registrations_bio_hash_dedup_backup
+(commitment, wallet_address, bio_hash, registered_at)
+SELECT a.commitment, a.wallet_address, a.bio_hash, a.registered_at
+FROM bio_registrations a
+WHERE a.bio_hash IS NOT NULL AND a.bio_hash != ''
+  AND EXISTS (
+    SELECT 1 FROM bio_registrations b
+    WHERE b.bio_hash = a.bio_hash AND b.commitment != a.commitment
+  )
+  AND (a.registered_at, a.commitment) > (
+    SELECT MIN(c.registered_at), MIN(c.commitment)
+    FROM bio_registrations c WHERE c.bio_hash = a.bio_hash
+  )
+ON CONFLICT (commitment) DO NOTHING`)
+	dbExec(`DELETE FROM bio_registrations
+WHERE bio_hash IS NOT NULL AND bio_hash != ''
+  AND (registered_at, commitment) > (
+    SELECT MIN(c.registered_at), MIN(c.commitment)
+    FROM bio_registrations c WHERE c.bio_hash = bio_registrations.bio_hash
+  )`)
 	dbExec(`DROP INDEX IF EXISTS uidx_bio_registrations_bio_hash`)
 	dbExec(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_bio_registrations_bio_hash ON bio_registrations(bio_hash) WHERE bio_hash IS NOT NULL AND bio_hash != ''`)
 	// Single-row table holding the AEQ<->tUSD pool reserves. A fixed id=1 row
@@ -359,6 +392,16 @@ included_at BIGINT NOT NULL DEFAULT 0
 	// can skip rows whose block is already in chain_blocks, preventing the crash
 	// window between SaveBlockToDB and ClearPendingTxs from causing double-inclusion.
 	dbExec(`ALTER TABLE pending_txs ADD COLUMN IF NOT EXISTS included_block_hash TEXT`)
+	// FIX (AQT-NEW-P2-02): rows with corrupt tx_json loop forever if they stay
+	// in pending_txs — LoadPendingTxs unmarshal fails, ResetStaleIncludedPendingTxs
+	// requeues them, next cycle same error. Preserve them here for diagnosis.
+	dbExec(`CREATE TABLE IF NOT EXISTS pending_txs_dead_letter (
+id         BIGINT PRIMARY KEY,
+tx_json    TEXT NOT NULL,
+created_at BIGINT NOT NULL DEFAULT 0,
+failed_at  BIGINT NOT NULL DEFAULT 0,
+fail_reason TEXT NOT NULL DEFAULT ''
+)`)
 
 	// FIX (audit 2026-06-28 full recheck, P1-3): block headers (dag.blocks/
 	// dag.tips in block.go) used to be purely in-memory, reset to genesis on

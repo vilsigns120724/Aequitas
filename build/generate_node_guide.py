@@ -145,7 +145,7 @@ def make_doc(path, lang='en'):
             ('RELAYER_PRIVATE_KEY', 'YES', 'Private key of your dedicated node wallet (starts with 0x, 66 chars).\nMetaMask → Account Details → Show Private Key'),
             ('RELAYER_ADDRESS', 'Recommended', 'Public address matching RELAYER_PRIVATE_KEY (0x, 42 chars).\nPrevents startup errors.'),
             ('NODE_OPERATOR_WALLET', 'For rewards', 'Your Aequitas HUMAN wallet address (the one you registered with).\nThis receives daily validator rewards at 20:00 Berlin time.'),
-            ('PEER_SECRET', 'For multi-node', 'Shared secret string — ALL nodes in the network must use the SAME value.\nGet this from the network operator. Do not share publicly.'),
+            ('PEER_SECRET', 'Optional/Legacy', 'Legacy shared-secret fallback. No longer required — nodes authenticate\nautomatically via cryptographic challenge-response (RELAYER_PRIVATE_KEY).\nOnly needed for backward compatibility with older deployments.'),
             ('SELF_URL', 'For multi-node', 'Your node public URL: https://YOUR-NAME.up.railway.app\nFind in Railway → Settings → Networking → Public Networking.'),
             ('PRIMARY_NODE_URL', 'For multi-node', 'Set to: https://aequitas.digital\nYour node registers here automatically on startup.'),
             ('NODE_KEY', 'Optional', 'Base64-encoded libp2p private key for stable peer identity.\nIf not set: auto-generated on first start, printed to stderr as\n"SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>"\nCopy that value here to keep a stable node ID across restarts.'),
@@ -162,7 +162,7 @@ def make_doc(path, lang='en'):
             ('RELAYER_PRIVATE_KEY', 'JA', 'Privater Schluessel deiner Node-Wallet (beginnt mit 0x, 66 Zeichen).\nMetaMask → Kontodetails → Privaten Schluessel anzeigen'),
             ('RELAYER_ADDRESS', 'Empfohlen', 'Oeffentliche Adresse passend zu RELAYER_PRIVATE_KEY (0x, 42 Zeichen).\nVerhindert Startfehler.'),
             ('NODE_OPERATOR_WALLET', 'Fuer Bel.', 'Deine Aequitas-Mensch-Wallet-Adresse (die registrierte).\nErhaelt taeglich Validator-Belohnungen um 20:00 Uhr Berliner Zeit.'),
-            ('PEER_SECRET', 'Multi-Node', 'Gemeinsames Geheimnis — ALLE Nodes im Netzwerk muessen denselben Wert nutzen.\nVom Netzwerkbetreiber erhalten. Nicht oeffentlich teilen.'),
+            ('PEER_SECRET', 'Optional/Legacy', 'Legacy-Fallback. Nicht mehr erforderlich — Nodes authentifizieren sich\nautomatisch per kryptografischer Challenge-Response (RELAYER_PRIVATE_KEY).\nNur fuer Rueckwaertskompatibilitaet mit aelteren Deployments benoetigt.'),
             ('SELF_URL', 'Multi-Node', 'Oeffentliche URL des Nodes: https://DEIN-NAME.up.railway.app\nIn Railway → Settings → Networking → Public Networking.'),
             ('PRIMARY_NODE_URL', 'Multi-Node', 'Setzen auf: https://aequitas.digital\nDein Node registriert sich dort automatisch beim Start.'),
             ('NODE_KEY', 'Optional', 'Base64-kodierter libp2p-Schluessel fuer stabile Peer-Identitaet.\nWenn nicht gesetzt: automatisch generiert, in stderr ausgegeben als\n"SAVE THIS AS NODE_KEY ENVIRONMENT VAR: <base64>"\nDiesen Wert kopieren und hier eintragen.'),
@@ -216,12 +216,12 @@ def make_doc(path, lang='en'):
              'Railway detects the Dockerfile automatically. Click <b>Deploy Now</b>.'),
             ('Step 4 — Set Environment Variables',
              'Click your Aequitas service → <b>Variables</b>. Add at minimum:\n'
-             '  RELAYER_PRIVATE_KEY = 0xYOUR_PRIVATE_KEY\n'
-             '  RELAYER_ADDRESS     = 0xYOUR_NODE_WALLET_ADDRESS\n'
+             '  RELAYER_PRIVATE_KEY  = 0xYOUR_PRIVATE_KEY\n'
+             '  RELAYER_ADDRESS      = 0xYOUR_NODE_WALLET_ADDRESS\n'
              '  NODE_OPERATOR_WALLET = 0xYOUR_HUMAN_WALLET\n'
-             '  PEER_SECRET         = get-from-network-operator\n'
-             '  SELF_URL            = https://YOUR-RAILWAY-DOMAIN.up.railway.app\n'
-             '  PRIMARY_NODE_URL    = https://aequitas.digital\n'
+             '  SELF_URL             = https://YOUR-RAILWAY-DOMAIN.up.railway.app\n'
+             '  PRIMARY_NODE_URL     = https://aequitas.digital\n'
+             'Note: PEER_SECRET is no longer required — authentication is automatic.\n'
              'Save → Railway auto-redeploys.'),
             ('Step 5 — Get Your Public URL',
              'Railway → Settings → Networking → <b>Generate Domain</b>. '
@@ -256,9 +256,9 @@ def make_doc(path, lang='en'):
              '  RELAYER_PRIVATE_KEY  = 0xDEIN_PRIVATER_SCHLUESSEL\n'
              '  RELAYER_ADDRESS      = 0xDEINE_NODE_WALLET_ADRESSE\n'
              '  NODE_OPERATOR_WALLET = 0xDEINE_MENSCH_WALLET\n'
-             '  PEER_SECRET          = vom-Netzwerkbetreiber-erhalten\n'
              '  SELF_URL             = https://DEIN-RAILWAY-DOMAIN.up.railway.app\n'
              '  PRIMARY_NODE_URL     = https://aequitas.digital\n'
+             'Hinweis: PEER_SECRET ist nicht mehr erforderlich — Authentifizierung ist automatisch.\n'
              'Speichern → Railway deployt automatisch neu.'),
             ('Schritt 5 — Oeffentliche URL erhalten',
              'Railway → Settings → Networking → <b>Generate Domain</b>. '
@@ -286,10 +286,11 @@ def make_doc(path, lang='en'):
     # ── VALIDATOR KEY REGISTRATION ─────────────────────────────────────────────
     if lang == 'en':
         story += [
-            Paragraph('Optional: Register Validator Key (Decentralized Auth)', S['h1']),
+            Paragraph('Validator Registration (Automatic)', S['h1']),
             Paragraph(
-                'Instead of a shared PEER_SECRET, you can register your node with a cryptographic signature. '
-                'This proves you control the node private key without sharing a secret.',
+                'Your node registers automatically on startup using a cryptographic challenge-response '
+                'based on your RELAYER_PRIVATE_KEY. No shared PEER_SECRET is needed. '
+                'The flow below describes what happens automatically, and can also be triggered manually.',
                 S['body']),
             Paragraph('1. Request a challenge:', S['bullet']),
             Paragraph('GET https://aequitas.digital/api/peers/challenge?address=0xYOUR_RELAYER_ADDRESS', S['code']),
@@ -300,10 +301,11 @@ def make_doc(path, lang='en'):
         ]
     else:
         story += [
-            Paragraph('Optional: Validator-Schluessel registrieren (Dezentrale Auth)', S['h1']),
+            Paragraph('Validator-Registrierung (Automatisch)', S['h1']),
             Paragraph(
-                'Statt eines gemeinsamen PEER_SECRET kannst du deinen Node mit einer kryptografischen Signatur registrieren. '
-                'Dies beweist, dass du den privaten Node-Schluessel kontrollierst.',
+                'Dein Node registriert sich beim Start automatisch per kryptografischer Challenge-Response '
+                'basierend auf deinem RELAYER_PRIVATE_KEY. Ein gemeinsames PEER_SECRET ist nicht erforderlich. '
+                'Der folgende Ablauf beschreibt was automatisch passiert und kann auch manuell ausgeloest werden.',
                 S['body']),
             Paragraph('1. Challenge anfordern:', S['bullet']),
             Paragraph('GET https://aequitas.digital/api/peers/challenge?address=0xDEINE_RELAYER_ADDRESS', S['code']),

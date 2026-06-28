@@ -581,18 +581,37 @@ func (dag *BlockDAG) registerAndDiscover(selfURL, primaryURL string) {
 		signerAddr = strings.ToLower(crypto.PubkeyToAddress(dag.signingKey.PublicKey).Hex())
 	}
 	signature := fetchAndSignPeerChallenge(primaryURL, signerAddr, dag.signingKey)
+
+	// Resolve the operator binding signature. Prefer the explicit env var
+	// (set manually via /node-binding for cases where the operator wallet
+	// is separate from the RELAYER key). Auto-sign when the two coincide:
+	// if NODE_OPERATOR_WALLET matches the RELAYER address (same private
+	// key), the node can produce the EIP-191 binding proof itself without
+	// the operator doing anything out-of-band. This is the common
+	// single-key deployment pattern.
+	operatorBindingSig := os.Getenv("NODE_OPERATOR_BINDING_SIGNATURE")
+	if operatorBindingSig == "" && dag.signingKey != nil && signerAddr != "" {
+		nodeWallet := strings.ToLower(strings.TrimSpace(os.Getenv("NODE_OPERATOR_WALLET")))
+		if nodeWallet == "" {
+			nodeWallet = signerAddr
+		}
+		if nodeWallet == signerAddr {
+			bindingMsg := "Aequitas: authorize validator " + signerAddr
+			msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(bindingMsg), bindingMsg)
+			hash := crypto.Keccak256Hash([]byte(msg))
+			if sig, err := crypto.Sign(hash.Bytes(), dag.signingKey); err == nil {
+				operatorBindingSig = "0x" + hex.EncodeToString(sig)
+			}
+		}
+	}
+
 	body, _ := json.Marshal(map[string]string{
-		"url":                  selfURL,
-		"signing_address":      signerAddr,
-		"signature":            signature,
-		"peer_secret":          os.Getenv("PEER_SECRET"),
-		"node_operator_wallet": strings.ToLower(os.Getenv("NODE_OPERATOR_WALLET")),
-		// NODE_OPERATOR_BINDING_SIGNATURE proves NODE_OPERATOR_WALLET
-		// ownership — generated out-of-band by signing
-		// "Aequitas: authorize validator <signerAddr>" with the operator's
-		// own wallet (see /node-binding), since this process never has
-		// access to that private key. See BindValidatorSlot's comment.
-		"operator_binding_signature": os.Getenv("NODE_OPERATOR_BINDING_SIGNATURE"),
+		"url":                        selfURL,
+		"signing_address":            signerAddr,
+		"signature":                  signature,
+		"peer_secret":                os.Getenv("PEER_SECRET"),
+		"node_operator_wallet":       strings.ToLower(os.Getenv("NODE_OPERATOR_WALLET")),
+		"operator_binding_signature": operatorBindingSig,
 	})
 	resp, err := httpSyncClient.Post(
 		primaryURL+"/api/peers/register", "application/json", bytes.NewReader(body))

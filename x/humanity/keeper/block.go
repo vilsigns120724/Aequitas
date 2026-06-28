@@ -575,31 +575,26 @@ dag.blocks[block.Hash] = block
 // blocking the whole chain on a transient DB hiccup would be worse than
 // the narrow durability gap this closes — but it does mean this round's
 // TXs stay safely re-includable instead of being silently dropped.
+// FIX (AQT-NEW-P1-01): stamp included_block_hash BEFORE SaveBlockToDB so
+// ResetStaleIncludedPendingTxs can always distinguish the two crash windows:
+//   • crash after mark but before save → block absent from chain_blocks →
+//     Reset's NOT EXISTS check fires → rows requeued → correct
+//   • crash after save but before clear → block present in chain_blocks →
+//     Reset leaves rows alone → TXs already confirmed → orphan rows harmless
+// Previous order (mark AFTER save) left a window where rows had
+// included_block_hash=NULL but the block was already saved; Reset's
+// "included_block_hash IS NULL" arm would requeue them → double-inclusion.
+if len(pendingTxIDs) > 0 {
+	dag.state.MarkPendingTxsIncluded(pendingTxIDs, block.Hash)
+}
+
 blockSaved := true
 if err := dag.state.SaveBlockToDB(block); err != nil {
 	blockSaved = false
 	fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...) to chain_blocks: %v — outbox rows kept for retry\n", block.Height, block.Hash[:16], err)
 }
 
-// FIX (P1-01): mark which block included these rows before clearing them.
-// If we crash between this mark and ClearPendingTxs, ResetStaleIncludedPendingTxs
-// at startup will see the block exists in chain_blocks and skip the reset,
-// preventing the TXs from being re-included in a second block.
 if blockSaved && len(pendingTxIDs) > 0 {
-	dag.state.MarkPendingTxsIncluded(pendingTxIDs, block.Hash)
-}
-
-// Only now that the block carrying them is durably stored — clear the DB
-// outbox rows. See LoadAndClearPendingTxs's doc comment for why this is
-// no longer a single, earlier delete-then-build step.
-if blockSaved && len(pendingTxIDs) > 0 {
-	// FIX (audit 2026-06-28 recheck 4, P1-1): ClearPendingTxs now reports
-	// failures instead of discarding them. The block itself is already
-	// built (and about to be broadcast) by this point, so there's nothing
-	// to roll back here — but a failed delete means these rows will be
-	// loaded AGAIN by the next ProduceBlock call and end up duplicated
-	// into a second block, which a replaying peer would apply twice. Loud
-	// alert is the most this function can do at this stage.
 	if err := dag.state.ClearPendingTxs(pendingTxIDs); err != nil {
 		fmt.Printf("[BLOCK] ⚠ ALERT: outbox rows for block #%d could not be cleared — these TX(s) may be duplicated into a future block: %v\n", block.Height, err)
 	}

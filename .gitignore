@@ -29,3 +29,8 @@
 
 # Snapshot cheatcodes output
 /snapshots
+
+# Build artifacts and release binaries — use GitHub Releases instead
+*.exe
+*.apk
+downloads/*.apk
