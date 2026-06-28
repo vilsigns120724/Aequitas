@@ -1522,7 +1522,12 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <tr>
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">CLEAR_REGISTRATIONS</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">DANGEROUS, one-time use: wipes all human registration data (chain_accounts' human flags, nullifiers, bio_hashes, liquidity_pool, evm_upgrade_relationship_slots) so everyone can re-register. Same 5&ndash;minute-from-startup guard as RESET_DB_STATE. Remove immediately after use &mdash; the matching guard also exists in the proof-server, so both must have this var removed to fully stop the wipe.</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">DANGEROUS, one-time use: wipes all human registration data (chain_accounts' human flags, nullifiers, bio_hashes, liquidity_pool, evm_upgrade_relationship_slots) so everyone can re-register. Same 5&ndash;minute-from-startup guard as RESET_DB_STATE, plus also requires CLEAR_REGISTRATIONS_CONFIRM (see below) set on both this service and the proof-server. Remove both variables immediately after use.</td>
+        </tr>
+        <tr style="background:rgba(0,0,0,0.1)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">CLEAR_REGISTRATIONS_CONFIRM</td>
+          <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Required alongside CLEAR_REGISTRATIONS=true on both this service and the proof-server &mdash; must be set to the exact literal string <code>I_UNDERSTAND_THIS_DELETES_ALL_REGISTRATIONS</code>. Without it, CLEAR_REGISTRATIONS=true alone is refused. Exists so a single boolean set by accident (copy-pasted env file, typo elsewhere) can't wipe every human's registration on the next restart.</td>
         </tr>
         <tr style="background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">BOOTSTRAP_P2P_ADDR</td>

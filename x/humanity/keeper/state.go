@@ -492,6 +492,17 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		fmt.Println("[CLEAR-REG] Refused: CLEAR_REGISTRATIONS=true but process started >5 minutes ago")
 		return
 	}
+	// FIX (audit 2026-06-28 full recheck, P2-3): CLEAR_REGISTRATIONS=true on
+	// its own is a single boolean a deploy tool, copy-paste from another
+	// service's env file, or a typo'd "true" elsewhere could set by
+	// accident — and once set, this wipes every human's registration data
+	// on the very next restart with no further confirmation. Require a
+	// second, explicit, impossible-to-fat-finger value alongside it.
+	const clearConfirmPhrase = "I_UNDERSTAND_THIS_DELETES_ALL_REGISTRATIONS"
+	if os.Getenv("CLEAR_REGISTRATIONS_CONFIRM") != clearConfirmPhrase {
+		fmt.Printf("[CLEAR-REG] Refused: CLEAR_REGISTRATIONS=true requires CLEAR_REGISTRATIONS_CONFIRM=%s\n", clearConfirmPhrase)
+		return
+	}
 	fmt.Println("[CLEAR-REG] Clearing all registration data from DB...")
 	v7Addr := strings.ToLower(V7_CONTRACT_ADDR)
 	stmts := []string{
