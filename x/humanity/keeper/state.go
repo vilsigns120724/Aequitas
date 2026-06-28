@@ -943,49 +943,44 @@ var errVersionConflict = errors.New("optimistic lock version conflict")
 // claiming atomicity in the first place, for no behavioral change (they
 // already only logged on failure).
 func (cs *ChainState) saveAccountToDB(acc *AccountState) error {
-	// P0-1: retry up to 3 times on optimistic-lock conflict so callers don't
-	// silently lose writes when two nodes update the same account concurrently.
+	// FIX (audit 2026-06-28 full recheck, P0-3 — "saveAccountToDB
+	// Konflikt-Retry kann die beabsichtigte Mutation verlieren"): this used
+	// to retry up to 3 times on conflict by RELOADING the DB's current
+	// absolute values into acc (balance, tusd, lp_shares, version, ...) and
+	// then saving THAT back. That overwrites whatever delta the caller
+	// computed in memory with whatever happened to be in the DB at conflict
+	// time, then reports success on the next attempt — a textbook lost
+	// update: "credit +10 AEQ" can silently become "re-save the current DB
+	// balance unchanged, but bump the version", with no error anywhere.
+	// generic persistence helper has no way to re-derive the caller's
+	// intended delta from a freshly reloaded base — only the caller's own
+	// business logic (e.g. transferLocked, ApplyTransferDelta) knows that.
+	// So this no longer retries at all: a conflict is returned immediately
+	// as a real error. Every call site that matters runs inside
+	// runAtomicWithOutbox/runAtomicDistributionWithOutbox already (or holds
+	// cs.mu for the whole replay — see replayTransactions), so this error
+	// correctly aborts and rolls back the whole operation instead of
+	// silently "succeeding" with the wrong data. acc.Version is still
+	// resynced to the DB's value by saveAccountToDBInner before returning
+	// errVersionConflict, so IF a caller chooses to retry the entire
+	// business operation from scratch against fresh state, it has the
+	// right base to do so — that retry decision belongs to the caller, not
+	// to this generic helper.
 	//
-	// FIX (audit recheck2, P0 #2): this used to infer success from
-	// "acc.Version != prevVer" alone. saveAccountToDBInner's conflict path
-	// ALSO changes acc.Version (resyncs it to the DB's current value, by
-	// design, so a subsequent attempt has the right base) — so a conflict on
-	// the very first attempt always satisfies "version changed" and returned
-	// nil immediately, reporting success while the caller's intended write
-	// never reached the DB at all, before the retry loop below ever ran.
-	// saveAccountToDBInner now reports a conflict via errVersionConflict
-	// specifically, so success is only ever inferred from "no error", never
-	// from a side effect a conflict path also happens to produce.
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		lastErr = cs.saveAccountToDBInner(acc)
-		if lastErr == nil {
-			return nil // genuine write (insert, or update with rows affected)
-		}
-		if !errors.Is(lastErr, errVersionConflict) {
-			return lastErr // real DB error — not a conflict, don't retry-reload
-		}
-		// Conflict: reload from DB and retry with current state
-		if attempt < 2 {
-			var dbBal, dbTusd, dbLp float64
-			var dbVer, dbLastActivity int64
-			var dbFaucetClaimed, dbDemurrage14Shown bool
-			// P1-FIX: reload ALL fields (including faucet_claimed, last_activity_at,
-			// demurrage_14_day_warning_shown) so the retry doesn't overwrite those
-			// fields with stale in-memory values from before the conflict.
-			if err := cs.db.QueryRow(`SELECT balance, tusd_balance, lp_shares, version, last_activity_at, faucet_claimed, demurrage_14_day_warning_shown FROM chain_accounts WHERE lower(address) = $1`, acc.Address).
-				Scan(&dbBal, &dbTusd, &dbLp, &dbVer, &dbLastActivity, &dbFaucetClaimed, &dbDemurrage14Shown); err == nil && dbVer > 0 {
-				acc.Balance = NewDecimal(dbBal)
-				acc.TUsdBalance = NewDecimal(dbTusd)
-				acc.LPShares = NewDecimal(dbLp)
-				acc.Version = dbVer
-				acc.LastActivityAt = dbLastActivity
-				acc.FaucetClaimed = dbFaucetClaimed
-				acc.Demurrage14DayWarningShown = dbDemurrage14Shown
-			}
-		}
+	// Note on why conflicts should be rare in practice: each node runs its
+	// own independent Postgres (one writer process per DB, serialized by
+	// cs.mu) — a conflict here would mean something outside this process's
+	// normal control flow wrote to the same row (a stray unguarded
+	// goroutine, manual SQL, or two instances briefly overlapping during a
+	// deploy), not routine multi-node contention on a shared DB.
+	err := cs.saveAccountToDBInner(acc)
+	if err == nil {
+		return nil
 	}
-	return fmt.Errorf("version conflict for account %s persisted after 3 attempts", acc.Address)
+	if errors.Is(err, errVersionConflict) {
+		return fmt.Errorf("version conflict for account %s (resynced to DB version %d; caller must retry its business operation against fresh state, not this write alone): %w", acc.Address, acc.Version, err)
+	}
+	return err
 }
 
 func (cs *ChainState) saveAccountToDBInner(acc *AccountState) error {

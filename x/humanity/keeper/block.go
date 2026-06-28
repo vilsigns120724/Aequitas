@@ -4,6 +4,7 @@ import (
 "crypto/ecdsa"
 "crypto/rand"
 "crypto/sha256"
+"database/sql"
 "encoding/hex"
 "encoding/json"
 "fmt"
@@ -1165,6 +1166,57 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 		configBackup[key] = configValueSnapshot{value: value, existed: existed}
 	}
 	rollbackSnap := dag.state.snapshotForRollbackLocked(touchedAddrs, needsFullSnapshot, configBackup)
+
+	// FIX (audit 2026-06-28 full recheck, P0-4 — "Replay-Rollback ist nicht
+	// als DB-Transaktion isoliert"): every DB write this replay makes (via
+	// saveAccountToDB/savePoolToDB/setConfigValue, all routed through
+	// cs.dbExec()) used to auto-commit immediately on its own, with
+	// rollbackSnap/restoreFromRollbackLocked emulating "undo" at the
+	// application level by recomputing and rewriting old values — not a
+	// real SQL rollback. If a step partway through failed in a way that
+	// left some writes committed and others not, the application-level
+	// restore could only ever re-derive what it already knew about
+	// (rollbackSnap's captured fields), not guarantee every write this
+	// replay made was actually undone. A real DB transaction makes that
+	// guarantee structurally instead of by careful bookkeeping: every
+	// dbExec() call below joins dbTx (set as cs.activeTx for the duration),
+	// and either ALL of them commit together or tx.Rollback() discards
+	// every one of them atomically. rollbackSnap/restoreFromRollbackLocked
+	// are still used for the IN-MEMORY side (cs.accounts/cs.pool are plain
+	// Go maps with no transactional semantics of their own — only the DB
+	// side can be made truly atomic this way), now redundant-but-harmless
+	// for the DB side specifically when a real rollback already ran (the
+	// same pattern runAtomicWithOutbox already established: tx.Rollback()
+	// for the DB, restoreFromRollback for memory, in that order).
+	var dbTx *sql.Tx
+	if dag.state.db != nil {
+		var err error
+		dbTx, err = dag.state.db.Begin()
+		if err != nil {
+			fmt.Printf("[REPLAY] ✗ Block #%d: could not begin replay transaction: %v — block rejected\n", block.Height, err)
+			return false
+		}
+		dag.state.activeTx = dbTx
+	}
+	// commitOrRollback finalizes dbTx according to success, clearing
+	// activeTx either way so no write after this point accidentally joins
+	// a transaction that's already been resolved. Returns an error if a
+	// commit was attempted and failed (caller must then treat this exactly
+	// like any other hardFailure, including the in-memory restore).
+	commitOrRollback := func(success bool) error {
+		if dbTx == nil {
+			dag.state.activeTx = nil
+			return nil
+		}
+		dag.state.activeTx = nil
+		if !success {
+			if err := dbTx.Rollback(); err != nil {
+				fmt.Printf("[REPLAY] Warning: replay transaction rollback for block #%d failed: %v\n", block.Height, err)
+			}
+			return nil
+		}
+		return dbTx.Commit()
+	}
 	hardFailure := false
 	var claimedNullifiers []string
 
@@ -1427,6 +1479,7 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	}
 
 	if hardFailure {
+		commitOrRollback(false) // real SQL ROLLBACK — see commitOrRollback's comment
 		if rbErr := dag.state.restoreFromRollbackLocked(rollbackSnap); rbErr != nil {
 			fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
 		}
@@ -1454,8 +1507,13 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	// state catches up, the same recovery path hardFailure above already
 	// relies on.
 	if block.StateRoot != "" {
+		// FIX (audit 2026-06-28 full recheck, P0-4): computed BEFORE
+		// commit/rollback, while dbTx is still open — this must reflect
+		// exactly what's about to be committed (or discarded), the same
+		// view every write in this replay just made within dbTx.
 		localRoot := dag.state.stateRootLocked(dag.state.getConfigValue("last_ubi_at"))
 		if block.StateRoot != localRoot {
+			commitOrRollback(false) // real SQL ROLLBACK
 			if rbErr := dag.state.restoreFromRollbackLocked(rollbackSnap); rbErr != nil {
 				fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
 			}
@@ -1471,6 +1529,26 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			return false
 		}
 		dag.stateRootMismatches[block.Proposer] = 0 // reset on match
+	}
+
+	// FIX (audit 2026-06-28 full recheck, P0-4): commit dbTx now that every
+	// check has passed — this is the moment every DB write this replay made
+	// actually becomes durable, all together, as one SQL transaction. If
+	// commit itself fails (rare: connection loss, constraint violation the
+	// DB only catches at commit time), Postgres has already rolled the
+	// transaction back server-side — treat it exactly like any other
+	// rollback path: restore in-memory state and reject the block, so
+	// memory and DB can't end up disagreeing about whether this block
+	// applied.
+	if commitErr := commitOrRollback(true); commitErr != nil {
+		if rbErr := dag.state.restoreFromRollbackLocked(rollbackSnap); rbErr != nil {
+			fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
+		}
+		for _, n := range claimedNullifiers {
+			dag.state.releaseNullifierLocked(n)
+		}
+		fmt.Printf("[REPLAY] ✗ Block #%d: replay transaction commit failed (rolled back, block rejected): %v\n", block.Height, commitErr)
+		return false
 	}
 
 	dag.replayedMu.Lock()
