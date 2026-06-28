@@ -306,18 +306,21 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 				nullifier, strings.ToLower(wallet),
 			)
 		}
+		// FIX (audit recheck3, P1 — "Snapshot/Resync verliert Chain-seitige
+		// bio_hashes"): br.BioHash is ALWAYS empty here — ExportSnapshot
+		// deliberately never populates it (see its own comment: biometric
+		// data must not leave the exporting node). The `if br.BioHash != ""`
+		// guard this used to have was therefore permanently dead code,
+		// silently implying bio_hashes import was supported when it never
+		// ran. bio_hashes is local-node bookkeeping, not part of what this
+		// snapshot format actually carries — removed instead of pretending
+		// otherwise.
 		for _, br := range snap.BioRegistrations {
 			cs.db.Exec(
 				`INSERT INTO bio_registrations (commitment, wallet_address, bio_hash) VALUES ($1, $2, $3)
 				 ON CONFLICT (commitment) DO NOTHING`,
 				br.Commitment, strings.ToLower(br.WalletAddress), br.BioHash,
 			)
-			if br.BioHash != "" {
-				cs.db.Exec(
-					`INSERT INTO bio_hashes (hash, wallet_address) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-					br.BioHash, strings.ToLower(br.WalletAddress),
-				)
-			}
 		}
 		// Import chain_config timing values. Do NOT overwrite if already set —
 		// the primary's live value takes precedence over the snapshot's snapshot-time value.
@@ -354,9 +357,13 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 // counterpart (audit recheck2, P1 #9): instead of merging (adding only
 // missing entries, never correcting existing ones — see
 // ImportSnapshotFromURL's own comment), it REPLACES local accounts, pool,
-// nullifiers, bio-registrations/hashes, and every StateRoot-relevant
-// chain_config key with exactly what the snapshot contains. This is the
-// correct operation for a node KNOWN to have diverged — merge mode cannot
+// nullifiers, bio-registrations, and every StateRoot-relevant chain_config
+// key with exactly what the snapshot contains. (NOT bio_hashes — see the
+// "DELETE FROM bio_hashes" removal below, audit recheck3 P1: that table is
+// never part of what a snapshot exports in the first place, so this
+// function leaves it alone rather than wiping it without any way to
+// restore it.) This is the correct operation for a node KNOWN to have
+// diverged — merge mode cannot
 // fix that, by construction, since it only ever adds.
 //
 // Two safety properties apply here that merge mode doesn't need, precisely
@@ -462,9 +469,19 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	if _, err := tx.Exec(`DELETE FROM bio_registrations`); err != nil {
 		return fail(fmt.Errorf("resync: could not clear bio_registrations: %w", err))
 	}
-	if _, err := tx.Exec(`DELETE FROM bio_hashes`); err != nil {
-		return fail(fmt.Errorf("resync: could not clear bio_hashes: %w", err))
-	}
+	// FIX (audit recheck3, P1 — "Snapshot/Resync verliert Chain-seitige
+	// bio_hashes"): this used to DELETE FROM bio_hashes here and then only
+	// reinsert rows where br.BioHash != "" — which is NEVER true, since
+	// ExportSnapshot deliberately never populates BioHash (privacy — see
+	// its own comment). The net effect was an unconditional, one-way wipe
+	// of this node's entire bio_hashes table on every resync, with no way
+	// for THIS mechanism to ever restore it, while still being labeled
+	// "authoritative" replace — exactly the dishonesty the audit flagged:
+	// a resync can't authoritatively restore data it never had a copy of
+	// in the first place. bio_hashes is local-node bookkeeping (see
+	// SaveBioHash's comment: a secondary, best-effort lookup index, not a
+	// security boundary, not consensus state) — left untouched here,
+	// consistent with it never being part of what this snapshot exports.
 	for _, acc := range cs.accounts {
 		// saveAccountToDB routes through cs.dbExec(), which returns
 		// cs.activeTx (set above) instead of cs.db — joins this transaction.
@@ -491,14 +508,6 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 			br.Commitment, strings.ToLower(br.WalletAddress), br.BioHash,
 		); err != nil {
 			return fail(fmt.Errorf("resync: could not insert bio_registration: %w", err))
-		}
-		if br.BioHash != "" {
-			if _, err := tx.Exec(
-				`INSERT INTO bio_hashes (hash, wallet_address) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-				br.BioHash, strings.ToLower(br.WalletAddress),
-			); err != nil {
-				return fail(fmt.Errorf("resync: could not insert bio_hash: %w", err))
-			}
 		}
 	}
 	// Authoritative: every StateRoot-relevant config key takes the

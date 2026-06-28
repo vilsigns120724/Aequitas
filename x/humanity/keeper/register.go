@@ -811,20 +811,48 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 	ubiAccumulated := loadSlotBig(a.state, addrStr, 3)
 	now := big.NewInt(time.Now().Unix())
 
-	a.state.SaveStorageSlot(addrStr, common.BigToHash(big.NewInt(0)).Hex(), common.BigToHash(new(big.Int).Add(totalSupply, initialGrant)).Hex())
-	a.state.SaveStorageSlot(addrStr, common.BigToHash(big.NewInt(1)).Hex(), common.BigToHash(new(big.Int).Add(totalHumans, big.NewInt(1))).Hex())
-	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 4).Hex(), common.BigToHash(initialGrant).Hex())
-	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 6).Hex(), common.HexToHash("0x01").Hex())
-	a.state.SaveStorageSlot(addrStr, usedSlot.Hex(), common.HexToHash("0x01").Hex())
-	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 9).Hex(), common.BigToHash(commitment).Hex())
-	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 10).Hex(), common.BigToHash(now).Hex())
-	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 11).Hex(), common.BigToHash(now).Hex())
-	a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 12).Hex(), common.BigToHash(ubiAccumulated).Hex())
-
 	// usedNullifiers[nullifier] = claimedHuman — slot 8 (bytes32 → address mapping)
 	nullSlot := mappingSlotBytes32(nullKey, 8)
 	addrVal := common.BigToHash(claimedHuman.Big())
-	a.state.SaveStorageSlot(addrStr, nullSlot.Hex(), addrVal.Hex())
+
+	// FIX (audit recheck3, P1 — "Mirror schreibt EVM-Slots ohne
+	// Fehlerauswertung"): SaveStorageSlot already returns an error, but
+	// every call below discarded it — a write failing partway through
+	// (e.g. a transient DB error on the 5th of 9 slots) left some slots
+	// updated and others not, then proceeded to RegisterHumanAtomic
+	// anyway with that half-written mirror, no error surfaced anywhere.
+	// writeSlot checks every write and, on the first failure, reverts
+	// every slot already written in THIS call (to its pre-mirror value,
+	// captured in oldValues before any write happens) before returning —
+	// the same "leave nothing partial" guarantee the existing
+	// RegisterHumanAtomic-failure rollback below already gives the
+	// Go-state side, now extended to cover this function's OWN writes too.
+	slots := []struct{ slot, value string }{
+		{common.BigToHash(big.NewInt(0)).Hex(), common.BigToHash(new(big.Int).Add(totalSupply, initialGrant)).Hex()},
+		{common.BigToHash(big.NewInt(1)).Hex(), common.BigToHash(new(big.Int).Add(totalHumans, big.NewInt(1))).Hex()},
+		{mappingSlot(claimedHuman.Bytes(), 4).Hex(), common.BigToHash(initialGrant).Hex()},
+		{mappingSlot(claimedHuman.Bytes(), 6).Hex(), common.HexToHash("0x01").Hex()},
+		{usedSlot.Hex(), common.HexToHash("0x01").Hex()},
+		{mappingSlot(claimedHuman.Bytes(), 9).Hex(), common.BigToHash(commitment).Hex()},
+		{mappingSlot(claimedHuman.Bytes(), 10).Hex(), common.BigToHash(now).Hex()},
+		{mappingSlot(claimedHuman.Bytes(), 11).Hex(), common.BigToHash(now).Hex()},
+		{mappingSlot(claimedHuman.Bytes(), 12).Hex(), common.BigToHash(ubiAccumulated).Hex()},
+		{nullSlot.Hex(), addrVal.Hex()},
+	}
+	oldValues := make([]string, len(slots))
+	for i, s := range slots {
+		oldValues[i], _ = a.state.LoadStorageSlot(addrStr, s.slot) // "" (zero value) if unset, same as a fresh slot
+	}
+	for i, s := range slots {
+		if err := a.state.SaveStorageSlot(addrStr, s.slot, s.value); err != nil {
+			for j := 0; j < i; j++ {
+				if revertErr := a.state.SaveStorageSlot(addrStr, slots[j].slot, oldValues[j]); revertErr != nil {
+					fmt.Printf("[REGISTER] CRITICAL: mirror slot write failed AND revert of slot %d also failed for %s — EVM mirror may be inconsistent: %v\n", j, wallet, revertErr)
+				}
+			}
+			return "", fmt.Errorf("mirror EVM slot write failed (reverted %d already-written slot(s)): %w", i, err)
+		}
+	}
 
 	// FIX: RegisterHuman (the Go-state, authoritative side) used to be called
 	// separately by the caller, with a 3-retry loop and a "contact support"
@@ -843,16 +871,19 @@ func (a *APIServer) persistRegisterWithSigMirror(evmRPC *EVMRPCServer, contractA
 	// non-mirror path. A failure here still triggers the EVM-mirror-slot
 	// rollback below exactly as before.
 	if regErr := a.state.RegisterHumanAtomic(wallet, pendingTx); regErr != nil {
-		a.state.SaveStorageSlot(addrStr, common.BigToHash(big.NewInt(0)).Hex(), common.BigToHash(totalSupply).Hex())
-		a.state.SaveStorageSlot(addrStr, common.BigToHash(big.NewInt(1)).Hex(), common.BigToHash(totalHumans).Hex())
-		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 4).Hex(), common.Hash{}.Hex())
-		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 6).Hex(), common.Hash{}.Hex())
-		a.state.SaveStorageSlot(addrStr, usedSlot.Hex(), common.Hash{}.Hex())
-		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 9).Hex(), common.Hash{}.Hex())
-		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 10).Hex(), common.Hash{}.Hex())
-		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 11).Hex(), common.Hash{}.Hex())
-		a.state.SaveStorageSlot(addrStr, mappingSlot(claimedHuman.Bytes(), 12).Hex(), common.Hash{}.Hex())
-		a.state.SaveStorageSlot(addrStr, nullSlot.Hex(), common.Hash{}.Hex())
+		// FIX (audit recheck3, P1): reuse the same slots/oldValues this
+		// function already built above instead of a second hardcoded list —
+		// the previous version of this rollback zeroed every slot
+		// unconditionally (common.Hash{}.Hex()) rather than restoring its
+		// true pre-mirror value, which happened to be correct only because
+		// every one of these slots is fresh for a never-registered wallet;
+		// reverting to oldValues is the actually-correct operation and
+		// checks each write's error instead of discarding it.
+		for j := range slots {
+			if revertErr := a.state.SaveStorageSlot(addrStr, slots[j].slot, oldValues[j]); revertErr != nil {
+				fmt.Printf("[REGISTER] CRITICAL: Go-state register failed AND revert of mirror slot %d also failed for %s — EVM mirror may be inconsistent: %v\n", j, wallet, revertErr)
+			}
+		}
 		return "", fmt.Errorf("mirror EVM slots written but Go-state RegisterHuman failed (rolled back): %w", regErr)
 	}
 

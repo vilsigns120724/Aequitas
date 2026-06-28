@@ -1102,9 +1102,26 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	// Secret check comes FIRST. URL registration and sync goroutines are only
 	// started for authenticated peers — prevents goroutine exhaustion via
 	// unauthenticated registrations even when PEER_SECRET is not set.
+	//
+	// FIX (audit recheck3, P1 — "PEER_SECRET bleibt ein globales
+	// Shared-Secret im Validator/Peer-System"): a leaked PEER_SECRET used
+	// to be an equivalent, always-on bypass for both URL registration and
+	// (until the operator-binding-signature check a few lines below, which
+	// is unconditional regardless of secretOK) the validator path — hard
+	// to rotate safely across independent node operators who all share one
+	// value, the opposite of what this project's identity-based
+	// (NODE_OPERATOR_WALLET + signature) model is for. Confirmed every
+	// current secondary already sends a real challenge-response signature
+	// on every registration call (see registerAndDiscover, sync_blocks.go)
+	// in addition to peer_secret — PEER_SECRET there is redundant, not
+	// load-bearing. So the bypass itself is now opt-in via
+	// ALLOW_PEER_SECRET_BYPASS=true (testnet/bootstrap convenience only);
+	// by default PEER_SECRET being set no longer grants anything, and only
+	// the signature-based path (sigOK/sigOKEarly) authenticates peers.
+	peerSecretBypassEnabled := os.Getenv("ALLOW_PEER_SECRET_BYPASS") == "true"
 	peerSecret := os.Getenv("PEER_SECRET")
 	// P1-2: constant-time comparison prevents timing-based secret oracle attacks.
-	secretOK := peerSecret != "" && subtle.ConstantTimeCompare([]byte(req.PeerSecret), []byte(peerSecret)) == 1
+	secretOK := peerSecretBypassEnabled && peerSecret != "" && subtle.ConstantTimeCompare([]byte(req.PeerSecret), []byte(peerSecret)) == 1
 
 	// P1-2: compute sigOK early so it can gate URL registration.
 	// A known validator address (keyAuthorizedEarly) alone is NOT sufficient —
