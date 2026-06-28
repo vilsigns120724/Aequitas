@@ -296,50 +296,119 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	cs.mu.Unlock()
 
 	if cs.db != nil {
-		for _, acc := range accountsToPersist {
-			cs.saveAccountToDB(acc)
-		}
-		cs.savePoolToDB()
-		for nullifier, wallet := range snap.Nullifiers {
-			cs.db.Exec(
-				`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-				nullifier, strings.ToLower(wallet),
-			)
-		}
-		// FIX (audit recheck3, P1 — "Snapshot/Resync verliert Chain-seitige
-		// bio_hashes"): br.BioHash is ALWAYS empty here — ExportSnapshot
-		// deliberately never populates it (see its own comment: biometric
-		// data must not leave the exporting node). The `if br.BioHash != ""`
-		// guard this used to have was therefore permanently dead code,
-		// silently implying bio_hashes import was supported when it never
-		// ran. bio_hashes is local-node bookkeeping, not part of what this
-		// snapshot format actually carries — removed instead of pretending
-		// otherwise.
-		for _, br := range snap.BioRegistrations {
-			cs.db.Exec(
-				`INSERT INTO bio_registrations (commitment, wallet_address, bio_hash) VALUES ($1, $2, $3)
-				 ON CONFLICT (commitment) DO NOTHING`,
-				br.Commitment, strings.ToLower(br.WalletAddress), br.BioHash,
-			)
-		}
-		// Import chain_config timing values. Do NOT overwrite if already set —
-		// the primary's live value takes precedence over the snapshot's snapshot-time value.
-		for key, val := range snap.ChainConfig {
-			if existing := cs.getConfigValue(key); existing == "" {
-				cs.setConfigValue(key, val)
+		// FIX (audit 2026-06-28 full recheck, P1-2): every DB write below used
+		// to be fire-and-forget (errors discarded, function always returned
+		// nil). In-memory state (cs.accounts/cs.nullifiers/cs.pool) was
+		// already mutated above unconditionally — a DB error here silently
+		// left memory ahead of the database: the merge would *look*
+		// successful to the caller, but a restart (which reloads from the DB,
+		// not from memory) would lose exactly the entries that failed to
+		// persist, with no error ever surfaced. Now every write joins one
+		// real transaction; any failure rolls the DB back AND undoes the
+		// in-memory additions made above, so this function's outcome is
+		// truthful: either the merge fully applied in both places, or it
+		// didn't apply at all and ImportSnapshotFromURL returns an error.
+		tx, err := cs.db.Begin()
+		if err != nil {
+			cs.mu.Lock()
+			for _, acc := range accountsToPersist {
+				delete(cs.accounts, acc.Address)
 			}
+			cs.mu.Unlock()
+			return fmt.Errorf("snapshot import: could not begin transaction: %w", err)
 		}
-		// FIX (double-apply): on a genuine fresh bootstrap, record the height
-		// this snapshot was taken at. cs.accounts above already reflects the
-		// cumulative effect of every block up to and including this height —
-		// without this marker, the subsequent HTTP-SYNC catch-up (which
-		// always starts from height 0, since dag.blocks is empty in memory
-		// after any restart) would replay those same blocks' transactions a
-		// second time on top of the already-current imported balances.
-		// replayTransactions checks this value and skips applying deltas for
-		// any block at or below it. See StateSnapshot.Height's comment.
-		if existingHumans == 0 && snap.Height > 0 {
-			cs.setConfigValue("snapshot_import_height", fmt.Sprintf("%d", snap.Height))
+		cs.activeTx = tx
+
+		persistErr := func() error {
+			for _, acc := range accountsToPersist {
+				if err := cs.saveAccountToDB(acc); err != nil {
+					return fmt.Errorf("saving account %s: %w", acc.Address, err)
+				}
+			}
+			if err := cs.savePoolToDB(); err != nil {
+				return fmt.Errorf("saving pool: %w", err)
+			}
+			for nullifier, wallet := range snap.Nullifiers {
+				if _, err := tx.Exec(
+					`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+					nullifier, strings.ToLower(wallet),
+				); err != nil {
+					return fmt.Errorf("saving nullifier %s: %w", nullifier, err)
+				}
+			}
+			// FIX (audit recheck3, P1 — "Snapshot/Resync verliert Chain-seitige
+			// bio_hashes"): br.BioHash is ALWAYS empty here — ExportSnapshot
+			// deliberately never populates it (see its own comment: biometric
+			// data must not leave the exporting node). The `if br.BioHash != ""`
+			// guard this used to have was therefore permanently dead code,
+			// silently implying bio_hashes import was supported when it never
+			// ran. bio_hashes is local-node bookkeeping, not part of what this
+			// snapshot format actually carries — removed instead of pretending
+			// otherwise.
+			for _, br := range snap.BioRegistrations {
+				if _, err := tx.Exec(
+					`INSERT INTO bio_registrations (commitment, wallet_address, bio_hash) VALUES ($1, $2, $3)
+					 ON CONFLICT (commitment) DO NOTHING`,
+					br.Commitment, strings.ToLower(br.WalletAddress), br.BioHash,
+				); err != nil {
+					return fmt.Errorf("saving bio_registration %s: %w", br.Commitment, err)
+				}
+			}
+			// Import chain_config timing values. Do NOT overwrite if already set —
+			// the primary's live value takes precedence over the snapshot's snapshot-time value.
+			for key, val := range snap.ChainConfig {
+				if existing := cs.getConfigValue(key); existing == "" {
+					if err := cs.setConfigValue(key, val); err != nil {
+						return fmt.Errorf("setting config %s: %w", key, err)
+					}
+				}
+			}
+			// FIX (double-apply): on a genuine fresh bootstrap, record the height
+			// this snapshot was taken at. cs.accounts above already reflects the
+			// cumulative effect of every block up to and including this height —
+			// without this marker, the subsequent HTTP-SYNC catch-up (which
+			// always starts from height 0, since dag.blocks is empty in memory
+			// after any restart) would replay those same blocks' transactions a
+			// second time on top of the already-current imported balances.
+			// replayTransactions checks this value and skips applying deltas for
+			// any block at or below it. See StateSnapshot.Height's comment.
+			if existingHumans == 0 && snap.Height > 0 {
+				if err := cs.setConfigValue("snapshot_import_height", fmt.Sprintf("%d", snap.Height)); err != nil {
+					return fmt.Errorf("setting snapshot_import_height: %w", err)
+				}
+			}
+			return nil
+		}()
+
+		cs.activeTx = nil
+		if persistErr != nil {
+			if rbErr := tx.Rollback(); rbErr != nil {
+				fmt.Printf("[SNAPSHOT] CRITICAL: rollback after failed merge-persist also failed: %v\n", rbErr)
+			}
+			cs.mu.Lock()
+			for _, acc := range accountsToPersist {
+				delete(cs.accounts, acc.Address)
+			}
+			for nullifier := range snap.Nullifiers {
+				if wallet, exists := cs.nullifiers[nullifier]; exists && strings.EqualFold(wallet, snap.Nullifiers[nullifier]) {
+					delete(cs.nullifiers, nullifier)
+				}
+			}
+			cs.mu.Unlock()
+			return fmt.Errorf("snapshot import: merge-persist failed, rolled back: %w", persistErr)
+		}
+		if err := tx.Commit(); err != nil {
+			cs.mu.Lock()
+			for _, acc := range accountsToPersist {
+				delete(cs.accounts, acc.Address)
+			}
+			for nullifier := range snap.Nullifiers {
+				if wallet, exists := cs.nullifiers[nullifier]; exists && strings.EqualFold(wallet, snap.Nullifiers[nullifier]) {
+					delete(cs.nullifiers, nullifier)
+				}
+			}
+			cs.mu.Unlock()
+			return fmt.Errorf("snapshot import: merge-persist commit failed: %w", err)
 		}
 	}
 
