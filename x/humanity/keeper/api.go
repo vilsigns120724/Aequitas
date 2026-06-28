@@ -1543,21 +1543,39 @@ func (a *APIServer) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// SNAPSHOT_TOKEN is mandatory — the snapshot contains nullifier-to-wallet
-	// mappings and bio-registration data. Without a token, all requests are
-	// rejected so the endpoint is never accidentally left open.
+	// FIX (2026-06-28, SNAPSHOT_TOKEN redesign): this endpoint used to
+	// reject every request outright unless SNAPSHOT_TOKEN was set AND
+	// matched — meaning a brand-new, honest node operator had to contact
+	// the network operator just to get the value needed to bootstrap at
+	// all. That doesn't scale for a project whose whole point is
+	// permissionless node operation. The actual thing worth gating is the
+	// nullifier→wallet and bio_registrations linkage data (see
+	// ExportSnapshot's doc comment) — not the ability to bootstrap a node
+	// in the first place. So: a valid token now grants the FULL snapshot
+	// (unchanged from before, for authoritative resync/recovery); no
+	// token, or no SNAPSHOT_TOKEN configured on this node at all, serves
+	// the PUBLIC tier (no bio_registrations, nullifier keys but no wallet
+	// linkage) — still fully sufficient to bootstrap a correct, working
+	// node, with no admin contact needed.
 	token := os.Getenv("SNAPSHOT_TOKEN")
-	if token == "" {
-		http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
-		return
-	}
 	// P2-15: token in Authorization header (not URL query param that lands in logs).
 	authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if subtle.ConstantTimeCompare([]byte(authHeader), []byte(token)) != 1 {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-		return
+	includeSensitive := token != "" && subtle.ConstantTimeCompare([]byte(authHeader), []byte(token)) == 1
+	if !includeSensitive {
+		// Public tier is no longer gated by a secret, so it needs its own
+		// throttle against being used as a bulk-download/cost vector —
+		// the same per-IP pattern used elsewhere in this file (e.g.
+		// handleCheckRegistrationByBioHash).
+		ip := clientIP(r)
+		if ts, loaded := registerRateLimit.Load("snapshot-public:" + ip); loaded {
+			if time.Since(ts.(time.Time)) < 30*time.Second {
+				jsonError(w, "rate limited, try again shortly", 429)
+				return
+			}
+		}
+		registerRateLimit.Store("snapshot-public:"+ip, time.Now())
 	}
-	snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey(), a.blockchain.Height())
+	snap := a.state.ExportSnapshot(a.blockchain.GetSigningKey(), a.blockchain.Height(), includeSensitive)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(snap)
 }

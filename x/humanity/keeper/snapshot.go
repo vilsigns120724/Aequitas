@@ -59,7 +59,30 @@ type SnapshotBioRegistration struct {
 // rather than by the caller afterward, so it's covered by the signature
 // like everything else in the snapshot) — see StateSnapshot.Height's
 // comment for why the importer needs this cutoff.
-func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64) *StateSnapshot {
+//
+// includeSensitive controls whether nullifier→wallet linkages and
+// bio_registrations (commitment↔wallet↔txHash) are included.
+//
+// FIX (2026-06-28, SNAPSHOT_TOKEN redesign): these two fields are the only
+// part of a snapshot that isn't already public-by-design (account
+// balances, pool state, and config timing are all visible via the regular
+// explorer API anyway). Bundling them into one bulk, anonymously-fetchable
+// export is a much more convenient mass-correlation target than scraping
+// the same associations one registration at a time out of historical
+// blocks — that's what SNAPSHOT_TOKEN actually protects, NOT data a new
+// node needs to function. A bootstrapping node doesn't need either field:
+// nullifier UNIQUENESS only depends on the key being present in the map
+// (see TryClaimNullifier/GetWalletByNullifier's callers — the wallet value
+// is informational, used only for a friendlier "already registered by
+// %s" error message, never for the actual uniqueness decision, which the
+// EVM contract enforces independently), and bio_registrations is
+// explicitly non-consensus bookkeeping (doesn't affect StateRoot). So
+// includeSensitive=false still produces a fully correct, bootstrap-capable
+// snapshot — just without the two fields that have no legitimate
+// bootstrap use, served to anyone with no token and no admin contact
+// needed (see handleSnapshot). includeSensitive=true (token required)
+// keeps the original full export for authoritative resync/recovery.
+func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64, includeSensitive bool) *StateSnapshot {
 	cs.mu.RLock()
 	accounts := make([]*AccountState, 0, len(cs.accounts))
 	for _, acc := range cs.accounts {
@@ -72,7 +95,12 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64)
 	}
 	nullifiers := make(map[string]string, len(cs.nullifiers))
 	for k, v := range cs.nullifiers {
-		nullifiers[k] = v
+		if includeSensitive {
+			nullifiers[k] = v
+		} else {
+			// Keep the key (uniqueness set) — drop the wallet linkage.
+			nullifiers[k] = ""
+		}
 	}
 	cs.mu.RUnlock()
 
@@ -89,7 +117,9 @@ Version: SnapshotVersion,
 	// bio_hash is intentionally omitted from the snapshot — it is a biometric
 	// identifier and must not be exported to peer nodes. A new node can verify
 	// commitment uniqueness without needing the raw bio_hash.
-	if cs.db != nil {
+	// Not exported at all in the public (includeSensitive=false) tier — see
+	// this function's doc comment.
+	if cs.db != nil && includeSensitive {
 		rows, err := cs.db.Query(`SELECT commitment, wallet_address FROM bio_registrations`)
 		if err == nil {
 			// P2-FIX: use explicit Close() not defer — defer fires at function return
