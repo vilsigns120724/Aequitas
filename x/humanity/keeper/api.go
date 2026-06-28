@@ -48,6 +48,18 @@ func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper, state *ChainState) *API
 		evmRPC:            NewEVMRPCServer(bc, state),
 	}
 	go s.syncProofServerStatus()
+	// FIX (audit 2026-06-28 recheck 4, P1-5): periodically retry any queued
+	// proof-server bio_hash sync failures (see proof_server_sync_queue's
+	// table comment in state.go and notifyProofServerWithRetryQueue in
+	// register.go) — without this, a registration whose initial sync
+	// attempt failed would stay queued forever with nothing ever
+	// re-attempting it.
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			RetryProofServerSyncQueue(state)
+		}
+	}()
 	return s
 }
 

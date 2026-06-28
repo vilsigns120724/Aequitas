@@ -808,6 +808,70 @@ func (cs *ChainState) SaveBioHash(bioHash, walletAddress string) error {
 	return nil
 }
 
+// QueueProofServerSync persists a failed notifyProofServer attempt so
+// RetryProofServerSyncQueue can catch up later instead of the sync gap
+// being permanent — see proof_server_sync_queue's own table comment
+// (state.go) for why this exists (audit 2026-06-28 recheck 4, P1-5).
+// ON CONFLICT bumps attempts/last_error/last_attempt_at rather than
+// inserting a duplicate row, so repeated failures for the same biometric
+// don't grow the table unbounded.
+func (cs *ChainState) QueueProofServerSync(bioHashKey, wallet, lastErr string) {
+	if cs.db == nil || bioHashKey == "" {
+		return
+	}
+	if _, err := cs.db.Exec(
+		`INSERT INTO proof_server_sync_queue (bio_hash_key, wallet_address, last_error)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (bio_hash_key) DO UPDATE SET
+		   attempts = proof_server_sync_queue.attempts + 1,
+		   last_error = EXCLUDED.last_error,
+		   last_attempt_at = NOW()`,
+		bioHashKey, strings.ToLower(wallet), lastErr,
+	); err != nil {
+		fmt.Printf("[REGISTER] Warning: could not queue proof-server sync retry for %s: %v\n", wallet, err)
+	}
+}
+
+// proofServerSyncQueueEntry is one row from proof_server_sync_queue.
+type proofServerSyncQueueEntry struct {
+	BioHashKey string
+	Wallet     string
+	Attempts   int
+}
+
+// LoadProofServerSyncQueue returns up to 50 pending retry entries, oldest
+// first, for RetryProofServerSyncQueue to attempt.
+func (cs *ChainState) LoadProofServerSyncQueue() []proofServerSyncQueueEntry {
+	if cs.db == nil {
+		return nil
+	}
+	rows, err := cs.db.Query(`SELECT bio_hash_key, wallet_address, attempts FROM proof_server_sync_queue ORDER BY created_at LIMIT 50`)
+	if err != nil {
+		fmt.Printf("[REGISTER] Warning: could not load proof-server sync queue: %v\n", err)
+		return nil
+	}
+	defer rows.Close()
+	var entries []proofServerSyncQueueEntry
+	for rows.Next() {
+		var e proofServerSyncQueueEntry
+		if err := rows.Scan(&e.BioHashKey, &e.Wallet, &e.Attempts); err != nil {
+			continue
+		}
+		entries = append(entries, e)
+	}
+	return entries
+}
+
+// RemoveFromProofServerSyncQueue deletes a row once its retry succeeds.
+func (cs *ChainState) RemoveFromProofServerSyncQueue(bioHashKey string) {
+	if cs.db == nil {
+		return
+	}
+	if _, err := cs.db.Exec(`DELETE FROM proof_server_sync_queue WHERE bio_hash_key = $1`, bioHashKey); err != nil {
+		fmt.Printf("[REGISTER] Warning: could not remove proof-server sync queue entry: %v\n", err)
+	}
+}
+
 // ─── NULLIFIERS ───────────────────────────────────────────────────────────────
 //
 // A nullifier is a one-way derivation of the biometric secret:

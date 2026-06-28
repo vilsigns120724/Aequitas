@@ -344,6 +344,29 @@ created_at    TIMESTAMP DEFAULT NOW()
 )`)
 	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_blocks_height ON chain_blocks (height)`)
 
+	// FIX (audit 2026-06-28 recheck 4, P1-5): notifyProofServer (register.go)
+	// used to be pure fire-and-forget — a failed call (proof server down,
+	// network blip) meant the proof server's bio_hashes table silently
+	// never learned about this registration, with nothing durable
+	// recording that the sync was ever attempted or that it failed. The
+	// chain's own nullifier check remains the actual security boundary (a
+	// duplicate registration is still rejected on-chain regardless), so
+	// this gap couldn't let a duplicate human actually register — but it
+	// could let the proof server keep generating (wasted, expensive) ZK
+	// proofs for a biometric the chain would reject anyway, since the
+	// proof server's own early duplicate-check never learned about it.
+	// This table makes failed sync attempts durable so a periodic retry
+	// job (see RetryProofServerSyncQueue) can actually catch up later
+	// instead of the gap being permanent.
+	dbExec(`CREATE TABLE IF NOT EXISTS proof_server_sync_queue (
+bio_hash_key TEXT PRIMARY KEY,
+wallet_address TEXT NOT NULL,
+attempts INT NOT NULL DEFAULT 1,
+last_error TEXT NOT NULL DEFAULT '',
+created_at TIMESTAMP DEFAULT NOW(),
+last_attempt_at TIMESTAMP DEFAULT NOW()
+)`)
+
 	// EVM transaction receipts — persisted so MetaMask can get correct
 	// receipts after a node restart (avoids "Senden fehlgeschlagen" for
 	// transactions that actually succeeded before the node restarted).

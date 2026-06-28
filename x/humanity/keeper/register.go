@@ -494,10 +494,20 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 				fmt.Printf("[REGISTER] Warning: could not save bio registration link: %v\n", saveErr)
 			}
 		}
-		if req.BioHashKey != "" {
-			a.state.SaveBioHash(req.BioHashKey, wallet)
-		} else if req.BioHash != "" {
-			a.state.SaveBioHash(req.BioHash, wallet)
+		// FIX (audit 2026-06-28 recheck 4, P1-5): this mirror path saved
+		// bio_hashes locally but never notified the proof server at all —
+		// unlike the main path below, which does both. Bring it in line:
+		// check SaveBioHash's error instead of discarding it, and queue
+		// the proof-server notify the same way.
+		mirrorBioHashKey := req.BioHashKey
+		if mirrorBioHashKey == "" {
+			mirrorBioHashKey = req.BioHash
+		}
+		if mirrorBioHashKey != "" {
+			if err := a.state.SaveBioHash(mirrorBioHashKey, wallet); err != nil {
+				fmt.Printf("[REGISTER] Warning: local bio_hashes sync failed for %s: %v\n", wallet, err)
+			}
+			go notifyProofServerWithRetryQueue(a.state, mirrorBioHashKey, wallet)
 		}
 		return txHash, nil
 	}
@@ -653,11 +663,14 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		bioHashKey = req.BioHash
 	}
 	if bioHashKey != "" {
-		a.state.SaveBioHash(bioHashKey, wallet)
-		// Fire-and-forget: sync to proof server so its /prove duplicate check
-		// is actually populated. Non-blocking — a slow proof server must not
-		// delay the registration response.
-		go notifyProofServer(bioHashKey, wallet)
+		if err := a.state.SaveBioHash(bioHashKey, wallet); err != nil {
+			fmt.Printf("[REGISTER] Warning: local bio_hashes sync failed for %s: %v\n", wallet, err)
+		}
+		// Non-blocking — a slow proof server must not delay the
+		// registration response. No longer pure fire-and-forget: a
+		// failure is queued for retry instead of silently lost. See
+		// notifyProofServerWithRetryQueue's comment.
+		go notifyProofServerWithRetryQueue(a.state, bioHashKey, wallet)
 	}
 	// FIX (audit recheck 2, P1 #7/#10): SaveNullifier used to be called
 	// here, as a separate, non-atomic step AFTER RegisterHumanAtomic's
@@ -689,8 +702,11 @@ func computeBioHashKeyFromBioHash(bioHash string) (string, error) {
 // notifyProofServer POSTs the registered bioHashKey to the proof server's
 // /store-bio endpoint so its duplicate check stays in sync with the chain.
 // Requires PROOF_SERVER_URL and CHAIN_SERVICE_TOKEN env vars on the chain node;
-// if either is missing the call is skipped silently (registration already succeeded).
-func notifyProofServer(bioHashKey, wallet string) {
+// if either is missing the call is skipped (registration already succeeded;
+// attempted=false tells the caller this wasn't a failure worth retrying —
+// a node with no proof server configured at all would otherwise queue
+// retries that can never succeed).
+func notifyProofServer(bioHashKey, wallet string) (attempted bool, err error) {
 	// FIX (audit recheck2, P2 #1): used to fall back to this project's own
 	// original Railway URL when PROOF_SERVER_URL was unset — see api.go's
 	// proofServerBaseURL comment for why that's backwards for a
@@ -699,34 +715,74 @@ func notifyProofServer(bioHashKey, wallet string) {
 	// (registration already succeeded; this notify is best-effort sync).
 	proofServerURL := os.Getenv("PROOF_SERVER_URL")
 	if proofServerURL == "" {
-		return
+		return false, nil
 	}
 	token := os.Getenv("CHAIN_SERVICE_TOKEN")
 	if token == "" {
-		return
+		return false, nil
 	}
 	body, _ := json.Marshal(map[string]string{"bioHashKey": bioHashKey, "wallet": wallet})
-	req, err := http.NewRequest("POST", proofServerURL+"/store-bio", bytes.NewReader(body))
-	if err != nil {
-		fmt.Printf("[REGISTER] Warning: could not build proof-server notify request: %v\n", err)
-		return
+	req, reqErr := http.NewRequest("POST", proofServerURL+"/store-bio", bytes.NewReader(body))
+	if reqErr != nil {
+		return true, fmt.Errorf("could not build proof-server notify request: %w", reqErr)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-chain-token", token)
 	// FIX 2: use httpSyncClient (pinningDialer + redirect blocking) instead of
 	// a bare http.Client, preventing SSRF via PROOF_SERVER_URL redirect chains
 	// or DNS-rebinding to internal/cloud-metadata addresses.
-	resp, err := httpSyncClient.Do(req)
-	if err != nil {
-		fmt.Printf("[REGISTER] Warning: proof-server /store-bio call failed: %v\n", err)
+	resp, reqErr := httpSyncClient.Do(req)
+	if reqErr != nil {
+		return true, fmt.Errorf("proof-server /store-bio call failed: %w", reqErr)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return true, fmt.Errorf("proof-server /store-bio returned %d", resp.StatusCode)
+	}
+	return true, nil
+}
+
+// notifyProofServerWithRetryQueue calls notifyProofServer and, on a genuine
+// failure (not a deliberate skip), persists the attempt to
+// proof_server_sync_queue so RetryProofServerSyncQueue can catch up later.
+//
+// FIX (audit 2026-06-28 recheck 4, P1-5; carried over from audit3 P0-1):
+// this used to be entirely fire-and-forget with no durable record of a
+// failed sync — see proof_server_sync_queue's table comment (state.go) for
+// the operational-divergence risk this closed.
+func notifyProofServerWithRetryQueue(cs *ChainState, bioHashKey, wallet string) {
+	attempted, err := notifyProofServer(bioHashKey, wallet)
+	if !attempted {
 		return
 	}
-	if resp != nil {
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+	if err != nil {
+		fmt.Printf("[REGISTER] Warning: proof-server sync failed, queued for retry: %v\n", err)
+		cs.QueueProofServerSync(bioHashKey, wallet, err.Error())
+		return
 	}
-	if resp.StatusCode != 200 {
-		fmt.Printf("[REGISTER] Warning: proof-server /store-bio returned %d\n", resp.StatusCode)
+	// Succeeded — in case this wallet had a stale queue entry from an
+	// earlier failed attempt, clear it now.
+	cs.RemoveFromProofServerSyncQueue(bioHashKey)
+}
+
+// RetryProofServerSyncQueue attempts every pending proof_server_sync_queue
+// entry once. Intended to be called periodically (see NewAPIServer's
+// startup goroutine) so a transient proof-server outage doesn't leave a
+// permanent gap — see proof_server_sync_queue's table comment.
+func RetryProofServerSyncQueue(cs *ChainState) {
+	for _, entry := range cs.LoadProofServerSyncQueue() {
+		attempted, err := notifyProofServer(entry.BioHashKey, entry.Wallet)
+		if !attempted {
+			// No proof server configured on this node at all — nothing to
+			// retry against; leave the queue alone rather than spin on it.
+			return
+		}
+		if err != nil {
+			cs.QueueProofServerSync(entry.BioHashKey, entry.Wallet, err.Error())
+			continue
+		}
+		cs.RemoveFromProofServerSyncQueue(entry.BioHashKey)
 	}
 }
 
