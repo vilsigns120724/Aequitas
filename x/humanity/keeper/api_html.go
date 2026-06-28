@@ -419,34 +419,34 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 
     <!-- Guardian Panel — shown only when user is a registered human -->
     <div class="guardian-panel" id="guardian-panel" style="display:none">
-      <div class="guardian-panel-title">🛡 Guardian System</div>
+      <div class="guardian-panel-title" data-i18n="guard-title">🛡 Guardian System</div>
 
       <!-- My Guardian Status -->
       <div class="guardian-status-box">
-        <div class="guardian-lbl">My Guardian</div>
+        <div class="guardian-lbl" data-i18n="guard-my-lbl">My Guardian</div>
         <div class="guardian-addr" id="guardian-addr-display">None</div>
         <div id="escrow-warning" class="escrow-warn" style="display:none">
           ⚠ Your funds are in ESCROW — <strong id="escrow-amount-display"></strong>
           <br>Your wallet was inactive for 910+ days. Sign to recover your balance.
-          <button class="guardian-btn guardian-btn-recover" style="margin-top:8px" onclick="doRecoverEscrow()">🔓 RECOVER FROM ESCROW</button>
+          <button class="guardian-btn guardian-btn-recover" style="margin-top:8px" onclick="doRecoverEscrow()" data-i18n="guard-recover-btn">🔓 RECOVER FROM ESCROW</button>
         </div>
       </div>
 
       <!-- Set Guardian -->
       <div class="guardian-input-row">
-        <div class="guardian-lbl">Set / Change Guardian</div>
+        <div class="guardian-lbl" data-i18n="guard-set-lbl">Set / Change Guardian</div>
         <input type="text" id="guardian-input" placeholder="Guardian wallet address (0x...)">
         <button class="guardian-btn guardian-btn-set" onclick="doSetGuardian()">🛡 SET GUARDIAN</button>
-        <div class="guardian-hint">Must be a registered Aequitas human · 7-day timelock · Guardian can only confirm your liveness, not access funds · Max 3 wards per guardian</div>
+        <div class="guardian-hint" data-i18n="guard-set-hint">Must be a registered Aequitas human · 7-day timelock · Guardian can only confirm your liveness, not access funds · Max 3 wards per guardian</div>
       </div>
 
       <!-- Guardian: Confirm Ward Alive -->
       <div class="guardian-section-sep">
-        <div class="guardian-lbl">Confirm Alive (As Guardian)</div>
+        <div class="guardian-lbl" data-i18n="guard-confirm-lbl">Confirm Alive (As Guardian)</div>
         <div class="guardian-input-row">
           <input type="text" id="ward-input" placeholder="Ward wallet address (0x...)">
           <button class="guardian-btn guardian-btn-confirm" onclick="doGuardianConfirmAlive()">✓ CONFIRM WARD IS ALIVE</button>
-          <div class="guardian-hint">If your ward cannot access their wallet, confirm their liveness to prevent their funds moving to escrow after 910 days of inactivity.</div>
+          <div class="guardian-hint" data-i18n="guard-confirm-hint">If your ward cannot access their wallet, confirm their liveness to prevent their funds moving to escrow after 910 days of inactivity.</div>
         </div>
       </div>
 
@@ -630,19 +630,19 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <div class="ic-row"><span class="ic-key" data-i18n="s-supply">Total Supply</span><span class="ic-val go" id="stat-supply">0 AEQ</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-grant">Grant per Human</span><span class="ic-val go">1,000 AEQ</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-fee">Registration Fee</span><span class="ic-val g" data-i18n="free">FREE — gasless</span></div>
-      <div class="ic-row"><span class="ic-key">ZKP System</span><span class="ic-val p">Groth16 / BN128</span></div>
-      <div class="ic-row"><span class="ic-key">Hash System</span><span class="ic-val p">keccak256</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-zkp">ZKP System</span><span class="ic-val p">Groth16 / BN128</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-hash">Hash System</span><span class="ic-val p">keccak256</span></div>
       <div class="ic-row"><span class="ic-key" data-i18n="k-bio">Biometric Storage</span><span class="ic-val g" data-i18n="never-stored">Never stored</span></div>
-      <div class="ic-row"><span class="ic-key">Sybil Protection</span><span class="ic-val g">Permanent · On-chain</span></div>
+      <div class="ic-row"><span class="ic-key" data-i18n="k-sybil-prot">Sybil Protection</span><span class="ic-val g">Permanent · On-chain</span></div>
     </div>
     <div class="ic" style="margin-top:12px">
-      <div class="ic-title">❓ FAQ</div>
-      <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600">Is my biometric data safe?</div>
-      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7">Yes. Your fingerprint or face scan never leaves your device. The Hardware Secure Element processes the biometric and produces a cryptographic key. Only a mathematical proof derived from that key is ever transmitted.</div>
-      <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600">Can I register with a different wallet later?</div>
-      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7">No. Registration is permanently bound to one wallet address per biometric identity. This is by design — it prevents Sybil attacks and ensures the one-person-one-wallet guarantee.</div>
-      <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600">What happens if I lose my phone?</div>
-      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;line-height:1.7">Your AEQ remains in your wallet — it is tied to your private key, not your phone. You can still access your wallet via MetaMask with your seed phrase. Wallet recovery is independent of the biometric registration.</div>
+      <div class="ic-title" data-i18n="faq-title">❓ FAQ</div>
+      <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q1">Is my biometric data safe?</div>
+      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a1">Yes. Your fingerprint or face scan never leaves your device. The Hardware Secure Element processes the biometric and produces a cryptographic key. Only a mathematical proof derived from that key is ever transmitted.</div>
+      <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q2">Can I register with a different wallet later?</div>
+      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;border-bottom:1px solid var(--border);line-height:1.7" data-i18n="faq-a2">No. Registration is permanently bound to one wallet address per biometric identity. This is by design — it prevents Sybil attacks and ensures the one-person-one-wallet guarantee.</div>
+      <div style="font-size:0.63rem;color:var(--text);padding:8px 0;border-bottom:1px solid var(--border);font-weight:600" data-i18n="faq-q3">What happens if I lose my phone?</div>
+      <div style="font-size:0.62rem;color:var(--muted);padding:6px 0 10px;line-height:1.7" data-i18n="faq-a3">Your AEQ remains in your wallet — it is tied to your private key, not your phone. You can still access your wallet via MetaMask with your seed phrase. Wallet recovery is independent of the biometric registration.</div>
     </div>
   </div>
 </div>
@@ -658,8 +658,8 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 <div id="exch-swap" class="stab-panel active">
 <div style="padding:16px 20px 0">
   <div class="idx">
-    <div class="idx-title">AEQ / tUSD — Live Price</div>
-    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.</div>
+    <div class="idx-title" data-i18n="swap-price-title">AEQ / tUSD — Live Price</div>
+    <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px" data-i18n="swap-price-desc">Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.</div>
     <div style="display:flex;gap:4px;margin-bottom:6px">
       <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn">1m</button>
       <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn">5m</button>
@@ -669,7 +669,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
       <button onclick="setChartInterval(0)" id="ci-all" class="ci-btn ci-active">All</button>
     </div>
     <canvas id="price-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
-    <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No pool data yet — add liquidity to see the price chart.</div>
+    <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem" data-i18n="swap-price-empty">No pool data yet — add liquidity to see the price chart.</div>
   </div>
 </div>
 <div class="rs">
@@ -1270,32 +1270,32 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 
   <!-- HOW TO JOIN -->
   <div style="margin-bottom:20px">
-    <div style="font-size:0.57rem;color:var(--purple);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:14px">Choose Your Path</div>
+    <div style="font-size:0.57rem;color:var(--purple);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:14px" data-i18n="path-title">Choose Your Path</div>
     <div class="path-grid">
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128100;</div>
-        <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px">I am a Human</div>
-        <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px">I want to register, receive 1,000 AEQ, and join the basic income network.</div>
-        <div style="font-size:0.6rem;color:var(--purple);font-weight:600;line-height:1.9">1. Download AequitasBio app<br>2. Scan your biometric<br>3. Connect MetaMask<br>4. Receive 1,000 AEQ instantly</div>
+        <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px" data-i18n="path-human-title">I am a Human</div>
+        <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px" data-i18n="path-human-desc">I want to register, receive 1,000 AEQ, and join the basic income network.</div>
+        <div style="font-size:0.6rem;color:var(--purple);font-weight:600;line-height:1.9" data-i18n="path-human-steps">1. Download AequitasBio app<br>2. Scan your biometric<br>3. Connect MetaMask<br>4. Receive 1,000 AEQ instantly</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128421;&#65039;</div>
-        <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px">I am a Node Operator</div>
-        <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px">I want to run a full node, participate in block production, and earn from the 40% validator pool.</div>
-        <div style="font-size:0.6rem;color:var(--teal);font-weight:600;line-height:1.9">1. Register as a human (required)<br>2. Set PRIMARY_NODE_URL=https://aequitas.digital<br>3. Deploy on Railway/Contabo/VPS<br>4. Earn daily from validator pool</div>
+        <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px" data-i18n="path-node-title">I am a Node Operator</div>
+        <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px" data-i18n="path-node-desc">I want to run a full node, participate in block production, and earn from the 40% validator pool.</div>
+        <div style="font-size:0.6rem;color:var(--teal);font-weight:600;line-height:1.9" data-i18n="path-node-steps">1. Register as a human (required)<br>2. Set PRIMARY_NODE_URL=https://aequitas.digital<br>3. Deploy on Railway/Contabo/VPS<br>4. Earn daily from validator pool</div>
       </div>
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128187;</div>
-        <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px">I am a Developer</div>
-        <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px">I want to build on Aequitas, integrate the API, or contribute to the protocol.</div>
-        <div style="font-size:0.6rem;color:var(--gold);font-weight:600;line-height:1.9">1. EVM-compatible JSON-RPC<br>2. Chain ID: 1926 &#183; RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Metrics: /metrics (Prometheus)</div>
+        <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px" data-i18n="path-dev-title">I am a Developer</div>
+        <div style="font-size:0.62rem;color:var(--muted);line-height:1.75;margin-bottom:14px" data-i18n="path-dev-desc">I want to build on Aequitas, integrate the API, or contribute to the protocol.</div>
+        <div style="font-size:0.6rem;color:var(--gold);font-weight:600;line-height:1.9" data-i18n="path-dev-steps">1. EVM-compatible JSON-RPC<br>2. Chain ID: 1926 &#183; RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Metrics: /metrics (Prometheus)</div>
       </div>
     </div>
   </div>
 
   <!-- TOKEN FLOW DIAGRAM -->
   <div class="idx" style="margin-bottom:16px">
-    <div class="idx-title">AEQ Token Flow Diagram</div>
+    <div class="idx-title" data-i18n="story-flow-title">AEQ Token Flow Diagram</div>
     <div style="overflow-x:auto;padding:8px 0">
     <svg viewBox="0 0 680 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:680px;display:block;margin:0 auto;font-family:Inter,sans-serif">
       <rect width="680" height="240" fill="rgba(255,255,255,0.03)" rx="10"/>
@@ -1332,7 +1332,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 
   <!-- NETWORK TOPOLOGY -->
   <div class="idx">
-    <div class="idx-title">Network Topology &#8212; Current State</div>
+    <div class="idx-title" data-i18n="story-topo-title">Network Topology &#8212; Current State</div>
     <div style="overflow-x:auto;padding:8px 0">
     <svg viewBox="0 0 500 185" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:500px;display:block;margin:0 auto;font-family:Inter,sans-serif">
       <rect width="500" height="185" fill="rgba(255,255,255,0.03)" rx="10"/>
@@ -1381,6 +1381,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         🔗 Generate Node Binding Signature
       </a>
     </div>
+    <div id="node-guide-lang-banner" style="display:none;font-size:0.62rem;color:var(--muted);padding:8px 12px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);border-radius:6px;margin-top:8px" data-i18n="node-guide-lang-note">This inline guide is in English. A translated PDF is available in your language using the button above.</div>
     <!-- INLINE NODE GUIDE -->
     <div id="node-guide" style="display:block;background:var(--card);border:1px solid rgba(245,166,35,0.2);border-radius:var(--radius);padding:24px;margin-top:4px">
 
@@ -2002,6 +2003,19 @@ en:{
   'v7-intro-text':'AequitasV7 is the single source of truth for the entire Aequitas economy. Every AEQ balance, every human registration, every UBI payout, and every wealth cap enforcement is governed by this one immutable contract.',
 'expl-network':'Network &amp; Nodes','expl-network-d':'Node topology · run your own node · technical specs · Chain ID 1926'
 ,'swap-sell-label':'Sell','swap-receive-label':'Receive',
+  'guard-title':'🛡 Guardian System','guard-my-lbl':'My Guardian','guard-none':'None',
+  'guard-set-lbl':'Set / Change Guardian','guard-set-hint':'Must be a registered Aequitas human · 7-day timelock · Guardian can only confirm your liveness, not access funds · Max 3 wards per guardian',
+  'guard-confirm-lbl':'Confirm Alive (As Guardian)','guard-confirm-hint':'If your ward cannot access their wallet, confirm their liveness to prevent their funds moving to escrow after 910 days of inactivity.','guard-recover-btn':'🔓 RECOVER FROM ESCROW',
+  'faq-title':'❓ FAQ','faq-q1':'Is my biometric data safe?','faq-a1':'Yes. Your fingerprint or face scan never leaves your device. The Hardware Secure Element processes the biometric and produces a cryptographic key. Only a mathematical proof derived from that key is ever transmitted.',
+  'faq-q2':'Can I register with a different wallet later?','faq-a2':'No. Registration is permanently bound to one wallet address per biometric identity. This is by design — it prevents Sybil attacks and ensures the one-person-one-wallet guarantee.',
+  'faq-q3':'What happens if I lose my phone?','faq-a3':'Your AEQ remains in your wallet — it is tied to your private key, not your phone. You can still access your wallet via MetaMask with your seed phrase. Wallet recovery is independent of the biometric registration.',
+  'path-title':'Choose Your Path','path-human-title':'I am a Human','path-human-desc':'I want to register, receive 1,000 AEQ, and join the basic income network.','path-human-steps':'1. Download AequitasBio app<br>2. Scan your biometric<br>3. Connect MetaMask<br>4. Receive 1,000 AEQ instantly',
+  'path-node-title':'I am a Node Operator','path-node-desc':'I want to run a full node, participate in block production, and earn from the 40% validator pool.','path-node-steps':'1. Register as a human (required)<br>2. Set PRIMARY_NODE_URL=https://aequitas.digital<br>3. Deploy on Railway/Contabo/VPS<br>4. Earn daily from validator pool',
+  'path-dev-title':'I am a Developer','path-dev-desc':'I want to build on Aequitas, integrate the API, or contribute to the protocol.','path-dev-steps':'1. EVM-compatible JSON-RPC<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Metrics: /metrics (Prometheus)',
+  'story-flow-title':'AEQ Token Flow Diagram','story-topo-title':'Network Topology — Current State',
+  'swap-price-title':'AEQ / tUSD — Live Price','swap-price-desc':'Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.','swap-price-empty':'No pool data yet — add liquidity to see the price chart.',
+  'node-guide-lang-note':'This inline guide is in English. A translated PDF is available in your language using the button above.',
+  'k-zkp':'ZKP System','k-hash':'Hash System','k-sybil-prot':'Sybil Protection',
 },
 de:{
   'logo-sub':'MENSCHLICHKEITSNACHWEIS','live':'LIVE',
@@ -2168,7 +2182,20 @@ de:{
   'expl-v7':'Protokoll V7 Dokumentation','expl-v7-d':'AequitasV7-Contract · 6 Mechanismen · ZK-Beweis · Vermögensobergrenze · Demurrage · unveränderlicher Code',
   'expl-explorer':'Block-Explorer','expl-explorer-d':'Live-BlockDAG · Block anklicken um Validator, Hash, Transaktionen, Eltern-Hashes zu sehen',
   'swap-sell-label':'Verkaufen','swap-receive-label':'Erhalten',
-  'expl-network':'Netzwerk &amp; Nodes','expl-network-d':'Node-Topologie · eigenen Node betreiben · technische Spezifikationen · Chain-ID 1926'
+  'expl-network':'Netzwerk &amp; Nodes','expl-network-d':'Node-Topologie · eigenen Node betreiben · technische Spezifikationen · Chain-ID 1926',
+  'guard-title':'🛡 Guardian-System','guard-my-lbl':'Mein Guardian','guard-none':'Keiner',
+  'guard-set-lbl':'Guardian festlegen / ändern','guard-set-hint':'Muss ein registrierter Aequitas-Mensch sein · 7-Tage-Zeitsperre · Guardian kann nur deine Lebendigkeit bestätigen, nicht auf Guthaben zugreifen · Max. 3 Schützlinge pro Guardian',
+  'guard-confirm-lbl':'Lebendig bestätigen (Als Guardian)','guard-confirm-hint':'Falls dein Schützling keinen Zugang zu seiner Wallet hat, bestätige seine Lebendigkeit, um zu verhindern, dass Gelder nach 910 Tagen Inaktivität ins Escrow überführt werden.','guard-recover-btn':'🔓 AUS ESCROW ZURÜCKFORDERN',
+  'faq-title':'❓ FAQ','faq-q1':'Sind meine biometrischen Daten sicher?','faq-a1':'Ja. Dein Fingerabdruck verlässt niemals dein Gerät. Das Hardware Secure Element verarbeitet die Biometrie und erzeugt einen kryptographischen Schlüssel. Nur ein mathematischer Beweis, der von diesem Schlüssel abgeleitet wird, wird übertragen.',
+  'faq-q2':'Kann ich mich später mit einer anderen Wallet registrieren?','faq-a2':'Nein. Die Registrierung ist dauerhaft an eine Wallet-Adresse pro biometrischer Identität gebunden. Dies ist beabsichtigt — es verhindert Sybil-Angriffe und gewährleistet die Ein-Person-eine-Wallet-Garantie.',
+  'faq-q3':'Was passiert, wenn ich mein Handy verliere?','faq-a3':'Deine AEQ bleiben in deiner Wallet — sie sind mit deinem privaten Schlüssel verknüpft, nicht mit deinem Handy. Du kannst weiterhin über MetaMask mit deiner Seed-Phrase auf deine Wallet zugreifen. Die Wallet-Wiederherstellung ist unabhängig von der biometrischen Registrierung.',
+  'path-title':'Wähle deinen Weg','path-human-title':'Ich bin ein Mensch','path-human-desc':'Ich möchte mich registrieren, 1.000 AEQ erhalten und dem Grundeinkommensnetzwerk beitreten.','path-human-steps':'1. AequitasBio-App herunterladen<br>2. Biometrie scannen<br>3. MetaMask verbinden<br>4. Sofort 1.000 AEQ erhalten',
+  'path-node-title':'Ich bin ein Node-Betreiber','path-node-desc':'Ich möchte einen vollständigen Node betreiben, an der Blockproduktion teilnehmen und aus dem 40%-Validator-Pool verdienen.','path-node-steps':'1. Als Mensch registrieren (erforderlich)<br>2. PRIMARY_NODE_URL=https://aequitas.digital setzen<br>3. Auf Railway/Contabo/VPS deployen<br>4. Täglich aus dem Validator-Pool verdienen',
+  'path-dev-title':'Ich bin ein Entwickler','path-dev-desc':'Ich möchte auf Aequitas aufbauen, die API integrieren oder zum Protokoll beitragen.','path-dev-steps':'1. EVM-kompatibler JSON-RPC<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* Endpunkte<br>4. Metriken: /metrics (Prometheus)',
+  'story-flow-title':'AEQ Token-Flussdiagramm','story-topo-title':'Netzwerktopologie — Aktueller Zustand',
+  'swap-price-title':'AEQ / tUSD — Live-Preis','swap-price-desc':'Echtzeit-Preis aus Pool-Reserven (x·y=k). Aktualisiert alle 8 Sekunden mit neuen Pool-Daten.','swap-price-empty':'Noch keine Pool-Daten — Liquidität hinzufügen, um das Preisdiagramm zu sehen.',
+  'node-guide-lang-note':'Diese Anleitung ist auf Englisch. Eine übersetzte PDF-Version ist in deiner Sprache über den Button oben verfügbar.',
+  'k-zkp':'ZKP-System','k-hash':'Hash-System','k-sybil-prot':'Sybil-Schutz',
 },
 es:{
   'logo-sub':'PRUEBA DE HUMANIDAD','live':'EN VIVO',
@@ -2321,7 +2348,20 @@ es:{
   'expl-v7':'Documentación Protocolo V7','expl-v7-d':'Contrato AequitasV7 · 6 mecanismos · prueba ZK · límite de riqueza · demurrage · código inmutable',
   'expl-explorer':'Explorador de Bloques','expl-explorer-d':'BlockDAG en vivo · haz clic en cualquier bloque para ver validador, hash, transacciones, hashes padres',
   'swap-sell-label':'Vender','swap-receive-label':'Recibir',
-  'expl-network':'Red y Nodos','expl-network-d':'Topología de nodos · ejecutar tu propio nodo · especificaciones técnicas · Chain ID 1926'
+  'expl-network':'Red y Nodos','expl-network-d':'Topología de nodos · ejecutar tu propio nodo · especificaciones técnicas · Chain ID 1926',
+  'guard-title':'🛡 Sistema Guardian','guard-my-lbl':'Mi Guardian','guard-none':'Ninguno',
+  'guard-set-lbl':'Establecer / Cambiar Guardian','guard-set-hint':'Debe ser un humano registrado en Aequitas · Bloqueo de 7 días · El Guardian solo puede confirmar tu vitalidad, no acceder a fondos · Máximo 3 protegidos por Guardian',
+  'guard-confirm-lbl':'Confirmar Vivo (Como Guardian)','guard-confirm-hint':'Si tu protegido no puede acceder a su wallet, confirma su vitalidad para evitar que sus fondos vayan al escrow después de 910 días de inactividad.','guard-recover-btn':'🔓 RECUPERAR DEL ESCROW',
+  'faq-title':'❓ Preguntas Frecuentes','faq-q1':'¿Están seguros mis datos biométricos?','faq-a1':'Sí. Tu huella dactilar nunca sale de tu dispositivo. El Hardware Secure Element procesa la biometría y produce una clave criptográfica. Solo se transmite una prueba matemática derivada de esa clave.',
+  'faq-q2':'¿Puedo registrarme con una wallet diferente más adelante?','faq-a2':'No. El registro está vinculado permanentemente a una dirección de wallet por identidad biométrica. Esto es por diseño — previene ataques Sybil y garantiza la garantía una-persona-una-wallet.',
+  'faq-q3':'¿Qué pasa si pierdo mi teléfono?','faq-a3':'Tu AEQ permanece en tu wallet — está vinculado a tu clave privada, no a tu teléfono. Puedes acceder a tu wallet a través de MetaMask con tu frase semilla. La recuperación de la wallet es independiente del registro biométrico.',
+  'path-title':'Elige Tu Camino','path-human-title':'Soy un Humano','path-human-desc':'Quiero registrarme, recibir 1.000 AEQ y unirme a la red de ingreso básico.','path-human-steps':'1. Descargar app AequitasBio<br>2. Escanear tu biometría<br>3. Conectar MetaMask<br>4. Recibir 1.000 AEQ al instante',
+  'path-node-title':'Soy un Operador de Nodo','path-node-desc':'Quiero ejecutar un nodo completo, participar en la producción de bloques y ganar del pool de validadores del 40%.','path-node-steps':'1. Registrarse como humano (obligatorio)<br>2. Establecer PRIMARY_NODE_URL=https://aequitas.digital<br>3. Desplegar en Railway/Contabo/VPS<br>4. Ganar diariamente del pool de validadores',
+  'path-dev-title':'Soy un Desarrollador','path-dev-desc':'Quiero construir sobre Aequitas, integrar la API o contribuir al protocolo.','path-dev-steps':'1. JSON-RPC compatible con EVM<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Métricas: /metrics (Prometheus)',
+  'story-flow-title':'Diagrama de Flujo del Token AEQ','story-topo-title':'Topología de Red — Estado Actual',
+  'swap-price-title':'AEQ / tUSD — Precio en Vivo','swap-price-desc':'Precio en tiempo real derivado de las reservas del pool (x·y=k). Se actualiza cada 8 segundos con nuevos datos del pool.','swap-price-empty':'Sin datos del pool aún — añade liquidez para ver el gráfico de precios.',
+  'node-guide-lang-note':'Esta guía está en inglés. Una traducción en PDF está disponible en tu idioma con el botón de arriba.',
+  'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Protección Sybil',
 },
 ru:{
   'logo-sub':'ДОКАЗАТЕЛЬСТВО ЧЕЛОВЕЧНОСТИ','live':'ОНЛАЙН',
@@ -2468,7 +2508,20 @@ ru:{
   'expl-v7':'Документация Протокола V7','expl-v7-d':'Контракт AequitasV7 · 6 механизмов · ZK-доказательство · лимит богатства · демерредж · неизменяемый код',
   'expl-explorer':'Обозреватель блоков','expl-explorer-d':'Живой BlockDAG · нажмите на блок чтобы увидеть валидатора, хэш, транзакции, родительские хэши',
   'swap-sell-label':'Продать','swap-receive-label':'Получить',
-  'gini-what-title':'Что такое коэффициент Джини?','gini-what-text':'Разработан итальянским статистиком Коррадо Джини (1912). Измеряет распределение богатства, сравнивая фактические балансы с гипотетически равным базовым уровнем. Шкала: 0 (у всех одинаково) до 1 (у одного всё). Используется Всемирным банком, ОЭСР, ООН для сравнения стран. Справочные значения: Bitcoin ≈ 0,85 · ЮАР (мировой рекорд) ≈ 0,63 · США ≈ 0,41 · Германия ≈ 0,31 · Скандинавия ≈ 0,27 · Долгосрочная цель Aequitas: Джини ниже 0,30.','gini-calc-title':'Как рассчитывается Индекс Aequitas','gini-calc-text':'Собираются все балансы AEQ. Формула вычисляет среднее абсолютное отклонение нормализованное на n2. Результат 0-1 x 100 = Индекс.','gini-why-title':'Почему Gini','gini-why-text':'Gini учитывает полное распределение среди всех людей в одном числе.','expl-network':'Сеть и узлы','expl-network-d':'Топология узлов · запустить собственный узел · технические характеристики · Chain ID 1926'
+  'gini-what-title':'Что такое коэффициент Джини?','gini-what-text':'Разработан итальянским статистиком Коррадо Джини (1912). Измеряет распределение богатства, сравнивая фактические балансы с гипотетически равным базовым уровнем. Шкала: 0 (у всех одинаково) до 1 (у одного всё). Используется Всемирным банком, ОЭСР, ООН для сравнения стран. Справочные значения: Bitcoin ≈ 0,85 · ЮАР (мировой рекорд) ≈ 0,63 · США ≈ 0,41 · Германия ≈ 0,31 · Скандинавия ≈ 0,27 · Долгосрочная цель Aequitas: Джини ниже 0,30.','gini-calc-title':'Как рассчитывается Индекс Aequitas','gini-calc-text':'Собираются все балансы AEQ. Формула вычисляет среднее абсолютное отклонение нормализованное на n2. Результат 0-1 x 100 = Индекс.','gini-why-title':'Почему Gini','gini-why-text':'Gini учитывает полное распределение среди всех людей в одном числе.','expl-network':'Сеть и узлы','expl-network-d':'Топология узлов · запустить собственный узел · технические характеристики · Chain ID 1926',
+  'guard-title':'🛡 Система Хранителя','guard-my-lbl':'Мой Хранитель','guard-none':'Нет',
+  'guard-set-lbl':'Установить / Изменить Хранителя','guard-set-hint':'Должен быть зарегистрированным человеком Aequitas · Блокировка на 7 дней · Хранитель может только подтвердить вашу активность, не имея доступа к средствам · Макс. 3 подопечных на хранителя',
+  'guard-confirm-lbl':'Подтвердить Активность (Как Хранитель)','guard-confirm-hint':'Если ваш подопечный не может получить доступ к кошельку, подтвердите его активность, чтобы предотвратить перевод средств на эскроу после 910 дней бездействия.','guard-recover-btn':'🔓 ВЕРНУТЬ ИЗ ЭСКРОУ',
+  'faq-title':'❓ Вопросы и Ответы','faq-q1':'Мои биометрические данные в безопасности?','faq-a1':'Да. Ваш отпечаток пальца никогда не покидает устройство. Hardware Secure Element обрабатывает биометрию и создаёт криптографический ключ. Передаётся только математическое доказательство, выведенное из этого ключа.',
+  'faq-q2':'Могу ли я зарегистрироваться с другим кошельком позже?','faq-a2':'Нет. Регистрация постоянно привязана к одному адресу кошелька на биометрическую идентичность. Это сделано намеренно — для защиты от Sybil-атак и гарантии принципа один-человек-один-кошелёк.',
+  'faq-q3':'Что произойдёт, если я потеряю телефон?','faq-a3':'Ваши AEQ остаются в кошельке — они привязаны к вашему приватному ключу, а не к телефону. Доступ к кошельку возможен через MetaMask с помощью сид-фразы. Восстановление кошелька не зависит от биометрической регистрации.',
+  'path-title':'Выберите Свой Путь','path-human-title':'Я Человек','path-human-desc':'Хочу зарегистрироваться, получить 1 000 AEQ и присоединиться к сети базового дохода.','path-human-steps':'1. Скачать приложение AequitasBio<br>2. Отсканировать биометрию<br>3. Подключить MetaMask<br>4. Получить 1 000 AEQ мгновенно',
+  'path-node-title':'Я Оператор Ноды','path-node-desc':'Хочу запустить полную ноду, участвовать в производстве блоков и зарабатывать из 40%-ного пула валидаторов.','path-node-steps':'1. Зарегистрироваться как человек (обязательно)<br>2. Установить PRIMARY_NODE_URL=https://aequitas.digital<br>3. Развернуть на Railway/Contabo/VPS<br>4. Ежедневно зарабатывать из пула валидаторов',
+  'path-dev-title':'Я Разработчик','path-dev-desc':'Хочу создавать на базе Aequitas, интегрировать API или вносить вклад в протокол.','path-dev-steps':'1. EVM-совместимый JSON-RPC<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* эндпоинты<br>4. Метрики: /metrics (Prometheus)',
+  'story-flow-title':'Схема движения токена AEQ','story-topo-title':'Топология Сети — Текущее Состояние',
+  'swap-price-title':'AEQ / tUSD — Живая Цена','swap-price-desc':'Цена в реальном времени из резервов пула (x·y=k). Обновляется каждые 8 секунд с новыми данными пула.','swap-price-empty':'Данных пула ещё нет — добавьте ликвидность для просмотра графика цены.',
+  'node-guide-lang-note':'Это руководство на английском. Перевод доступен в PDF на вашем языке — используйте кнопку выше.',
+  'k-zkp':'ZKP-Система','k-hash':'Хеш-Система','k-sybil-prot':'Защита от Sybil',
 },
 zh:{
   'logo-sub':'人类证明','live':'实时',
@@ -2617,7 +2670,20 @@ zh:{
   'expl-v7':'协议V7文档','expl-v7-d':'AequitasV7合约 · 6个机制 · ZK证明 · 财富上限 · 货币持有税 · 不可更改代码',
   'expl-explorer':'区块浏览器','expl-explorer-d':'实时BlockDAG · 点击任意区块查看验证者、哈希、交易、父哈希',
   'swap-sell-label':'卖出','swap-receive-label':'接收',
-  'gini-what-title':'什么是基尼系数？','gini-what-text':'由意大利统计学家科拉多·基尼于1912年提出。通过将实际余额与假设的完全平等基线进行比较来衡量财富分配。范围：0（人人均等）到1（一人独占）。世界银行、经合组织、联合国用于比较各国。参考值：比特币≈0.85 · 南非（世界纪录）≈0.63 · 美国≈0.41 · 德国≈0.31 · 北欧≈0.27 · Aequitas长期目标：基尼系数低于0.30。','gini-calc-title':'如何计算Aequitas指数','gini-calc-text':'收集所有AEQ余额。公式计算每对余额之间的平均绝对差，结果0-1乘以100=Aequitas指数。','gini-why-title':'为什么选择基尼系数','gini-why-text':'基尼系数捕捉所有已验证人类的完整分布。Aequitas将此数据发布在链上。','expl-network':'网络与节点','expl-network-d':'节点拓扑 · 运行自己的节点 · 技术规格 · Chain ID 1926'
+  'gini-what-title':'什么是基尼系数？','gini-what-text':'由意大利统计学家科拉多·基尼于1912年提出。通过将实际余额与假设的完全平等基线进行比较来衡量财富分配。范围：0（人人均等）到1（一人独占）。世界银行、经合组织、联合国用于比较各国。参考值：比特币≈0.85 · 南非（世界纪录）≈0.63 · 美国≈0.41 · 德国≈0.31 · 北欧≈0.27 · Aequitas长期目标：基尼系数低于0.30。','gini-calc-title':'如何计算Aequitas指数','gini-calc-text':'收集所有AEQ余额。公式计算每对余额之间的平均绝对差，结果0-1乘以100=Aequitas指数。','gini-why-title':'为什么选择基尼系数','gini-why-text':'基尼系数捕捉所有已验证人类的完整分布。Aequitas将此数据发布在链上。','expl-network':'网络与节点','expl-network-d':'节点拓扑 · 运行自己的节点 · 技术规格 · Chain ID 1926',
+  'guard-title':'🛡 守护者系统','guard-my-lbl':'我的守护者','guard-none':'无',
+  'guard-set-lbl':'设置 / 更改守护者','guard-set-hint':'必须是已注册的Aequitas人类 · 7天时间锁 · 守护者只能确认您的活跃状态，不能访问资金 · 每位守护者最多3名被保护者',
+  'guard-confirm-lbl':'确认存活（作为守护者）','guard-confirm-hint':'如果您的被保护者无法访问其钱包，请确认其活跃状态，以防止其资金在910天不活跃后转入托管。','guard-recover-btn':'🔓 从托管中恢复',
+  'faq-title':'❓ 常见问题','faq-q1':'我的生物特征数据安全吗？','faq-a1':'是的。您的指纹扫描永远不会离开您的设备。硬件安全元件处理生物特征并生成加密密钥。只传输从该密钥派生的数学证明。',
+  'faq-q2':'我以后可以用不同的钱包注册吗？','faq-a2':'不可以。注册永久绑定到每个生物特征身份的一个钱包地址。这是设计使然——它防止女巫攻击并确保一人一钱包的保证。',
+  'faq-q3':'如果我丢失手机会怎样？','faq-a3':'您的AEQ保留在您的钱包中——它与您的私钥绑定，而非手机。您仍然可以通过MetaMask使用助记词访问钱包。钱包恢复与生物特征注册无关。',
+  'path-title':'选择您的路径','path-human-title':'我是人类','path-human-desc':'我想注册、获得1,000 AEQ并加入基本收入网络。','path-human-steps':'1. 下载AequitasBio应用<br>2. 扫描您的生物特征<br>3. 连接MetaMask<br>4. 立即获得1,000 AEQ',
+  'path-node-title':'我是节点运营商','path-node-desc':'我想运行完整节点，参与区块生产，并从40%验证者池中获利。','path-node-steps':'1. 注册为人类（必须）<br>2. 设置PRIMARY_NODE_URL=https://aequitas.digital<br>3. 部署在Railway/Contabo/VPS<br>4. 每日从验证者池获利',
+  'path-dev-title':'我是开发者','path-dev-desc':'我想在Aequitas上构建，集成API，或为协议做贡献。','path-dev-steps':'1. EVM兼容JSON-RPC<br>2. 链ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* 端点<br>4. 指标: /metrics (Prometheus)',
+  'story-flow-title':'AEQ代币流向图','story-topo-title':'网络拓扑——当前状态',
+  'swap-price-title':'AEQ / tUSD — 实时价格','swap-price-desc':'从池储备（x·y=k）实时派生的价格。每8秒更新一次。','swap-price-empty':'暂无池数据——添加流动性以查看价格图表。',
+  'node-guide-lang-note':'此内联指南为英文。您语言的翻译PDF可通过上方按钮获取。',
+  'k-zkp':'ZKP系统','k-hash':'哈希系统','k-sybil-prot':'女巫攻击防护',
 },
 id:{
   'logo-sub':'BUKTI KEMANUSIAAN','live':'LANGSUNG',
@@ -2758,7 +2824,20 @@ id:{
   'expl-v7':'Dokumentasi Protokol V7','expl-v7-d':'Kontrak AequitasV7 · 6 mekanisme · bukti ZK · batas kekayaan · demurrage · kode tak berubah',
   'expl-explorer':'Block Explorer','expl-explorer-d':'BlockDAG langsung · klik blok apapun untuk melihat validator, hash, transaksi, hash induk',
   'swap-sell-label':'Jual','swap-receive-label':'Terima',
-  'gini-what-title':'Apa itu Koefisien Gini?','gini-what-text':'Dikembangkan oleh ahli statistik Italia Corrado Gini (1912). Mengukur distribusi kekayaan dengan membandingkan saldo aktual dengan basis yang secara hipotetis sepenuhnya setara. Skala: 0 (semua sama) hingga 1 (satu orang menguasai semua). Digunakan oleh Bank Dunia, OECD, PBB untuk membandingkan negara. Nilai referensi: Bitcoin ≈ 0,85 · Afrika Selatan (rekor dunia) ≈ 0,63 · AS ≈ 0,41 · Jerman ≈ 0,31 · Skandinavia ≈ 0,27 · Target jangka panjang Aequitas: Gini di bawah 0,30.','gini-calc-title':'Bagaimana Indeks Aequitas dihitung','gini-calc-text':'Semua saldo AEQ dikumpulkan. Rumus menghitung perbedaan absolut rata-rata dinormalisasi dengan n2. Hasil 0-1 dikali 100 = Indeks Aequitas.','gini-why-title':'Mengapa Gini','gini-why-text':'Koefisien Gini menangkap distribusi lengkap semua manusia terverifikasi.','expl-network':'Jaringan &amp; Node','expl-network-d':'Topologi node · jalankan node sendiri · spesifikasi teknis · Chain ID 1926'
+  'gini-what-title':'Apa itu Koefisien Gini?','gini-what-text':'Dikembangkan oleh ahli statistik Italia Corrado Gini (1912). Mengukur distribusi kekayaan dengan membandingkan saldo aktual dengan basis yang secara hipotetis sepenuhnya setara. Skala: 0 (semua sama) hingga 1 (satu orang menguasai semua). Digunakan oleh Bank Dunia, OECD, PBB untuk membandingkan negara. Nilai referensi: Bitcoin ≈ 0,85 · Afrika Selatan (rekor dunia) ≈ 0,63 · AS ≈ 0,41 · Jerman ≈ 0,31 · Skandinavia ≈ 0,27 · Target jangka panjang Aequitas: Gini di bawah 0,30.','gini-calc-title':'Bagaimana Indeks Aequitas dihitung','gini-calc-text':'Semua saldo AEQ dikumpulkan. Rumus menghitung perbedaan absolut rata-rata dinormalisasi dengan n2. Hasil 0-1 dikali 100 = Indeks Aequitas.','gini-why-title':'Mengapa Gini','gini-why-text':'Koefisien Gini menangkap distribusi lengkap semua manusia terverifikasi.','expl-network':'Jaringan &amp; Node','expl-network-d':'Topologi node · jalankan node sendiri · spesifikasi teknis · Chain ID 1926',
+  'guard-title':'🛡 Sistem Guardian','guard-my-lbl':'Guardian Saya','guard-none':'Tidak Ada',
+  'guard-set-lbl':'Tetapkan / Ubah Guardian','guard-set-hint':'Harus manusia Aequitas yang terdaftar · Kunci waktu 7 hari · Guardian hanya bisa mengkonfirmasi kelayakan hidup Anda, tidak mengakses dana · Maks. 3 wali per guardian',
+  'guard-confirm-lbl':'Konfirmasi Masih Hidup (Sebagai Guardian)','guard-confirm-hint':'Jika wali Anda tidak dapat mengakses wallet mereka, konfirmasi kelayakan hidup mereka untuk mencegah dana mereka berpindah ke escrow setelah 910 hari tidak aktif.','guard-recover-btn':'🔓 PULIHKAN DARI ESCROW',
+  'faq-title':'❓ Pertanyaan Umum','faq-q1':'Apakah data biometrik saya aman?','faq-a1':'Ya. Sidik jari Anda tidak pernah meninggalkan perangkat. Hardware Secure Element memproses biometrik dan menghasilkan kunci kriptografi. Hanya bukti matematis yang diturunkan dari kunci tersebut yang ditransmisikan.',
+  'faq-q2':'Bisakah saya mendaftar dengan wallet berbeda nanti?','faq-a2':'Tidak. Pendaftaran terikat permanen ke satu alamat wallet per identitas biometrik. Ini disengaja — mencegah serangan Sybil dan memastikan jaminan satu-orang-satu-wallet.',
+  'faq-q3':'Apa yang terjadi jika saya kehilangan ponsel?','faq-a3':'AEQ Anda tetap di wallet — terikat ke kunci privat Anda, bukan ponsel. Anda masih bisa mengakses wallet melalui MetaMask dengan frasa benih. Pemulihan wallet tidak bergantung pada pendaftaran biometrik.',
+  'path-title':'Pilih Jalur Anda','path-human-title':'Saya adalah Manusia','path-human-desc':'Saya ingin mendaftar, menerima 1.000 AEQ, dan bergabung dengan jaringan penghasilan dasar.','path-human-steps':'1. Unduh aplikasi AequitasBio<br>2. Pindai biometrik Anda<br>3. Hubungkan MetaMask<br>4. Terima 1.000 AEQ seketika',
+  'path-node-title':'Saya adalah Operator Node','path-node-desc':'Saya ingin menjalankan node penuh, berpartisipasi dalam produksi blok, dan menghasilkan dari pool validator 40%.','path-node-steps':'1. Daftar sebagai manusia (wajib)<br>2. Set PRIMARY_NODE_URL=https://aequitas.digital<br>3. Deploy di Railway/Contabo/VPS<br>4. Hasilkan harian dari pool validator',
+  'path-dev-title':'Saya adalah Pengembang','path-dev-desc':'Saya ingin membangun di Aequitas, mengintegrasikan API, atau berkontribusi pada protokol.','path-dev-steps':'1. JSON-RPC kompatibel EVM<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Metrik: /metrics (Prometheus)',
+  'story-flow-title':'Diagram Aliran Token AEQ','story-topo-title':'Topologi Jaringan — Status Saat Ini',
+  'swap-price-title':'AEQ / tUSD — Harga Live','swap-price-desc':'Harga real-time dari cadangan pool (x·y=k). Diperbarui setiap 8 detik dengan data pool terbaru.','swap-price-empty':'Belum ada data pool — tambahkan likuiditas untuk melihat grafik harga.',
+  'node-guide-lang-note':'Panduan inline ini dalam bahasa Inggris. PDF terjemahan tersedia dalam bahasa Anda menggunakan tombol di atas.',
+  'k-zkp':'Sistem ZKP','k-hash':'Sistem Hash','k-sybil-prot':'Perlindungan Sybil',
 },
 it:{
   'logo-sub':'PROVA DI UMANITÀ','live':'LIVE',
@@ -2900,7 +2979,20 @@ it:{
   'expl-v7':'Documentazione Protocollo V7','expl-v7-d':'Contratto AequitasV7 · 6 meccanismi · prova ZK · limite ricchezza · demurrage · codice immutabile',
   'expl-explorer':'Block Explorer','expl-explorer-d':'BlockDAG live · clicca qualsiasi blocco per vedere validatore, hash, transazioni, hash genitori',
   'swap-sell-label':'Vendi','swap-receive-label':'Ricevi',
-  'gini-what-title':'Cos e il Coefficiente di Gini?','gini-what-text':'Sviluppato dallo statistico italiano Corrado Gini (1912). Misura la distribuzione della ricchezza confrontando i saldi reali con una linea di base ipoteticamente perfettamente equa. Scala: 0 (tutti hanno lo stesso) a 1 (una persona ha tutto). Utilizzato da Banca Mondiale, OCSE, ONU per confrontare i paesi. Valori di riferimento: Bitcoin ≈ 0,85 · Sudafrica (record mondiale) ≈ 0,63 · USA ≈ 0,41 · Germania ≈ 0,31 · Scandinavia ≈ 0,27 · Obiettivo a lungo termine di Aequitas: Gini sotto 0,30.','gini-calc-title':'Come si calcola l indice','gini-calc-text':'Vengono raccolti tutti i saldi AEQ. La formula calcola la differenza assoluta media normalizzata per n2. Risultato 0-1 x 100 = Indice Aequitas.','gini-why-title':'Perche Gini','gini-why-text':'Il coefficiente Gini cattura la distribuzione completa in un numero verificabile.','expl-network':'Rete e Nodi','expl-network-d':'Topologia nodi · esegui il tuo nodo · specifiche tecniche · Chain ID 1926'
+  'gini-what-title':'Cos e il Coefficiente di Gini?','gini-what-text':'Sviluppato dallo statistico italiano Corrado Gini (1912). Misura la distribuzione della ricchezza confrontando i saldi reali con una linea di base ipoteticamente perfettamente equa. Scala: 0 (tutti hanno lo stesso) a 1 (una persona ha tutto). Utilizzato da Banca Mondiale, OCSE, ONU per confrontare i paesi. Valori di riferimento: Bitcoin ≈ 0,85 · Sudafrica (record mondiale) ≈ 0,63 · USA ≈ 0,41 · Germania ≈ 0,31 · Scandinavia ≈ 0,27 · Obiettivo a lungo termine di Aequitas: Gini sotto 0,30.','gini-calc-title':'Come si calcola l indice','gini-calc-text':'Vengono raccolti tutti i saldi AEQ. La formula calcola la differenza assoluta media normalizzata per n2. Risultato 0-1 x 100 = Indice Aequitas.','gini-why-title':'Perche Gini','gini-why-text':'Il coefficiente Gini cattura la distribuzione completa in un numero verificabile.','expl-network':'Rete e Nodi','expl-network-d':'Topologia nodi · esegui il tuo nodo · specifiche tecniche · Chain ID 1926',
+  'guard-title':'🛡 Sistema Guardian','guard-my-lbl':'Il mio Guardian','guard-none':'Nessuno',
+  'guard-set-lbl':'Imposta / Cambia Guardian','guard-set-hint':'Deve essere un umano registrato su Aequitas · Blocco temporale di 7 giorni · Il Guardian può solo confermare la tua vitalità, non accedere ai fondi · Max 3 assistiti per Guardian',
+  'guard-confirm-lbl':'Conferma in Vita (Come Guardian)','guard-confirm-hint':'Se il tuo assistito non riesce ad accedere al proprio wallet, conferma la sua vitalità per evitare che i fondi vengano trasferiti in escrow dopo 910 giorni di inattività.','guard-recover-btn':'🔓 RECUPERA DALL\'ESCROW',
+  'faq-title':'❓ FAQ','faq-q1':'I miei dati biometrici sono al sicuro?','faq-a1':'Sì. La tua impronta digitale non lascia mai il dispositivo. L\'Hardware Secure Element elabora la biometria e produce una chiave crittografica. Viene trasmessa solo una prova matematica derivata da quella chiave.',
+  'faq-q2':'Posso registrarmi con un wallet diverso in seguito?','faq-a2':'No. La registrazione è permanentemente vincolata a un indirizzo wallet per identità biometrica. È una scelta progettuale — previene gli attacchi Sybil e garantisce il principio una-persona-un-wallet.',
+  'faq-q3':'Cosa succede se perdo il telefono?','faq-a3':'I tuoi AEQ rimangono nel wallet — sono collegati alla tua chiave privata, non al telefono. Puoi comunque accedere al wallet tramite MetaMask con la frase seed. Il recupero del wallet è indipendente dalla registrazione biometrica.',
+  'path-title':'Scegli il Tuo Percorso','path-human-title':'Sono un Umano','path-human-desc':'Voglio registrarmi, ricevere 1.000 AEQ e unirmi alla rete di reddito di base.','path-human-steps':'1. Scarica l\'app AequitasBio<br>2. Scansiona la tua biometria<br>3. Connetti MetaMask<br>4. Ricevi 1.000 AEQ istantaneamente',
+  'path-node-title':'Sono un Operatore di Node','path-node-desc':'Voglio eseguire un node completo, partecipare alla produzione di blocchi e guadagnare dal pool validatori del 40%.','path-node-steps':'1. Registrarsi come umano (obbligatorio)<br>2. Impostare PRIMARY_NODE_URL=https://aequitas.digital<br>3. Distribuire su Railway/Contabo/VPS<br>4. Guadagnare giornalmente dal pool validatori',
+  'path-dev-title':'Sono uno Sviluppatore','path-dev-desc':'Voglio costruire su Aequitas, integrare l\'API o contribuire al protocollo.','path-dev-steps':'1. JSON-RPC compatibile EVM<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoint<br>4. Metriche: /metrics (Prometheus)',
+  'story-flow-title':'Diagramma di Flusso Token AEQ','story-topo-title':'Topologia di Rete — Stato Attuale',
+  'swap-price-title':'AEQ / tUSD — Prezzo Live','swap-price-desc':'Prezzo in tempo reale derivato dalle riserve del pool (x·y=k). Si aggiorna ogni 8 secondi con nuovi dati.','swap-price-empty':'Nessun dato del pool ancora — aggiungi liquidità per vedere il grafico dei prezzi.',
+  'node-guide-lang-note':'Questa guida inline è in inglese. Un PDF tradotto nella tua lingua è disponibile tramite il pulsante sopra.',
+  'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Protezione Sybil',
 },
 tr:{
   'logo-sub':'İNSANLIK KANITI','live':'CANLI',
@@ -3049,7 +3141,20 @@ tr:{
   'expl-v7':'Protokol V7 Dokümantasyonu','expl-v7-d':'AequitasV7 sözleşmesi · 6 mekanizma · ZK kanıtı · servet tavanı · demurrage · değiştirilemez kod',
   'expl-explorer':'Blok Gezgini','expl-explorer-d':'Canlı BlockDAG · doğrulayıcıyı, hash\'i, işlemleri, üst hash\'leri görmek için herhangi bir bloğa tıklayın',
   'swap-sell-label':'Sat','swap-receive-label':'Al',
-  'expl-network':'Ağ ve Düğümler','expl-network-d':'Düğüm topolojisi · kendi düğümünü çalıştır · teknik özellikler · Zincir ID 1926'
+  'expl-network':'Ağ ve Düğümler','expl-network-d':'Düğüm topolojisi · kendi düğümünü çalıştır · teknik özellikler · Zincir ID 1926',
+  'guard-title':'🛡 Koruyucu Sistemi','guard-my-lbl':'Koruyucum','guard-none':'Yok',
+  'guard-set-lbl':'Koruyucu Belirle / Değiştir','guard-set-hint':'Kayıtlı bir Aequitas insanı olmalıdır · 7 günlük zaman kilidi · Koruyucu yalnızca canlılığınızı onaylayabilir, fonlara erişemez · Koruyucu başına maks. 3 korunan',
+  'guard-confirm-lbl':'Hayatta Olduğunu Onayla (Koruyucu Olarak)','guard-confirm-hint':'Korunanınız cüzdanına erişemiyorsa, 910 günlük hareketsizlik sonrasında fonlarının emanete geçmesini önlemek için canlılığını onaylayın.','guard-recover-btn':'🔓 EMANETTEN GERİ AL',
+  'faq-title':'❓ Sık Sorulan Sorular','faq-q1':'Biyometrik verilerim güvende mi?','faq-a1':'Evet. Parmak iziniz asla cihazınızdan çıkmaz. Donanım Güvenli Öğesi biyometriyi işler ve kriptografik bir anahtar üretir. Yalnızca bu anahtardan türetilen matematiksel bir kanıt iletilir.',
+  'faq-q2':'Daha sonra farklı bir cüzdanla kayıt olabilir miyim?','faq-a2':'Hayır. Kayıt, biyometrik kimlik başına bir cüzdan adresine kalıcı olarak bağlıdır. Bu tasarım gereğidir — Sybil saldırılarını önler ve bir-kişi-bir-cüzdan garantisini sağlar.',
+  'faq-q3':'Telefonumu kaybedersem ne olur?','faq-a3':'AEQ\'leriniz cüzdanınızda kalır — özel anahtarınıza bağlıdır, telefonunuza değil. MetaMask\'ı tohum ifadenizle kullanarak cüzdanınıza erişmeye devam edebilirsiniz. Cüzdan kurtarma, biyometrik kayıttan bağımsızdır.',
+  'path-title':'Yolunuzu Seçin','path-human-title':'Ben bir İnsanım','path-human-desc':'Kayıt olmak, 1.000 AEQ almak ve temel gelir ağına katılmak istiyorum.','path-human-steps':'1. AequitasBio uygulamasını indir<br>2. Biyometriyi tara<br>3. MetaMask\'ı bağla<br>4. Anında 1.000 AEQ al',
+  'path-node-title':'Ben bir Node Operatörüyüm','path-node-desc':'Tam bir node çalıştırmak, blok üretimine katılmak ve %40 doğrulayıcı havuzundan kazanmak istiyorum.','path-node-steps':'1. İnsan olarak kayıt ol (zorunlu)<br>2. PRIMARY_NODE_URL=https://aequitas.digital ayarla<br>3. Railway/Contabo/VPS\'de dağıt<br>4. Doğrulayıcı havuzundan günlük kazan',
+  'path-dev-title':'Ben bir Geliştiriciyim','path-dev-desc':'Aequitas üzerinde inşa etmek, API\'yi entegre etmek veya protokole katkıda bulunmak istiyorum.','path-dev-steps':'1. EVM uyumlu JSON-RPC<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* uç noktaları<br>4. Metrikler: /metrics (Prometheus)',
+  'story-flow-title':'AEQ Token Akış Şeması','story-topo-title':'Ağ Topolojisi — Mevcut Durum',
+  'swap-price-title':'AEQ / tUSD — Canlı Fiyat','swap-price-desc':'Havuz rezervlerinden gerçek zamanlı fiyat (x·y=k). Her 8 saniyede yeni havuz verileriyle güncellenir.','swap-price-empty':'Henüz havuz verisi yok — fiyat grafiğini görmek için likidite ekleyin.',
+  'node-guide-lang-note':'Bu kılavuz İngilizce\'dir. Dilinizde çevrilmiş PDF yukarıdaki düğmeyle mevcuttur.',
+  'k-zkp':'ZKP Sistemi','k-hash':'Hash Sistemi','k-sybil-prot':'Sybil Koruması',
 },
 fr:{
   'logo-sub':'PREUVE D\'HUMANITÉ','live':'EN DIRECT',
@@ -3197,7 +3302,20 @@ fr:{
   'expl-v7':'Docs Protocole V7','expl-v7-d':'Contrat AequitasV7 · 6 mécanismes · preuve ZK · plafond · demurrage · code immuable',
   'expl-explorer':'Explorateur de blocs','expl-explorer-d':'BlockDAG en direct · cliquez sur un bloc pour voir validateur, hash, transactions',
   'swap-sell-label':'Vendre','swap-receive-label':'Recevoir',
-  'expl-network':'Réseau &amp; Nœuds','expl-network-d':'Topologie des nœuds · exécuter votre propre nœud · spécifications · Chain ID 1926'
+  'expl-network':'Réseau &amp; Nœuds','expl-network-d':'Topologie des nœuds · exécuter votre propre nœud · spécifications · Chain ID 1926',
+  'guard-title':'🛡 Système de Gardien','guard-my-lbl':'Mon Gardien','guard-none':'Aucun',
+  'guard-set-lbl':'Définir / Changer de Gardien','guard-set-hint':'Doit être un humain enregistré sur Aequitas · Verrou temporel de 7 jours · Le gardien peut uniquement confirmer votre vitalité, pas accéder aux fonds · Max 3 protégés par gardien',
+  'guard-confirm-lbl':'Confirmer en Vie (En tant que Gardien)','guard-confirm-hint':'Si votre protégé ne peut pas accéder à son portefeuille, confirmez sa vitalité pour éviter que ses fonds soient transférés en séquestre après 910 jours d\'inactivité.','guard-recover-btn':'🔓 RÉCUPÉRER DU SÉQUESTRE',
+  'faq-title':'❓ FAQ','faq-q1':'Mes données biométriques sont-elles sécurisées ?','faq-a1':'Oui. Votre empreinte digitale ne quitte jamais votre appareil. L\'élément sécurisé matériel traite la biométrie et produit une clé cryptographique. Seule une preuve mathématique dérivée de cette clé est transmise.',
+  'faq-q2':'Puis-je m\'inscrire avec un portefeuille différent plus tard ?','faq-a2':'Non. L\'inscription est définitivement liée à une adresse de portefeuille par identité biométrique. C\'est un choix de conception — cela prévient les attaques Sybil et garantit le principe une-personne-un-portefeuille.',
+  'faq-q3':'Que se passe-t-il si je perds mon téléphone ?','faq-a3':'Vos AEQ restent dans votre portefeuille — ils sont liés à votre clé privée, pas à votre téléphone. Vous pouvez toujours accéder à votre portefeuille via MetaMask avec votre phrase de récupération. La récupération du portefeuille est indépendante de l\'inscription biométrique.',
+  'path-title':'Choisissez Votre Voie','path-human-title':'Je suis un Humain','path-human-desc':'Je veux m\'inscrire, recevoir 1 000 AEQ et rejoindre le réseau de revenu de base.','path-human-steps':'1. Télécharger l\'app AequitasBio<br>2. Scanner votre biométrie<br>3. Connecter MetaMask<br>4. Recevoir 1 000 AEQ instantanément',
+  'path-node-title':'Je suis un Opérateur de Nœud','path-node-desc':'Je veux exécuter un nœud complet, participer à la production de blocs et gagner du pool de validateurs à 40%.','path-node-steps':'1. S\'inscrire en tant qu\'humain (obligatoire)<br>2. Définir PRIMARY_NODE_URL=https://aequitas.digital<br>3. Déployer sur Railway/Contabo/VPS<br>4. Gagner quotidiennement du pool de validateurs',
+  'path-dev-title':'Je suis un Développeur','path-dev-desc':'Je veux construire sur Aequitas, intégrer l\'API ou contribuer au protocole.','path-dev-steps':'1. JSON-RPC compatible EVM<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Métriques: /metrics (Prometheus)',
+  'story-flow-title':'Diagramme de Flux du Token AEQ','story-topo-title':'Topologie Réseau — État Actuel',
+  'swap-price-title':'AEQ / tUSD — Prix en Direct','swap-price-desc':'Prix en temps réel dérivé des réserves du pool (x·y=k). Mis à jour toutes les 8 secondes.','swap-price-empty':'Pas encore de données de pool — ajoutez de la liquidité pour voir le graphique de prix.',
+  'node-guide-lang-note':'Ce guide en ligne est en anglais. Un PDF traduit dans votre langue est disponible via le bouton ci-dessus.',
+  'k-zkp':'Système ZKP','k-hash':'Système de Hachage','k-sybil-prot':'Protection Sybil',
 },
 pt:{
   'logo-sub':'PROVA DE HUMANIDADE','live':'AO VIVO',
@@ -3345,7 +3463,20 @@ pt:{
   'expl-v7':'Docs Protocolo V7','expl-v7-d':'Contrato AequitasV7 · 6 mecanismos · prova ZK · teto · demurrage · código imutável',
   'expl-explorer':'Explorador de Blocos','expl-explorer-d':'BlockDAG ao vivo · clique em qualquer bloco para ver validador, hash, transações',
   'swap-sell-label':'Vender','swap-receive-label':'Receber',
-  'expl-network':'Rede &amp; Nodes','expl-network-d':'Topologia de nodes · executar seu próprio node · especificações · Chain ID 1926'
+  'expl-network':'Rede &amp; Nodes','expl-network-d':'Topologia de nodes · executar seu próprio node · especificações · Chain ID 1926',
+  'guard-title':'🛡 Sistema Guardian','guard-my-lbl':'Meu Guardian','guard-none':'Nenhum',
+  'guard-set-lbl':'Definir / Alterar Guardian','guard-set-hint':'Deve ser um humano registado na Aequitas · Bloqueio temporal de 7 dias · O Guardian só pode confirmar a sua vitalidade, não aceder a fundos · Máx. 3 protegidos por Guardian',
+  'guard-confirm-lbl':'Confirmar Vivo (Como Guardian)','guard-confirm-hint':'Se o seu protegido não conseguir aceder à sua carteira, confirme a sua vitalidade para evitar que os fundos sejam transferidos para custódia após 910 dias de inatividade.','guard-recover-btn':'🔓 RECUPERAR DA CUSTÓDIA',
+  'faq-title':'❓ Perguntas Frequentes','faq-q1':'Os meus dados biométricos estão seguros?','faq-a1':'Sim. A sua impressão digital nunca sai do dispositivo. O Hardware Secure Element processa a biometria e produz uma chave criptográfica. Apenas uma prova matemática derivada dessa chave é transmitida.',
+  'faq-q2':'Posso registar-me com uma carteira diferente mais tarde?','faq-a2':'Não. O registo é permanentemente vinculado a um endereço de carteira por identidade biométrica. É por design — evita ataques Sybil e garante o princípio uma-pessoa-uma-carteira.',
+  'faq-q3':'O que acontece se perder o telemóvel?','faq-a3':'Os seus AEQ permanecem na carteira — estão vinculados à sua chave privada, não ao telemóvel. Ainda pode aceder à carteira via MetaMask com a frase de recuperação. A recuperação da carteira é independente do registo biométrico.',
+  'path-title':'Escolha o Seu Caminho','path-human-title':'Sou um Humano','path-human-desc':'Quero registar-me, receber 1.000 AEQ e juntar-me à rede de rendimento básico.','path-human-steps':'1. Descarregar app AequitasBio<br>2. Digitalizar a sua biometria<br>3. Conectar MetaMask<br>4. Receber 1.000 AEQ instantaneamente',
+  'path-node-title':'Sou um Operador de Node','path-node-desc':'Quero executar um node completo, participar na produção de blocos e ganhar do pool de validadores de 40%.','path-node-steps':'1. Registar como humano (obrigatório)<br>2. Definir PRIMARY_NODE_URL=https://aequitas.digital<br>3. Implementar em Railway/Contabo/VPS<br>4. Ganhar diariamente do pool de validadores',
+  'path-dev-title':'Sou um Desenvolvedor','path-dev-desc':'Quero construir no Aequitas, integrar a API ou contribuir para o protocolo.','path-dev-steps':'1. JSON-RPC compatível com EVM<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* endpoints<br>4. Métricas: /metrics (Prometheus)',
+  'story-flow-title':'Diagrama de Fluxo do Token AEQ','story-topo-title':'Topologia de Rede — Estado Atual',
+  'swap-price-title':'AEQ / tUSD — Preço ao Vivo','swap-price-desc':'Preço em tempo real derivado das reservas do pool (x·y=k). Atualizado a cada 8 segundos.','swap-price-empty':'Sem dados do pool ainda — adicione liquidez para ver o gráfico de preços.',
+  'node-guide-lang-note':'Este guia inline está em inglês. Um PDF traduzido na sua língua está disponível através do botão acima.',
+  'k-zkp':'Sistema ZKP','k-hash':'Sistema Hash','k-sybil-prot':'Proteção Sybil',
 },
 ar:{
   'logo-sub':'إثبات الإنسانية','live':'مباشر',
@@ -3491,7 +3622,20 @@ ar:{
   'expl-v7':'وثائق البروتوكول V7','expl-v7-d':'عقد AequitasV7 · 6 آليات · دليل ZK · سقف الثروة · تلاشي · كود غير قابل للتغيير',
   'expl-explorer':'مستكشف الكتل','expl-explorer-d':'BlockDAG مباشر · انقر على أي كتلة لرؤية المدقق والهاش والمعاملات',
   'swap-sell-label':'بيع','swap-receive-label':'استلام',
-  'expl-network':'الشبكة والعقد','expl-network-d':'طوبولوجيا العقد · تشغيل عقدتك الخاصة · المواصفات التقنية · Chain ID 1926'
+  'expl-network':'الشبكة والعقد','expl-network-d':'طوبولوجيا العقد · تشغيل عقدتك الخاصة · المواصفات التقنية · Chain ID 1926',
+  'guard-title':'🛡 نظام الوصي','guard-my-lbl':'وصيّي','guard-none':'لا يوجد',
+  'guard-set-lbl':'تعيين / تغيير الوصي','guard-set-hint':'يجب أن يكون إنساناً مسجلاً في Aequitas · قفل زمني لمدة 7 أيام · الوصي يستطيع فقط تأكيد حياتك، لا الوصول إلى الأموال · الحد الأقصى 3 محميين لكل وصي',
+  'guard-confirm-lbl':'تأكيد الحياة (بصفة وصي)','guard-confirm-hint':'إذا لم يستطع محميّك الوصول إلى محفظته، أكّد حياته لمنع نقل أمواله إلى الضمان بعد 910 يوماً من الخمول.','guard-recover-btn':'🔓 استرداد من الضمان',
+  'faq-title':'❓ الأسئلة الشائعة','faq-q1':'هل بياناتي البيومترية آمنة؟','faq-a1':'نعم. لا تغادر بصمتك الجهاز أبداً. يعالج عنصر الأمان الجهازي البيانات البيومترية وينتج مفتاحاً تشفيرياً. يُرسَل فقط إثبات رياضي مشتق من ذلك المفتاح.',
+  'faq-q2':'هل يمكنني التسجيل بمحفظة مختلفة لاحقاً؟','faq-a2':'لا. التسجيل مرتبط بشكل دائم بعنوان محفظة واحد لكل هوية بيومترية. هذا قصد تصميمي — يمنع هجمات سيبل ويضمن مبدأ شخص واحد-محفظة واحدة.',
+  'faq-q3':'ماذا يحدث إذا فقدت هاتفي؟','faq-a3':'يبقى AEQ الخاص بك في محفظتك — مرتبط بمفتاحك الخاص، وليس بهاتفك. لا يزال بإمكانك الوصول إلى محفظتك عبر MetaMask باستخدام عبارة الاسترداد. استرداد المحفظة مستقل عن التسجيل البيومتري.',
+  'path-title':'اختر مسارك','path-human-title':'أنا إنسان','path-human-desc':'أريد التسجيل وتلقي 1,000 AEQ والانضمام إلى شبكة الدخل الأساسي.','path-human-steps':'1. تحميل تطبيق AequitasBio<br>2. مسح بياناتك البيومترية<br>3. ربط MetaMask<br>4. استلام 1,000 AEQ فوراً',
+  'path-node-title':'أنا مشغّل عقدة','path-node-desc':'أريد تشغيل عقدة كاملة والمشاركة في إنتاج الكتل والكسب من مجموعة المتحققين 40%.','path-node-steps':'1. التسجيل كإنسان (مطلوب)<br>2. تعيين PRIMARY_NODE_URL=https://aequitas.digital<br>3. النشر على Railway/Contabo/VPS<br>4. الكسب اليومي من مجموعة المتحققين',
+  'path-dev-title':'أنا مطوّر','path-dev-desc':'أريد البناء على Aequitas أو دمج API أو المساهمة في البروتوكول.','path-dev-steps':'1. JSON-RPC متوافق مع EVM<br>2. معرّف السلسلة: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* نقاط النهاية<br>4. المقاييس: /metrics (Prometheus)',
+  'story-flow-title':'مخطط تدفق رمز AEQ','story-topo-title':'طوبولوجيا الشبكة — الحالة الراهنة',
+  'swap-price-title':'AEQ / tUSD — السعر المباشر','swap-price-desc':'سعر فوري مشتق من احتياطيات المجموعة (x·y=k). يتحدث كل 8 ثوانٍ.','swap-price-empty':'لا توجد بيانات مجموعة بعد — أضف سيولة لرؤية مخطط السعر.',
+  'node-guide-lang-note':'هذا الدليل المضمّن باللغة الإنجليزية. ملف PDF مترجم بلغتك متاح عبر الزر أعلاه.',
+  'k-zkp':'نظام ZKP','k-hash':'نظام التجزئة','k-sybil-prot':'حماية سيبل',
 },
 hi:{
   'logo-sub':'मानवता का प्रमाण','live':'लाइव',
@@ -3637,7 +3781,20 @@ hi:{
   'expl-v7':'प्रोटोकॉल V7 दस्तावेज़','expl-v7-d':'AequitasV7 अनुबंध · 6 तंत्र · ZK प्रमाण · धन सीमा · डेमरेज · अपरिवर्तनीय कोड',
   'expl-explorer':'ब्लॉक एक्सप्लोरर','expl-explorer-d':'लाइव BlockDAG · वैलिडेटर, हैश, ट्रांजेक्शन देखने के लिए किसी भी ब्लॉक पर क्लिक करें',
   'swap-sell-label':'बेचें','swap-receive-label':'प्राप्त करें',
-  'expl-network':'नेटवर्क और नोड्स','expl-network-d':'नोड टोपोलॉजी · अपना नोड चलाएं · तकनीकी विशिष्टताएं · Chain ID 1926'
+  'expl-network':'नेटवर्क और नोड्स','expl-network-d':'नोड टोपोलॉजी · अपना नोड चलाएं · तकनीकी विशिष्टताएं · Chain ID 1926',
+  'guard-title':'🛡 गार्जियन सिस्टम','guard-my-lbl':'मेरा गार्जियन','guard-none':'कोई नहीं',
+  'guard-set-lbl':'गार्जियन सेट / बदलें','guard-set-hint':'Aequitas का पंजीकृत मानव होना आवश्यक · 7-दिन का टाइम लॉक · गार्जियन केवल आपकी जीवितता की पुष्टि कर सकता है, फंड तक नहीं पहुंच सकता · प्रति गार्जियन अधिकतम 3 वार्ड',
+  'guard-confirm-lbl':'जीवित होने की पुष्टि करें (गार्जियन के रूप में)','guard-confirm-hint':'यदि आपका वार्ड अपने वॉलेट तक नहीं पहुंच सकता, तो 910 दिनों की निष्क्रियता के बाद उनके फंड एस्क्रो में जाने से रोकने के लिए उनकी जीवितता की पुष्टि करें।','guard-recover-btn':'🔓 एस्क्रो से वापस लें',
+  'faq-title':'❓ सामान्य प्रश्न','faq-q1':'क्या मेरा बायोमेट्रिक डेटा सुरक्षित है?','faq-a1':'हाँ। आपका फिंगरप्रिंट कभी भी आपके डिवाइस से नहीं जाता। हार्डवेयर सिक्योर एलिमेंट बायोमेट्रिक को प्रोसेस करता है और एक क्रिप्टोग्राफिक कुंजी बनाता है। केवल उस कुंजी से प्राप्त गणितीय प्रमाण प्रसारित होता है।',
+  'faq-q2':'क्या मैं बाद में अलग वॉलेट से रजिस्टर कर सकता/सकती हूं?','faq-a2':'नहीं। पंजीकरण प्रति बायोमेट्रिक पहचान एक वॉलेट पते से स्थायी रूप से जुड़ा होता है। यह डिज़ाइन के अनुसार है — यह Sybil हमलों को रोकता है और एक-व्यक्ति-एक-वॉलेट की गारंटी सुनिश्चित करता है।',
+  'faq-q3':'अगर मैं अपना फोन खो दूं तो क्या होगा?','faq-a3':'आपके AEQ आपके वॉलेट में रहते हैं — वे आपकी प्राइवेट कुंजी से जुड़े हैं, फोन से नहीं। आप अभी भी अपने सीड फ्रेज से MetaMask के जरिए वॉलेट एक्सेस कर सकते हैं। वॉलेट रिकवरी बायोमेट्रिक पंजीकरण से स्वतंत्र है।',
+  'path-title':'अपना रास्ता चुनें','path-human-title':'मैं एक मानव हूं','path-human-desc':'मैं पंजीकरण करना, 1,000 AEQ प्राप्त करना और बेसिक इनकम नेटवर्क में शामिल होना चाहता/चाहती हूं।','path-human-steps':'1. AequitasBio ऐप डाउनलोड करें<br>2. अपनी बायोमेट्रिक स्कैन करें<br>3. MetaMask कनेक्ट करें<br>4. तुरंत 1,000 AEQ प्राप्त करें',
+  'path-node-title':'मैं एक नोड ऑपरेटर हूं','path-node-desc':'मैं पूर्ण नोड चलाना, ब्लॉक उत्पादन में भाग लेना और 40% वैलिडेटर पूल से कमाना चाहता/चाहती हूं।','path-node-steps':'1. मानव के रूप में रजिस्टर करें (अनिवार्य)<br>2. PRIMARY_NODE_URL=https://aequitas.digital सेट करें<br>3. Railway/Contabo/VPS पर डिप्लॉय करें<br>4. वैलिडेटर पूल से दैनिक कमाएं',
+  'path-dev-title':'मैं एक डेवलपर हूं','path-dev-desc':'मैं Aequitas पर निर्माण करना, API को एकीकृत करना या प्रोटोकॉल में योगदान देना चाहता/चाहती हूं।','path-dev-steps':'1. EVM-संगत JSON-RPC<br>2. Chain ID: 1926 · RPC: /rpc<br>3. OpenAPI: /api/* एंडपॉइंट<br>4. मेट्रिक्स: /metrics (Prometheus)',
+  'story-flow-title':'AEQ टोकन प्रवाह आरेख','story-topo-title':'नेटवर्क टोपोलॉजी — वर्तमान स्थिति',
+  'swap-price-title':'AEQ / tUSD — लाइव मूल्य','swap-price-desc':'पूल रिज़र्व से रियल-टाइम मूल्य (x·y=k)। हर 8 सेकंड में नए पूल डेटा के साथ अपडेट।','swap-price-empty':'अभी पूल डेटा नहीं — मूल्य चार्ट देखने के लिए लिक्विडिटी जोड़ें।',
+  'node-guide-lang-note':'यह इनलाइन गाइड अंग्रेज़ी में है। आपकी भाषा में PDF ऊपर के बटन से उपलब्ध है।',
+  'k-zkp':'ZKP सिस्टम','k-hash':'हैश सिस्टम','k-sybil-prot':'Sybil सुरक्षा',
 }
 };
 
@@ -3708,12 +3865,14 @@ function setLang(lang) {
   // language-specific PDF when available. Falls back to English for languages
   // without a translated PDF (RU, ZH, AR, VI, HI, etc.).
   const pdfBtn = document.getElementById('node-guide-pdf-btn');
+  const pdfLangs = {en:1,de:1,es:1,fr:1,id:1,it:1,pt:1,tr:1};
   if (pdfBtn) {
-    const pdfLangs = {en:1,de:1,es:1,fr:1,id:1,it:1,pt:1,tr:1};
     const pdfLang = pdfLangs[lang] ? lang : 'en';
     pdfBtn.href = '/download/node-guide-' + pdfLang + '.pdf';
     pdfBtn.download = 'Aequitas_Node_Guide_' + pdfLang.toUpperCase() + '.pdf';
   }
+  const langBanner = document.getElementById('node-guide-lang-banner');
+  if (langBanner) langBanner.style.display = (pdfLangs[lang] && lang !== 'en') ? 'block' : 'none';
 }
 
 function fmt(n) {
@@ -4627,15 +4786,16 @@ async function loadGuardianStatus() {
   try {
     const resp = await fetch('/api/guardian?wallet=' + waddr);
     const addrEl = document.getElementById('guardian-addr-display');
+    const noneStr = (T[curLang] && T[curLang]['guard-none']) || 'None';
     if (resp.ok) {
       const d = await resp.json();
-      if (addrEl) addrEl.textContent = d.guardian || 'None';
+      if (addrEl) addrEl.textContent = d.guardian || noneStr;
     } else {
-      if (addrEl) addrEl.textContent = 'None';
+      if (addrEl) addrEl.textContent = noneStr;
     }
   } catch(_) {
     const addrEl = document.getElementById('guardian-addr-display');
-    if (addrEl) addrEl.textContent = 'None';
+    if (addrEl) addrEl.textContent = (T[curLang] && T[curLang]['guard-none']) || 'None';
   }
   try {
     const resp = await fetch('/api/escrow?wallet=' + waddr);
