@@ -646,6 +646,25 @@ type evmMirrorSyncQueueEntry struct {
 	ContractAddr string
 }
 
+// CountEVMMirrorSyncQueue returns the number of pending entries and the
+// age in seconds of the oldest one (0 if empty) — see
+// CountProofServerSyncQueue's matching comment.
+func (cs *ChainState) CountEVMMirrorSyncQueue() (count int, oldestAgeSecs int64) {
+	if cs.db == nil {
+		return 0, 0
+	}
+	var oldest sql.NullInt64
+	if err := cs.db.QueryRow(
+		`SELECT COUNT(*), MIN(EXTRACT(EPOCH FROM created_at))::bigint FROM evm_mirror_sync_queue`,
+	).Scan(&count, &oldest); err != nil {
+		return 0, 0
+	}
+	if oldest.Valid {
+		oldestAgeSecs = time.Now().Unix() - oldest.Int64
+	}
+	return count, oldestAgeSecs
+}
+
 // LoadEVMMirrorSyncQueue returns up to 200 pending retry entries, oldest first.
 func (cs *ChainState) LoadEVMMirrorSyncQueue() []evmMirrorSyncQueueEntry {
 	if cs.db == nil {
@@ -955,6 +974,27 @@ type proofServerSyncQueueEntry struct {
 	BioHashKey string
 	Wallet     string
 	Attempts   int
+}
+
+// CountProofServerSyncQueue returns the number of pending entries and the
+// age in seconds of the oldest one (0 if empty) — exposed via
+// /api/health/combined so a stuck sync backlog is visible instead of only
+// living in logs (audit 2026-06-28 recheck 5, P2-1/P2-4: "Health-Endpoint
+// muss bio_hash_sync_lag/missing_chain_bio_hashes sichtbar machen").
+func (cs *ChainState) CountProofServerSyncQueue() (count int, oldestAgeSecs int64) {
+	if cs.db == nil {
+		return 0, 0
+	}
+	var oldest sql.NullInt64
+	if err := cs.db.QueryRow(
+		`SELECT COUNT(*), MIN(EXTRACT(EPOCH FROM created_at))::bigint FROM proof_server_sync_queue`,
+	).Scan(&count, &oldest); err != nil {
+		return 0, 0
+	}
+	if oldest.Valid {
+		oldestAgeSecs = time.Now().Unix() - oldest.Int64
+	}
+	return count, oldestAgeSecs
 }
 
 // LoadProofServerSyncQueue returns up to 50 pending retry entries, oldest

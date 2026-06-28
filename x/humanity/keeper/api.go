@@ -206,6 +206,12 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	// only ever existing as a one-time startup log line — see
 	// SetBootstrapDegraded's own comment.
 	degradedReason := a.state.BootstrapDegradedReason()
+	// FIX (audit 2026-06-28 recheck 5, P2-1/P2-4): retry-queue depth/age
+	// used to live only in printf logs — surfaced here so a stuck backlog
+	// (proof-server unreachable, EVM mirror writes failing repeatedly) is
+	// visible to an operator checking health instead of requiring a log dive.
+	proofQueueCount, proofQueueOldestSecs := a.state.CountProofServerSyncQueue()
+	evmQueueCount, evmQueueOldestSecs := a.state.CountEVMMirrorSyncQueue()
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"chain": map[string]interface{}{
 			"healthy":      degradedReason == "",
@@ -214,6 +220,14 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"total_humans": a.state.TotalHumans(),
 			"total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
 			"uptime_secs":  int64(time.Since(a.startTime).Seconds()),
+			"proof_server_sync_queue": map[string]interface{}{
+				"pending":         proofQueueCount,
+				"oldest_age_secs": proofQueueOldestSecs,
+			},
+			"evm_mirror_sync_queue": map[string]interface{}{
+				"pending":         evmQueueCount,
+				"oldest_age_secs": evmQueueOldestSecs,
+			},
 		},
 		"proof_server": map[string]interface{}{
 			"reachable": len(proofStatus) > 0,
