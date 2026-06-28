@@ -201,9 +201,15 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	a.proofStatusMu.RLock()
 	proofStatus := a.proofServerStatus
 	a.proofStatusMu.RUnlock()
+	// FIX (audit 2026-06-28 recheck 5, P1-3): degraded surfaces a failed
+	// snapshot bootstrap/resync EVM-mirror migration here, instead of that
+	// only ever existing as a one-time startup log line — see
+	// SetBootstrapDegraded's own comment.
+	degradedReason := a.state.BootstrapDegradedReason()
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"chain": map[string]interface{}{
-			"healthy":      true,
+			"healthy":      degradedReason == "",
+			"degraded_reason": degradedReason,
 			"height":       latest.Height,
 			"total_humans": a.state.TotalHumans(),
 			"total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),

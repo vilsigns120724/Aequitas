@@ -461,9 +461,18 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	}
 	cs.mu.Unlock()
 
+	// FIX (audit 2026-06-28 recheck 5, P1-3): this used to only log the
+	// error and still return nil — a fresh or merging node could report a
+	// successful import while the EVM mirror (everything eth_call and the
+	// V7 contract's own storage reads) silently diverged from the Go-state
+	// this function just correctly imported. Mirrors ResyncFromSnapshotURL's
+	// own fix for the same gap (audit recheck3, P0 #1): the Go-state DB
+	// transaction above already committed by this point (EVM is a derived
+	// mirror, not the source of truth, so it can't reasonably join that
+	// same SQL transaction) — but the caller must be told this didn't
+	// fully succeed instead of seeing a bare "✓ Applied" message.
 	if err := cs.MigrateEVMFromGoState(V7_CONTRACT_ADDR); err != nil {
-		fmt.Printf("[SNAPSHOT] ERROR: EVM migration failed after snapshot import: %v\n", err)
-		fmt.Printf("[SNAPSHOT] WARNING: EVM state may be inconsistent — consider restarting and re-importing\n")
+		return fmt.Errorf("snapshot import: Go-state committed successfully, but EVM mirror migration failed (EVM state may now be inconsistent — restart to retry the mirror step): %w", err)
 	}
 
 	fmt.Printf("[SNAPSHOT] ✓ Applied %d accounts, %d nullifiers, %d bio-registrations\n",

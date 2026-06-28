@@ -130,11 +130,17 @@ p2pNode.SetDAG(bc)
 				fmt.Printf("[RESYNC] RESYNC_FROM_SNAPSHOT=true — replacing local state from %s\n", bootstrapURL)
 				if err := chainState.ResyncFromSnapshotURL(bootstrapURL, expectedSigner); err != nil {
 					fmt.Printf("[RESYNC] ✗ Resync failed: %v\n", err)
+					// FIX (audit 2026-06-28 recheck 5, P1-3): surface this via
+					// /api/health/combined instead of only a startup log line —
+					// an operator checking health after the fact would otherwise
+					// have no way to know the EVM mirror might be stale.
+					chainState.SetBootstrapDegraded("resync failed: " + err.Error())
 				}
 			} else {
 				fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)
 				if err := chainState.ImportSnapshotFromURL(bootstrapURL, expectedSigner); err != nil {
 					fmt.Printf("[BOOTSTRAP] ✗ Import failed: %v\n", err)
+					chainState.SetBootstrapDegraded("snapshot import failed: " + err.Error())
 				}
 			}
 		}

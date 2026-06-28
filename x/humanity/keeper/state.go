@@ -106,6 +106,34 @@ type ChainState struct {
 	// cs.mu-locked region at a time, and that goroutine is the only one
 	// that could have set it.
 	activeTx *sql.Tx
+
+	// degradedMu guards bootstrapDegradedReason. Set by main.go when
+	// snapshot bootstrap/resync's EVM mirror migration step fails (see
+	// ImportSnapshotFromURL/ResyncFromSnapshotURL) — Go-state itself is
+	// fine (the source of truth), but eth_call/V7 contract storage reads
+	// may be stale until the next successful migration. Surfaced via
+	// /api/health/combined so this doesn't silently sit unnoticed (audit
+	// 2026-06-28 recheck 5, P1-3: "Startup/Bootstrap sollte ... mindestens
+	// einen Health-Status degraded setzen").
+	degradedMu             sync.RWMutex
+	bootstrapDegradedReason string
+}
+
+// SetBootstrapDegraded records why this node's EVM mirror may be stale
+// after a snapshot bootstrap/resync. Pass "" to clear it once a later
+// retry succeeds.
+func (cs *ChainState) SetBootstrapDegraded(reason string) {
+	cs.degradedMu.Lock()
+	cs.bootstrapDegradedReason = reason
+	cs.degradedMu.Unlock()
+}
+
+// BootstrapDegradedReason returns the last recorded bootstrap-degraded
+// reason, or "" if none.
+func (cs *ChainState) BootstrapDegradedReason() string {
+	cs.degradedMu.RLock()
+	defer cs.degradedMu.RUnlock()
+	return cs.bootstrapDegradedReason
 }
 
 // sqlExecutor is satisfied by both *sql.DB and *sql.Tx (identical method
