@@ -188,7 +188,7 @@ No mining. No staking. No protocol emissions.
 | State Storage | PostgreSQL |
 | Startguthaben / Initial Grant | 1.000 / 1,000 AEQ |
 | Transaktionsgebühr / Fee | 0,1% / 0.1% |
-| Gini-Ziel / Gini Target | < 0,35 (Skandinavien-Niveau) |
+| Gini-Ziel / Gini Target | < 0,30 (Skandinavien-Niveau) |
 
 ---
 
