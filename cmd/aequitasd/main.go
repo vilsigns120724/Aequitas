@@ -129,6 +129,7 @@ p2pNode.SetDAG(bc)
 	if chainState.AccountsLoadFailed() && !resyncMode {
 		fmt.Println("[BOOTSTRAP] ⚠ chain_accounts failed to load at startup — skipping fresh-node bootstrap check this run (this node's real history, if any, is presumed intact; a future successful restart will re-evaluate)")
 	}
+	resyncSucceeded := false
 	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && (freshNodeBootstrap || resyncMode) {
 		// FIX 15: Validate URL scheme and host before fetching to prevent SSRF.
 		parsedBootstrap, urlErr := url.Parse(bootstrapURL)
@@ -149,6 +150,8 @@ p2pNode.SetDAG(bc)
 					// an operator checking health after the fact would otherwise
 					// have no way to know the EVM mirror might be stale.
 					chainState.SetBootstrapDegraded("resync failed: " + err.Error())
+				} else {
+					resyncSucceeded = true
 				}
 			} else {
 				fmt.Printf("[BOOTSTRAP] Fresh node — importing state from %s\n", bootstrapURL)
@@ -169,7 +172,7 @@ p2pNode.SetDAG(bc)
 	// walks the ENTIRE historical block backlog one HTTP page at a time —
 	// see RefreshBootHeightAfterSnapshotImport's own comment for why that's
 	// what caused the orphan-buffer abandonment storm during a large catch-up.
-	bc.RefreshBootHeightAfterSnapshotImport()
+	bc.RefreshBootHeightAfterSnapshotImport(resyncSucceeded)
 
 	// Save price snapshots every 30 seconds so the chart interval buttons
 	// (1m/5m/30m/1h/4h) show meaningful historical data even without swaps.

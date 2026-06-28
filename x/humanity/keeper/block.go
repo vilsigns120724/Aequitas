@@ -429,9 +429,41 @@ return dag
 // blocks it then needs from peers are the handful actually referenced as
 // parents going forward, fetched on demand via fetchMissingAncestors,
 // never the full historical backlog.
-func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport() {
+// resyncHappened must be true only when ResyncFromSnapshotURL (an explicit
+// RESYNC_FROM_SNAPSHOT=true operator action) just succeeded, never for the
+// plain "fresh node" ImportSnapshotFromURL merge path.
+//
+// FIX (2026-06-28, third incident this session — confirmed live on
+// Contabo): NewBlockchain (this dag's own constructor) runs and calls
+// LoadBlocksFromDB BEFORE the bootstrap/resync block in main.go ever runs —
+// see that comment. So by the time a resync actually wipes chain_blocks
+// (ResyncFromSnapshotURL's own DELETE), dag.blocks/dag.tips/dag.height in
+// THIS already-constructed struct are still whatever the OLD, now-deleted
+// rows populated — stale, not empty. Without resetting them here, the
+// sequential-genesis-walk this whole mechanism exists to enable (see this
+// function's own comment two paragraphs up) never actually starts from
+// genesis: dag.height stays at its old value, dag.tips still points at
+// stale hashes nothing will ever reference again, and every subsequent
+// peer block queues as a permanent orphan on a parent that used to exist
+// in this node's view but no longer does anywhere. Confirmed live: after a
+// resync with this bug, dag.height didn't move and the orphan log only
+// ever showed "queued as orphan", never a single "Added N new blocks"
+// bulk-sync line. resyncHappened being true means it's now safe — required,
+// even — to discard everything loaded before this call and start over.
+func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 	dag.mu.Lock()
 	defer dag.mu.Unlock()
+
+	if resyncHappened {
+		dag.blocks = make(map[string]*Block)
+		dag.tips = make(map[string]bool)
+		dag.replayedMu.Lock()
+		dag.replayedBlocks = make(map[string]bool)
+		dag.replayedMu.Unlock()
+		dag.bootHeight = 0
+		dag.createGenesisBlock() // repopulates dag.blocks/dag.tips with genesis only, sets dag.height = 0
+		fmt.Println("[RESYNC] ✓ Reset in-memory DAG to genesis-only — chain_blocks was just wiped, sequential resync from genesis starts now")
+	}
 
 	// bootHeight = max(max_block_height, snapshot_import_height): controls
 	// replayTransactions' skipHeight so we never re-apply state that the
