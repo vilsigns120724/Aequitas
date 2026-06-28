@@ -929,6 +929,37 @@ func (cs *ChainState) GetWalletByStoredBioHash(bioHash string) string {
 // caller that might care — the registration RPC handler — at least know a
 // write failed, without pretending a failure here should block or roll
 // back the registration it's diagnostic for.
+// CountChainBioHashes and CountChainNullifiers expose this node's own
+// bio_hashes/nullifiers row counts — paired with the proof-server's own
+// bio_hash_count (polled via syncProofServerStatus) in /api/health/combined
+// so the three counts that should normally track each other (chain
+// nullifiers, chain bio_hashes, proof-server bio_hashes) are visible
+// separately instead of only inferred from confusing "already registered"
+// reports (audit 2026-06-28 recheck 5, P2-3).
+func (cs *ChainState) CountChainBioHashes() int {
+	if cs.db == nil {
+		return 0
+	}
+	var count int
+	if err := cs.db.QueryRow(`SELECT COUNT(*) FROM bio_hashes`).Scan(&count); err != nil {
+		return 0
+	}
+	return count
+}
+
+func (cs *ChainState) CountChainNullifiers() int {
+	if cs.db == nil {
+		cs.mu.RLock()
+		defer cs.mu.RUnlock()
+		return len(cs.nullifiers)
+	}
+	var count int
+	if err := cs.db.QueryRow(`SELECT COUNT(*) FROM nullifiers`).Scan(&count); err != nil {
+		return 0
+	}
+	return count
+}
+
 func (cs *ChainState) SaveBioHash(bioHash, walletAddress string) error {
 	if cs.db == nil || bioHash == "" {
 		return nil

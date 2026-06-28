@@ -238,6 +238,12 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
 			"uptime_secs":  int64(time.Since(a.startTime).Seconds()),
 			"destructive_flags_set": destructiveFlagsSet,
+			// FIX (audit 2026-06-28 recheck 5, P2-3): "Health/Debug sollte
+			// Chain-Nullifier, Chain-BioHash und Proof-BioHash getrennt
+			// anzeigen." proof_server.last_status.bio_hash_count (below) is
+			// the proof-server side of this comparison.
+			"chain_nullifiers": a.state.CountChainNullifiers(),
+			"chain_bio_hashes": a.state.CountChainBioHashes(),
 			"proof_server_sync_queue": map[string]interface{}{
 				"pending":         proofQueueCount,
 				"oldest_age_secs": proofQueueOldestSecs,
