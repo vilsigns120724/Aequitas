@@ -654,6 +654,17 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 			s.evm.LoadContractStorage(toAddr)
 		}
 
+		// FIX (BRUTAL-P2-05): persist an optimistic success receipt before
+		// executing so MetaMask gets a non-null receipt immediately after
+		// receiving the txHash. If execution fails, update to status=0x0 and
+		// persist the failure durably — previously a failed contract call only
+		// set in-memory txStatus/txError with no SaveTxReceipt call, so after
+		// a restart MetaMask would see null receipt and show "pending" forever.
+		s.mu.Lock()
+		s.txStatus[txHash] = true
+		s.mu.Unlock()
+		s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x1", "")
+
 		// persist=true: this is the actual execution of a real, signed
 		// transaction submitted via sendRawTransaction — the one place where a
 		// state change should genuinely be written to PostgreSQL.
@@ -667,14 +678,12 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 			s.txStatus[txHash] = false
 			s.txError[txHash] = callErr.Error()
 			s.mu.Unlock()
+			s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x0", "")
 			return nil, &RPCError{Code: -32603, Message: "execution reverted: " + callErr.Error()}
 		}
 
 		fmt.Printf("[RPC] ✓ Contract call result: %x\n", result)
 		s.evm.PersistContractStorage(toAddr)
-		s.mu.Lock()
-		s.txStatus[txHash] = true
-		s.mu.Unlock()
 		return txHash, nil
 	}
 

@@ -658,21 +658,25 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		}
 	}
 	if !registered {
-		// FIX: this used to only log CRITICAL and fall through to return
-		// txHash (success) anyway. The on-chain EVM transaction has
-		// already been mined at this point and can't be undone without
-		// spending more gas on a nonexistent "unregister" function — but
-		// reporting success to the caller while Go-state's IsHuman is
-		// still false is worse: it hides a real, permanent divergence
-		// (chain_accounts says not human; the EVM mirror and every
-		// secondary that later replays this block's register_human TX
-		// will eventually say human) behind an API response that looked
-		// fine. Returning an error here at least surfaces it immediately
-		// instead of leaving an admin to discover it later via
-		// /api/admin/registration-debug after a user reports "already
-		// registered" with no balance.
-		Log.Error("CRITICAL: RegisterHuman(Atomic) failed 3x after EVM success — Go/EVM diverged", "wallet", wallet, "error", regErr)
-		return "", fmt.Errorf("registration succeeded on-chain (tx %s) but failed to sync locally after retries: %w — check /api/admin/registration-debug?wallet=%s", txHash, regErr, wallet)
+		// FIX (BRUTAL-P1-01, Variant C): EVM committed but Go-state failed 3x.
+		// Write a recovery record so the background RetryRegistrationRecoveries
+		// goroutine can keep retrying until Go-state catches up, and set the
+		// node degraded so operators see it in /api/health/combined.
+		// We do NOT halt block production — a transient DB write failure during
+		// registration must not stop the entire chain; secondary nodes will
+		// eventually replay this registration from the outbox regardless.
+		Log.Error("CRITICAL: RegisterHumanAtomic failed 3x after EVM success — writing recovery record",
+			"wallet", wallet, "txHash", txHash, "error", regErr)
+		if saveErr := a.state.SaveRegistrationRecovery(wallet, txHash, nullifierToStore, pendingRegTx); saveErr != nil {
+			Log.Error("CRITICAL: also failed to write registration_recovery record — manual intervention required",
+				"wallet", wallet, "txHash", txHash, "saveErr", saveErr)
+		}
+		a.state.SetBootstrapDegraded(fmt.Sprintf(
+			"registration_recovery: EVM tx %s registered %s on-chain but Go-state sync failed (%v) — "+
+				"background recovery is retrying; check /api/admin/registration-recovery",
+			txHash, wallet, regErr))
+		return "", fmt.Errorf("registration succeeded on-chain (tx %s) but failed to sync locally after retries: %w — "+
+			"recovery is queued, check /api/admin/registration-recovery?wallet=%s", txHash, regErr, wallet)
 	}
 	a.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, wallet)
 

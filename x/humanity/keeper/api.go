@@ -69,6 +69,19 @@ func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper, state *ChainState) *API
 			RetryEVMMirrorSyncQueue(state)
 		}
 	}()
+	// FIX (BRUTAL-P1-01): retry registration_recovery records — EVM-committed
+	// registrations whose Go-state sync failed. Runs every 5 minutes; on each
+	// pass it calls RegisterHumanAtomic for every unrecovered record and marks
+	// them recovered when they succeed or when Go-state already has the wallet
+	// (meaning a previous pass or a peer-sync block replay already fixed it).
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			if n := state.RetryRegistrationRecoveries(); n > 0 {
+				fmt.Printf("[RECOVERY] Recovered %d registration(s) from registration_recovery table\n", n)
+			}
+		}
+	}()
 	return s
 }
 
@@ -275,6 +288,17 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 		status = "warn"
 		notes = append(notes, "a destructive maintenance flag is set in this node's environment — see destructive_flags_set")
 	}
+	// BRUTAL-P1-01: surface pending registration recoveries in health output.
+	registrationRecoveryCount := a.state.CountUnrecoveredRegistrations()
+	if registrationRecoveryCount > 0 {
+		if status == "healthy" {
+			status = "warn"
+		}
+		notes = append(notes, fmt.Sprintf(
+			"%d registration(s) have EVM tx committed but Go-state not yet synced — "+
+				"background recovery is retrying; see /api/admin/registration-recovery",
+			registrationRecoveryCount))
+	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"chain": map[string]interface{}{
@@ -289,6 +313,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
 			"uptime_secs":  int64(time.Since(a.startTime).Seconds()),
 			"destructive_flags_set": destructiveFlagsSet,
+			"registration_recovery_pending": registrationRecoveryCount,
 			// FIX (audit 2026-06-28 recheck 5, P2-3): "Health/Debug sollte
 			// Chain-Nullifier, Chain-BioHash und Proof-BioHash getrennt
 			// anzeigen." proof_server.last_status.bio_hash_count (below) is
@@ -350,8 +375,11 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/peers", a.handlePeers)
 	mux.HandleFunc("/api/signing-address", a.handleSigningAddress)
 	mux.HandleFunc("/api/admin/registration-debug", a.handleRegistrationDebug)
+	mux.HandleFunc("/api/admin/registration-recovery", a.handleRegistrationRecovery)
+	mux.HandleFunc("/api/admin/registration-recovery/retry", a.handleRegistrationRecovery)
 	mux.HandleFunc("/api/prove", a.handleProveProxy)
 	mux.HandleFunc("/api/prove/get/", a.handleProveGetProxy)
+	mux.HandleFunc("/api/prove/store", a.handleProveStoreProxy)
 	mux.HandleFunc("/api/proof/check", a.handleProofCheckProxy)
 	mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
 	mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
@@ -364,12 +392,13 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/recover-escrow", a.handleRecoverEscrow)
 	mux.HandleFunc("/registered", a.handleRegistered)
 	mux.HandleFunc("/download/app.apk", a.handleAppDownload)
-	mux.HandleFunc("/download/node-guide-en.pdf", func(w http.ResponseWriter, r *http.Request) {
-		a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_EN.pdf", "Aequitas_Node_Guide_EN.pdf", "application/pdf")
-	})
-	mux.HandleFunc("/download/node-guide-de.pdf", func(w http.ResponseWriter, r *http.Request) {
-		a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_DE.pdf", "Aequitas_Node_Guide_DE.pdf", "application/pdf")
-	})
+	for _, lg := range []string{"en", "de", "es", "fr", "id", "it", "pt", "tr"} {
+		lg := lg
+		up := strings.ToUpper(lg)
+		mux.HandleFunc("/download/node-guide-"+lg+".pdf", func(w http.ResponseWriter, r *http.Request) {
+			a.handleStaticDownload(w, r, "downloads/Aequitas_Node_Guide_"+up+".pdf", "Aequitas_Node_Guide_"+up+".pdf", "application/pdf")
+		})
+	}
 	fmt.Println("── Starting EVM RPC ─────────────────────")
 	// Use the shared EVMRPCServer (a.evmRPC) so /rpc and /api/register share
 	// one nonce map + mutex — creating a second instance here caused separate
@@ -762,17 +791,19 @@ func (a *APIServer) handleCheckRegistrationByBioHash(w http.ResponseWriter, r *h
 	// current user should NOT see "success". Return a distinct status so
 	// the app can show an appropriate message.
 	if !isHuman {
+		// FIX (BRUTAL-P3-13): omit wallet to avoid bioHash→wallet linkage leak.
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"registered":       false,
 			"biometric_in_use": true,
-			"wallet":           wallet,
 		})
 		return
 	}
 
+	// FIX (BRUTAL-P3-13): removed wallet from response — the app already knows
+	// its own wallet; returning it here exposes a bioHash→wallet mapping to any
+	// caller who knows the bioHash, undermining the privacy model.
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"registered": true,
-		"wallet":     wallet,
 		"balance":    balance,
 		"is_human":   isHuman,
 	})
@@ -1546,6 +1577,57 @@ func (a *APIServer) handleProveGetProxy(w http.ResponseWriter, r *http.Request) 
 	w.Write(respBody)
 }
 
+// handleProveStoreProxy proxies POST /api/prove/store to the proof server's /store
+// endpoint. This is the endpoint APKs should call instead of hitting the proof
+// server directly — the APK does not hold (and must not hold) the
+// CHAIN_SERVICE_TOKEN, so any direct call from an APK to the proof server's /store
+// would fail auth. This proxy accepts the proof body from the APK, applies
+// per-IP rate limiting, and forwards it to the proof server with the service token
+// added server-side. (FIX BRUTAL-P2-06)
+func (a *APIServer) handleProveStoreProxy(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(200)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, `{"error":"POST required"}`, 405)
+		return
+	}
+	ipKey := "prove-store-ip:" + clientIP(r)
+	if ts, loaded := registerRateLimit.Load(ipKey); loaded {
+		if time.Since(ts.(time.Time)) < 10*time.Second {
+			jsonError(w, "rate limited, try again shortly", 429)
+			return
+		}
+	}
+	registerRateLimit.Store(ipKey, time.Now())
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	if err != nil {
+		http.Error(w, `{"error":"read error"}`, 500)
+		return
+	}
+	base, ok := requireProofServerConfigured(w)
+	if !ok {
+		return
+	}
+	proofReq, _ := http.NewRequest("POST", base+"/store", bytes.NewReader(body))
+	proofReq.Header.Set("Content-Type", "application/json")
+	addProofServerAuth(proofReq)
+	resp, err := proofProxyClient(30 * time.Second).Do(proofReq)
+	if err != nil {
+		http.Error(w, `{"error":"proof server unreachable"}`, 502)
+		return
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<10))
+	w.WriteHeader(resp.StatusCode)
+	w.Write(respBody)
+}
+
 // handleProofCheckProxy proxies POST /api/proof/check to the proof server.
 func (a *APIServer) handleProofCheckProxy(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -1648,6 +1730,66 @@ func (a *APIServer) handleRegistrationDebug(w http.ResponseWriter, r *http.Reque
 		"bio_hash_exists":         info.BioHashExists,
 		"evm_is_human_slot":       info.EVMIsHumanSlot,
 		"note":                    "bio_hash_exists refers to the CHAIN's own bio_hashes table, not the separate proof-server service's bio_hashes table (different DB) — a 'biometric already registered' error from /api/proof/check is NOT reflected here.",
+	})
+}
+
+// handleRegistrationRecovery lists registration_recovery records (BRUTAL-P1-01).
+// Operator endpoint — protected by SNAPSHOT_TOKEN.
+// GET  /api/admin/registration-recovery          → list all unrecovered records
+// POST /api/admin/registration-recovery/retry    → trigger immediate retry pass
+func (a *APIServer) handleRegistrationRecovery(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	token := os.Getenv("SNAPSHOT_TOKEN")
+	if token == "" {
+		http.Error(w, `{"error":"SNAPSHOT_TOKEN not configured"}`, http.StatusForbidden)
+		return
+	}
+	authHeader := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(authHeader), []byte(token)) != 1 {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+	if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/retry") {
+		n := a.state.RetryRegistrationRecoveries()
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"recovered_this_pass": n,
+			"still_pending":       a.state.CountUnrecoveredRegistrations(),
+		})
+		return
+	}
+	rows, err := a.state.DB().Query(`
+		SELECT id, wallet, evm_tx_hash, nullifier, created_at, attempt_count,
+		       last_attempt_at, recovered_at, last_error
+		FROM registration_recovery ORDER BY created_at DESC LIMIT 200`)
+	if err != nil {
+		http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	type row struct {
+		ID            int64  `json:"id"`
+		Wallet        string `json:"wallet"`
+		EVMTxHash     string `json:"evm_tx_hash"`
+		Nullifier     string `json:"nullifier"`
+		CreatedAt     int64  `json:"created_at"`
+		AttemptCount  int    `json:"attempt_count"`
+		LastAttemptAt *int64 `json:"last_attempt_at"`
+		RecoveredAt   *int64 `json:"recovered_at"`
+		LastError     string `json:"last_error"`
+	}
+	var records []row
+	for rows.Next() {
+		var rec row
+		if scanErr := rows.Scan(&rec.ID, &rec.Wallet, &rec.EVMTxHash, &rec.Nullifier,
+			&rec.CreatedAt, &rec.AttemptCount, &rec.LastAttemptAt,
+			&rec.RecoveredAt, &rec.LastError); scanErr == nil {
+			records = append(records, rec)
+		}
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"total":       len(records),
+		"unrecovered": a.state.CountUnrecoveredRegistrations(),
+		"records":     records,
 	})
 }
 

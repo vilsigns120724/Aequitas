@@ -259,6 +259,10 @@ input[type=number]{background:var(--card2);border:1px solid var(--border);color:
 input[type=number]:focus{border-color:var(--purple);box-shadow:0 0 8px rgba(139,92,246,0.2)}
 input[type=number]::-webkit-inner-spin-button{opacity:0.5}
 @media(max-width:480px){.stats-grid{grid-template-columns:repeat(2,1fr)}.stat-val{font-size:1.4rem}header{height:52px}.logo-text{font-size:0.85rem;letter-spacing:2px}.badge-dag{display:none}.main-grid{padding:0 12px 12px}.hero{padding:14px 12px 0}.tab{padding:12px 10px;font-size:0.6rem}}@media(max-width:600px){.idx-grade-grid{grid-template-columns:repeat(2,1fr)!important}}
+.path-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:580px){.path-grid{grid-template-columns:1fr}}
+.deploy-opts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:480px){.deploy-opts{grid-template-columns:1fr}.rwd-1col{grid-template-columns:1fr!important}}
 /* ── SWAP ENHANCEMENTS ────────────────────────────────────── */
 .sd-panel{background:var(--card2);border:1px solid rgba(139,92,246,0.18);border-radius:var(--radius-sm);padding:13px;margin:8px 0;animation:sdIn 0.18s ease}
 @keyframes sdIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
@@ -657,12 +661,12 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     <div class="idx-title">AEQ / tUSD — Live Price</div>
     <div style="font-size:0.63rem;color:var(--muted);margin-bottom:12px">Real-time price derived from pool reserves (x·y=k). Updates every 8 seconds as new pool data arrives.</div>
     <div style="display:flex;gap:4px;margin-bottom:6px">
-      <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn ci-active">1m</button>
+      <button onclick="setChartInterval(60000)" id="ci-1m" class="ci-btn">1m</button>
       <button onclick="setChartInterval(300000)" id="ci-5m" class="ci-btn">5m</button>
       <button onclick="setChartInterval(1800000)" id="ci-30m" class="ci-btn">30m</button>
       <button onclick="setChartInterval(3600000)" id="ci-1h" class="ci-btn">1h</button>
       <button onclick="setChartInterval(14400000)" id="ci-4h" class="ci-btn">4h</button>
-      <button onclick="setChartInterval(0)" id="ci-all" class="ci-btn">All</button>
+      <button onclick="setChartInterval(0)" id="ci-all" class="ci-btn ci-active">All</button>
     </div>
     <canvas id="price-chart" height="160" style="width:100%;border-radius:6px;background:var(--card2)"></canvas>
     <div id="price-chart-empty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:0.63rem">No pool data yet — add liquidity to see the price chart.</div>
@@ -1267,7 +1271,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
   <!-- HOW TO JOIN -->
   <div style="margin-bottom:20px">
     <div style="font-size:0.57rem;color:var(--purple);letter-spacing:2.5px;text-transform:uppercase;font-weight:700;margin-bottom:14px">Choose Your Path</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+    <div class="path-grid">
       <div style="background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)">
         <div style="font-size:1.5rem;margin-bottom:10px">&#128100;</div>
         <div style="font-size:0.72rem;font-weight:700;color:var(--text);margin-bottom:8px">I am a Human</div>
@@ -3700,6 +3704,16 @@ function setLang(lang) {
     // Never allow user-supplied content to flow into the T object.
     if (t[key] !== undefined) el.innerHTML = t[key];
   });
+  // FIX (BRUTAL-P3-11): update the node-guide PDF download link to the
+  // language-specific PDF when available. Falls back to English for languages
+  // without a translated PDF (RU, ZH, AR, VI, HI, etc.).
+  const pdfBtn = document.getElementById('node-guide-pdf-btn');
+  if (pdfBtn) {
+    const pdfLangs = {en:1,de:1,es:1,fr:1,id:1,it:1,pt:1,tr:1};
+    const pdfLang = pdfLangs[lang] ? lang : 'en';
+    pdfBtn.href = '/download/node-guide-' + pdfLang + '.pdf';
+    pdfBtn.download = 'Aequitas_Node_Guide_' + pdfLang.toUpperCase() + '.pdf';
+  }
 }
 
 function fmt(n) {
@@ -4002,11 +4016,14 @@ async function drawLorenzCurve() {
   var W = canvas.width;
   // Mobile: legend goes below chart → taller canvas; desktop: legend right
   var isMobile = W < 480;
-  canvas.height = isMobile ? 540 : 460;
+  // mLegH = space below the chart area reserved for the 2-column legend (8 items = 4 rows × 26 + 20 padding)
+  var mLegH = isMobile ? 130 : 0;
+  // H = chart drawing height; canvas.height = H + legend space (mobile) or just H (desktop)
+  var H = isMobile ? 420 : 460;
+  canvas.height = H + mLegH;
   var ctx = canvas.getContext('2d');
-  var H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#070B16'; ctx.fillRect(0, 0, W, H);
+  ctx.clearRect(0, 0, W, canvas.height);
+  ctx.fillStyle = '#070B16'; ctx.fillRect(0, 0, W, canvas.height);
 
   // Mobile layout: no right panel, legend drawn below chart
   // Desktop layout: 252px right legend panel, 82px top header
@@ -4734,7 +4751,7 @@ let currentPoolTUSD = 0;
 let myAEQBalance = 0;
 let myTUSDBalance = 0;
 var priceHistory = [];
-var chartIntervalMs = 60000;
+var chartIntervalMs = 0;
 var priceHistoryLoaded = false;
 
 // Preload price history from DB so interval buttons show real historical data.

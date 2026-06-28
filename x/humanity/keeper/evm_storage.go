@@ -1840,12 +1840,24 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 		fmt.Printf("[TX] LoadPendingTxs error: %v\n", err)
 		return nil, nil
 	}
+	// FIX (BRUTAL-P2-03): do NOT issue DML (INSERT/DELETE on pending_txs) while
+	// the UPDATE...RETURNING cursor is still open — the same connection holds
+	// row locks from the RETURNING scan, and issuing further DML on those rows
+	// inside the same result-set iteration is undefined/blocking behaviour.
+	// Collect corrupt rows in a slice, close the cursor explicitly, then
+	// dead-letter them in a separate pass. The defer below is kept as a
+	// safety net for the early-return error paths above.
 	defer rows.Close()
 	type idTx struct {
 		id  int64
 		tx  Transaction
 	}
+	type badRow struct {
+		id     int64
+		errMsg string
+	}
 	var loaded []idTx
+	var corrupt []badRow
 	for rows.Next() {
 		var id int64
 		var raw string
@@ -1854,22 +1866,22 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 		}
 		var tx Transaction
 		if err := json.Unmarshal([]byte(raw), &tx); err != nil {
-			// FIX (AQT-NEW-P2-02): a corrupt row must not stay in pending_txs.
-			// Without this, ResetStaleIncludedPendingTxs resets included_at,
-			// the next ProduceBlock picks it up again, fails again → infinite
-			// noise loop. Move it to pending_txs_dead_letter so it's preserved
-			// for diagnosis but can never re-enter the active queue.
-			fmt.Printf("[TX] LoadPendingTxs unmarshal error for id=%d — moving to dead-letter queue: %v\n", id, err)
-			cs.db.Exec(
-				`INSERT INTO pending_txs_dead_letter (id, tx_json, created_at, failed_at, fail_reason)
-				 SELECT id, tx_json, created_at, $1, $2 FROM pending_txs WHERE id = $3
-				 ON CONFLICT (id) DO NOTHING`,
-				time.Now().Unix(), err.Error(), id,
-			)
-			cs.db.Exec(`DELETE FROM pending_txs WHERE id = $1`, id)
+			corrupt = append(corrupt, badRow{id: id, errMsg: err.Error()})
 			continue
 		}
 		loaded = append(loaded, idTx{id: id, tx: tx})
+	}
+	// Close the cursor before any DML so we no longer hold locks on the rows.
+	rows.Close()
+	for _, br := range corrupt {
+		fmt.Printf("[TX] LoadPendingTxs unmarshal error for id=%d — moving to dead-letter queue: %v\n", br.id, br.errMsg)
+		cs.db.Exec(
+			`INSERT INTO pending_txs_dead_letter (id, tx_json, created_at, failed_at, fail_reason)
+			 SELECT id, tx_json, created_at, $1, $2 FROM pending_txs WHERE id = $3
+			 ON CONFLICT (id) DO NOTHING`,
+			time.Now().Unix(), br.errMsg, br.id,
+		)
+		cs.db.Exec(`DELETE FROM pending_txs WHERE id = $1`, br.id)
 	}
 	// UPDATE ... RETURNING does not guarantee output order matches the
 	// subquery's ORDER BY — restore insertion order explicitly, since
@@ -1886,18 +1898,23 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 }
 
 // MarkPendingTxsIncluded records which block included a set of pending TX rows.
-// Called after SaveBlockToDB succeeds so ResetStaleIncludedPendingTxs can
-// distinguish "included and block saved" from "included but crashed before save".
-func (cs *ChainState) MarkPendingTxsIncluded(ids []int64, blockHash string) {
+// Called BEFORE SaveBlockToDB (see block.go) so ResetStaleIncludedPendingTxs
+// can distinguish crash-before-save (block absent → requeue OK) from
+// crash-after-save (block present → leave alone).
+// FIX (BRUTAL-P2-04): now returns error so callers can react — previously
+// errors were only logged and the caller had no signal that the write failed.
+func (cs *ChainState) MarkPendingTxsIncluded(ids []int64, blockHash string) error {
 	if cs.db == nil || len(ids) == 0 {
-		return
+		return nil
 	}
 	if _, err := cs.db.Exec(
 		`UPDATE pending_txs SET included_block_hash = $1 WHERE id = ANY($2)`,
 		blockHash, ids,
 	); err != nil {
-		fmt.Printf("[TX] MarkPendingTxsIncluded error (non-fatal): %v\n", err)
+		fmt.Printf("[TX] MarkPendingTxsIncluded error: %v\n", err)
+		return err
 	}
+	return nil
 }
 
 // ResetStaleIncludedPendingTxs reverts included_at back to 0 for any row
@@ -1927,6 +1944,126 @@ func (cs *ChainState) ResetStaleIncludedPendingTxs(maxAge time.Duration) {
 	if n, _ := res.RowsAffected(); n > 0 {
 		fmt.Printf("[TX] Reset %d stale-included pending_txs row(s) for retry (likely a crash before broadcast)\n", n)
 	}
+}
+
+// ── REGISTRATION RECOVERY (BRUTAL-P1-01) ────────────────────────────────────
+//
+// When registerOnV7 succeeds on-chain (EVM committed) but RegisterHumanAtomic
+// fails after 3 retries, a recovery record is written here so the
+// background goroutine in api.go can keep retrying until Go-state catches up.
+// This is Variant-C of the audit's recommended fix: record + degrade + retry,
+// rather than silently diverging or halting block production entirely.
+
+// SaveRegistrationRecovery writes a recovery record for a registration whose
+// EVM transaction succeeded but whose Go-state sync failed. Returns an error
+// only if writing to the DB itself fails (the original regErr is passed in
+// separately by the caller for logging/degraded messaging).
+func (cs *ChainState) SaveRegistrationRecovery(wallet, evmTxHash, nullifier string, pendingTx Transaction) error {
+	if cs.db == nil {
+		return fmt.Errorf("db not available")
+	}
+	pendingJSON, err := json.Marshal(pendingTx)
+	if err != nil {
+		pendingJSON = []byte("{}")
+	}
+	_, dbErr := cs.db.Exec(
+		`INSERT INTO registration_recovery
+		 (wallet, evm_tx_hash, nullifier, pending_tx_json, created_at)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		strings.ToLower(wallet), evmTxHash, nullifier, string(pendingJSON), time.Now().Unix(),
+	)
+	return dbErr
+}
+
+// CountUnrecoveredRegistrations returns the number of registration_recovery
+// rows that have not yet been successfully replayed (recovered_at IS NULL).
+func (cs *ChainState) CountUnrecoveredRegistrations() int {
+	if cs.db == nil {
+		return 0
+	}
+	var n int
+	cs.db.QueryRow(`SELECT COUNT(*) FROM registration_recovery WHERE recovered_at IS NULL`).Scan(&n)
+	return n
+}
+
+// RetryRegistrationRecoveries attempts RegisterHumanAtomic for every
+// unrecovered record, marks the record recovered on success, and returns the
+// number of records newly recovered in this pass.
+func (cs *ChainState) RetryRegistrationRecoveries() int {
+	if cs.db == nil {
+		return 0
+	}
+	rows, err := cs.db.Query(`
+		SELECT id, wallet, nullifier, pending_tx_json
+		FROM registration_recovery
+		WHERE recovered_at IS NULL
+		ORDER BY created_at ASC`)
+	if err != nil {
+		fmt.Printf("[RECOVERY] RetryRegistrationRecoveries query failed: %v\n", err)
+		return 0
+	}
+	type rec struct {
+		id          int64
+		wallet      string
+		nullifier   string
+		pendingJSON string
+	}
+	var records []rec
+	for rows.Next() {
+		var r rec
+		if scanErr := rows.Scan(&r.id, &r.wallet, &r.nullifier, &r.pendingJSON); scanErr == nil {
+			records = append(records, r)
+		}
+	}
+	rows.Close()
+
+	recovered := 0
+	for _, r := range records {
+		cs.db.Exec(`UPDATE registration_recovery SET attempt_count=attempt_count+1, last_attempt_at=$1 WHERE id=$2`,
+			time.Now().Unix(), r.id)
+
+		var pendingTx Transaction
+		if r.pendingJSON != "" {
+			json.Unmarshal([]byte(r.pendingJSON), &pendingTx) //nolint:errcheck
+		}
+
+		var regErr error
+		if pendingTx.Nullifier != "" {
+			regErr = cs.RegisterHumanAtomic(r.wallet, pendingTx)
+		} else {
+			regErr = cs.RegisterHuman(r.wallet)
+		}
+
+		if regErr != nil {
+			alreadyDone := strings.Contains(regErr.Error(), "already registered")
+			if alreadyDone {
+				// Go-state already has this wallet as human (perhaps recovered
+				// by a previous attempt or by block replay from another node).
+				cs.db.Exec(`UPDATE registration_recovery SET recovered_at=$1, last_error='already registered in go-state — treated as recovered' WHERE id=$2`,
+					time.Now().Unix(), r.id)
+				recovered++
+				fmt.Printf("[RECOVERY] ✓ Registration for %s already present in Go-state — marked recovered\n", r.wallet)
+			} else {
+				cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`, regErr.Error(), r.id)
+				fmt.Printf("[RECOVERY] ✗ Retry failed for %s: %v\n", r.wallet, regErr)
+			}
+		} else {
+			cs.db.Exec(`UPDATE registration_recovery SET recovered_at=$1, last_error=NULL WHERE id=$2`,
+				time.Now().Unix(), r.id)
+			recovered++
+			fmt.Printf("[RECOVERY] ✓ Successfully recovered Go-state registration for wallet %s\n", r.wallet)
+			cs.SyncBalancesToEVM(V7_CONTRACT_ADDR, r.wallet)
+		}
+	}
+
+	// Clear the degraded flag once no unrecovered records remain.
+	if recovered > 0 && cs.CountUnrecoveredRegistrations() == 0 {
+		cur := cs.BootstrapDegradedReason()
+		if strings.Contains(cur, "registration_recovery") {
+			cs.SetBootstrapDegraded("")
+		}
+	}
+	return recovered
 }
 
 // ClearPendingTxs deletes the given pending_txs rows by id. Call only after

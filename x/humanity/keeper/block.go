@@ -585,7 +585,18 @@ dag.blocks[block.Hash] = block
 // included_block_hash=NULL but the block was already saved; Reset's
 // "included_block_hash IS NULL" arm would requeue them → double-inclusion.
 if len(pendingTxIDs) > 0 {
-	dag.state.MarkPendingTxsIncluded(pendingTxIDs, block.Hash)
+	// FIX (BRUTAL-P2-04): MarkPendingTxsIncluded now returns error.
+	// A failure here means rows keep included_block_hash=NULL even though
+	// the block is about to be saved — ResetStaleIncludedPendingTxs's
+	// "block absent from chain_blocks" arm would requeue them, risking
+	// double-inclusion on the next ProduceBlock. Mark node degraded so
+	// operators can see it; block production continues to avoid halting
+	// the whole chain over a transient DB write.
+	if err := dag.state.MarkPendingTxsIncluded(pendingTxIDs, block.Hash); err != nil {
+		dag.state.SetBootstrapDegraded(fmt.Sprintf(
+			"MarkPendingTxsIncluded failed for block %s: %v — pending TXs may be re-included; check /api/health/combined",
+			block.Hash[:16], err))
+	}
 }
 
 blockSaved := true

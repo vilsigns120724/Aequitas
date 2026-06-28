@@ -159,6 +159,10 @@ func (cs *ChainState) dbExec() sqlExecutor {
 	return cs.db
 }
 
+// DB returns the underlying *sql.DB for admin operations that need raw queries.
+// Most code should use dbExec() instead so atomic transactions are respected.
+func (cs *ChainState) DB() *sql.DB { return cs.db }
+
 // P3-FIX: stateMu, acquireStateLock, and releaseStateLock were dead code
 // (never called). Removed to eliminate a future deadlock trap where a
 // developer might call acquireStateLock inside a function already holding cs.mu.
@@ -318,26 +322,41 @@ bio_hash      TEXT,
 registered_at TIMESTAMP,
 backed_up_at  TIMESTAMP DEFAULT NOW()
 )`)
+	// FIX (BRUTAL-P1-02): the old MIN(registered_at)/MIN(commitment) pair is
+	// computed from two independent aggregates that need not come from the same
+	// row — e.g. Row A (at=10, commitment=z) and Row B (at=20, commitment=a)
+	// produce (10, a), a phantom row that never exists. The "winner" could be
+	// wrong or every duplicate might be deleted. Use ROW_NUMBER() OVER (PARTITION
+	// BY bio_hash ORDER BY registered_at ASC NULLS LAST, commitment ASC) to pick
+	// the single canonical oldest row per bio_hash, then back up and delete
+	// everything with rn > 1.
 	dbExec(`INSERT INTO bio_registrations_bio_hash_dedup_backup
 (commitment, wallet_address, bio_hash, registered_at)
 SELECT a.commitment, a.wallet_address, a.bio_hash, a.registered_at
-FROM bio_registrations a
-WHERE a.bio_hash IS NOT NULL AND a.bio_hash != ''
-  AND EXISTS (
-    SELECT 1 FROM bio_registrations b
-    WHERE b.bio_hash = a.bio_hash AND b.commitment != a.commitment
-  )
-  AND (a.registered_at, a.commitment) > (
-    SELECT MIN(c.registered_at), MIN(c.commitment)
-    FROM bio_registrations c WHERE c.bio_hash = a.bio_hash
-  )
+FROM (
+  SELECT commitment, wallet_address, bio_hash, registered_at,
+         ROW_NUMBER() OVER (
+           PARTITION BY bio_hash
+           ORDER BY registered_at ASC NULLS LAST, commitment ASC
+         ) AS rn
+  FROM bio_registrations
+  WHERE bio_hash IS NOT NULL AND bio_hash != ''
+) a
+WHERE a.rn > 1
 ON CONFLICT (commitment) DO NOTHING`)
 	dbExec(`DELETE FROM bio_registrations
-WHERE bio_hash IS NOT NULL AND bio_hash != ''
-  AND (registered_at, commitment) > (
-    SELECT MIN(c.registered_at), MIN(c.commitment)
-    FROM bio_registrations c WHERE c.bio_hash = bio_registrations.bio_hash
-  )`)
+WHERE commitment IN (
+  SELECT commitment FROM (
+    SELECT commitment,
+           ROW_NUMBER() OVER (
+             PARTITION BY bio_hash
+             ORDER BY registered_at ASC NULLS LAST, commitment ASC
+           ) AS rn
+    FROM bio_registrations
+    WHERE bio_hash IS NOT NULL AND bio_hash != ''
+  ) ranked
+  WHERE rn > 1
+)`)
 	dbExec(`DROP INDEX IF EXISTS uidx_bio_registrations_bio_hash`)
 	dbExec(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_bio_registrations_bio_hash ON bio_registrations(bio_hash) WHERE bio_hash IS NOT NULL AND bio_hash != ''`)
 	// Single-row table holding the AEQ<->tUSD pool reserves. A fixed id=1 row
@@ -369,6 +388,24 @@ registered_at TIMESTAMP DEFAULT NOW()
 key TEXT PRIMARY KEY,
 value TEXT NOT NULL
 )`)
+	// registration_recovery: written by registerOnV7 when the EVM transaction
+	// succeeds but RegisterHumanAtomic fails after 3 retries. The background
+	// RetryRegistrationRecoveries goroutine processes these until recovered_at
+	// is set. This is the Variant-C fix for BRUTAL-P1-01 — see register.go.
+	dbExec(`CREATE TABLE IF NOT EXISTS registration_recovery (
+id BIGSERIAL PRIMARY KEY,
+wallet TEXT NOT NULL,
+evm_tx_hash TEXT NOT NULL,
+nullifier TEXT,
+pending_tx_json TEXT,
+created_at BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
+attempt_count INT NOT NULL DEFAULT 0,
+last_attempt_at BIGINT,
+recovered_at BIGINT,
+last_error TEXT
+)`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_registration_recovery_unrecovered
+ON registration_recovery(created_at) WHERE recovered_at IS NULL`)
 
 	// Pending block transactions — persisted so they survive node restarts.
 	// Without this, transfers via sendRawTransaction update Go-state/DB but
