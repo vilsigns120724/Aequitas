@@ -351,6 +351,10 @@ included_at BIGINT NOT NULL DEFAULT 0
 	// mean the row got loaded AGAIN by the next ProduceBlock call and
 	// included in a second block.
 	dbExec(`ALTER TABLE pending_txs ADD COLUMN IF NOT EXISTS included_at BIGINT NOT NULL DEFAULT 0`)
+	// FIX (P1-01): track which block included each TX so ResetStaleIncludedPendingTxs
+	// can skip rows whose block is already in chain_blocks, preventing the crash
+	// window between SaveBlockToDB and ClearPendingTxs from causing double-inclusion.
+	dbExec(`ALTER TABLE pending_txs ADD COLUMN IF NOT EXISTS included_block_hash TEXT`)
 
 	// FIX (audit 2026-06-28 full recheck, P1-3): block headers (dag.blocks/
 	// dag.tips in block.go) used to be purely in-memory, reset to genesis on

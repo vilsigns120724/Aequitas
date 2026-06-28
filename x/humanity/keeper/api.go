@@ -1092,6 +1092,15 @@ func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.
 		http.Error(w, `{"error":"this endpoint is restricted to the node's local/private network"}`, http.StatusForbidden)
 		return
 	}
+	// FIX (P3-03): on Railway (and most cloud platforms) all TCP connections
+	// arrive via an internal load balancer with a private/RFC1918 IP, so
+	// isPrivateOrLoopback passes for every request, including those from the
+	// public internet. Require an explicit opt-in env var so this endpoint is
+	// disabled by default and operators must consciously enable it.
+	if os.Getenv("ALLOW_SIGN_VALIDATOR_CHALLENGE") != "true" {
+		http.Error(w, `{"error":"sign-validator-challenge is disabled; set ALLOW_SIGN_VALIDATOR_CHALLENGE=true on this node to enable"}`, http.StatusForbidden)
+		return
+	}
 	// F12-FIX: Require SNAPSHOT_TOKEN unconditionally. Previously the endpoint
 	// was open when SNAPSHOT_TOKEN was not set. An open endpoint leaks that the
 	// node is running and allows unauthenticated challenge generation.

@@ -318,8 +318,11 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// had zero cryptographic binding to the proof. Reject v1 requests here,
 	// before spending a relayer dry-run, with a clear message instead of
 	// letting them fail later on the contract's own (correct) revert.
-	if req.CircuitVersion < 2 || req.ZKNullifier == "" {
-		return "", fmt.Errorf("v1 circuit registrations are no longer accepted: a ZK-bound nullifier (circuit v2+) is required")
+	// FIX (P2-01): require exactly v3 (Poseidon nullifier circuit). Accepting
+	// any version >= 2 allowed a downgrade to the old SHA256-based v2 circuit,
+	// which has a weaker nullifier construction than the Poseidon-based v3.
+	if req.CircuitVersion != 3 || req.ZKNullifier == "" {
+		return "", fmt.Errorf("only circuit version 3 is accepted: upgrade your app — v3 Poseidon nullifier is required")
 	}
 
 	// Prefer ZK-circuit-derived nullifier (v2 circuit, pubSignals[1]) over
@@ -334,7 +337,15 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	if effectiveNullifier == "" {
 		return "", fmt.Errorf("nullifier required")
 	}
-	if existingWallet := a.state.GetWalletByNullifier(effectiveNullifier); existingWallet != "" {
+	// FIX (P0-02): use IsNullifierUsed (EXISTS check) rather than
+	// GetWalletByNullifier != "" — public snapshots store nullifiers with
+	// wallet_address="" and GetWalletByNullifier returns "" for those rows,
+	// making the old check conclude the nullifier is free when it's not.
+	if a.state.IsNullifierUsed(effectiveNullifier) {
+		existingWallet := a.state.GetWalletByNullifier(effectiveNullifier)
+		if existingWallet == "" {
+			existingWallet = "another wallet (public snapshot — wallet address redacted)"
+		}
 		return "", fmt.Errorf("identity already registered: nullifier used by %s (nullifiers table)", existingWallet)
 	}
 	// NOTE: the v1-circuit BioHash/SHA256-nullifier-derivation checks that

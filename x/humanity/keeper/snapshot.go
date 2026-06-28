@@ -41,10 +41,11 @@ type StateSnapshot struct {
 	Height           int64                     `json:"height"`
 	Accounts         []*AccountState           `json:"accounts"`
 	Pool             *PoolState                `json:"pool"`
-	Nullifiers       map[string]string         `json:"nullifiers"`           // nullifier → wallet
-	BioRegistrations []SnapshotBioRegistration `json:"bio_registrations"`
-	ChainConfig      map[string]string         `json:"chain_config,omitempty"` // critical timing keys for secondary state sync
-	Signature        string                    `json:"signature,omitempty"`  // ECDSA over SHA256(JSON without this field)
+	Nullifiers          map[string]string         `json:"nullifiers"`           // nullifier → wallet (sentinel 0x01 if wallet redacted)
+	NullifiersRedacted  bool                      `json:"nullifiers_redacted"`  // true when wallet addresses replaced with sentinel (public tier)
+	BioRegistrations    []SnapshotBioRegistration `json:"bio_registrations"`
+	ChainConfig         map[string]string         `json:"chain_config,omitempty"` // critical timing keys for secondary state sync
+	Signature           string                    `json:"signature,omitempty"`  // ECDSA over SHA256(JSON without this field)
 }
 
 type SnapshotBioRegistration struct {
@@ -71,11 +72,11 @@ type SnapshotBioRegistration struct {
 // the same associations one registration at a time out of historical
 // blocks — that's what SNAPSHOT_TOKEN actually protects, NOT data a new
 // node needs to function. A bootstrapping node doesn't need either field:
-// nullifier UNIQUENESS only depends on the key being present in the map
-// (see TryClaimNullifier/GetWalletByNullifier's callers — the wallet value
-// is informational, used only for a friendlier "already registered by
-// %s" error message, never for the actual uniqueness decision, which the
-// EVM contract enforces independently), and bio_registrations is
+// nullifier UNIQUENESS depends on the key being present in the map — see
+// IsNullifierUsed (which does an EXISTS check, not wallet != ""). The
+// public snapshot uses a sentinel wallet address so importing nodes write
+// a non-zero value into the EVM usedNullifiers slot (the V7 contract
+// treats zero address as "not used"). bio_registrations is
 // explicitly non-consensus bookkeeping (doesn't affect StateRoot). So
 // includeSensitive=false still produces a fully correct, bootstrap-capable
 // snapshot — just without the two fields that have no legitimate
@@ -98,19 +99,26 @@ func (cs *ChainState) ExportSnapshot(signingKey *ecdsa.PrivateKey, height int64,
 		if includeSensitive {
 			nullifiers[k] = v
 		} else {
-			// Keep the key (uniqueness set) — drop the wallet linkage.
-			nullifiers[k] = ""
+			// FIX (P0-02): use a sentinel non-zero address instead of "".
+			// Importing this snapshot stores the sentinel in the DB; the EVM
+			// migration then writes a non-zero slot value so V7 treats the
+			// nullifier as "used". An empty string became zero address in EVM
+			// storage, which V7 reads as "not used" → double-registration attack.
+			// Also ensures IsNullifierUsed's DB path (EXISTS check) remains
+			// consistent — the uniqueness gate is row presence, not wallet value.
+			nullifiers[k] = "0x0000000000000000000000000000000000000001"
 		}
 	}
 	cs.mu.RUnlock()
 
 	snap := &StateSnapshot{
-Version: SnapshotVersion,
-		Timestamp:  time.Now().Unix(),
-		Height:     height,
-		Accounts:   accounts,
-		Pool:       &pool,
-		Nullifiers: nullifiers,
+		Version:            SnapshotVersion,
+		Timestamp:          time.Now().Unix(),
+		Height:             height,
+		Accounts:           accounts,
+		Pool:               &pool,
+		Nullifiers:         nullifiers,
+		NullifiersRedacted: !includeSensitive,
 	}
 
 	// Pull bio_registrations from DB (commitment → wallet only).

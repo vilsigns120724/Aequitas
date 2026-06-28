@@ -350,6 +350,13 @@ func (cs *ChainState) MigrateEVMFromGoState(contractAddr string) error {
 				fmt.Printf("[EVM] Warning: nullifier scan error in MigrateEVM: %v\n", scanErr)
 				continue
 			}
+			// FIX (P0-02): public snapshots store nullifiers with wallet_address = ''.
+			// common.HexToAddress("") is the zero address, which the V7 contract
+			// interprets as "nullifier not used" — allowing double-registration.
+			// Use a non-zero sentinel instead so the slot is marked occupied.
+			if wallet == "" {
+				wallet = "0x0000000000000000000000000000000000000001"
+			}
 			nullKey := common.HexToHash(strings.TrimPrefix(nullifier, "0x"))
 			nullSlot := mappingSlotBytes32(nullKey, 8)
 			walletHash := common.BigToHash(common.HexToAddress(wallet).Big())
@@ -684,7 +691,9 @@ func (cs *ChainState) QueueEVMMirrorSync(addr, contractAddr, lastErr string) {
 		return
 	}
 	initialNextRetry := time.Now().Unix() + 60 // 2^1 * 30 = first retry after 60s
-	if _, err := cs.db.Exec(
+	// FIX (P1-02): use dbExec() so this write participates in any active
+	// transaction rather than bypassing it via the raw cs.db handle.
+	if _, err := cs.dbExec().Exec(
 		`INSERT INTO evm_mirror_sync_queue (address, contract_addr, last_error, next_retry_at, dead)
 		 VALUES ($1, $2, $3, $4, FALSE)
 		 ON CONFLICT (address, contract_addr) DO UPDATE SET
@@ -1167,9 +1176,12 @@ func (cs *ChainState) IsNullifierUsed(nullifier string) bool {
 	if cs.db == nil {
 		return false
 	}
-	var wallet string
-	err := cs.db.QueryRow(`SELECT wallet_address FROM nullifiers WHERE nullifier = $1`, nullifier).Scan(&wallet)
-	return err == nil && wallet != ""
+	// FIX (P0-02): use EXISTS so nullifiers imported with empty wallet
+	// (public snapshots, where wallet_address = '') are correctly treated as
+	// used. The old wallet != "" check returned false for those rows.
+	var exists bool
+	err := cs.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM nullifiers WHERE nullifier = $1)`, nullifier).Scan(&exists)
+	return err == nil && exists
 }
 
 // maxInMemNullifiers caps the in-memory nullifier cache to ~50 MB at 1M entries.
@@ -1861,23 +1873,39 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 	return txs, ids
 }
 
+// MarkPendingTxsIncluded records which block included a set of pending TX rows.
+// Called after SaveBlockToDB succeeds so ResetStaleIncludedPendingTxs can
+// distinguish "included and block saved" from "included but crashed before save".
+func (cs *ChainState) MarkPendingTxsIncluded(ids []int64, blockHash string) {
+	if cs.db == nil || len(ids) == 0 {
+		return
+	}
+	if _, err := cs.db.Exec(
+		`UPDATE pending_txs SET included_block_hash = $1 WHERE id = ANY($2)`,
+		blockHash, ids,
+	); err != nil {
+		fmt.Printf("[TX] MarkPendingTxsIncluded error (non-fatal): %v\n", err)
+	}
+}
+
 // ResetStaleIncludedPendingTxs reverts included_at back to 0 for any row
 // that's been "included" for longer than maxAge and never cleared —
-// recovery for the one crash window LoadPendingTxs' included_at marking
-// doesn't itself cover: a process death between LoadPendingTxs (marks
-// included) and ProduceBlock returning to main.go's BroadcastBlock call.
-// That window is safe to retry from: if the process never reached
-// BroadcastBlock, no peer ever saw the block these rows would have gone
-// into, so re-including them isn't a duplicate from the network's
-// perspective — it's the FIRST and only time any other node will see
-// them. Call once at startup, before block production begins.
+// recovery for the crash window between LoadPendingTxs (marks included)
+// and ClearPendingTxs (deletes rows). Only resets rows whose
+// included_block_hash is either NULL (crash before SaveBlockToDB) or
+// references a block NOT in chain_blocks (block never durably saved) —
+// rows linked to a saved block are left alone to avoid re-including TXs
+// that were already processed.
 func (cs *ChainState) ResetStaleIncludedPendingTxs(maxAge time.Duration) {
 	if cs.db == nil {
 		return
 	}
 	cutoff := time.Now().Add(-maxAge).Unix()
 	res, err := cs.db.Exec(
-		`UPDATE pending_txs SET included_at = 0 WHERE included_at > 0 AND included_at < $1`,
+		`UPDATE pending_txs SET included_at = 0, included_block_hash = NULL
+		 WHERE included_at > 0 AND included_at < $1
+		   AND (included_block_hash IS NULL
+		        OR NOT EXISTS (SELECT 1 FROM chain_blocks WHERE hash = pending_txs.included_block_hash))`,
 		cutoff,
 	)
 	if err != nil {

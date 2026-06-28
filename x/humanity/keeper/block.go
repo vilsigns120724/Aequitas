@@ -533,6 +533,14 @@ if err := dag.state.SaveBlockToDB(block); err != nil {
 	fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...) to chain_blocks: %v — outbox rows kept for retry\n", block.Height, block.Hash[:16], err)
 }
 
+// FIX (P1-01): mark which block included these rows before clearing them.
+// If we crash between this mark and ClearPendingTxs, ResetStaleIncludedPendingTxs
+// at startup will see the block exists in chain_blocks and skip the reset,
+// preventing the TXs from being re-included in a second block.
+if blockSaved && len(pendingTxIDs) > 0 {
+	dag.state.MarkPendingTxsIncluded(pendingTxIDs, block.Hash)
+}
+
 // Only now that the block carrying them is durably stored — clear the DB
 // outbox rows. See LoadAndClearPendingTxs's doc comment for why this is
 // no longer a single, earlier delete-then-build step.
