@@ -1465,13 +1465,44 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 // ClearPendingTxs deletes the given pending_txs rows by id. Call only after
 // the corresponding TXs are durably incorporated elsewhere (e.g. in a
 // produced block) — see LoadPendingTxs.
-func (cs *ChainState) ClearPendingTxs(ids []int64) {
+//
+// FIX (audit 2026-06-28 recheck 4, P1-1): this used to discard every Exec
+// error silently and return nothing. If a delete failed, the caller had no
+// way to know — the next ProduceBlock's LoadPendingTxs would load that same
+// row again and include its TX in a SECOND block. Any peer that replays
+// both blocks would apply that TX's delta twice: a real double-credit/debit,
+// not just stale outbox bookkeeping. Now retries each delete a few times
+// (the same transient-DB-blip tolerance SavePendingTx already has) and
+// returns an aggregated error so the caller can at least alert loudly —
+// the block this round already produced can't be un-broadcast at this
+// point, so there's no rollback to do here, but the operator needs to know
+// duplicate-TX risk now exists for this round's rows.
+func (cs *ChainState) ClearPendingTxs(ids []int64) error {
 	if cs.db == nil {
-		return
+		return nil
 	}
+	var firstErr error
 	for _, id := range ids {
-		cs.db.Exec(`DELETE FROM pending_txs WHERE id = $1`, id)
+		var lastErr error
+		for attempt := 1; attempt <= 3; attempt++ {
+			if _, err := cs.db.Exec(`DELETE FROM pending_txs WHERE id = $1`, id); err != nil {
+				lastErr = err
+				if attempt < 3 {
+					time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
+				}
+				continue
+			}
+			lastErr = nil
+			break
+		}
+		if lastErr != nil {
+			fmt.Printf("[TX] ClearPendingTxs: could not delete pending_txs id=%d after retries: %v\n", id, lastErr)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("could not delete pending_txs id=%d: %w", id, lastErr)
+			}
+		}
 	}
+	return firstErr
 }
 
 // LoadAndClearPendingTxs is kept for any external callers that don't need
@@ -1488,7 +1519,9 @@ func (cs *ChainState) ClearPendingTxs(ids []int64) {
 // after the block is fully built.
 func (cs *ChainState) LoadAndClearPendingTxs() []Transaction {
 	txs, ids := cs.LoadPendingTxs()
-	cs.ClearPendingTxs(ids)
+	if err := cs.ClearPendingTxs(ids); err != nil {
+		fmt.Printf("[TX] LoadAndClearPendingTxs: %v\n", err)
+	}
 	return txs
 }
 

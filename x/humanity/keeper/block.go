@@ -522,7 +522,16 @@ if err := dag.state.SaveBlockToDB(block); err != nil {
 // outbox rows. See LoadAndClearPendingTxs's doc comment for why this is
 // no longer a single, earlier delete-then-build step.
 if blockSaved && len(pendingTxIDs) > 0 {
-	dag.state.ClearPendingTxs(pendingTxIDs)
+	// FIX (audit 2026-06-28 recheck 4, P1-1): ClearPendingTxs now reports
+	// failures instead of discarding them. The block itself is already
+	// built (and about to be broadcast) by this point, so there's nothing
+	// to roll back here — but a failed delete means these rows will be
+	// loaded AGAIN by the next ProduceBlock call and end up duplicated
+	// into a second block, which a replaying peer would apply twice. Loud
+	// alert is the most this function can do at this stage.
+	if err := dag.state.ClearPendingTxs(pendingTxIDs); err != nil {
+		fmt.Printf("[BLOCK] ⚠ ALERT: outbox rows for block #%d could not be cleared — these TX(s) may be duplicated into a future block: %v\n", block.Height, err)
+	}
 }
 
 // Record that this proposer produced a block — used for proportional
