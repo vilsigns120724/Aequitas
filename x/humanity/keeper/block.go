@@ -148,6 +148,11 @@ stateRootMismatches map[string]int // FIX 4: per-proposer StateRoot mismatch cou
 	// cooldown skip for why both exist.
 	orphanFirstSeen   map[string]time.Time
 	orphanLastAttempt map[string]time.Time
+	// orphanAttempts counts genuine fetch attempts (this hash was actually
+	// included in a batch sent to a peer) per missing-parent hash — see
+	// queueOrphan's "abandon" comment for why time-since-first-seen alone
+	// is not sufficient to conclude a hash is unfetchable.
+	orphanAttempts map[string]int
 	// orphanResolveInFlight/orphanResolveAgain coordinate triggerOrphanResolve
 	// (sync_blocks.go): at most one resolution pass runs at a time, and if a
 	// new orphan arrives while one is running, exactly one more pass runs
@@ -296,6 +301,7 @@ replayedBlocks:         make(map[string]bool),
 	orphans:                make(map[string][]*Block),
 	orphanFirstSeen:        make(map[string]time.Time),
 	orphanLastAttempt:      make(map[string]time.Time),
+	orphanAttempts:         make(map[string]int),
 }
 if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	if key, err := crypto.HexToECDSA(pk); err == nil {
@@ -738,7 +744,26 @@ const maxOrphans = 50000
 // any node still needs. Past this timeout, stop retrying a specific hash
 // and drop everything waiting on it, freeing the memory and ending the
 // storm, instead of retrying something proven unfetchable forever.
-const orphanAbandonAfter = 3 * time.Minute
+//
+// FIX (2026-06-28, second incident — confirmed this hash WAS genuinely
+// fetchable, not dead): raised 3min -> 15min AND made abandonment require
+// minOrphanAttemptsBeforeAbandon real fetch attempts, not just elapsed
+// time. Root cause: a single catch-up backlog after several restarts that
+// each fragmented this node's own validator chain into short-lived forks
+// produced tens of thousands of distinct missing-parent hashes at once —
+// far more than fetchMissingAncestors' per-cycle batch could include. A
+// hash sitting deep in that backlog could age past the old 3-minute window
+// without ever once being included in a fetch batch — its "first seen"
+// clock ran out purely from queueing delay, not because any peer actually
+// failed to provide it. Verified live: curl against the primary's own
+// /api/blocks/by-hash for one such "abandoned" hash returned the block
+// immediately — it was never unreachable, just never tried in time.
+const orphanAbandonAfter = 15 * time.Minute
+
+// minOrphanAttemptsBeforeAbandon — see orphanAbandonAfter's comment. A hash
+// must have been genuinely included in at least this many fetch batches
+// (not just "time has passed") before it can be abandoned.
+const minOrphanAttemptsBeforeAbandon = 3
 
 // orphanFetchCooldown is the minimum gap between fetch attempts for the same
 // missing-parent hash, checked by fetchMissingAncestors (sync_blocks.go).
@@ -747,17 +772,29 @@ const orphanAbandonAfter = 3 * time.Minute
 // ago — multiplying request volume by however often new orphans arrive.
 const orphanFetchCooldown = 10 * time.Second
 
+// RecordOrphanAttempt marks hash as having been genuinely included in a
+// fetch batch sent to a peer — called by fetchMissingAncestors
+// (sync_blocks.go) for every hash it actually sends, never for ones merely
+// pending. See orphanAbandonAfter's comment for why this, not wall-clock
+// time alone, gates abandonment.
+func (dag *BlockDAG) RecordOrphanAttempt(hash string) {
+	dag.orphansMu.Lock()
+	dag.orphanAttempts[hash]++
+	dag.orphansMu.Unlock()
+}
+
 // queueOrphan stores block, which is waiting on missingParent to appear,
 // and logs the wait (the old code dropped this case with zero logging).
 func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 	dag.orphansMu.Lock()
 	now := time.Now()
 	if first, ok := dag.orphanFirstSeen[missingParent]; ok {
-		if now.Sub(first) > orphanAbandonAfter {
+		if now.Sub(first) > orphanAbandonAfter && dag.orphanAttempts[missingParent] >= minOrphanAttemptsBeforeAbandon {
 			abandoned := len(dag.orphans[missingParent]) + 1 // + this block
 			delete(dag.orphans, missingParent)
 			delete(dag.orphanFirstSeen, missingParent)
 			delete(dag.orphanLastAttempt, missingParent)
+			delete(dag.orphanAttempts, missingParent)
 			dag.orphansMu.Unlock()
 			// FIX (2026-06-28): downgraded from a skull-emoji "Abandoning" line —
 			// new node operators reading deploy logs during catch-up read this

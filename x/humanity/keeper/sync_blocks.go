@@ -271,27 +271,33 @@ func (dag *BlockDAG) triggerOrphanResolve() {
 }
 
 func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
-	const maxAncestorFetchPerCycle = 2000
-	fetched := 0
-	for fetched < maxAncestorFetchPerCycle {
+	// FIX (2026-06-28, second incident): this used to cap at 2000 hashes
+	// PER CALL and build toFetch by iterating dag.MissingParentHashes()'s
+	// map — Go map iteration order is randomized per call, so once the
+	// true backlog exceeded 2000 distinct hashes (confirmed live: tens of
+	// thousands, after several restarts each fragmented a validator's own
+	// chain into short-lived forks), each call only ever got a random
+	// ~2000-hash sample of the total. Hashes unlucky enough to keep
+	// missing the sample could sit unattempted for a long time — not
+	// because any peer lacked them (verified live: the primary's
+	// /api/blocks/by-hash answered one such hash immediately on request),
+	// purely because of sampling. Now chunks ALL currently-pending,
+	// not-on-cooldown hashes into <=maxBlocksByHashPerRequest-sized
+	// batches (matching the server's own per-request cap, api.go) and
+	// sends every chunk, so a single call genuinely attempts the entire
+	// backlog rather than a random slice of it. totalFetched bounds a
+	// single call's total work (not which hashes get tried) so a runaway
+	// backlog can't make one call run forever.
+	const maxBatchSize = maxBlocksByHashPerRequest
+	const totalFetchedCap = 50000
+	totalFetched := 0
+	for totalFetched < totalFetchedCap {
 		hashes := dag.MissingParentHashes()
 		if len(hashes) == 0 {
 			return
 		}
-		// FIX (2026-06-28, batch ancestor fetch): used to call
-		// fetchBlockByHash once per hash — under a large catch-up, hundreds
-		// of distinct missing-parent hashes piling up meant hundreds of
-		// sequential HTTP round trips per resolve pass, unable to keep pace
-		// with new orphans arriving every ~6s from each validator. That
-		// throughput gap, not the abandon timeout itself, is what made
-		// genuinely-fetchable ancestors time out. Filter to hashes worth
-		// trying this pass, then resolve all of them in ONE request via
-		// fetchBlocksByHashes.
-		toFetch := make([]string, 0, len(hashes))
+		pending := make([]string, 0, len(hashes))
 		for _, hash := range hashes {
-			if fetched+len(toFetch) >= maxAncestorFetchPerCycle {
-				break
-			}
 			if dag.GetBlockByHash(hash) != nil {
 				continue
 			}
@@ -301,22 +307,30 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 				// hash that just failed moments ago. See orphanFetchCooldown.
 				continue
 			}
-			toFetch = append(toFetch, hash)
+			pending = append(pending, hash)
 		}
-		if len(toFetch) == 0 {
+		if len(pending) == 0 {
 			return // every pending hash is either known now or on cooldown
 		}
-		blocks, err := dag.fetchBlocksByHashes(nodeURL, toFetch)
-		if err != nil {
-			fmt.Printf("[HTTP-SYNC] ✗ Could not batch-fetch %d missing ancestor(s) from %s: %v\n", len(toFetch), nodeURL, err)
-			return
+		fetchedThisRound := 0
+		for i := 0; i < len(pending); i += maxBatchSize {
+			chunk := pending[i:min(i+maxBatchSize, len(pending))]
+			for _, h := range chunk {
+				dag.RecordOrphanAttempt(h)
+			}
+			blocks, err := dag.fetchBlocksByHashes(nodeURL, chunk)
+			if err != nil {
+				fmt.Printf("[HTTP-SYNC] ✗ Could not batch-fetch %d missing ancestor(s) from %s: %v\n", len(chunk), nodeURL, err)
+				continue // this chunk failed (network) — still try the rest
+			}
+			for _, block := range blocks {
+				fetchedThisRound++
+				dag.AddPeerBlock(block)
+			}
 		}
-		if len(blocks) == 0 {
-			return // peer has none of these (yet) — stop for this cycle
-		}
-		for _, block := range blocks {
-			fetched++
-			dag.AddPeerBlock(block)
+		totalFetched += fetchedThisRound
+		if fetchedThisRound == 0 {
+			return // peer had none of the currently-pending hashes (yet) — stop for this cycle
 		}
 	}
 }
