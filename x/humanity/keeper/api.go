@@ -353,6 +353,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
 	mux.HandleFunc("/api/blocks", a.handleBlocks)
 	mux.HandleFunc("/api/block", a.handleBlockByHash)
+	mux.HandleFunc("/api/blocks/by-hash", a.handleBlocksByHash)
 	mux.HandleFunc("/api/humans", a.handleHumans)
 	mux.HandleFunc("/api/sepolia/humans", a.handleSepoliaHumans)
 	mux.HandleFunc("/api/register", a.handleRegister)
@@ -593,6 +594,54 @@ func (a *APIServer) handleBlockByHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(block)
+}
+
+// maxBlocksByHashPerRequest caps how many hashes a single
+// handleBlocksByHash request can ask for, bounding the work this node does
+// per request from an unauthenticated peer.
+const maxBlocksByHashPerRequest = 2000
+
+// handleBlocksByHash serves POST /api/blocks/by-hash with body {"hashes":[...]}.
+//
+// FIX (2026-06-28, "all nodes must converge to an identical block set" —
+// real fix, not a timeout tweak): fetchMissingAncestors used to resolve one
+// missing-parent hash per HTTP round trip via /api/block?hash=. During a
+// large catch-up (a node thousands of blocks behind, with 2-3 validators
+// still producing every ~6s), the number of distinct missing-parent hashes
+// queued at once routinely reached the hundreds — resolving them one
+// request at a time, even at a few hundred ms each, could not keep pace
+// with new orphans arriving, so orphanAbandonAfter's 3-minute timeout
+// started firing on ancestor blocks that genuinely still existed on this
+// very peer, just not reached yet. This endpoint answers a whole batch of
+// hashes in one round trip, so fetchMissingAncestors (sync_blocks.go) can
+// resolve hundreds of pending ancestors in a single request instead of
+// hundreds of sequential ones — the actual bottleneck, not the timeout
+// value, which is why raising the timeout alone would not have fixed this.
+func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"POST required"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Hashes []string `json:"hashes"`
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 256<<10))
+	if err != nil || json.Unmarshal(body, &req) != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+	if len(req.Hashes) > maxBlocksByHashPerRequest {
+		req.Hashes = req.Hashes[:maxBlocksByHashPerRequest]
+	}
+	found := make([]*Block, 0, len(req.Hashes))
+	for _, h := range req.Hashes {
+		if b := a.blockchain.GetBlockByHash(h); b != nil {
+			found = append(found, b)
+		}
+	}
+	json.NewEncoder(w).Encode(found)
 }
 
 func (a *APIServer) handleHumans(w http.ResponseWriter, r *http.Request) {

@@ -170,32 +170,30 @@ func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, limit int
 	return blocks, nil
 }
 
-// fetchBlockByHash fetches exactly one block by hash from nodeURL's
-// /api/block endpoint, or nil if the peer genuinely doesn't have it (404).
-// Any OTHER non-200 (500/403/429/...) is returned as an error rather than
-// silently treated the same as "not found" — those mean something is wrong
-// with the peer or the request, not that the block doesn't exist, and
-// fetchMissingAncestors' caller should be able to tell the difference in
-// its logs instead of just "block not found" for every failure mode.
-func (dag *BlockDAG) fetchBlockByHash(nodeURL, hash string) (*Block, error) {
-	resp, err := httpSyncClient.Get(fmt.Sprintf("%s/api/block?hash=%s", nodeURL, hash))
+// fetchBlocksByHashes resolves multiple missing-parent hashes in a single
+// HTTP round trip via /api/blocks/by-hash, instead of one request per hash.
+// Returns only the blocks nodeURL actually has — silently omits any hash it
+// doesn't (that's not an error here; the caller checks which hashes are
+// still missing afterward). See fetchMissingAncestors' comment for why this
+// batching, not a longer timeout, is the real fix for the orphan-abandon
+// storm seen during a large catch-up.
+func (dag *BlockDAG) fetchBlocksByHashes(nodeURL string, hashes []string) ([]*Block, error) {
+	body, _ := json.Marshal(map[string][]string{"hashes": hashes})
+	resp, err := httpSyncClient.Post(nodeURL+"/api/blocks/by-hash", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
-	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
-		return nil, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		return nil, fmt.Errorf("peer returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	var block Block
-	if err := json.Unmarshal(body, &block); err != nil {
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 20<<20))
+	var blocks []*Block
+	if err := json.Unmarshal(respBody, &blocks); err != nil {
 		return nil, err
 	}
-	return &block, nil
+	return blocks, nil
 }
 
 // fetchMissingAncestors resolves orphaned blocks by walking backward one
@@ -273,16 +271,25 @@ func (dag *BlockDAG) triggerOrphanResolve() {
 }
 
 func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
-	const maxAncestorFetchPerCycle = 200
+	const maxAncestorFetchPerCycle = 2000
 	fetched := 0
 	for fetched < maxAncestorFetchPerCycle {
 		hashes := dag.MissingParentHashes()
 		if len(hashes) == 0 {
 			return
 		}
-		progressed := false
+		// FIX (2026-06-28, batch ancestor fetch): used to call
+		// fetchBlockByHash once per hash — under a large catch-up, hundreds
+		// of distinct missing-parent hashes piling up meant hundreds of
+		// sequential HTTP round trips per resolve pass, unable to keep pace
+		// with new orphans arriving every ~6s from each validator. That
+		// throughput gap, not the abandon timeout itself, is what made
+		// genuinely-fetchable ancestors time out. Filter to hashes worth
+		// trying this pass, then resolve all of them in ONE request via
+		// fetchBlocksByHashes.
+		toFetch := make([]string, 0, len(hashes))
 		for _, hash := range hashes {
-			if fetched >= maxAncestorFetchPerCycle {
+			if fetched+len(toFetch) >= maxAncestorFetchPerCycle {
 				break
 			}
 			if dag.GetBlockByHash(hash) != nil {
@@ -294,20 +301,22 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 				// hash that just failed moments ago. See orphanFetchCooldown.
 				continue
 			}
-			block, err := dag.fetchBlockByHash(nodeURL, hash)
-			if err != nil {
-				fmt.Printf("[HTTP-SYNC] ✗ Could not fetch missing ancestor %s from %s: %v\n", hash[:min(16, len(hash))], nodeURL, err)
-				continue
-			}
-			if block == nil {
-				continue // peer genuinely doesn't have this block (404)
-			}
-			fetched++
-			progressed = true
-			dag.AddPeerBlock(block)
+			toFetch = append(toFetch, hash)
 		}
-		if !progressed {
-			return // peer doesn't have any of these either — stop for this cycle
+		if len(toFetch) == 0 {
+			return // every pending hash is either known now or on cooldown
+		}
+		blocks, err := dag.fetchBlocksByHashes(nodeURL, toFetch)
+		if err != nil {
+			fmt.Printf("[HTTP-SYNC] ✗ Could not batch-fetch %d missing ancestor(s) from %s: %v\n", len(toFetch), nodeURL, err)
+			return
+		}
+		if len(blocks) == 0 {
+			return // peer has none of these (yet) — stop for this cycle
+		}
+		for _, block := range blocks {
+			fetched++
+			dag.AddPeerBlock(block)
 		}
 	}
 }

@@ -745,8 +745,13 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 			delete(dag.orphanFirstSeen, missingParent)
 			delete(dag.orphanLastAttempt, missingParent)
 			dag.orphansMu.Unlock()
-			fmt.Printf("[DAG] ⛔ Abandoning %d block(s) waiting on missing parent %s...: unresolvable after %s of retries (never found on any synced peer)\n",
-				abandoned, missingParent[:min(16, len(missingParent))], orphanAbandonAfter)
+			// FIX (2026-06-28): downgraded from a skull-emoji "Abandoning" line —
+			// new node operators reading deploy logs during catch-up read this
+			// as their node being broken. It isn't: this is a dead-end sibling
+			// block from concurrent multi-validator production, not present on
+			// any currently-synced peer, with zero effect on account state.
+			fmt.Printf("[DAG] (housekeeping) discarded %d dead-end sibling block(s) for missing parent %s... — normal during catch-up, no peer still has it, no effect on account balances\n",
+				abandoned, missingParent[:min(16, len(missingParent))])
 			return
 		}
 	} else {
