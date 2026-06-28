@@ -435,6 +435,25 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		}
 		// V7 not yet deployed (startup race). Mirror validates the proof via
 		// BioVerifier and writes storage slots directly. Only allowed here.
+		//
+		// FIX (Gesamtaudit 2026-06-28, P0-2): this fallback writes EVM mirror
+		// slots via persistRegisterWithSigMirror using compensating writes
+		// (load old values, write new ones, write old ones back on failure)
+		// instead of a real DB transaction — it can't easily become one,
+		// since it doesn't run inside any cs.mu-held critical section the
+		// way the registration's Go-state side does (see SaveStorageSlot's
+		// own comment on why routing it through cs.dbExec() without holding
+		// cs.mu would itself be a race). If a revert-write in that
+		// compensation chain ever fails too, the EVM mirror is left
+		// half-written with no automatic recovery. This path is normally
+		// dead in production (V7 stays deployed once auto-deployed at
+		// startup) — gating it behind an explicit opt-in means it can never
+		// silently fire and create that half-written state; an operator who
+		// actually hits the V7-missing startup race has to deliberately
+		// acknowledge the risk first.
+		if os.Getenv("ALLOW_V7_MIRROR_FALLBACK") != "true" {
+			return "", fmt.Errorf("registration rejected: V7 contract not yet deployed on this node and ALLOW_V7_MIRROR_FALLBACK is not set — wait for V7 auto-deploy to finish, or set ALLOW_V7_MIRROR_FALLBACK=true to use the (less safe) mirror registration fallback: %w", dryRunErr)
+		}
 		fmt.Printf("[REGISTER] V7 not yet deployed — using mirror registration for %s\n", wallet)
 		// FIX (TOCTOU): claim the nullifier atomically BEFORE writing any mirror
 		// storage slots, not after. persistRegisterWithSigMirror's own internal
