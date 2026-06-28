@@ -525,10 +525,26 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 	// truncated — that's exactly the kind of half-reset state that produced
 	// "already registered" / StateRoot-divergence bugs throughout this
 	// project's history.
+	// FIX (Gesamtaudit 2026-06-28, P2-3): this used to TRUNCATE each table
+	// individually via cs.db.Exec — every successful TRUNCATE auto-committed
+	// immediately on its own. A failure partway through (table N+1 fails
+	// after tables 1..N already truncated) left exactly the half-reset state
+	// this function's own doc comment warns about: some tables wiped, others
+	// not, with no way to undo the ones that already committed. Wrapping
+	// every check+truncate in one real transaction means a failure anywhere
+	// rolls back everything — this function's only two outcomes are now
+	// "every table reset together" or "nothing changed at all", matching the
+	// same all-or-nothing guarantee ResyncFromSnapshotURL already gives its
+	// own writes.
+	tx, err := cs.db.Begin()
+	if err != nil {
+		fmt.Printf("[DB-RESET] Refused: could not begin reset transaction: %v\n", err)
+		return
+	}
 	var failed []string
 	for _, table := range tables {
 		var exists bool
-		if err := cs.db.QueryRow(`SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists); err != nil {
+		if err := tx.QueryRow(`SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists); err != nil {
 			fmt.Printf("[DB-RESET] Warning: could not check table %s: %v\n", table, err)
 			failed = append(failed, table+" (existence check failed)")
 			continue
@@ -536,13 +552,20 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		if !exists {
 			continue
 		}
-		if _, err := cs.db.Exec(fmt.Sprintf(`TRUNCATE TABLE %s RESTART IDENTITY CASCADE`, pq.QuoteIdentifier(table))); err != nil {
+		if _, err := tx.Exec(fmt.Sprintf(`TRUNCATE TABLE %s RESTART IDENTITY CASCADE`, pq.QuoteIdentifier(table))); err != nil {
 			fmt.Printf("[DB-RESET] Warning: could not truncate %s: %v\n", table, err)
 			failed = append(failed, table)
 		}
 	}
 	if len(failed) > 0 {
-		fmt.Printf("[ALERT] [DB-RESET] %d table(s) FAILED to truncate: %v — DB is NOT cleanly reset. Do NOT remove RESET_DB_STATE yet; investigate before the next restart imports a snapshot on top of this half-cleared state.\n", len(failed), failed)
+		if rbErr := tx.Rollback(); rbErr != nil {
+			fmt.Printf("[DB-RESET] CRITICAL: rollback after failed reset also failed: %v\n", rbErr)
+		}
+		fmt.Printf("[ALERT] [DB-RESET] %d table(s) FAILED to truncate — rolled back, DB is UNCHANGED (not half-reset): %v. Investigate, then restart to retry.\n", len(failed), failed)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		fmt.Printf("[ALERT] [DB-RESET] commit failed — DB should be unchanged (Postgres rolls back a failed commit automatically): %v. Investigate, then restart to retry.\n", err)
 		return
 	}
 	fmt.Println("[DB-RESET] Done")
