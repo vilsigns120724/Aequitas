@@ -34,3 +34,4 @@
 *.exe
 *.apk
 downloads/*.apk
+build/msyh_extracted.ttf
