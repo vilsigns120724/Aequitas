@@ -1530,17 +1530,22 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         <tr style="background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">RESET_DB_STATE</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">DANGEROUS, one-time use: truncates bootstrap-related tables (including evm_upgrade_relationship_slots) so a node can re-sync clean from genesis. Only takes effect within the first few minutes after process start to avoid repeated wipes on a crash-restart loop. Remove this variable immediately after the reset completes &mdash; it is read on every startup.</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">DANGEROUS, one-time use: truncates bootstrap-related tables (including evm_upgrade_relationship_slots) so a node can re-sync clean from genesis. Only takes effect within the first few minutes after process start to avoid repeated wipes on a crash-restart loop, and also requires ALLOW_DESTRUCTIVE_MAINTENANCE (see below). On success the process exits immediately instead of continuing to start &mdash; remove this variable (and ALLOW_DESTRUCTIVE_MAINTENANCE) and redeploy to bring the node back up.</td>
         </tr>
         <tr>
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">CLEAR_REGISTRATIONS</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
-          <td style="font-size:0.61rem;color:var(--muted);padding:8px">DANGEROUS, one-time use: wipes all human registration data (chain_accounts' human flags, nullifiers, bio_hashes, liquidity_pool, evm_upgrade_relationship_slots) so everyone can re-register. Same 5&ndash;minute-from-startup guard as RESET_DB_STATE, plus also requires CLEAR_REGISTRATIONS_CONFIRM (see below) set on both this service and the proof-server. Remove both variables immediately after use.</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">DANGEROUS, one-time use: wipes all human registration data (chain_accounts' human flags, nullifiers, bio_hashes, liquidity_pool, evm_upgrade_relationship_slots) so everyone can re-register. Same 5&ndash;minute-from-startup guard as RESET_DB_STATE, plus also requires CLEAR_REGISTRATIONS_CONFIRM (see below) and ALLOW_DESTRUCTIVE_MAINTENANCE. On success the process exits immediately instead of continuing to start &mdash; remove all three variables and redeploy to bring the node back up.</td>
         </tr>
         <tr style="background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">CLEAR_REGISTRATIONS_CONFIRM</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
           <td style="font-size:0.61rem;color:var(--muted);padding:8px">Required alongside CLEAR_REGISTRATIONS=true on both this service and the proof-server &mdash; must be set to the exact literal string <code>I_UNDERSTAND_THIS_DELETES_ALL_REGISTRATIONS</code>. Without it, CLEAR_REGISTRATIONS=true alone is refused. Exists so a single boolean set by accident (copy-pasted env file, typo elsewhere) can't wipe every human's registration on the next restart.</td>
+        </tr>
+        <tr>
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">ALLOW_DESTRUCTIVE_MAINTENANCE</td>
+          <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Required alongside RESET_DB_STATE=true or CLEAR_REGISTRATIONS=true &mdash; must be set to <code style="color:var(--gold)">true</code>. Without it, both are refused even with their other confirmation values correct. One more explicit gate so a wrong Railway/Render service selection or a stray copy-pasted env file can't trigger either destructive path alone. Visible at /api/health/combined (destructive_flags_set) whenever any destructive flag is currently set, even if it was refused.</td>
         </tr>
         <tr style="background:rgba(0,0,0,0.1)">
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">BOOTSTRAP_P2P_ADDR</td>

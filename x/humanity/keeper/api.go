@@ -212,6 +212,23 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	// visible to an operator checking health instead of requiring a log dive.
 	proofQueueCount, proofQueueOldestSecs := a.state.CountProofServerSyncQueue()
 	evmQueueCount, evmQueueOldestSecs := a.state.CountEVMMirrorSyncQueue()
+	// FIX (audit 2026-06-28 recheck 5, P2-5): "Beim Start klar in
+	// /api/health/combined anzeigen, ob destruktive Maintenance-Flags
+	// gesetzt sind." A destructive var that was refused at startup (e.g.
+	// RESET_DB_STATE=true but ALLOW_DESTRUCTIVE_MAINTENANCE wasn't set)
+	// stays set in the environment and could still trigger on a future
+	// restart if conditions change — worth surfacing even when nothing
+	// destructive actually ran this time.
+	destructiveFlagsSet := []string{}
+	if os.Getenv("RESET_DB_STATE") == "true" {
+		destructiveFlagsSet = append(destructiveFlagsSet, "RESET_DB_STATE")
+	}
+	if os.Getenv("CLEAR_REGISTRATIONS") == "true" {
+		destructiveFlagsSet = append(destructiveFlagsSet, "CLEAR_REGISTRATIONS")
+	}
+	if os.Getenv("RESET_STATE") == "true" {
+		destructiveFlagsSet = append(destructiveFlagsSet, "RESET_STATE")
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"chain": map[string]interface{}{
 			"healthy":      degradedReason == "",
@@ -220,6 +237,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"total_humans": a.state.TotalHumans(),
 			"total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
 			"uptime_secs":  int64(time.Since(a.startTime).Seconds()),
+			"destructive_flags_set": destructiveFlagsSet,
 			"proof_server_sync_queue": map[string]interface{}{
 				"pending":         proofQueueCount,
 				"oldest_age_secs": proofQueueOldestSecs,

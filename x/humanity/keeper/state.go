@@ -475,6 +475,16 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		fmt.Println("[DB-RESET] Refused: RESET_DB_STATE=true requires BOOTSTRAP_SNAPSHOT_URL")
 		return
 	}
+	// FIX (audit 2026-06-28 recheck 5, P2-5): all the gates above are still
+	// just env vars — a wrong Railway/Render service selection, a copy-paste
+	// from another deployment's env file, or a forgotten redeploy can set
+	// them by accident. Require one more, explicitly-named confirmation
+	// shared with clearRegistrationsFromDB, so a single accidental var
+	// can't trigger either destructive path alone.
+	if os.Getenv("ALLOW_DESTRUCTIVE_MAINTENANCE") != "true" {
+		fmt.Println("[DB-RESET] Refused: RESET_DB_STATE=true also requires ALLOW_DESTRUCTIVE_MAINTENANCE=true")
+		return
+	}
 
 	tables := []string{
 		"pending_txs",      // prevent stale TXs from polluting post-reset state
@@ -536,8 +546,16 @@ func (cs *ChainState) resetDBStateForBootstrap() {
 		return
 	}
 	fmt.Println("[DB-RESET] Done")
-	fmt.Println("[DB-RESET] ⚠ IMPORTANT: remove RESET_DB_STATE=true from env vars after this deploy succeeds.")
-	fmt.Println("[DB-RESET]   Leaving it set will WIPE the DB again on every future restart.")
+	// FIX (audit 2026-06-28 recheck 5, P2-5): used to just log a warning and
+	// let startup continue with RESET_DB_STATE still set — relying entirely
+	// on the operator noticing and removing it before the next restart. Now
+	// exits cleanly right here: the process won't finish starting (and
+	// won't serve traffic) until the operator removes RESET_DB_STATE and
+	// ALLOW_DESTRUCTIVE_MAINTENANCE and redeploys, turning "please remember
+	// to remove this" into a forced step instead of a request.
+	fmt.Println("[DB-RESET] ⚠ Remove RESET_DB_STATE and ALLOW_DESTRUCTIVE_MAINTENANCE from env vars now, then redeploy.")
+	fmt.Println("[DB-RESET] Exiting so this node cannot start (and serve traffic) with the reset flags still set.")
+	os.Exit(0)
 }
 
 // tableNameFromDelete extracts the table name from a "DELETE FROM <table>"
@@ -579,6 +597,12 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 	const clearConfirmPhrase = "I_UNDERSTAND_THIS_DELETES_ALL_REGISTRATIONS"
 	if os.Getenv("CLEAR_REGISTRATIONS_CONFIRM") != clearConfirmPhrase {
 		fmt.Printf("[CLEAR-REG] Refused: CLEAR_REGISTRATIONS=true requires CLEAR_REGISTRATIONS_CONFIRM=%s\n", clearConfirmPhrase)
+		return
+	}
+	// FIX (audit 2026-06-28 recheck 5, P2-5): same additional gate as
+	// resetDBStateForBootstrap — see its own comment.
+	if os.Getenv("ALLOW_DESTRUCTIVE_MAINTENANCE") != "true" {
+		fmt.Println("[CLEAR-REG] Refused: CLEAR_REGISTRATIONS=true also requires ALLOW_DESTRUCTIVE_MAINTENANCE=true")
 		return
 	}
 	fmt.Println("[CLEAR-REG] Clearing all registration data from DB...")
@@ -668,7 +692,12 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 		return
 	}
 	fmt.Println("[CLEAR-REG] Done — all registrations cleared.")
-	fmt.Println("[CLEAR-REG] ⚠ Remove CLEAR_REGISTRATIONS=true from env vars and redeploy once more.")
+	// FIX (audit 2026-06-28 recheck 5, P2-5): see resetDBStateForBootstrap's
+	// matching comment — exits cleanly instead of relying on the operator
+	// to remember to remove these vars before the node serves traffic again.
+	fmt.Println("[CLEAR-REG] ⚠ Remove CLEAR_REGISTRATIONS, CLEAR_REGISTRATIONS_CONFIRM, and ALLOW_DESTRUCTIVE_MAINTENANCE from env vars now, then redeploy.")
+	fmt.Println("[CLEAR-REG] Exiting so this node cannot start (and serve traffic) with the clear flags still set.")
+	os.Exit(0)
 }
 
 // setConfigValue persists a key/value pair to chain_config (upsert) and
