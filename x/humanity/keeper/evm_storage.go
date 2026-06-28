@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"sort"
 	"strings"
 	"time"
 
@@ -1630,24 +1631,51 @@ func savePendingTxExec(ex sqlExecutor, tx Transaction) error {
 	return err
 }
 
-// LoadPendingTxs reads all DB-pending TXs without deleting them. Call
-// ClearPendingTxs with the returned ids only once the caller has durably
-// incorporated these TXs (e.g. into a produced block) — see the FIX note on
-// the old LoadAndClearPendingTxs below for why this split exists.
+// LoadPendingTxs reads all not-yet-included DB-pending TXs and atomically
+// marks them included, in the SAME query (UPDATE ... RETURNING) — not a
+// separate SELECT now and a DELETE later via ClearPendingTxs. Call
+// ClearPendingTxs with the returned ids afterward once the caller has
+// durably incorporated these TXs (e.g. into a produced block); that DELETE
+// is now just table hygiene, not the only thing preventing reuse — see
+// this function's own FIX comment below for why that distinction matters.
 // Note: pending_txs is only written by the primary node's EVM RPC layer.
 // Secondary nodes have separate DBs and their pending_txs table is always empty,
 // so calling this on a secondary is safe — it just returns nil immediately.
+//
+// FIX (audit 2026-06-28 recheck 5, P1-2): this used to be a plain SELECT,
+// relying entirely on ClearPendingTxs's later DELETE to prevent the same
+// row from being loaded twice. If that DELETE failed (DB hiccup AFTER the
+// block carrying these TXs was already built and broadcast — exactly the
+// audit recheck 4 P1-1 fix's own warning, "these TX(s) may be duplicated
+// into a future block"), the row stayed eligible and the next
+// ProduceBlock call loaded it again, including the same TX in a SECOND
+// block. register_human is protected from this by its nullifier
+// uniqueness check, but transfer/swap/liquidity/faucet/escrow have no such
+// guard — any peer that replayed both blocks would apply that TX's delta
+// twice, a real double-credit/debit. Marking included_at here means a row
+// can never be selected by this query again regardless of whether the
+// later DELETE ever succeeds — a failed delete now only leaves a harmless,
+// already-included row behind, not a duplicate-processing risk.
 func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 	if cs.db == nil {
 		return nil, nil
 	}
-	rows, err := cs.db.Query(`SELECT id, tx_json FROM pending_txs ORDER BY id`)
+	rows, err := cs.db.Query(
+		`UPDATE pending_txs SET included_at = $1
+		 WHERE id IN (SELECT id FROM pending_txs WHERE included_at = 0 ORDER BY id)
+		 RETURNING id, tx_json`,
+		time.Now().Unix(),
+	)
 	if err != nil {
+		fmt.Printf("[TX] LoadPendingTxs error: %v\n", err)
 		return nil, nil
 	}
 	defer rows.Close()
-	var txs []Transaction
-	var ids []int64
+	type idTx struct {
+		id  int64
+		tx  Transaction
+	}
+	var loaded []idTx
 	for rows.Next() {
 		var id int64
 		var raw string
@@ -1659,10 +1687,48 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 			fmt.Printf("[TX] LoadPendingTxs unmarshal error: %v\n", err)
 			continue
 		}
-		txs = append(txs, tx)
-		ids = append(ids, id)
+		loaded = append(loaded, idTx{id: id, tx: tx})
+	}
+	// UPDATE ... RETURNING does not guarantee output order matches the
+	// subquery's ORDER BY — restore insertion order explicitly, since
+	// block.Transactions order is part of the block hash and replay
+	// processes TXs in order.
+	sort.Slice(loaded, func(i, j int) bool { return loaded[i].id < loaded[j].id })
+	txs := make([]Transaction, 0, len(loaded))
+	ids := make([]int64, 0, len(loaded))
+	for _, lt := range loaded {
+		txs = append(txs, lt.tx)
+		ids = append(ids, lt.id)
 	}
 	return txs, ids
+}
+
+// ResetStaleIncludedPendingTxs reverts included_at back to 0 for any row
+// that's been "included" for longer than maxAge and never cleared —
+// recovery for the one crash window LoadPendingTxs' included_at marking
+// doesn't itself cover: a process death between LoadPendingTxs (marks
+// included) and ProduceBlock returning to main.go's BroadcastBlock call.
+// That window is safe to retry from: if the process never reached
+// BroadcastBlock, no peer ever saw the block these rows would have gone
+// into, so re-including them isn't a duplicate from the network's
+// perspective — it's the FIRST and only time any other node will see
+// them. Call once at startup, before block production begins.
+func (cs *ChainState) ResetStaleIncludedPendingTxs(maxAge time.Duration) {
+	if cs.db == nil {
+		return
+	}
+	cutoff := time.Now().Add(-maxAge).Unix()
+	res, err := cs.db.Exec(
+		`UPDATE pending_txs SET included_at = 0 WHERE included_at > 0 AND included_at < $1`,
+		cutoff,
+	)
+	if err != nil {
+		fmt.Printf("[TX] ResetStaleIncludedPendingTxs error: %v\n", err)
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		fmt.Printf("[TX] Reset %d stale-included pending_txs row(s) for retry (likely a crash before broadcast)\n", n)
+	}
 }
 
 // ClearPendingTxs deletes the given pending_txs rows by id. Call only after

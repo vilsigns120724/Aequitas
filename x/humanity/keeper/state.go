@@ -310,10 +310,19 @@ value TEXT NOT NULL
 	// pendingTxs (in-memory) is lost on restart → secondary nodes never get
 	// the TX in a block → balances permanently diverge across nodes.
 	dbExec(`CREATE TABLE IF NOT EXISTS pending_txs (
-id         SERIAL PRIMARY KEY,
-tx_json    TEXT   NOT NULL,
-created_at BIGINT NOT NULL DEFAULT 0
+id          SERIAL PRIMARY KEY,
+tx_json     TEXT   NOT NULL,
+created_at  BIGINT NOT NULL DEFAULT 0,
+included_at BIGINT NOT NULL DEFAULT 0
 )`)
+	// FIX (audit 2026-06-28 recheck 5, P1-2): included_at lets LoadPendingTxs
+	// mark a row as claimed atomically in the same query that selects it
+	// (UPDATE ... RETURNING), instead of select-now/delete-later. See
+	// LoadPendingTxs/ClearPendingTxs (evm_storage.go) for the duplicate-
+	// processing risk this closes — a failed ClearPendingTxs delete used to
+	// mean the row got loaded AGAIN by the next ProduceBlock call and
+	// included in a second block.
+	dbExec(`ALTER TABLE pending_txs ADD COLUMN IF NOT EXISTS included_at BIGINT NOT NULL DEFAULT 0`)
 
 	// FIX (audit 2026-06-28 full recheck, P1-3): block headers (dag.blocks/
 	// dag.tips in block.go) used to be purely in-memory, reset to genesis on

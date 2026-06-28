@@ -304,6 +304,13 @@ if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 }
 dag.createGenesisBlock()
 
+// FIX (audit 2026-06-28 recheck 5, P1-2): recover any pending_txs row left
+// "included" by a process that crashed before its block ever reached
+// BroadcastBlock — see ResetStaleIncludedPendingTxs' own comment for why
+// that's always safe to retry. 10 minutes comfortably exceeds how long a
+// single ProduceBlock call could ever legitimately take.
+state.ResetStaleIncludedPendingTxs(10 * time.Minute)
+
 // FIX (audit 2026-06-28 full recheck, P1-3): restore every durably-saved
 // block (see chain_blocks' own comment and SaveBlockToDB) BEFORE falling
 // back to the bare max_block_height counter below. This is what lets a
