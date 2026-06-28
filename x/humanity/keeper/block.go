@@ -1552,7 +1552,22 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			fmt.Printf("[REPLAY] ✓ Applied escrow release %.6f AEQ → UBI pool (block #%d)\n", tx.Amount, block.Height)
 
 		default:
-			// empty string or other unknown types are silently ignored
+			// FIX (audit 2026-06-28 recheck 4, P2-2): unknown TX types used to
+			// be silently ignored — applied no delta, but also didn't reject
+			// the block. That's a forward-compatibility hazard: a node
+			// running OLDER code that doesn't yet recognize a NEW TX type
+			// introduced by upgraded peers would silently skip that TX's
+			// economic effect while still accepting the block as valid. The
+			// post-replay StateRoot comparison below would usually catch
+			// this (the skipped delta means local state can't match the
+			// proposer's claimed root) — but relying on StateRoot alone to
+			// catch a known, structural gap is exactly the "we believe it's
+			// atomic" pattern this audit pass has been closing elsewhere.
+			// Hard-fail explicitly instead: an unrecognized type is treated
+			// the same as any other genuine state-inconsistency failure.
+			fmt.Printf("[REPLAY] ✗ Unknown TX type %q (block #%d) — rolling back whole block\n", tx.Type, block.Height)
+			hardFailure = true
+			continue
 		}
 	}
 
