@@ -13,6 +13,7 @@ import (
 "strings"
 "sort"
 "sync"
+"sync/atomic"
 "time"
 
 "github.com/ethereum/go-ethereum/accounts/abi"
@@ -128,6 +129,13 @@ replayedMu             sync.Mutex
 	// not just a latency tradeoff.
 	replayMu sync.Mutex
 stateRootMismatches map[string]int // FIX 4: per-proposer StateRoot mismatch counters
+	// lastSuccessfulPeerSyncAt is the Unix timestamp of the last time this
+	// node successfully accepted a peer block via AddPeerBlock. Read/written
+	// with atomic.Int64 (not dag.mu) since it's set from AddPeerBlock's
+	// success tail, after dag.mu has already been released — see
+	// /api/health/combined (Gesamtaudit 2026-06-28, P2-4/P3-7: "Health/API
+	// zeigt nicht ... seit wann [ein StateRoot-Mismatch existiert]").
+	lastSuccessfulPeerSyncAt atomic.Int64
 	// orphans holds blocks whose parent isn't known yet, keyed by the missing
 	// parent's hash. When that parent is later added, every block waiting on
 	// it is retried automatically. See AddPeerBlock for why this exists —
@@ -1016,8 +1024,27 @@ for _, waiting := range dag.popOrphans(block.Hash) {
 	dag.AddPeerBlock(waiting)
 }
 
+dag.lastSuccessfulPeerSyncAt.Store(time.Now().Unix())
 fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, tipCount)
 return true
+}
+
+// TotalStateRootMismatches sums every proposer's consecutive StateRoot
+// mismatch counter, and LastSuccessfulPeerSyncAt returns the Unix
+// timestamp of the last accepted peer block (0 if none yet this process) —
+// both exposed via /api/health/combined (Gesamtaudit 2026-06-28, P2-4/P3-7).
+func (dag *BlockDAG) TotalStateRootMismatches() int {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	total := 0
+	for _, n := range dag.stateRootMismatches {
+		total += n
+	}
+	return total
+}
+
+func (dag *BlockDAG) LastSuccessfulPeerSyncAt() int64 {
+	return dag.lastSuccessfulPeerSyncAt.Load()
 }
 
 // Note: uses Go's built-in min() (available since Go 1.21; this module

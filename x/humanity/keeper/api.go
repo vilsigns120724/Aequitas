@@ -229,11 +229,51 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	if os.Getenv("RESET_STATE") == "true" {
 		destructiveFlagsSet = append(destructiveFlagsSet, "RESET_STATE")
 	}
+
+	// FIX (Gesamtaudit 2026-06-28, P2-4/P3-7): "healthy":true used to be
+	// hardcoded. Compute a real tri-state (healthy/warn/unhealthy) from the
+	// signals already gathered above plus StateRoot mismatch count and last
+	// successful peer sync, with concrete recovery guidance attached
+	// instead of just "Consider resync" in a log line.
+	mismatchCount := a.blockchain.TotalStateRootMismatches()
+	lastSyncAt := a.blockchain.LastSuccessfulPeerSyncAt()
+	var lastSyncAgeSecs int64 = -1
+	if lastSyncAt > 0 {
+		lastSyncAgeSecs = time.Now().Unix() - lastSyncAt
+	}
+	status := "healthy"
+	var notes []string
+	if degradedReason != "" {
+		status = "unhealthy"
+		notes = append(notes, "EVM mirror migration failed at last bootstrap/resync — restart to retry, or re-run with RESYNC_FROM_SNAPSHOT=true if Go-state itself looks wrong too")
+	}
+	if mismatchCount >= 5 {
+		status = "unhealthy"
+		notes = append(notes, fmt.Sprintf("%d StateRoot mismatches recorded — this node's state has likely diverged from its peers; recover with RESYNC_FROM_SNAPSHOT=true + BOOTSTRAP_SNAPSHOT_URL + BOOTSTRAP_SIGNER pointed at a healthy peer", mismatchCount))
+	} else if mismatchCount > 0 && status == "healthy" {
+		status = "warn"
+		notes = append(notes, fmt.Sprintf("%d StateRoot mismatch(es) recorded this process — usually self-heals as later blocks catch up; investigate if this keeps climbing", mismatchCount))
+	}
+	if proofQueueCount > 0 && status == "healthy" {
+		status = "warn"
+	}
+	if evmQueueCount > 0 && status == "healthy" {
+		status = "warn"
+	}
+	if len(destructiveFlagsSet) > 0 {
+		status = "warn"
+		notes = append(notes, "a destructive maintenance flag is set in this node's environment — see destructive_flags_set")
+	}
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"chain": map[string]interface{}{
-			"healthy":      degradedReason == "",
+			"status":       status,
+			"notes":        notes,
+			"healthy":      status == "healthy", // kept for backward compatibility with existing callers
 			"degraded_reason": degradedReason,
 			"height":       latest.Height,
+			"state_root_mismatch_count": mismatchCount,
+			"last_successful_peer_sync_age_secs": lastSyncAgeSecs,
 			"total_humans": a.state.TotalHumans(),
 			"total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
 			"uptime_secs":  int64(time.Since(a.startTime).Seconds()),
