@@ -1129,16 +1129,39 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 	// match OR a valid challenge-response signature to prove private-key ownership.
 	sigOKEarly := req.Signature != "" && req.SigningAddress != "" &&
 		a.blockchain.VerifyPeerChallenge(strings.ToLower(req.SigningAddress), req.Signature)
-	if req.URL != "" && isAllowedPeerURL(req.URL) {
-		if secretOK || sigOKEarly {
-			GlobalPeerRegistry.Register(req.URL)
-			fmt.Printf("[PEERS] Registered: %s\n", req.URL)
-			a.blockchain.startSyncForPeer(req.URL)
-		} else {
-			fmt.Printf("[PEERS] URL rejected (no valid PEER_SECRET or validator key): %s\n", req.URL)
+
+	// FIX (audit 2026-06-28 full recheck, P1-6): URL registration (and the
+	// sync goroutine it starts via startSyncForPeer) used to run immediately
+	// here, gated only on secretOK||sigOKEarly — i.e. proof of holding SOME
+	// private key with a previously-issued challenge, which says nothing
+	// about whether that key belongs to an authorized validator, let alone
+	// one bound to a verified human operator. Anyone could request a
+	// challenge for an arbitrary, freshly generated address (VerifyPeerChallenge
+	// only checks private-key possession, not validator status), sign it,
+	// and get this node to register and actively sync with an
+	// attacker-chosen URL — entirely bypassing the NODE_OPERATOR_WALLET
+	// human-check and operator-binding-signature verification below, which
+	// only ever gated the VALIDATOR authorization, not the URL registration
+	// that had already happened by the time those checks ran. Now
+	// urlAuthorized only becomes true via sigOKEarly once THIS SAME request
+	// has also passed full validator binding (human-check + binding
+	// signature + BindValidatorSlot) below. secretOK alone (the explicit,
+	// opt-in PEER_SECRET bypass) still authorizes URL registration on its
+	// own, exactly as documented where secretOK is computed above — moving
+	// the registration call itself doesn't change that bypass's semantics.
+	urlAuthorized := secretOK
+	registerURLIfAuthorized := func() {
+		if req.URL != "" && isAllowedPeerURL(req.URL) {
+			if urlAuthorized {
+				GlobalPeerRegistry.Register(req.URL)
+				fmt.Printf("[PEERS] Registered: %s\n", req.URL)
+				a.blockchain.startSyncForPeer(req.URL)
+			} else {
+				fmt.Printf("[PEERS] URL rejected (no valid PEER_SECRET or validator key): %s\n", req.URL)
+			}
+		} else if req.URL != "" {
+			fmt.Printf("[PEERS] URL rejected (must be public HTTPS): %s\n", req.URL)
 		}
-	} else if req.URL != "" {
-		fmt.Printf("[PEERS] URL rejected (must be public HTTPS): %s\n", req.URL)
 	}
 	if addr := strings.ToLower(strings.TrimSpace(req.SigningAddress)); addr != "" && strings.HasPrefix(addr, "0x") && len(addr) == 42 {
 		// Authorization: accept if PEER_SECRET matches OR if the address has
@@ -1197,6 +1220,11 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			a.blockchain.AddAuthorizedValidator(addr)
+			// Fully validated now: human-owned wallet, proven binding
+			// signature, key-proven signing address — safe to also
+			// authorize this request's URL registration (see urlAuthorized's
+			// own comment above for why this couldn't just be sigOKEarly).
+			urlAuthorized = true
 			method := "PEER_SECRET"
 			if sigOK {
 				method = "challenge-response signature"
@@ -1210,6 +1238,7 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 		} else {
 			fmt.Printf("[PEERS] Validator %s: invalid/expired challenge signature\n", addr)
 		}
+		registerURLIfAuthorized()
 		a.blockchain.mu.RLock()
 		validators := make([]string, 0, len(a.blockchain.authorizedValidators))
 		for v := range a.blockchain.authorizedValidators {
@@ -1226,6 +1255,9 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// No (valid-looking) signing address in this request — URL registration
+	// can only be authorized via the PEER_SECRET bypass here.
+	registerURLIfAuthorized()
 	json.NewEncoder(w).Encode(map[string]interface{}{"peers": GlobalPeerRegistry.AllPeers(), "validators": []string{}})
 }
 
@@ -1250,6 +1282,30 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, `{"error":"read error"}`, 500)
 		return
+	}
+	// FIX (audit 2026-06-28 full recheck, P1-5): the proof server's own
+	// proveLimiter keys its rate limit on `req.ip` — but every request it
+	// ever sees arrives FROM this proxy, on this proxy's IP, regardless of
+	// which wallet originated it. That makes the proof server's entire
+	// shared budget (5 requests/minute, see server.js's PROVE_RATE_MAX) a
+	// single bucket for every wallet behind this chain node combined: one
+	// wallet retry-looping (buggy client, or deliberate abuse) can exhaust
+	// it and lock out every other legitimate registration attempt. This
+	// proxy is the only layer that still knows which wallet a request came
+	// from before it gets collapsed into that shared IP bucket, so the
+	// per-wallet throttle has to live here.
+	var proveBody struct {
+		Wallet string `json:"wallet"`
+	}
+	if jsonErr := json.Unmarshal(body, &proveBody); jsonErr == nil && proveBody.Wallet != "" {
+		walletKey := "prove-wallet:" + strings.ToLower(proveBody.Wallet)
+		if ts, loaded := registerRateLimit.Load(walletKey); loaded {
+			if time.Since(ts.(time.Time)) < 15*time.Second {
+				jsonError(w, "rate limited, try again shortly", 429)
+				return
+			}
+		}
+		registerRateLimit.Store(walletKey, time.Now())
 	}
 	base, ok := requireProofServerConfigured(w)
 	if !ok {
