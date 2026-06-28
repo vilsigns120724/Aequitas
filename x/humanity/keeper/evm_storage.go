@@ -537,6 +537,18 @@ func (cs *ChainState) syncHumanRegistrationLocked(contractAddr string, addr stri
 // cs.mu (read or write lock) — calling SyncBalancesToEVM from inside a locked
 // function would deadlock on the inner RLock().
 // Syncs slots: 4 (balanceOf), 6 (isHuman), 10 (lastActivity), 11 (lastDemurrage).
+//
+// FIX (audit 2026-06-28 recheck 4, P1-6): every SaveStorageSlot call here
+// used to either discard its error outright (slots 6/10/11) or only log it
+// (slot 4), with nothing durable recording a failure. Go-state (the source
+// of truth) could be correct while eth_call/the V7 contract's own storage
+// silently kept showing stale data forever, with no path back to
+// consistency. syncBalanceLocked can't itself become a hard error for its
+// many callers — see ResyncFromSnapshotURL's comment on why the EVM mirror
+// can't reasonably join the same SQL transaction as the Go-state write it
+// mirrors — so instead, any address with a failed slot write is queued the
+// same way notifyProofServerWithRetryQueue queues failures (register.go),
+// and RetryEVMMirrorSyncQueue (started from NewAPIServer) catches up later.
 func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 	if cs.db == nil {
 		return
@@ -560,11 +572,16 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 			balBig = new(big.Int)
 		}
 		addrBytes := common.HexToAddress(addr).Bytes()
+		var firstErr error
 		// slot 4: balanceOf
 		if err := cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 4).Hex(), common.BigToHash(balBig).Hex()); err != nil {
 			fmt.Printf("[EVM] Warning: could not sync balance for %s: %v\n", addr, err)
+			firstErr = err
 		}
 		if !ok {
+			if firstErr != nil {
+				cs.QueueEVMMirrorSync(addr, contractAddr, firstErr.Error())
+			}
 			continue
 		}
 		// slot 6: isHuman
@@ -572,13 +589,113 @@ func (cs *ChainState) syncBalanceLocked(contractAddr string, addrs ...string) {
 		if acc.IsHuman {
 			isHumanVal = common.HexToHash("0x01")
 		}
-		cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 6).Hex(), isHumanVal.Hex())
+		if err := cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 6).Hex(), isHumanVal.Hex()); err != nil {
+			fmt.Printf("[EVM] Warning: could not sync isHuman for %s: %v\n", addr, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 		// slots 10 + 11: lastActivity / lastDemurrage
 		if acc.LastActivityAt > 0 {
 			ts := common.BigToHash(big.NewInt(acc.LastActivityAt))
-			cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 10).Hex(), ts.Hex())
-			cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 11).Hex(), ts.Hex())
+			if err := cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 10).Hex(), ts.Hex()); err != nil {
+				fmt.Printf("[EVM] Warning: could not sync lastActivity for %s: %v\n", addr, err)
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+			if err := cs.SaveStorageSlot(contractAddr, mappingSlot(addrBytes, 11).Hex(), ts.Hex()); err != nil {
+				fmt.Printf("[EVM] Warning: could not sync lastDemurrage for %s: %v\n", addr, err)
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
 		}
+		if firstErr != nil {
+			cs.QueueEVMMirrorSync(addr, contractAddr, firstErr.Error())
+		} else {
+			cs.RemoveFromEVMMirrorSyncQueue(addr, contractAddr)
+		}
+	}
+}
+
+// QueueEVMMirrorSync persists a failed syncBalanceLocked slot write so
+// RetryEVMMirrorSyncQueue can catch up later — see syncBalanceLocked's own
+// comment (audit 2026-06-28 recheck 4, P1-6).
+func (cs *ChainState) QueueEVMMirrorSync(addr, contractAddr, lastErr string) {
+	if cs.db == nil {
+		return
+	}
+	if _, err := cs.db.Exec(
+		`INSERT INTO evm_mirror_sync_queue (address, contract_addr, last_error)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (address, contract_addr) DO UPDATE SET
+		   attempts = evm_mirror_sync_queue.attempts + 1,
+		   last_error = EXCLUDED.last_error,
+		   last_attempt_at = NOW()`,
+		addr, contractAddr, lastErr,
+	); err != nil {
+		fmt.Printf("[EVM] Warning: could not queue mirror sync retry for %s: %v\n", addr, err)
+	}
+}
+
+// evmMirrorSyncQueueEntry is one row from evm_mirror_sync_queue.
+type evmMirrorSyncQueueEntry struct {
+	Address      string
+	ContractAddr string
+}
+
+// LoadEVMMirrorSyncQueue returns up to 200 pending retry entries, oldest first.
+func (cs *ChainState) LoadEVMMirrorSyncQueue() []evmMirrorSyncQueueEntry {
+	if cs.db == nil {
+		return nil
+	}
+	rows, err := cs.db.Query(`SELECT address, contract_addr FROM evm_mirror_sync_queue ORDER BY created_at LIMIT 200`)
+	if err != nil {
+		fmt.Printf("[EVM] Warning: could not load mirror sync queue: %v\n", err)
+		return nil
+	}
+	defer rows.Close()
+	var entries []evmMirrorSyncQueueEntry
+	for rows.Next() {
+		var e evmMirrorSyncQueueEntry
+		if err := rows.Scan(&e.Address, &e.ContractAddr); err != nil {
+			continue
+		}
+		entries = append(entries, e)
+	}
+	return entries
+}
+
+// RemoveFromEVMMirrorSyncQueue deletes a row once its retry succeeds.
+func (cs *ChainState) RemoveFromEVMMirrorSyncQueue(addr, contractAddr string) {
+	if cs.db == nil {
+		return
+	}
+	if _, err := cs.db.Exec(`DELETE FROM evm_mirror_sync_queue WHERE address = $1 AND contract_addr = $2`, addr, contractAddr); err != nil {
+		fmt.Printf("[EVM] Warning: could not remove mirror sync queue entry: %v\n", err)
+	}
+}
+
+// RetryEVMMirrorSyncQueue attempts every pending evm_mirror_sync_queue entry
+// once. Intended to be called periodically (see NewAPIServer's startup
+// goroutine). syncBalanceLocked itself re-queues (or clears) each entry, so
+// this only needs to drive the loop.
+func RetryEVMMirrorSyncQueue(cs *ChainState) {
+	byContract := make(map[string][]string)
+	for _, entry := range cs.LoadEVMMirrorSyncQueue() {
+		byContract[entry.ContractAddr] = append(byContract[entry.ContractAddr], entry.Address)
+	}
+	if len(byContract) == 0 {
+		return
+	}
+	// syncBalanceLocked only reads cs.accounts and writes to the DB (not to
+	// any in-memory state), so a read lock is sufficient — see its own
+	// doc comment ("read or write lock").
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	for contractAddr, addrs := range byContract {
+		cs.syncBalanceLocked(contractAddr, addrs...)
 	}
 }
 

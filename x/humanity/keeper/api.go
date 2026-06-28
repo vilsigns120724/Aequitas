@@ -60,6 +60,15 @@ func NewAPIServer(bc *BlockDAG, p2p *P2PNode, k *Keeper, state *ChainState) *API
 			RetryProofServerSyncQueue(state)
 		}
 	}()
+	// FIX (audit 2026-06-28 recheck 4, P1-6): same retry pattern as the
+	// proof-server sync queue above, for EVM mirror slot-write failures —
+	// see syncBalanceLocked's comment in evm_storage.go.
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			RetryEVMMirrorSyncQueue(state)
+		}
+	}()
 	return s
 }
 

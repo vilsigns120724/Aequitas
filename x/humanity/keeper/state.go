@@ -367,6 +367,24 @@ created_at TIMESTAMP DEFAULT NOW(),
 last_attempt_at TIMESTAMP DEFAULT NOW()
 )`)
 
+	// FIX (audit 2026-06-28 recheck 4, P1-6): syncBalanceLocked's
+	// SaveStorageSlot writes (balanceOf/isHuman/lastActivity/lastDemurrage
+	// EVM mirror slots) used to discard or only log their errors, with
+	// nothing durable recording a failure — Go-state (the source of truth)
+	// could be correct while the EVM mirror silently stayed stale forever.
+	// See syncBalanceLocked's own comment (evm_storage.go) for why this
+	// queue exists instead of folding these writes into the same SQL
+	// transaction as the Go-state mutation they mirror.
+	dbExec(`CREATE TABLE IF NOT EXISTS evm_mirror_sync_queue (
+address TEXT NOT NULL,
+contract_addr TEXT NOT NULL,
+attempts INT NOT NULL DEFAULT 1,
+last_error TEXT NOT NULL DEFAULT '',
+created_at TIMESTAMP DEFAULT NOW(),
+last_attempt_at TIMESTAMP DEFAULT NOW(),
+PRIMARY KEY (address, contract_addr)
+)`)
+
 	// EVM transaction receipts — persisted so MetaMask can get correct
 	// receipts after a node restart (avoids "Senden fehlgeschlagen" for
 	// transactions that actually succeeded before the node restarted).
