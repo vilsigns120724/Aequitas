@@ -3,6 +3,7 @@ package keeper
 import (
 	"crypto/ecdsa"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -109,9 +110,12 @@ Version: SnapshotVersion,
 	}
 
 	// Export critical config values so secondary nodes have matching timing state.
+	// FIX (audit 2026-06-28 recheck 4, P0-1): cs.mu.RUnlock() already ran
+	// above — this read must use the plain DB-only variant, never
+	// cs.dbExec()/cs.activeTx.
 	snap.ChainConfig = map[string]string{}
 	for _, key := range []string{"last_ubi_at", "last_validators_at", "last_lp_at", "last_treasury_at"} {
-		if val := cs.getConfigValue(key); val != "" {
+		if val := cs.getConfigValueDB(key); val != "" {
 			snap.ChainConfig[key] = val
 		}
 	}
@@ -271,7 +275,31 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	// acquires cs.mu.RLock() internally — calling it while holding cs.mu.Lock()
 	// would deadlock (write lock is not re-entrant in sync.RWMutex).
 	existingHumans := cs.TotalHumans()
+
+	// FIX (audit 2026-06-28 recheck 4, P0-1/P0-2): cs.db.Begin() must happen
+	// BEFORE cs.mu.Lock() (same reasoning as runAtomicWithOutbox — a
+	// blocking DB call must never run while cs.mu is held), and cs.mu must
+	// then stay held continuously from before cs.activeTx is set through
+	// the commit/rollback decision. The previous version released cs.mu
+	// right after the in-memory mutation, then set cs.activeTx afterwards,
+	// with no lock held at all — meaning cs.activeTx was being read AND
+	// written outside of cs.mu's protection (a real data race against any
+	// concurrent atomic operation doing the same), and the newly-merged
+	// in-memory state was visible to other goroutines before this
+	// transaction's commit was even attempted.
+	var tx *sql.Tx
+	if cs.db != nil {
+		var err error
+		tx, err = cs.db.Begin()
+		if err != nil {
+			return fmt.Errorf("snapshot import: could not begin transaction: %w", err)
+		}
+	}
+
 	cs.mu.Lock()
+	cs.activeTx = tx
+	prevPool := cs.pool
+	poolChanged := false
 	for _, acc := range snap.Accounts {
 		acc.Address = strings.ToLower(acc.Address)
 		if existingHumans > 0 && systemAddresses[acc.Address] {
@@ -287,13 +315,27 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 	// zero reserves (e.g., after all liquidity was removed).
 	if snap.Pool != nil && existingHumans == 0 && (cs.pool == nil || (cs.pool.ReserveAEQ.Float() == 0 && cs.pool.ReserveTUSD.Float() == 0)) {
 		cs.pool = snap.Pool
+		poolChanged = true
 	}
 	for nullifier, wallet := range snap.Nullifiers {
 		if _, exists := cs.nullifiers[nullifier]; !exists {
 			cs.nullifiers[nullifier] = wallet
 		}
 	}
-	cs.mu.Unlock()
+
+	revertInMemory := func() {
+		for _, acc := range accountsToPersist {
+			delete(cs.accounts, acc.Address)
+		}
+		for nullifier := range snap.Nullifiers {
+			if wallet, exists := cs.nullifiers[nullifier]; exists && strings.EqualFold(wallet, snap.Nullifiers[nullifier]) {
+				delete(cs.nullifiers, nullifier)
+			}
+		}
+		if poolChanged {
+			cs.pool = prevPool
+		}
+	}
 
 	if cs.db != nil {
 		// FIX (audit 2026-06-28 full recheck, P1-2): every DB write below used
@@ -308,17 +350,6 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 		// in-memory additions made above, so this function's outcome is
 		// truthful: either the merge fully applied in both places, or it
 		// didn't apply at all and ImportSnapshotFromURL returns an error.
-		tx, err := cs.db.Begin()
-		if err != nil {
-			cs.mu.Lock()
-			for _, acc := range accountsToPersist {
-				delete(cs.accounts, acc.Address)
-			}
-			cs.mu.Unlock()
-			return fmt.Errorf("snapshot import: could not begin transaction: %w", err)
-		}
-		cs.activeTx = tx
-
 		persistErr := func() error {
 			for _, acc := range accountsToPersist {
 				if err := cs.saveAccountToDB(acc); err != nil {
@@ -380,37 +411,25 @@ func (cs *ChainState) ImportSnapshotFromURL(peerURL, expectedSignerHex string) e
 			return nil
 		}()
 
+		// FIX (audit 2026-06-28 recheck 4, P0-1/P0-2): cs.mu stays held from
+		// before cs.activeTx was set above through this commit/rollback
+		// decision — cleared and unlocked together below, never separately.
 		cs.activeTx = nil
 		if persistErr != nil {
 			if rbErr := tx.Rollback(); rbErr != nil {
 				fmt.Printf("[SNAPSHOT] CRITICAL: rollback after failed merge-persist also failed: %v\n", rbErr)
 			}
-			cs.mu.Lock()
-			for _, acc := range accountsToPersist {
-				delete(cs.accounts, acc.Address)
-			}
-			for nullifier := range snap.Nullifiers {
-				if wallet, exists := cs.nullifiers[nullifier]; exists && strings.EqualFold(wallet, snap.Nullifiers[nullifier]) {
-					delete(cs.nullifiers, nullifier)
-				}
-			}
+			revertInMemory()
 			cs.mu.Unlock()
 			return fmt.Errorf("snapshot import: merge-persist failed, rolled back: %w", persistErr)
 		}
 		if err := tx.Commit(); err != nil {
-			cs.mu.Lock()
-			for _, acc := range accountsToPersist {
-				delete(cs.accounts, acc.Address)
-			}
-			for nullifier := range snap.Nullifiers {
-				if wallet, exists := cs.nullifiers[nullifier]; exists && strings.EqualFold(wallet, snap.Nullifiers[nullifier]) {
-					delete(cs.nullifiers, nullifier)
-				}
-			}
+			revertInMemory()
 			cs.mu.Unlock()
 			return fmt.Errorf("snapshot import: merge-persist commit failed: %w", err)
 		}
 	}
+	cs.mu.Unlock()
 
 	if err := cs.MigrateEVMFromGoState(V7_CONTRACT_ADDR); err != nil {
 		fmt.Printf("[SNAPSHOT] ERROR: EVM migration failed after snapshot import: %v\n", err)
@@ -598,18 +617,25 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		}
 	}
 
+	// FIX (audit 2026-06-28 recheck 4, P0-2): cs.mu used to be released here,
+	// BEFORE tx.Commit() ran below — making the freshly-replaced in-memory
+	// state visible to every other goroutine while the DB transaction
+	// itself was still pending. A concurrent caller could read the new
+	// memory state and write against cs.db (cs.activeTx was already nil)
+	// before this commit's outcome was even known; if the commit then
+	// failed and triggered a revert, that concurrent write would be
+	// clobbered without ever being told its assumptions were invalidated.
+	// cs.mu now stays held through the commit decision itself.
 	cs.activeTx = nil
-	cs.mu.Unlock()
-
 	if err := tx.Commit(); err != nil {
 		// Commit itself failed — none of the above actually persisted, so
 		// in-memory (already replaced above) must be reverted too, or this
 		// node would believe it resynced while the DB never did.
-		cs.mu.Lock()
 		restoreInMemory()
 		cs.mu.Unlock()
 		return fmt.Errorf("resync: commit failed, state fully reverted: %w", err)
 	}
+	cs.mu.Unlock()
 
 	// FIX (audit recheck3, P0 #1): used to only log this and return success
 	// regardless — a resync could report "done" while the EVM mirror, which

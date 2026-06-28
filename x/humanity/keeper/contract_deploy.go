@@ -71,7 +71,9 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 	// restoreOnFailure is set only on upgrade paths; nil on fresh deploy.
 	var restoreOnFailure func(string)
 	if err == nil && len(existing) > 0 {
-		storedVersion := state.getConfigValue("v7_contract_version")
+		// FIX (audit 2026-06-28 recheck 4, P0-1): startup deploy code, no
+		// cs.mu held — must use the plain DB-only read.
+		storedVersion := state.getConfigValueDB("v7_contract_version")
 		if storedVersion == V7ContractVersion {
 			fmt.Printf("[DEPLOY] V7 contract already deployed at %s (%d bytes)\n", V7_CONTRACT_ADDR, len(existing))
 			return
@@ -251,5 +253,6 @@ func EnsureContractsDeployed(evm *EVMEngine, state *ChainState, deployerAddr str
 		}
 		return
 	}
-	state.setConfigValue("v7_contract_version", V7ContractVersion)
+	// FIX (audit 2026-06-28 recheck 4, P0-1): same as above — plain DB-only write.
+	state.setConfigValueDB("v7_contract_version", V7ContractVersion)
 }

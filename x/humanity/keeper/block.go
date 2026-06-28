@@ -353,7 +353,9 @@ if loaded := state.LoadBlocksFromDB(); len(loaded) > 0 {
 // bug this caused (a fresh-bootstrapped secondary's snapshot cutoff was
 // reported far too low, so it still re-replayed — and double-applied —
 // every block between the true height and the process-local one).
-if persisted := state.getConfigValue("max_block_height"); persisted != "" {
+// FIX (audit 2026-06-28 recheck 4, P0-1): startup code, no lock held —
+// must use the plain DB-only read.
+if persisted := state.getConfigValueDB("max_block_height"); persisted != "" {
 	var h int64
 	fmt.Sscanf(persisted, "%d", &h)
 	if h > dag.height {
@@ -1156,7 +1158,11 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	// twice. Mark the block as replayed (so dedup/tips/hash-chain
 	// bookkeeping in the caller proceeds normally) without touching state.
 	skipHeight := dag.bootHeight
-	if heightStr := dag.state.getConfigValue("snapshot_import_height"); heightStr != "" {
+	// FIX (audit 2026-06-28 recheck 4, P0-1): this runs before
+	// dag.state.mu.Lock() is taken further down in this function — must use
+	// the plain DB-only read, never cs.dbExec()/cs.activeTx, or this could
+	// race against a concurrent atomic operation's in-flight transaction.
+	if heightStr := dag.state.getConfigValueDB("snapshot_import_height"); heightStr != "" {
 		var snapshotHeight int64
 		fmt.Sscanf(heightStr, "%d", &snapshotHeight)
 		if snapshotHeight > skipHeight {

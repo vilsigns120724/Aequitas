@@ -609,6 +609,9 @@ func (cs *ChainState) clearRegistrationsFromDB() {
 // like every other write in this file, and returns the error instead of
 // only logging it, so callers that need to know (ResyncFromSnapshotURL,
 // restoreFromRollback, applyUBIFinalizeDeltaLocked) actually can.
+//
+// PRECONDITION (audit 2026-06-28 recheck 4, P0-1): same as getConfigValue —
+// caller must already hold cs.mu. Use setConfigValueDB outside any lock.
 func (cs *ChainState) setConfigValue(key, value string) error {
 	if cs.db == nil {
 		return nil
@@ -625,6 +628,20 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value); err != nil
 // Uses cs.dbExec() so a read during an active transaction sees that
 // transaction's own uncommitted writes instead of cs.db's separate
 // connection, which wouldn't see them yet under Postgres MVCC.
+//
+// PRECONDITION (audit 2026-06-28 recheck 4, P0-1): the caller must already
+// hold cs.mu for the duration of this call (read or write lock — cs.mu
+// itself isn't touched here), or otherwise be certain no concurrent
+// goroutine can be inside its own cs.mu-locked critical section right now.
+// cs.activeTx, which cs.dbExec() reads, is ONLY synchronized by cs.mu — see
+// activeTx's own field comment. Calling this without that lock held risks
+// reading a DIFFERENT, concurrently-running atomic operation's in-flight
+// transaction instead of either cs.db or your own transaction: a genuine
+// data race on cs.activeTx itself, and a correctness bug (e.g. StateRoot
+// observing another operation's uncommitted last_ubi_at). Callers outside
+// any cs.mu hold (status endpoints, startup code, snapshot export) must use
+// getConfigValueDB instead, which always reads cs.db directly and never
+// touches cs.activeTx.
 func (cs *ChainState) getConfigValue(key string) string {
 	if cs.db == nil {
 		return ""
@@ -638,7 +655,7 @@ func (cs *ChainState) getConfigValue(key string) string {
 // row — needed by snapshotForRollback to distinguish "existed with empty
 // value" / "didn't exist" from a plain "" return, so restoreFromRollback can
 // tell a rollback "delete this key" instead of "nothing to restore". See
-// configValueSnapshot.
+// configValueSnapshot. Same cs.mu-held precondition as getConfigValue.
 func (cs *ChainState) getConfigValueExists(key string) (string, bool) {
 	if cs.db == nil {
 		return "", false
@@ -655,7 +672,8 @@ func (cs *ChainState) getConfigValueExists(key string) (string, bool) {
 // error if the write failed. Used by restoreFromRollback to undo a block
 // that set a StateRoot-relevant config key for the first time (setConfigValue
 // alone can't represent "this key must not exist" — see configValueSnapshot).
-// Routes through cs.dbExec() for the same reason as setConfigValue.
+// Routes through cs.dbExec() for the same reason as setConfigValue. Same
+// cs.mu-held precondition as getConfigValue.
 func (cs *ChainState) deleteConfigValue(key string) error {
 	if cs.db == nil {
 		return nil
@@ -667,10 +685,58 @@ func (cs *ChainState) deleteConfigValue(key string) error {
 	return nil
 }
 
+// getConfigValueDB reads a key from chain_config via cs.db directly, NEVER
+// via cs.activeTx — safe to call without holding cs.mu. Under Postgres's
+// default read-committed isolation this only ever sees the last committed
+// value, never another goroutine's in-flight transaction, which is exactly
+// what a caller outside any atomic critical section wants (and the only
+// thing it can safely use — see getConfigValue's precondition comment).
+func (cs *ChainState) getConfigValueDB(key string) string {
+	if cs.db == nil {
+		return ""
+	}
+	var v string
+	cs.db.QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v)
+	return v
+}
+
+// getConfigValueExistsDB is getConfigValueDB plus whether the key actually
+// has a row. See getConfigValue/getConfigValueExists for the existed-vs-empty
+// distinction this preserves.
+func (cs *ChainState) getConfigValueExistsDB(key string) (string, bool) {
+	if cs.db == nil {
+		return "", false
+	}
+	var v string
+	if err := cs.db.QueryRow(`SELECT value FROM chain_config WHERE key = $1`, key).Scan(&v); err != nil {
+		return "", false
+	}
+	return v, true
+}
+
+// setConfigValueDB writes a key to chain_config via cs.db directly, NEVER
+// via cs.activeTx — safe to call without holding cs.mu. For callers that
+// are not part of any atomic critical section (see getConfigValue's
+// precondition comment for why joining a transaction without holding cs.mu
+// would be unsafe).
+func (cs *ChainState) setConfigValueDB(key, value string) error {
+	if cs.db == nil {
+		return nil
+	}
+	if _, err := cs.db.Exec(`INSERT INTO chain_config (key, value) VALUES ($1, $2)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value); err != nil {
+		fmt.Printf("[DB] Warning: setConfigValueDB(%q) failed: %v\n", key, err)
+		return fmt.Errorf("could not set config %q: %w", key, err)
+	}
+	return nil
+}
+
 // GetLastUBIAt returns the Unix timestamp of the most recent UBI distribution,
 // or 0 if it has never run.
 func (cs *ChainState) GetLastUBIAt() int64 {
-	v := cs.getConfigValue("last_ubi_at")
+	// FIX (audit 2026-06-28 recheck 4, P0-1): no cs.mu held here — must use
+	// the plain DB-only read, never cs.dbExec()/cs.activeTx.
+	v := cs.getConfigValueDB("last_ubi_at")
 	if v == "" {
 		return 0
 	}
@@ -744,14 +810,16 @@ WHERE chain_config.value = '' OR COALESCE(NULLIF(regexp_replace(chain_config.val
 // Called by main.go immediately after calculating the next run time so the
 // display timer is always in sync with the actual goroutine schedule.
 func (cs *ChainState) SetNextUBIAt(unixTs int64) {
-	cs.setConfigValue("next_ubi_at", fmt.Sprintf("%d", unixTs))
+	// FIX (audit 2026-06-28 recheck 4, P0-1): no cs.mu held here — must use
+	// the plain DB-only write, never cs.dbExec()/cs.activeTx.
+	cs.setConfigValueDB("next_ubi_at", fmt.Sprintf("%d", unixTs))
 }
 
 // SecondsUntilNextUBI returns how many seconds until the next UBI distribution.
 // Reads "next_ubi_at" which main.go writes every time it schedules a run,
 // so the countdown is exact — not estimated from last_ubi_at + 24h.
 func (cs *ChainState) SecondsUntilNextUBI() int64 {
-	v := cs.getConfigValue("next_ubi_at")
+	v := cs.getConfigValueDB("next_ubi_at")
 	if v == "" {
 		// Scheduler not yet started (non-primary node or fresh start before
 		// first goroutine tick). Show no countdown rather than a wrong value.
@@ -2039,12 +2107,32 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	// INSIDE the same critical section as fn(), not in a separate RLock that
 	// fully releases before this Lock() is even acquired — see
 	// snapshotForRollbackLocked's comment for the race this closes.
+	//
+	// FIX (audit 2026-06-28 recheck 4, P0-1): this read happens BEFORE
+	// cs.mu.Lock() below, so it must use the plain DB-only variant — going
+	// through cs.dbExec()/cs.activeTx here would risk reading a different,
+	// concurrently-running atomic operation's in-flight transaction (a real
+	// data race on cs.activeTx itself, since that operation's cs.mu hold
+	// doesn't protect a read that never acquires cs.mu in the first place).
 	chainConfig := make(map[string]configValueSnapshot, len(stateRootRelevantConfigKeys))
 	for _, key := range stateRootRelevantConfigKeys {
-		value, existed := cs.getConfigValueExists(key)
+		value, existed := cs.getConfigValueExistsDB(key)
 		chainConfig[key] = configValueSnapshot{value: value, existed: existed}
 	}
 
+	// FIX (audit 2026-06-28 recheck 4, P0-2): cs.mu used to be released (and
+	// cs.activeTx cleared) BEFORE tx.Commit()/tx.Rollback() ran below. In
+	// that gap, the new in-memory state was already visible to every other
+	// goroutine, and cs.activeTx==nil meant a concurrent caller would write
+	// straight to cs.db — against a state that this transaction might still
+	// fail to commit a moment later. If it did fail, restoreFromRollback
+	// would revert memory out from under that concurrent write, silently
+	// discarding it (or worse, leaving DB and memory permanently
+	// disagreeing about whose write actually "won"). cs.mu is now held
+	// continuously from before fn() runs through the final commit/rollback
+	// decision — restoreFromRollbackLocked (not the public, self-locking
+	// restoreFromRollback) is used so the lock is never released and
+	// re-acquired in between.
 	cs.mu.Lock()
 	cs.activeTx = tx
 	snap := cs.snapshotForRollbackLocked(touchedAddrs, fullSnapshot, chainConfig)
@@ -2053,14 +2141,14 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	if fnErr == nil {
 		outboxErr = savePendingTxExec(tx, pendingTx)
 	}
-	cs.activeTx = nil
-	cs.mu.Unlock()
 
 	if fnErr != nil || outboxErr != nil {
+		cs.activeTx = nil
 		tx.Rollback()
-		if rbErr := cs.restoreFromRollback(snap); rbErr != nil {
+		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after operation failure — memory/DB may now disagree: %v\n", rbErr)
 		}
+		cs.mu.Unlock()
 		if fnErr != nil {
 			return fnErr
 		}
@@ -2068,11 +2156,15 @@ func (cs *ChainState) runAtomicWithOutbox(touchedAddrs []string, fullSnapshot bo
 	}
 
 	if err := tx.Commit(); err != nil {
-		if rbErr := cs.restoreFromRollback(snap); rbErr != nil {
+		cs.activeTx = nil
+		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
 		}
+		cs.mu.Unlock()
 		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
 	}
+	cs.activeTx = nil
+	cs.mu.Unlock()
 	return nil
 }
 
@@ -2116,12 +2208,21 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func() ([]Transaction, 
 	// — snapshot now taken via the Locked variant inside the same critical
 	// section as fn(), not via a separate RLock that fully releases before
 	// this Lock() is acquired.
+	//
+	// FIX (audit 2026-06-28 recheck 4, P0-1): plain DB-only read — see the
+	// matching comment in runAtomicWithOutbox for why this must never go
+	// through cs.dbExec()/cs.activeTx before cs.mu.Lock() is held.
 	chainConfig := make(map[string]configValueSnapshot, len(stateRootRelevantConfigKeys))
 	for _, key := range stateRootRelevantConfigKeys {
-		value, existed := cs.getConfigValueExists(key)
+		value, existed := cs.getConfigValueExistsDB(key)
 		chainConfig[key] = configValueSnapshot{value: value, existed: existed}
 	}
 
+	// FIX (audit 2026-06-28 recheck 4, P0-2): same fix as runAtomicWithOutbox
+	// above — cs.mu now stays held continuously through the final
+	// commit/rollback decision instead of being released beforehand, so no
+	// concurrent operation can observe the new memory state and write
+	// against cs.db while this transaction's fate is still undecided.
 	cs.mu.Lock()
 	cs.activeTx = tx
 	snap := cs.snapshotForRollbackLocked(nil, true, chainConfig)
@@ -2134,14 +2235,14 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func() ([]Transaction, 
 			}
 		}
 	}
-	cs.activeTx = nil
-	cs.mu.Unlock()
 
 	if fnErr != nil || outboxErr != nil {
+		cs.activeTx = nil
 		tx.Rollback()
-		if rbErr := cs.restoreFromRollback(snap); rbErr != nil {
+		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: distribution rollback persistence failed — memory/DB may now disagree: %v\n", rbErr)
 		}
+		cs.mu.Unlock()
 		if fnErr != nil {
 			return fnErr
 		}
@@ -2149,11 +2250,15 @@ func (cs *ChainState) runAtomicDistributionWithOutbox(fn func() ([]Transaction, 
 	}
 
 	if err := tx.Commit(); err != nil {
-		if rbErr := cs.restoreFromRollback(snap); rbErr != nil {
+		cs.activeTx = nil
+		if rbErr := cs.restoreFromRollbackLocked(snap); rbErr != nil {
 			fmt.Printf("[ATOMIC] CRITICAL: distribution rollback persistence failed after commit failure — memory/DB may now disagree: %v\n", rbErr)
 		}
+		cs.mu.Unlock()
 		return fmt.Errorf("commit failed (state mutation rolled back): %w", err)
 	}
+	cs.activeTx = nil
+	cs.mu.Unlock()
 	return nil
 }
 
@@ -3175,7 +3280,20 @@ func (cs *ChainState) claimTUsdFaucetLocked(address string) error {
 func (cs *ChainState) StateRoot() string {
 	// P1-1: read last_ubi_at from DB BEFORE acquiring the mutex to avoid
 	// holding RLock across a blocking DB query (deadlock / latency risk).
-	lastUBIAt := cs.getConfigValue("last_ubi_at")
+	//
+	// FIX (audit 2026-06-28 recheck 4, P0-1): this is exactly the call site
+	// the audit flagged by name — getConfigValue's cs.dbExec() routing
+	// meant this could read a DIFFERENT, concurrently-running atomic
+	// operation's in-flight transaction (cs.activeTx, set/cleared only
+	// under THAT operation's own cs.mu hold, which this read never
+	// acquires). StateRoot is consensus-relevant: observing another
+	// operation's uncommitted last_ubi_at here could produce a StateRoot
+	// no replay could ever reproduce. getConfigValueDB always reads cs.db
+	// directly, so under Postgres's read-committed isolation it only ever
+	// sees the last value that was actually committed — never a
+	// concurrent transaction's in-flight write, and never races on
+	// cs.activeTx itself.
+	lastUBIAt := cs.getConfigValueDB("last_ubi_at")
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 	return cs.stateRootLocked(lastUBIAt)
@@ -3433,9 +3551,14 @@ func (cs *ChainState) snapshotForRollback(addrs []string, full bool) *blockRollb
 	// does a blocking DB query, and StateRoot() itself already established
 	// the pattern of never holding cs.mu across one (see its own
 	// last_ubi_at read and P1-1 comment).
+	//
+	// FIX (audit 2026-06-28 recheck 4, P0-1): plain DB-only read, for the
+	// same reason as StateRoot()'s and runAtomicWithOutbox's matching
+	// fixes — this runs before cs.mu.RLock() below, so it must never touch
+	// cs.activeTx.
 	chainConfig := make(map[string]configValueSnapshot, len(stateRootRelevantConfigKeys))
 	for _, key := range stateRootRelevantConfigKeys {
-		value, existed := cs.getConfigValueExists(key)
+		value, existed := cs.getConfigValueExistsDB(key)
 		chainConfig[key] = configValueSnapshot{value: value, existed: existed}
 	}
 	cs.mu.RLock()
