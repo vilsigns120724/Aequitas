@@ -1461,6 +1461,20 @@ func (a *APIServer) handleProveProxy(w http.ResponseWriter, r *http.Request) {
 		}
 		registerRateLimit.Store(walletKey, time.Now())
 	}
+	// FIX (Gesamtaudit 2026-06-28, P2-8): the wallet-keyed throttle above
+	// doesn't stop an attacker rotating wallet addresses from a single
+	// browser/IP — each new wallet gets its own fresh 15s budget. This is
+	// the one layer that still sees the ORIGINAL caller's IP before the
+	// request collapses into this proxy's own outbound IP at the proof
+	// server, so add that as a second, independent key.
+	ipKey := "prove-ip:" + clientIP(r)
+	if ts, loaded := registerRateLimit.Load(ipKey); loaded {
+		if time.Since(ts.(time.Time)) < 3*time.Second {
+			jsonError(w, "rate limited, try again shortly", 429)
+			return
+		}
+	}
+	registerRateLimit.Store(ipKey, time.Now())
 	base, ok := requireProofServerConfigured(w)
 	if !ok {
 		return
