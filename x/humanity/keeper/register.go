@@ -445,7 +445,11 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		// crediting the registration grant. TryClaimNullifier's DB-level
 		// INSERT...ON CONFLICT (or mutex-guarded map) is the only atomic
 		// primitive here, so only the winner may proceed to mutate storage.
-		if !a.state.TryClaimNullifier(effectiveNullifier, wallet) {
+		claimed, claimErr := a.state.TryClaimNullifier(effectiveNullifier, wallet)
+		if claimErr != nil {
+			return "", fmt.Errorf("nullifier claim failed: %w", claimErr)
+		}
+		if !claimed {
 			return "", fmt.Errorf("nullifier already claimed: %s", effectiveNullifier)
 		}
 		// FIX (audit recheck 2, P1 #8/#11): pendingRegTx used to be built

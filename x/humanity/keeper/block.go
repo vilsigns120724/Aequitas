@@ -1361,7 +1361,17 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 				continue
 			}
 			fmt.Printf("[REPLAY] ✓ ZK proof verified for %s (block #%d)\n", wallet, block.Height)
-			if !dag.state.tryClaimNullifierLocked(nullifier, wallet) {
+			// FIX (audit 2026-06-28 recheck 5, P1-1): tryClaimNullifierLocked
+			// now returns an error distinctly from "already used" — a genuine
+			// DB failure during the claim must roll back the block, not be
+			// silently treated as a normal duplicate-registration skip.
+			claimed, claimErr := dag.state.tryClaimNullifierLocked(nullifier, wallet)
+			if claimErr != nil {
+				fmt.Printf("[REPLAY] ✗ register_human for %s (block #%d): nullifier claim DB error: %v — rolling back whole block\n", wallet, block.Height, claimErr)
+				hardFailure = true
+				continue
+			}
+			if !claimed {
 				continue // already registered
 			}
 			if err := dag.state.registerHumanLocked(wallet); err != nil {

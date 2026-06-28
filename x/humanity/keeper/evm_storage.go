@@ -1028,7 +1028,7 @@ const maxInMemNullifiers = 500_000
 // existed (another goroutine or a previous replay already claimed it).
 // Using a DB-level INSERT … ON CONFLICT eliminates the TOCTOU window between
 // IsNullifierUsed and SaveNullifier — no separate mutex required.
-func (cs *ChainState) TryClaimNullifier(nullifier, walletAddress string) bool {
+func (cs *ChainState) TryClaimNullifier(nullifier, walletAddress string) (bool, error) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	return cs.tryClaimNullifierLocked(nullifier, walletAddress)
@@ -1039,39 +1039,54 @@ func (cs *ChainState) TryClaimNullifier(nullifier, walletAddress string) bool {
 // so it can hold cs.mu continuously across snapshot/deltas/StateRoot-check
 // instead of releasing and reacquiring it once per call — see
 // replayTransactions' own comment for the race that isolation closes).
-// The DB write here still uses cs.db directly, not cs.dbExec() — this
-// claim is intentionally NOT part of any surrounding DB transaction (see
-// ReleaseNullifier's compensating-action pattern, used by callers when a
-// later step fails); this function only changes which mutex discipline
-// guards the in-memory map.
-func (cs *ChainState) tryClaimNullifierLocked(nullifier, walletAddress string) bool {
+//
+// FIX (audit 2026-06-28 recheck 5, P1-1): this used to write via cs.db
+// directly instead of cs.dbExec(), and returned only a bool. Both
+// mattered: when called from inside replayTransactions (which sets
+// cs.activeTx before running any TX), the INSERT committed immediately
+// and permanently, completely independent of the surrounding replay
+// transaction — if a LATER TX in that same block then hard-failed or the
+// block's StateRoot mismatched, the whole block got rolled back, but this
+// nullifier row had already auto-committed and stayed in the DB,
+// potentially leaving a human permanently unable to register ("already
+// registered" with no real registration behind it) if the compensating
+// releaseNullifierLocked call ever failed too. Now routes through
+// cs.dbExec(), so inside replay this INSERT joins dbTx and is
+// automatically discarded by the same ROLLBACK that undoes everything
+// else in a rejected block — no separate compensation needed for that
+// path specifically (releaseNullifierLocked's own DELETE remains the
+// real compensation mechanism for callers outside any active
+// transaction, e.g. the mirror-path fallback in register.go).
+// Also now returns an error so a genuine DB failure during the claim is
+// never silently treated as "already used" by a caller checking just
+// the bool — see replayTransactions' own fix at its call site.
+func (cs *ChainState) tryClaimNullifierLocked(nullifier, walletAddress string) (bool, error) {
 	if nullifier == "" {
-		return false
+		return false, nil
 	}
 	walletAddress = strings.ToLower(walletAddress)
 	if cs.db == nil {
 		if _, exists := cs.nullifiers[nullifier]; exists {
-			return false
+			return false, nil
 		}
 		cs.nullifiers[nullifier] = walletAddress
-		return true
+		return true, nil
 	}
-	res, err := cs.db.Exec(
+	res, err := cs.dbExec().Exec(
 		`INSERT INTO nullifiers (nullifier, wallet_address) VALUES ($1, $2) ON CONFLICT (nullifier) DO NOTHING`,
 		nullifier, walletAddress,
 	)
 	if err != nil {
-		fmt.Printf("[NULLIFIER] TryClaimNullifier DB error: %v\n", err)
-		return false
+		return false, fmt.Errorf("could not claim nullifier: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return false // already existed
+		return false, nil // already existed
 	}
 	// Insert succeeded — update in-memory cache.
 	if len(cs.nullifiers) < maxInMemNullifiers {
 		cs.nullifiers[nullifier] = walletAddress
 	}
-	return true
+	return true, nil
 }
 
 // SaveNullifier records nullifier as used. Caller must already hold cs.mu
@@ -1131,7 +1146,14 @@ func (cs *ChainState) releaseNullifierLocked(nullifier string) {
 	if cs.db == nil {
 		return
 	}
-	if _, err := cs.db.Exec(`DELETE FROM nullifiers WHERE nullifier = $1`, nullifier); err != nil {
+	// FIX (audit 2026-06-28 recheck 5, P1-1): routes through cs.dbExec()
+	// like tryClaimNullifierLocked now does — when called from inside
+	// replayTransactions this DELETE joins the same dbTx as the claim it's
+	// undoing (so it's redundant-but-harmless there, since a ROLLBACK
+	// would discard the claim anyway), and stays the real, separate
+	// compensating action for callers outside any active transaction
+	// (e.g. the mirror-path fallback in register.go).
+	if _, err := cs.dbExec().Exec(`DELETE FROM nullifiers WHERE nullifier = $1`, nullifier); err != nil {
 		fmt.Printf("[NULLIFIER] Warning: could not release nullifier %s: %v\n", nullifier, err)
 	}
 }
