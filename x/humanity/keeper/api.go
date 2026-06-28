@@ -164,6 +164,37 @@ func (a *APIServer) syncProofServerStatus() {
 	}
 }
 
+// handleCombinedHealth answers audit 2026-06-28 full recheck, P2-4: there was
+// no single place to check whether BOTH halves of this system (chain node
+// and proof server) were actually healthy — an operator had to separately
+// curl /api/status here and /health on the proof server, then manually
+// reconcile two different response shapes. This reuses the existing
+// syncProofServerStatus() background poller (already running, already
+// caching the proof server's last known /health response every 30s) instead
+// of adding a second outbound HTTP call path; "proof_server_reachable"
+// reflects whether that cache currently holds anything.
+func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	latest := a.blockchain.LatestBlock()
+	a.proofStatusMu.RLock()
+	proofStatus := a.proofServerStatus
+	a.proofStatusMu.RUnlock()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"chain": map[string]interface{}{
+			"healthy":      true,
+			"height":       latest.Height,
+			"total_humans": a.state.TotalHumans(),
+			"total_supply": fmt.Sprintf("%.2f AEQ", a.state.TotalSupply()),
+			"uptime_secs":  int64(time.Since(a.startTime).Seconds()),
+		},
+		"proof_server": map[string]interface{}{
+			"reachable": len(proofStatus) > 0,
+			"last_status": proofStatus,
+		},
+	})
+}
+
 func (a *APIServer) Start(port int) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/landing", a.handleLanding)
@@ -176,6 +207,7 @@ func (a *APIServer) Start(port int) {
 		a.handleUI(w, r)
 	})
 	mux.HandleFunc("/api/status", a.handleStatus)
+	mux.HandleFunc("/api/health/combined", a.handleCombinedHealth)
 	mux.HandleFunc("/api/blocks", a.handleBlocks)
 	mux.HandleFunc("/api/block", a.handleBlockByHash)
 	mux.HandleFunc("/api/humans", a.handleHumans)
