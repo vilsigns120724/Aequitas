@@ -326,7 +326,21 @@ state.ResetStaleIncludedPendingTxs(10 * time.Minute)
 // full transaction lists — across a restart without needing any peer to
 // still have them; the counter-only fallback further down only recovers
 // the height NUMBER, not the actual block data.
-if loaded := state.LoadBlocksFromDB(); len(loaded) > 0 {
+loaded, loadErr := state.LoadBlocksFromDB()
+if loadErr != nil {
+	// FIX (2026-06-28, production incident): a transient DB error here
+	// used to be silently treated as "this node has zero durably-saved
+	// blocks" — for a node with a full chain_blocks table, that meant
+	// starting fresh at genesis and forcing a complete peer resync of its
+	// own history, repeatedly, on every restart that hit the hiccup (see
+	// LoadBlocksFromDB's own comment). Crashing here and letting the
+	// process supervisor (Docker --restart unless-stopped / Railway) retry
+	// the whole startup is safer than silently continuing with a DAG that
+	// doesn't reflect this node's real history.
+	fmt.Printf("[BLOCK] ✗ FATAL: could not restore blocks from chain_blocks: %v — exiting so the process supervisor restarts cleanly instead of starting with a falsely-empty DAG\n", loadErr)
+	os.Exit(1)
+}
+if len(loaded) > 0 {
 	referenced := make(map[string]bool, len(loaded))
 	for _, b := range loaded {
 		dag.blocks[b.Hash] = b

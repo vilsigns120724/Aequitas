@@ -115,7 +115,21 @@ p2pNode.SetDAG(bc)
 	// resync mode regardless of this var's own emptiness check below.
 	// After startup, ongoing state sync happens via block TX replay in AddPeerBlock.
 	resyncMode := os.Getenv("RESYNC_FROM_SNAPSHOT") == "true"
-	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && (chainState.TotalHumans() == 0 || resyncMode) {
+	// FIX (2026-06-28, production incident): TotalHumans()==0 alone used to
+	// trigger the "fresh node" bootstrap import — indistinguishable from a
+	// node whose chain_accounts load failed at startup (see loadFromDB's
+	// comment). A node WITH real history that hit a transient DB hiccup
+	// looked exactly like a brand-new one and got bootstrap-imported on
+	// every restart that hit the hiccup, repeatedly knocking its visible
+	// height back toward genesis. AccountsLoadFailed() being true means
+	// "we don't actually know if this node is fresh" — refuse to guess.
+	// resyncMode is an explicit, deliberate operator action (not a guess
+	// based on TotalHumans()), so it is NOT gated by this check.
+	freshNodeBootstrap := chainState.TotalHumans() == 0 && !chainState.AccountsLoadFailed()
+	if chainState.AccountsLoadFailed() && !resyncMode {
+		fmt.Println("[BOOTSTRAP] ⚠ chain_accounts failed to load at startup — skipping fresh-node bootstrap check this run (this node's real history, if any, is presumed intact; a future successful restart will re-evaluate)")
+	}
+	if bootstrapURL := os.Getenv("BOOTSTRAP_SNAPSHOT_URL"); bootstrapURL != "" && (freshNodeBootstrap || resyncMode) {
 		// FIX 15: Validate URL scheme and host before fetching to prevent SSRF.
 		parsedBootstrap, urlErr := url.Parse(bootstrapURL)
 		if urlErr != nil || (parsedBootstrap.Scheme != "https" && parsedBootstrap.Scheme != "http") {

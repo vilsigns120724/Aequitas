@@ -2167,14 +2167,32 @@ func (cs *ChainState) SaveBlockToDB(block *Block) error {
 // derives tips (any hash never referenced as another loaded block's parent)
 // and height (the max Height among them) itself, since BlockDAG owns that
 // state, not ChainState.
-func (cs *ChainState) LoadBlocksFromDB() map[string]*Block {
+//
+// FIX (2026-06-28, production incident — same root cause class as
+// loadFromDB's): this used to return nil silently on any query error,
+// indistinguishable from "this node genuinely has zero durably-saved
+// blocks" (a real, normal case for a brand-new node). The caller
+// (NewBlockchain, block.go) only restores dag.height/dag.blocks/dag.tips
+// when len(loaded) > 0 — so a transient query failure on a node with a
+// FULL chain_blocks table silently left the in-memory DAG at genesis,
+// height 0, forcing a full peer resync of its entire own history on every
+// restart that hit the hiccup. Now retries once, and returns an explicit
+// error (instead of a nil map a real "zero rows" case can't be told apart
+// from) if it still fails, so the caller can refuse to start rather than
+// silently behave as if a node with real history had none.
+func (cs *ChainState) LoadBlocksFromDB() (map[string]*Block, error) {
 	if cs.db == nil {
-		return nil
+		return nil, nil
 	}
-	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root, signature, transactions FROM chain_blocks`)
+	query := `SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root, signature, transactions FROM chain_blocks`
+	rows, err := cs.db.Query(query)
 	if err != nil {
-		fmt.Printf("[BLOCK] LoadBlocksFromDB query error: %v\n", err)
-		return nil
+		fmt.Printf("[BLOCK] LoadBlocksFromDB query error (attempt 1): %v — retrying once\n", err)
+		time.Sleep(2 * time.Second)
+		rows, err = cs.db.Query(query)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("LoadBlocksFromDB query failed after retry: %w", err)
 	}
 	defer rows.Close()
 	blocks := make(map[string]*Block)
@@ -2195,5 +2213,5 @@ func (cs *ChainState) LoadBlocksFromDB() map[string]*Block {
 		}
 		blocks[b.Hash] = &b
 	}
-	return blocks
+	return blocks, nil
 }

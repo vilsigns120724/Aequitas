@@ -117,6 +117,26 @@ type ChainState struct {
 	// einen Health-Status degraded setzen").
 	degradedMu             sync.RWMutex
 	bootstrapDegradedReason string
+
+	// accountsLoadFailed is set true if loadFromDB's SELECT against
+	// chain_accounts failed (even after retry) at startup. See loadFromDB's
+	// own comment for the production incident this guards against:
+	// main.go's "is this a fresh node?" check used to be TotalHumans()==0,
+	// which is indistinguishable from "the query that would have told us
+	// otherwise just failed" — a node with real history that hit a
+	// transient DB hiccup at exactly the wrong moment during startup looked
+	// identical to a genuinely brand-new node, and got bootstrap-imported
+	// (or worse, authoritatively resynced) from a peer snapshot as if it
+	// had no history at all.
+	accountsLoadFailed bool
+}
+
+// AccountsLoadFailed reports whether loadFromDB's startup query against
+// chain_accounts failed (even after retry) — see its own comment and the
+// accountsLoadFailed field's comment for why main.go must check this before
+// treating TotalHumans()==0 as "this is a genuinely fresh node".
+func (cs *ChainState) AccountsLoadFailed() bool {
+	return cs.accountsLoadFailed
 }
 
 // SetBootstrapDegraded records why this node's EVM mirror may be stale
@@ -1089,9 +1109,31 @@ func (cs *ChainState) TimeUntilNextUBI() time.Duration {
 }
 
 func (cs *ChainState) loadFromDB() {
-	rows, err := cs.db.Query("SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, COALESCE(version,0) FROM chain_accounts")
+	// FIX (2026-06-28, production incident): this used to give up silently
+	// on the first error, leaving cs.accounts empty exactly as if the DB
+	// genuinely had zero rows. main.go's only signal for "is this node
+	// fresh, or does it have real history?" was TotalHumans()==0 — a
+	// transient connection blip on this one query (the kind db.Ping()
+	// succeeding moments earlier does not rule out: pool churn, a brief
+	// network hiccup, a slow-starting Postgres proxy) made a node WITH a
+	// full, intact chain_accounts table look indistinguishable from a
+	// brand-new one, triggering an unwanted snapshot bootstrap/resync on
+	// every restart that hit the hiccup — observed in production as a
+	// node's block height repeatedly collapsing back toward genesis after
+	// restarts that should have been routine. One retry after a short
+	// delay absorbs the transient case for free; if it still fails,
+	// accountsLoadFailed tells main.go this node's "fresh or not" status is
+	// UNKNOWN, not "fresh", so it can refuse to bootstrap rather than guess.
+	query := "SELECT address, balance, is_human, tusd_balance, lp_shares, last_activity_at, demurrage_14_day_warning_shown, faucet_claimed, COALESCE(version,0) FROM chain_accounts"
+	rows, err := cs.db.Query(query)
 	if err != nil {
-		fmt.Printf("⚠ Could not load from DB: %v\n", err)
+		fmt.Printf("⚠ Could not load from DB (attempt 1): %v — retrying once\n", err)
+		time.Sleep(2 * time.Second)
+		rows, err = cs.db.Query(query)
+	}
+	if err != nil {
+		fmt.Printf("⚠ Could not load from DB after retry: %v — refusing to treat this node as fresh; bootstrap/resync will be skipped until a successful restart\n", err)
+		cs.accountsLoadFailed = true
 		return
 	}
 	defer rows.Close()
