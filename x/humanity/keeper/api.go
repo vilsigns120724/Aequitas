@@ -657,6 +657,23 @@ func (a *APIServer) handleCheckRegistrationByBioHash(w http.ResponseWriter, r *h
 	// bioHash/escrow-adjacent endpoint in this file. Reuse the same
 	// package-level rate limiter as handleRecoverEscrow so it can't be used
 	// to mass-probe bioHash values for wallet-address leakage.
+	//
+	// CONSIDERED (Gesamtaudit 2026-06-28, P2-5) and deliberately NOT changed
+	// further: the audit's suggested mitigations (strip wallet/balance from
+	// the response; require a signature proving wallet ownership) both
+	// conflict with how the shipped AequitasBio app actually uses this
+	// endpoint (App.tsx) — it's called specifically to RECOVER "which wallet
+	// is this biometric registered to" before any wallet is connected (no
+	// signature is available to require at that point), including by
+	// polling it every 3 seconds while waiting for registration to confirm.
+	// Stripping the wallet would break that recovery flow entirely;
+	// tightening the rate limit below 3s would make the existing polling
+	// noticeably less responsive (it already loses every other poll to this
+	// 5s window). bioHash is therefore the deliberate credential this
+	// endpoint trusts, same as the rest of this architecture's proof/dedupe
+	// design — the real mitigation already in place is POST-only (so
+	// bioHash never lands in a URL, and therefore never in server/proxy
+	// logs) plus this rate limit, not response minimization.
 	ip := clientIP(r)
 	if ts, loaded := registerRateLimit.Load("biohash-check:" + ip); loaded {
 		if time.Since(ts.(time.Time)) < 5*time.Second {
