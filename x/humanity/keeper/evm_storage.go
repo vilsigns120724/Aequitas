@@ -1491,3 +1491,72 @@ func (cs *ChainState) LoadAndClearPendingTxs() []Transaction {
 	cs.ClearPendingTxs(ids)
 	return txs
 }
+
+// SaveBlockToDB persists a block header durably to chain_blocks — see the
+// table's own FIX comment (state.go) for why this exists: dag.blocks is
+// purely in-memory and resets to genesis on every restart, so without this
+// a node that produces or accepts a block and then crashes before any peer
+// also has it permanently loses that block, even though the account-state
+// effects of its TXs were already committed earlier (at mutation time).
+// ON CONFLICT DO NOTHING: a block can legitimately be saved twice (e.g. a
+// node that both produced a block and later re-receives it from a peer);
+// the row already reflects the same immutable content keyed by hash.
+func (cs *ChainState) SaveBlockToDB(block *Block) error {
+	if cs.db == nil {
+		return nil
+	}
+	parentHashesJSON, err := json.Marshal(block.ParentHashes)
+	if err != nil {
+		return fmt.Errorf("marshal parent_hashes: %w", err)
+	}
+	txsJSON, err := json.Marshal(block.Transactions)
+	if err != nil {
+		return fmt.Errorf("marshal transactions: %w", err)
+	}
+	_, err = cs.dbExec().Exec(
+		`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp, humans, state_root, signature, transactions)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 ON CONFLICT (hash) DO NOTHING`,
+		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
+		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
+	)
+	return err
+}
+
+// LoadBlocksFromDB reconstructs every durably-saved block (see SaveBlockToDB)
+// for seeding dag.blocks/dag.tips/dag.height on startup, so a node's own
+// previously produced or accepted blocks survive a restart without needing
+// any peer to still have them. Returns blocks keyed by hash; the caller
+// derives tips (any hash never referenced as another loaded block's parent)
+// and height (the max Height among them) itself, since BlockDAG owns that
+// state, not ChainState.
+func (cs *ChainState) LoadBlocksFromDB() map[string]*Block {
+	if cs.db == nil {
+		return nil
+	}
+	rows, err := cs.db.Query(`SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root, signature, transactions FROM chain_blocks`)
+	if err != nil {
+		fmt.Printf("[BLOCK] LoadBlocksFromDB query error: %v\n", err)
+		return nil
+	}
+	defer rows.Close()
+	blocks := make(map[string]*Block)
+	for rows.Next() {
+		var b Block
+		var parentHashesRaw, txsRaw string
+		if err := rows.Scan(&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp, &b.Humans, &b.StateRoot, &b.Signature, &txsRaw); err != nil {
+			fmt.Printf("[BLOCK] LoadBlocksFromDB scan error: %v\n", err)
+			continue
+		}
+		if err := json.Unmarshal([]byte(parentHashesRaw), &b.ParentHashes); err != nil {
+			fmt.Printf("[BLOCK] LoadBlocksFromDB parent_hashes unmarshal error for %s: %v\n", b.Hash, err)
+			continue
+		}
+		if err := json.Unmarshal([]byte(txsRaw), &b.Transactions); err != nil {
+			fmt.Printf("[BLOCK] LoadBlocksFromDB transactions unmarshal error for %s: %v\n", b.Hash, err)
+			continue
+		}
+		blocks[b.Hash] = &b
+	}
+	return blocks
+}

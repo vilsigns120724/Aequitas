@@ -315,6 +315,35 @@ tx_json    TEXT   NOT NULL,
 created_at BIGINT NOT NULL DEFAULT 0
 )`)
 
+	// FIX (audit 2026-06-28 full recheck, P1-3): block headers (dag.blocks/
+	// dag.tips in block.go) used to be purely in-memory, reset to genesis on
+	// every restart — recovery relied entirely on either the
+	// max_block_height config counter (a bare number, not the actual block
+	// data) or re-fetching blocks from a peer via HTTP-SYNC. A single node
+	// that produces a block and crashes before broadcasting it to any peer
+	// (or before any peer is even connected, e.g. a lone bootstrap node)
+	// permanently loses that block: ClearPendingTxs had already removed its
+	// explanatory pending_txs outbox rows, and nothing else durably recorded
+	// that the block — or the TXs it carried — ever existed, even though the
+	// account-state effects of those TXs were already committed to
+	// chain_accounts earlier (at mutation time, before block assembly).
+	// This table makes block headers themselves durable on the node that
+	// produced or accepted them, independent of any peer, closing that gap.
+	// See SaveBlockToDB/LoadBlocksFromDB and their call sites in block.go.
+	dbExec(`CREATE TABLE IF NOT EXISTS chain_blocks (
+hash          TEXT PRIMARY KEY,
+height        BIGINT NOT NULL,
+parent_hashes TEXT NOT NULL,
+proposer      TEXT NOT NULL,
+timestamp     BIGINT NOT NULL,
+humans        INT NOT NULL DEFAULT 0,
+state_root    TEXT NOT NULL DEFAULT '',
+signature     TEXT NOT NULL DEFAULT '',
+transactions  TEXT NOT NULL DEFAULT '[]',
+created_at    TIMESTAMP DEFAULT NOW()
+)`)
+	dbExec(`CREATE INDEX IF NOT EXISTS idx_chain_blocks_height ON chain_blocks (height)`)
+
 	// EVM transaction receipts — persisted so MetaMask can get correct
 	// receipts after a node restart (avoids "Senden fehlgeschlagen" for
 	// transactions that actually succeeded before the node restarted).

@@ -303,18 +303,56 @@ if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	fmt.Println("[BLOCK] ⚠ RELAYER_PRIVATE_KEY not set — blocks will be unsigned. Peer nodes will reject unsigned blocks.")
 }
 dag.createGenesisBlock()
-// FIX (double-apply): dag.height/dag.blocks/dag.tips are purely
+
+// FIX (audit 2026-06-28 full recheck, P1-3): restore every durably-saved
+// block (see chain_blocks' own comment and SaveBlockToDB) BEFORE falling
+// back to the bare max_block_height counter below. This is what lets a
+// node recover its own previously produced/accepted blocks — and their
+// full transaction lists — across a restart without needing any peer to
+// still have them; the counter-only fallback further down only recovers
+// the height NUMBER, not the actual block data.
+if loaded := state.LoadBlocksFromDB(); len(loaded) > 0 {
+	referenced := make(map[string]bool, len(loaded))
+	for _, b := range loaded {
+		dag.blocks[b.Hash] = b
+		// Already reflected in chain_accounts (committed when these TXs
+		// were first applied, before this block was even assembled) —
+		// must not be re-applied by replayTransactions.
+		dag.replayedBlocks[b.Hash] = true
+		for _, ph := range b.ParentHashes {
+			referenced[ph] = true
+		}
+		if b.Height > dag.height {
+			dag.height = b.Height
+		}
+	}
+	for hash := range dag.tips {
+		if referenced[hash] {
+			delete(dag.tips, hash)
+		}
+	}
+	for hash := range loaded {
+		if !referenced[hash] {
+			dag.tips[hash] = true
+		}
+	}
+	fmt.Printf("[BLOCK] Restored %d durable block(s) from chain_blocks — height=%d, tips=%d\n", len(loaded), dag.height, len(dag.tips))
+}
+
+// FIX (double-apply): dag.height/dag.blocks/dag.tips used to be purely
 // in-memory — ReconstructState is a no-op when using Postgres, so they
 // reset to genesis on every process restart regardless of how much
 // chain history cs.accounts (loaded fresh from the DB above) actually
-// reflects. Resume dag.height from the last persisted value instead of
-// 0, so ExportSnapshot reports the chain's true cumulative height, not
-// "blocks observed since this process last started" — see the same
-// fix's writes in ProduceBlock/AddPeerBlock and StateSnapshot.Height's
-// comment for the bug this caused (a fresh-bootstrapped secondary's
-// snapshot cutoff was reported far too low, so it still re-replayed —
-// and double-applied — every block between the true height and the
-// process-local one).
+// reflects. This counter-only fallback covers any block produced before
+// chain_blocks existed (or saved by a node that hadn't yet picked up
+// this fix): it can only raise dag.height, never lower what the loaded
+// blocks above already established, so ExportSnapshot reports the
+// chain's true cumulative height, not "blocks observed since this
+// process last started" — see the same fix's writes in
+// ProduceBlock/AddPeerBlock and StateSnapshot.Height's comment for the
+// bug this caused (a fresh-bootstrapped secondary's snapshot cutoff was
+// reported far too low, so it still re-replayed — and double-applied —
+// every block between the true height and the process-local one).
 if persisted := state.getConfigValue("max_block_height"); persisted != "" {
 	var h int64
 	fmt.Sscanf(persisted, "%d", &h)
@@ -462,10 +500,26 @@ if dag.signingKey != nil {
 
 dag.blocks[block.Hash] = block
 
-// Only now that the block carrying them is durably stored in dag.blocks —
-// clear the DB outbox rows. See LoadAndClearPendingTxs's doc comment for
-// why this is no longer a single, earlier delete-then-build step.
-if len(pendingTxIDs) > 0 {
+// FIX (audit 2026-06-28 full recheck, P1-3): "durably stored" used to mean
+// only "inserted into dag.blocks" — a Go map that resets to genesis on
+// every restart, not actual durable storage. Persist the block header to
+// chain_blocks BEFORE clearing the outbox: if this save fails, skip the
+// clear below so the TXs survive in pending_txs for the next ProduceBlock
+// attempt to re-include, rather than disappearing from every durable
+// record at once. A save failure does NOT stop block production itself —
+// blocking the whole chain on a transient DB hiccup would be worse than
+// the narrow durability gap this closes — but it does mean this round's
+// TXs stay safely re-includable instead of being silently dropped.
+blockSaved := true
+if err := dag.state.SaveBlockToDB(block); err != nil {
+	blockSaved = false
+	fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...) to chain_blocks: %v — outbox rows kept for retry\n", block.Height, block.Hash[:16], err)
+}
+
+// Only now that the block carrying them is durably stored — clear the DB
+// outbox rows. See LoadAndClearPendingTxs's doc comment for why this is
+// no longer a single, earlier delete-then-build step.
+if blockSaved && len(pendingTxIDs) > 0 {
 	dag.state.ClearPendingTxs(pendingTxIDs)
 }
 
@@ -888,6 +942,15 @@ if !replayOK {
 
 dag.mu.Lock()
 dag.blocks[block.Hash] = block
+// FIX (audit 2026-06-28 full recheck, P1-3): same durability gap as
+// ProduceBlock — see its comment. Best-effort here too: a save failure
+// doesn't reject an otherwise-valid, already-replayed peer block (its
+// account-state effects are already committed), it just means this
+// node would need to re-fetch this block from a peer again after a
+// restart instead of having its own durable copy.
+if err := dag.state.SaveBlockToDB(block); err != nil {
+	fmt.Printf("[BLOCK] ⚠ Could not persist accepted peer block #%d (%s...) to chain_blocks: %v\n", block.Height, block.Hash[:16], err)
+}
 
 // Remove parents from tips
 for _, ph := range block.ParentHashes {
