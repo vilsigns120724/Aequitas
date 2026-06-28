@@ -1509,6 +1509,16 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">Multi-node</td>
           <td style="font-size:0.61rem;color:var(--muted);padding:8px">Bearer token to authenticate the /api/snapshot endpoint. Must match the value set on the primary node. Get it from the network operator.</td>
         </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08);background:rgba(0,0,0,0.1)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">RESYNC_FROM_SNAPSHOT</td>
+          <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Recovery tool for a node KNOWN to have diverged — unlike BOOTSTRAP_SNAPSHOT_URL (which only merges into an empty DB), this REPLACES local accounts, pool, nullifiers, and chain_config with exactly what the snapshot contains, discarding anything local that doesn't match. Set to <code style="color:var(--gold)">true</code> together with BOOTSTRAP_SNAPSHOT_URL and BOOTSTRAP_SIGNER (mandatory here, no unsigned fallback), restart once, then remove it. Combine with RESET_DB_STATE=true for the cleanest result.</td>
+        </tr>
+        <tr style="border-bottom:1px solid rgba(139,92,246,0.08)">
+          <td style="font-size:0.61rem;font-family:var(--font-mono);color:var(--neon);padding:8px">SNAPSHOT_RESTRICT_TO_PRIVATE_NETWORK</td>
+          <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
+          <td style="font-size:0.61rem;color:var(--muted);padding:8px">Opt-in: when set to <code style="color:var(--gold)">true</code>, /api/snapshot only answers requests from private/loopback addresses instead of any caller with the right token. Off by default because this project's bootstrap/resync mechanism relies on cross-cloud-provider access (Railway ↔ VPS ↔ Railway); only enable this if every node you run shares a private network.</td>
+        </tr>
         <tr>
           <td style="font-size:0.61rem;font-family:var(--font-mono);color:#f87171;padding:8px">RESET_STATE</td>
           <td style="font-size:0.6rem;color:var(--muted);padding:8px">No</td>
@@ -2035,7 +2045,7 @@ de:{
   'gini-calc-text':'Alle AEQ-Salden verifizierter Menschen werden erfasst. Die Formel berechnet die mittlere absolute Differenz zwischen allen Saldo-Paaren, normiert durch Bevölkerungsgröße im Quadrat (n²) und Durchschnittssaldo (x̄). Ergebnis 0–1 multipliziert mit 100 = Aequitas-Index. Aktualisiert On-Chain nach jeder Registrierung, jedem monatlichen Demurrage-Lauf, jeder Pool-Ausschüttung und jedem Vermögensobergrenze-Ereignis — via Keeper-Aufruf updateGini().',
   'gini-why-title':'Warum Gini — und nicht eine einfachere Kennzahl?',
   'gini-why-text':'Ein "Reich-Arm-Verhältnis" ist leicht manipulierbar: 10.000 Wallets könnten eine geringe Spanne zeigen, aber 90% des AEQ in 100 Händen halten — Gini erkennt das, ein Verhältnis nicht. Der Koeffizient erfasst die vollständige Verteilung aller verifizierten Menschen in einer einzigen prüfbaren Zahl. Aequitas veröffentlicht diese On-Chain — transparent, manipulationssicher, weltweit verifizierbar. Sie ist das Hauptsignal für automatische Phasenübergänge, Vermögensobergrenze-Kalibrierung und Umverteilungsintensität. Kein Mensch kann den Index-Wert oder die von ihm ausgelösten Mechanismen überschreiben.',
-  'curr-idx':'Aktueller Index','bar-0':'0 — Perfekte Gleichheit','bar-100':'100 — Max. Ungleichheit',
+  'curr-idx':'Aktueller Index','bar-0':'0 — Perfekte Gleichheit','bar-100':'100 — Max. Ungleichheit','wcap-lbl':'Aktuelle Vermögensobergrenze:','wcap-mult':'Multiplikator:','wcap-avg':'Durchschnittsguthaben:',
   'gini':'Gini-Koeffizient','gini-desc':'0 = gleich · 1 = ungleich',
   'supply-desc':'Immer = Menschen × 1.000 AEQ',
   'phase':'Protokollphase','phase-desc':'Automatisch nach Menschenanzahl',
@@ -2115,7 +2125,7 @@ de:{
   'amm-title':'x × y = k — Konstantprodukt-AMM',
   'amm-text':'Wenn du AEQ gegen tUSD tauschst, wächst die AEQ-Reserve und die tUSD-Reserve schrumpft — ihr Produkt bleibt immer gleich k. Jeder Swap bewegt den Preis. Größere Swaps relativ zur Pool-Größe führen zu größerer Preisauswirkung. Die 0,1% Gebühr wird vor Anwendung der Formel abgezogen — so verdient der Pool an jedem Trade.',
   'swap-fee-bps':'Swap-Gebühr','swap-fee-split':'Gebührenverteilung','swap-fee-split-v':'40% Validatoren / 30% LPs / 20% UBI / 10% Schatzkammer',
-  'swap-pools-addr-title':'Tokenomics-Pool-Adressen',
+  'swap-pools-addr-title':'Tokenomics-Pool-Adressen','pools-addr-title':'Pool-Vertragsadressen',
   'swap-validators':'Validatoren (40%)','swap-lps':'Liquiditätsanbieter (30%)','swap-ubi':'UBI-Pool (20%)','swap-treasury':'Schatzkammer (10%)',
   'ubi-hero-title':'UNIVERSELLES GRUNDEINKOMMEN — UBI-POOL',
   'ubi-hero-sub':'Akkumuliert — nächste Ausschüttung gleichmäßig an alle verifizierten Menschen in:',
@@ -2196,7 +2206,10 @@ es:{
   'reg-stats':'Estadísticas del Registro','total-humans':'Total de Humanos',
   'idx-title':'Índice Aequitas — Puntuación de Igualdad Económica en Tiempo Real',
   'idx-desc':'El Índice Aequitas mide la desigualdad económica de todos los humanos verificados en tiempo real. Se calcula desde el coeficiente Gini de la distribución de saldos on-chain. 0 = igualdad perfecta. 100 = desigualdad máxima.',
-  'curr-idx':'Índice Actual','bar-0':'0 — Igualdad Perfecta','bar-100':'100 — Máx. Desigualdad',
+  'gini-what-title':'¿Qué es el Coeficiente de Gini?','gini-what-text':'Desarrollado por el estadístico italiano Corrado Gini (1912). Mide la distribución de la riqueza comparando los saldos reales con una línea base hipotéticamente igualitaria — visualizado como la curva de Lorenz. Escala: 0 (todos tienen lo mismo) a 1 (una persona lo tiene todo). Usado por el Banco Mundial, la OCDE y la ONU para comparar países. Valores de referencia: Bitcoin ≈ 0,85 · Sudáfrica (récord mundial) ≈ 0,63 · EE.UU. ≈ 0,41 · Alemania ≈ 0,31 · Escandinavia ≈ 0,27 · Objetivo a largo plazo de Aequitas: Gini por debajo de 0,30 — comparable a los países escandinavos, impuesto por el límite de riqueza.',
+  'gini-calc-title':'¿Cómo se calcula el Índice Aequitas?','gini-calc-text':'Se recopilan todos los saldos de AEQ de humanos verificados. La fórmula calcula la diferencia absoluta media entre cada par posible de saldos, normalizada por la población al cuadrado (n²) y el saldo medio (x̄). El resultado 0–1 multiplicado por 100 = Índice Aequitas. Se actualiza on-chain tras cada registro, demurrage mensual, pago de pool y evento de límite de riqueza.',
+  'gini-why-title':'¿Por qué Gini — y no una métrica más simple?','gini-why-text':'Una simple relación rico-pobre es fácil de manipular: 10.000 wallets podrían mostrar una dispersión baja pero con el 90% del AEQ concentrado en 100 manos — Gini detecta esto, una relación simple no. El coeficiente captura la distribución completa entre todos los humanos verificados en un único número auditable. Aequitas publica esto on-chain — transparente, a prueba de manipulaciones, verificable globalmente. Es la señal principal para las transiciones automáticas de fase, la calibración del límite de riqueza y la intensidad de redistribución.',
+  'curr-idx':'Índice Actual','bar-0':'0 — Igualdad Perfecta','bar-100':'100 — Máx. Desigualdad','wcap-lbl':'Límite de Riqueza Actual:','wcap-mult':'Multiplicador:','wcap-avg':'Saldo promedio:',
   'gini':'Coeficiente Gini','gini-desc':'0 = igual · 1 = desigual',
   'supply-desc':'Siempre = Humanos × 1,000 AEQ',
   'phase':'Fase del Protocolo','phase-desc':'Avanza automáticamente por recuento humano',
@@ -2231,7 +2244,7 @@ es:{
   'swap-pool-title':'AEQ / tUSD — Estado del Pool',
   'swap-pool-aeq':'Reserva AEQ','swap-pool-tusd':'Reserva tUSD','swap-pool-price':'Precio Spot',
   'swap-fee-bps':'Comisión de Swap','swap-fee-split':'Distribución de comisiones','swap-fee-split-v':'40% Validadores / 30% LPs / 20% UBI / 10% Tesorería',
-  'swap-pools-addr-title':'Direcciones de Pools Tokenomics',
+  'swap-pools-addr-title':'Direcciones de Pools Tokenomics','pools-addr-title':'Direcciones de Contrato de Pools',
   'swap-validators':'Validadores (40%)','swap-lps':'Proveedores de Liquidez (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Tesorería (10%)',
   'ubi-hero-title':'RENTA BÁSICA UNIVERSAL — POOL UBI',
   'ubi-hero-sub':'Acumulando — próximo pago distribuido por igual a todos los humanos verificados en:',
@@ -2346,7 +2359,7 @@ ru:{
   'reg-stats':'Статистика Реестра','total-humans':'Всего Людей',
   'idx-title':'Индекс Aequitas — Оценка Экономического Равенства в Реальном Времени',
   'idx-desc':'Индекс Aequitas измеряет экономическое неравенство всех верифицированных людей в реальном времени. Рассчитывается из коэффициента Джини распределения балансов он-чейн. 0 = идеальное равенство. 100 = максимальное неравенство.',
-  'curr-idx':'Текущий Индекс','bar-0':'0 — Идеальное Равенство','bar-100':'100 — Макс. Неравенство',
+  'curr-idx':'Текущий Индекс','bar-0':'0 — Идеальное Равенство','bar-100':'100 — Макс. Неравенство','wcap-lbl':'Текущий Потолок Богатства:','wcap-mult':'Множитель:','wcap-avg':'Средний баланс:',
   'gini':'Коэффициент Джини','gini-desc':'0 = равно · 1 = неравно',
   'supply-desc':'Всегда = Люди × 1 000 AEQ',
   'phase':'Фаза Протокола','phase-desc':'Автоматически по количеству людей',
@@ -2417,7 +2430,7 @@ ru:{
   'swap-pool-title':'AEQ / tUSD — Статус Пула',
   'swap-pool-aeq':'Резерв AEQ','swap-pool-tusd':'Резерв tUSD','swap-pool-price':'Спотовая Цена',
   'swap-fee-bps':'Комиссия Свопа','swap-fee-split':'Распределение комиссий','swap-fee-split-v':'40% Валидаторы / 30% LP / 20% UBI / 10% Казначейство',
-  'swap-pools-addr-title':'Адреса Пулов Токеномики',
+  'swap-pools-addr-title':'Адреса Пулов Токеномики','pools-addr-title':'Адреса Контрактов Пулов',
   'swap-validators':'Валидаторы (40%)','swap-lps':'Провайдеры Ликвидности (30%)','swap-ubi':'Пул UBI (20%)','swap-treasury':'Казначейство (10%)',
   'ubi-hero-title':'УНИВЕРСАЛЬНЫЙ БАЗОВЫЙ ДОХОД — ПУЛ UBI',
   'ubi-hero-sub':'Накапливается — следующая выплата поровну всем верифицированным людям через:',
@@ -2443,7 +2456,7 @@ ru:{
   'expl-v7':'Документация Протокола V7','expl-v7-d':'Контракт AequitasV7 · 6 механизмов · ZK-доказательство · лимит богатства · демерредж · неизменяемый код',
   'expl-explorer':'Обозреватель блоков','expl-explorer-d':'Живой BlockDAG · нажмите на блок чтобы увидеть валидатора, хэш, транзакции, родительские хэши',
   'swap-sell-label':'Продать','swap-receive-label':'Получить',
-  'gini-calc-title':'Как рассчитывается Индекс Aequitas','gini-calc-text':'Собираются все балансы AEQ. Формула вычисляет среднее абсолютное отклонение нормализованное на n2. Результат 0-1 x 100 = Индекс.','gini-why-title':'Почему Gini','gini-why-text':'Gini учитывает полное распределение среди всех людей в одном числе.','expl-network':'Сеть и узлы','expl-network-d':'Топология узлов · запустить собственный узел · технические характеристики · Chain ID 1926'
+  'gini-what-title':'Что такое коэффициент Джини?','gini-what-text':'Разработан итальянским статистиком Коррадо Джини (1912). Измеряет распределение богатства, сравнивая фактические балансы с гипотетически равным базовым уровнем. Шкала: 0 (у всех одинаково) до 1 (у одного всё). Используется Всемирным банком, ОЭСР, ООН для сравнения стран. Справочные значения: Bitcoin ≈ 0,85 · ЮАР (мировой рекорд) ≈ 0,63 · США ≈ 0,41 · Германия ≈ 0,31 · Скандинавия ≈ 0,27 · Долгосрочная цель Aequitas: Джини ниже 0,30.','gini-calc-title':'Как рассчитывается Индекс Aequitas','gini-calc-text':'Собираются все балансы AEQ. Формула вычисляет среднее абсолютное отклонение нормализованное на n2. Результат 0-1 x 100 = Индекс.','gini-why-title':'Почему Gini','gini-why-text':'Gini учитывает полное распределение среди всех людей в одном числе.','expl-network':'Сеть и узлы','expl-network-d':'Топология узлов · запустить собственный узел · технические характеристики · Chain ID 1926'
 },
 zh:{
   'logo-sub':'人类证明','live':'实时',
@@ -2493,7 +2506,7 @@ zh:{
   'reg-stats':'注册统计','total-humans':'总人数',
   'idx-title':'Aequitas指数——实时经济平等评分',
   'idx-desc':'Aequitas指数实时衡量所有经过验证的人类的经济不平等。从链上余额分布的基尼系数导出。0 = 完全平等。100 = 最大不平等。',
-  'curr-idx':'当前指数','bar-0':'0 — 完全平等','bar-100':'100 — 最大不平等',
+  'curr-idx':'当前指数','bar-0':'0 — 完全平等','bar-100':'100 — 最大不平等','wcap-lbl':'当前财富上限：','wcap-mult':'倍数：','wcap-avg':'平均余额：',
   'gini':'基尼系数','gini-desc':'0 = 平等 · 1 = 不平等',
   'supply-desc':'始终 = 人类 × 1,000 AEQ',
   'phase':'协议阶段','phase-desc':'按人类数量自动推进',
@@ -2566,7 +2579,7 @@ zh:{
   'swap-pool-title':'AEQ / tUSD — 池子状态',
   'swap-pool-aeq':'AEQ 储备','swap-pool-tusd':'tUSD 储备','swap-pool-price':'现货价格',
   'swap-fee-bps':'兑换手续费','swap-fee-split':'手续费分配','swap-fee-split-v':'40% 验证者 / 30% LP / 20% UBI / 10% 国库',
-  'swap-pools-addr-title':'代币经济池地址',
+  'swap-pools-addr-title':'代币经济池地址','pools-addr-title':'池合约地址',
   'swap-validators':'验证者 (40%)','swap-lps':'流动性提供者 (30%)','swap-ubi':'UBI 池 (20%)','swap-treasury':'国库 (10%)',
   'ubi-hero-title':'普遍基本收入 — UBI 池',
   'ubi-hero-sub':'累积中 — 下次平等分配给所有验证人类：',
@@ -2592,7 +2605,7 @@ zh:{
   'expl-v7':'协议V7文档','expl-v7-d':'AequitasV7合约 · 6个机制 · ZK证明 · 财富上限 · 货币持有税 · 不可更改代码',
   'expl-explorer':'区块浏览器','expl-explorer-d':'实时BlockDAG · 点击任意区块查看验证者、哈希、交易、父哈希',
   'swap-sell-label':'卖出','swap-receive-label':'接收',
-  'gini-calc-title':'如何计算Aequitas指数','gini-calc-text':'收集所有AEQ余额。公式计算每对余额之间的平均绝对差，结果0-1乘以100=Aequitas指数。','gini-why-title':'为什么选择基尼系数','gini-why-text':'基尼系数捕捉所有已验证人类的完整分布。Aequitas将此数据发布在链上。','expl-network':'网络与节点','expl-network-d':'节点拓扑 · 运行自己的节点 · 技术规格 · Chain ID 1926'
+  'gini-what-title':'什么是基尼系数？','gini-what-text':'由意大利统计学家科拉多·基尼于1912年提出。通过将实际余额与假设的完全平等基线进行比较来衡量财富分配。范围：0（人人均等）到1（一人独占）。世界银行、经合组织、联合国用于比较各国。参考值：比特币≈0.85 · 南非（世界纪录）≈0.63 · 美国≈0.41 · 德国≈0.31 · 北欧≈0.27 · Aequitas长期目标：基尼系数低于0.30。','gini-calc-title':'如何计算Aequitas指数','gini-calc-text':'收集所有AEQ余额。公式计算每对余额之间的平均绝对差，结果0-1乘以100=Aequitas指数。','gini-why-title':'为什么选择基尼系数','gini-why-text':'基尼系数捕捉所有已验证人类的完整分布。Aequitas将此数据发布在链上。','expl-network':'网络与节点','expl-network-d':'节点拓扑 · 运行自己的节点 · 技术规格 · Chain ID 1926'
 },
 id:{
   'logo-sub':'BUKTI KEMANUSIAAN','live':'LANGSUNG',
@@ -2642,7 +2655,7 @@ id:{
   'reg-stats':'Statistik Registri','total-humans':'Total Manusia',
   'idx-title':'Indeks Aequitas — Skor Kesetaraan Ekonomi Real-Time',
   'idx-desc':'Indeks Aequitas mengukur ketidaksetaraan ekonomi semua manusia terverifikasi secara real-time. Diturunkan dari koefisien Gini distribusi saldo on-chain. 0 = kesetaraan sempurna. 100 = ketidaksetaraan maksimum.',
-  'curr-idx':'Indeks Saat Ini','bar-0':'0 — Kesetaraan Sempurna','bar-100':'100 — Maks. Ketidaksetaraan',
+  'curr-idx':'Indeks Saat Ini','bar-0':'0 — Kesetaraan Sempurna','bar-100':'100 — Maks. Ketidaksetaraan','wcap-lbl':'Batas Kekayaan Saat Ini:','wcap-mult':'Pengganda:','wcap-avg':'Saldo rata-rata:',
   'gini':'Koefisien Gini','gini-desc':'0 = setara · 1 = tidak setara',
   'supply-desc':'Selalu = Manusia × 1.000 AEQ',
   'phase':'Fase Protokol','phase-desc':'Otomatis berdasarkan jumlah manusia',
@@ -2707,7 +2720,7 @@ id:{
   'swap-pool-title':'AEQ / tUSD — Status Pool',
   'swap-pool-aeq':'Cadangan AEQ','swap-pool-tusd':'Cadangan tUSD','swap-pool-price':'Harga Spot',
   'swap-fee-bps':'Biaya Swap','swap-fee-split':'Distribusi biaya','swap-fee-split-v':'40% Validator / 30% LP / 20% UBI / 10% Perbendaharaan',
-  'swap-pools-addr-title':'Alamat Pool Tokenomik',
+  'swap-pools-addr-title':'Alamat Pool Tokenomik','pools-addr-title':'Alamat Kontrak Pool',
   'swap-validators':'Validator (40%)','swap-lps':'Penyedia Likuiditas (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Perbendaharaan (10%)',
   'ubi-hero-title':'PENDAPATAN DASAR UNIVERSAL — POOL UBI',
   'ubi-hero-sub':'Mengumpulkan — pembayaran berikutnya dibagikan merata ke semua manusia terverifikasi dalam:',
@@ -2733,7 +2746,7 @@ id:{
   'expl-v7':'Dokumentasi Protokol V7','expl-v7-d':'Kontrak AequitasV7 · 6 mekanisme · bukti ZK · batas kekayaan · demurrage · kode tak berubah',
   'expl-explorer':'Block Explorer','expl-explorer-d':'BlockDAG langsung · klik blok apapun untuk melihat validator, hash, transaksi, hash induk',
   'swap-sell-label':'Jual','swap-receive-label':'Terima',
-  'gini-calc-title':'Bagaimana Indeks Aequitas dihitung','gini-calc-text':'Semua saldo AEQ dikumpulkan. Rumus menghitung perbedaan absolut rata-rata dinormalisasi dengan n2. Hasil 0-1 dikali 100 = Indeks Aequitas.','gini-why-title':'Mengapa Gini','gini-why-text':'Koefisien Gini menangkap distribusi lengkap semua manusia terverifikasi.','expl-network':'Jaringan &amp; Node','expl-network-d':'Topologi node · jalankan node sendiri · spesifikasi teknis · Chain ID 1926'
+  'gini-what-title':'Apa itu Koefisien Gini?','gini-what-text':'Dikembangkan oleh ahli statistik Italia Corrado Gini (1912). Mengukur distribusi kekayaan dengan membandingkan saldo aktual dengan basis yang secara hipotetis sepenuhnya setara. Skala: 0 (semua sama) hingga 1 (satu orang menguasai semua). Digunakan oleh Bank Dunia, OECD, PBB untuk membandingkan negara. Nilai referensi: Bitcoin ≈ 0,85 · Afrika Selatan (rekor dunia) ≈ 0,63 · AS ≈ 0,41 · Jerman ≈ 0,31 · Skandinavia ≈ 0,27 · Target jangka panjang Aequitas: Gini di bawah 0,30.','gini-calc-title':'Bagaimana Indeks Aequitas dihitung','gini-calc-text':'Semua saldo AEQ dikumpulkan. Rumus menghitung perbedaan absolut rata-rata dinormalisasi dengan n2. Hasil 0-1 dikali 100 = Indeks Aequitas.','gini-why-title':'Mengapa Gini','gini-why-text':'Koefisien Gini menangkap distribusi lengkap semua manusia terverifikasi.','expl-network':'Jaringan &amp; Node','expl-network-d':'Topologi node · jalankan node sendiri · spesifikasi teknis · Chain ID 1926'
 },
 it:{
   'logo-sub':'PROVA DI UMANITÀ','live':'LIVE',
@@ -2783,7 +2796,7 @@ it:{
   'reg-stats':'Statistiche Registro','total-humans':'Totale Umani',
   'idx-title':'Indice Aequitas — Punteggio di Uguaglianza Economica in Tempo Reale',
   'idx-desc':'L\'Indice Aequitas misura la disuguaglianza economica tra tutti gli umani verificati in tempo reale. È derivato dal coefficiente Gini della distribuzione dei saldi on-chain. 0 = perfetta uguaglianza. 100 = massima disuguaglianza. Il protocollo attiva automaticamente i meccanismi di redistribuzione quando l\'indice sale.',
-  'curr-idx':'Indice Attuale','bar-0':'0 — Perfetta Uguaglianza','bar-100':'100 — Massima Disuguaglianza',
+  'curr-idx':'Indice Attuale','bar-0':'0 — Perfetta Uguaglianza','bar-100':'100 — Massima Disuguaglianza','wcap-lbl':'Tetto Patrimoniale Attuale:','wcap-mult':'Moltiplicatore:','wcap-avg':'Saldo medio:',
   'gini':'Coefficiente Gini','gini-desc':'0 = uguale · 1 = disuguale',
   'supply-desc':'Sempre = Umani × 1.000 AEQ',
   'phase':'Fase Protocollo','phase-desc':'Avanza automaticamente per numero di umani',
@@ -2849,7 +2862,7 @@ it:{
   'swap-pool-title':'AEQ / tUSD — Stato del Pool',
   'swap-pool-aeq':'Riserva AEQ','swap-pool-tusd':'Riserva tUSD','swap-pool-price':'Prezzo Spot',
   'swap-fee-bps':'Commissione Swap','swap-fee-split':'Distribuzione commissioni','swap-fee-split-v':'40% Validatori / 30% LP / 20% UBI / 10% Tesoreria',
-  'swap-pools-addr-title':'Indirizzi Pool Tokenomics',
+  'swap-pools-addr-title':'Indirizzi Pool Tokenomics','pools-addr-title':'Indirizzi Contratto Pool',
   'swap-validators':'Validatori (40%)','swap-lps':'Fornitori di Liquidità (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Tesoreria (10%)',
   'ubi-hero-title':'REDDITO UNIVERSALE DI BASE — POOL UBI',
   'ubi-hero-sub':'Accumulando — prossimo pagamento distribuito equamente a tutti gli umani verificati in:',
@@ -2875,7 +2888,7 @@ it:{
   'expl-v7':'Documentazione Protocollo V7','expl-v7-d':'Contratto AequitasV7 · 6 meccanismi · prova ZK · limite ricchezza · demurrage · codice immutabile',
   'expl-explorer':'Block Explorer','expl-explorer-d':'BlockDAG live · clicca qualsiasi blocco per vedere validatore, hash, transazioni, hash genitori',
   'swap-sell-label':'Vendi','swap-receive-label':'Ricevi',
-  'gini-calc-title':'Come si calcola l indice','gini-calc-text':'Vengono raccolti tutti i saldi AEQ. La formula calcola la differenza assoluta media normalizzata per n2. Risultato 0-1 x 100 = Indice Aequitas.','gini-why-title':'Perche Gini','gini-why-text':'Il coefficiente Gini cattura la distribuzione completa in un numero verificabile.','expl-network':'Rete e Nodi','expl-network-d':'Topologia nodi · esegui il tuo nodo · specifiche tecniche · Chain ID 1926'
+  'gini-what-title':'Cos e il Coefficiente di Gini?','gini-what-text':'Sviluppato dallo statistico italiano Corrado Gini (1912). Misura la distribuzione della ricchezza confrontando i saldi reali con una linea di base ipoteticamente perfettamente equa. Scala: 0 (tutti hanno lo stesso) a 1 (una persona ha tutto). Utilizzato da Banca Mondiale, OCSE, ONU per confrontare i paesi. Valori di riferimento: Bitcoin ≈ 0,85 · Sudafrica (record mondiale) ≈ 0,63 · USA ≈ 0,41 · Germania ≈ 0,31 · Scandinavia ≈ 0,27 · Obiettivo a lungo termine di Aequitas: Gini sotto 0,30.','gini-calc-title':'Come si calcola l indice','gini-calc-text':'Vengono raccolti tutti i saldi AEQ. La formula calcola la differenza assoluta media normalizzata per n2. Risultato 0-1 x 100 = Indice Aequitas.','gini-why-title':'Perche Gini','gini-why-text':'Il coefficiente Gini cattura la distribuzione completa in un numero verificabile.','expl-network':'Rete e Nodi','expl-network-d':'Topologia nodi · esegui il tuo nodo · specifiche tecniche · Chain ID 1926'
 },
 tr:{
   'logo-sub':'İNSANLIK KANITI','live':'CANLI',
@@ -2998,7 +3011,7 @@ tr:{
   'swap-pool-title':'AEQ / tUSD — Havuz Durumu',
   'swap-pool-aeq':'AEQ Rezervi','swap-pool-tusd':'tUSD Rezervi','swap-pool-price':'Spot Fiyat',
   'swap-fee-bps':'Takas Ücreti','swap-fee-split':'Ücret Dağılımı','swap-fee-split-v':'%40 Doğrulayıcılar / %30 LP\'ler / %20 UBI / %10 Hazine',
-  'swap-pools-addr-title':'Tokenomik Havuz Adresleri',
+  'swap-pools-addr-title':'Tokenomik Havuz Adresleri','pools-addr-title':'Havuz Sözleşme Adresleri',
   'swap-validators':'Doğrulayıcılar (%40)','swap-lps':'Likidite Sağlayıcıları (%30)','swap-ubi':'UBI Havuzu (%20)','swap-treasury':'Hazine (%10)',
   'ubi-hero-title':'EVRENSEL TEMEL GELİR — UBI HAVUZU',
   'ubi-hero-sub':'Biriktirilmekte — bir sonraki ödeme tüm doğrulanmış insanlara eşit olarak dağıtılıyor:',
@@ -3146,7 +3159,7 @@ fr:{
   'swap-pool-title':'AEQ / tUSD — Statut du Pool',
   'swap-pool-aeq':'Réserve AEQ','swap-pool-tusd':'Réserve tUSD','swap-pool-price':'Prix Spot',
   'swap-fee-bps':'Frais de Swap','swap-fee-split':'Répartition des frais','swap-fee-split-v':'40% Validateurs / 30% LP / 20% UBI / 10% Trésorerie',
-  'swap-pools-addr-title':'Adresses des Pools Tokenomiques',
+  'swap-pools-addr-title':'Adresses des Pools Tokenomiques','pools-addr-title':'Adresses des Contrats de Pools',
   'swap-validators':'Validateurs (40%)','swap-lps':'Fournisseurs de Liquidité (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Trésorerie (10%)',
   'ubi-hero-title':'REVENU DE BASE UNIVERSEL — POOL UBI',
   'ubi-hero-sub':'Accumulation — prochain paiement distribué à tous les humains vérifiés dans :',
@@ -3294,7 +3307,7 @@ pt:{
   'swap-pool-title':'AEQ / tUSD — Status do Pool',
   'swap-pool-aeq':'Reserva AEQ','swap-pool-tusd':'Reserva tUSD','swap-pool-price':'Preço Spot',
   'swap-fee-bps':'Taxa de Swap','swap-fee-split':'Distribuição de taxas','swap-fee-split-v':'40% Validadores / 30% LP / 20% UBI / 10% Tesouro',
-  'swap-pools-addr-title':'Endereços dos Pools Tokenômicos',
+  'swap-pools-addr-title':'Endereços dos Pools Tokenômicos','pools-addr-title':'Endereços dos Contratos de Pools',
   'swap-validators':'Validadores (40%)','swap-lps':'Provedores de Liquidez (30%)','swap-ubi':'Pool UBI (20%)','swap-treasury':'Tesouro (10%)',
   'ubi-hero-title':'RENDA BÁSICA UNIVERSAL — POOL UBI',
   'ubi-hero-sub':'Acumulando — próximo pagamento distribuído a todos os humanos verificados em:',
@@ -3372,7 +3385,15 @@ ar:{
   'idx-desc':'مؤشر Aequitas مشتق من <strong style="color:var(--teal)">معامل جيني</strong> — المعيار الدولي لقياس عدم المساواة (البنك الدولي، OECD، الأمم المتحدة). <strong style="color:var(--neon)">0 = مساواة مثالية</strong>. <strong style="color:var(--red)">100 = تركيز كامل</strong>. الهدف: جيني أقل من 0.30.',
   'gini-what-title':'ما هو معامل جيني؟',
   'gini-what-text':'طوّره كورادو جيني (1912). يقيس توزيع الثروة. المقياس: 0 (الجميع متساوون) إلى 1 (شخص واحد يملك كل شيء). يُستخدم من قِبل البنك الدولي وOECD والأمم المتحدة.',
+  'gini-calc-title':'كيف يتم حساب مؤشر Aequitas؟','gini-calc-text':'يتم جمع جميع أرصدة AEQ للبشر المعتمدين. تحسب الصيغة الفرق المطلق المتوسط بين كل زوج من الأرصدة، مقسومًا على مربع عدد السكان (n²) والرصيد المتوسط. النتيجة 0-1 مضروبة في 100 = مؤشر Aequitas.',
+  'gini-why-title':'لماذا جيني — ولا مقياس أبسط؟','gini-why-text':'نسبة الأغنى-الأفقر بسيطة وسهلة التحايل عليها — معامل جيني يكتشف ذلك. يلتقط المعامل التوزيع الكامل بين جميع البشر المعتمدين في رقم واحد قابل للتدقيق. تنشر Aequitas هذا على السلسلة — شفاف وقابل للتحقق عالميًا.',
   'curr-idx':'المؤشر الحالي','bar-0':'0 — مساواة مثالية','bar-100':'100 — أقصى عدم مساواة','wcap-lbl':'سقف الثروة الحالي:','wcap-mult':'المضاعف:','wcap-avg':'متوسط الرصيد:',
+  'phases-desc':'في المرحلة 0 (التأسيس)، يستخدم سقف الثروة مضاعفًا متحركًا: max(5, min(N, 25)) × متوسط الرصيد. مع 1-4 بشر: 5× المتوسط. كل إنسان جديد يضيف 1×. عند 25+ إنسانًا: يُثبَّت بشكل دائم عند 25×. تحدث جميع الانتقالات تلقائيًا بحسب عدد البشر — بدون تصويت إداري، بدون مفتاح إداري.',
+  'wealth-cap-explain':'سقف الثروة في المرحلة 0 (التأسيس) يستخدم max(5, min(N, 25)) × متوسط رصيد AEQ، حيث N = عدد البشر المسجلين. 1-4 بشر: السقف = 5× المتوسط. كل إنسان جديد يضيف 1×. عند 25+: يُثبَّت دائمًا عند 25×. يتكيف السقف دائمًا مع متوسط الرصيد الحالي.',
+  'p0':'التأسيس · أقل من 100 إنسان · سقف الثروة: max(5,min(N,25))× المتوسط · ينزلق من 5× إلى 25× حتى الإنسان الخامس والعشرين · نشط حاليًا',
+  'p1':'النمو · 100–10,000 إنسان · سقف الثروة: 25× متوسط الرصيد',
+  'p2':'الاستقرار · 10,000–1M إنسان · سقف الثروة: 25× متوسط الرصيد',
+  'p3':'النضج · 1M+ إنسان · سقف الثروة: 25× متوسط الرصيد',
   'gini':'معامل جيني','gini-desc':'0 = متساوٍ · 1 = غير متساوٍ',
   'supply-desc':'دائماً = البشر × 1,000 AEQ',
   'phase':'مرحلة البروتوكول','phase-desc':'يتقدم تلقائياً بعدد البشر',
@@ -3432,7 +3453,7 @@ ar:{
   'swap-pool-title':'AEQ / tUSD — حالة المجمع',
   'swap-pool-aeq':'احتياطي AEQ','swap-pool-tusd':'احتياطي tUSD','swap-pool-price':'السعر الفوري',
   'swap-fee-bps':'رسوم المبادلة','swap-fee-split':'توزيع الرسوم','swap-fee-split-v':'40% مدققون / 30% LP / 20% UBI / 10% خزينة',
-  'swap-pools-addr-title':'عناوين مجمعات التوكينوميكس',
+  'swap-pools-addr-title':'عناوين مجمعات التوكينوميكس','pools-addr-title':'عناوين عقود المجمعات',
   'swap-validators':'المدققون (40%)','swap-lps':'مزودو السيولة (30%)','swap-ubi':'مجمع UBI (20%)','swap-treasury':'الخزينة (10%)',
   'ubi-hero-title':'الدخل الأساسي الشامل — مجمع UBI',
   'ubi-hero-sub':'يتراكم — الدفعة التالية توزَّع بالتساوي على جميع البشر الموثقين خلال:',
@@ -3510,7 +3531,15 @@ hi:{
   'idx-desc':'Aequitas इंडेक्स <strong style="color:var(--teal)">जिनी गुणांक</strong> से लिया गया है — विश्व बैंक, OECD और UN द्वारा अपनाया गया अंतरराष्ट्रीय मानक। <strong style="color:var(--neon)">0 = पूर्ण समानता</strong>। <strong style="color:var(--red)">100 = अधिकतम एकाग्रता</strong>। लक्ष्य: जिनी 0.30 से कम।',
   'gini-what-title':'जिनी गुणांक क्या है?',
   'gini-what-text':'इतालवी सांख्यिकीविद् कोर्राडो जिनी (1912) द्वारा विकसित। धन वितरण मापता है। पैमाना: 0 (सब समान) से 1 (एक व्यक्ति के पास सब कुछ)। विश्व बैंक, OECD, UN उपयोग करते हैं।',
+  'gini-calc-title':'Aequitas इंडेक्स की गणना कैसे होती है?','gini-calc-text':'सभी सत्यापित मानवों के AEQ बैलेंस एकत्र किए जाते हैं। फॉर्मूला हर संभावित जोड़ी के बैलेंस के बीच माध्य निरपेक्ष अंतर की गणना करता है, जनसंख्या वर्ग (n²) और माध्य बैलेंस से सामान्यीकृत। परिणाम 0–1 को 100 से गुणा = Aequitas इंडेक्स।',
+  'gini-why-title':'जिनी ही क्यों — कोई सरल मेट्रिक नहीं?','gini-why-text':'सरल अमीर-गरीब अनुपात में हेरफेर आसान है — जिनी इसे पकड़ लेता है। यह गुणांक सभी सत्यापित मानवों के बीच पूर्ण वितरण को एक ऑडिट योग्य संख्या में दर्शाता है। Aequitas इसे ऑन-चेन प्रकाशित करता है — पारदर्शी, विश्व स्तर पर सत्यापन योग्य।',
   'curr-idx':'वर्तमान इंडेक्स','bar-0':'0 — पूर्ण समानता','bar-100':'100 — अधिकतम असमानता','wcap-lbl':'वर्तमान धन सीमा:','wcap-mult':'गुणक:','wcap-avg':'औसत बैलेंस:',
+  'phases-desc':'चरण 0 (बूटस्ट्रैप) में धन सीमा एक स्लाइडिंग गुणक का उपयोग करती है: max(5, min(N, 25)) × औसत बैलेंस। 1–4 मनुष्यों के साथ: 5× औसत। हर नया मनुष्य 1× जोड़ता है। 25+ मनुष्यों पर: स्थायी रूप से 25× पर स्थिर। सभी बदलाव मनुष्यों की संख्या से स्वचालित रूप से होते हैं — कोई गवर्नेंस वोट नहीं, कोई एडमिन कुंजी नहीं।',
+  'wealth-cap-explain':'चरण 0 (बूटस्ट्रैप) में धन सीमा max(5, min(N, 25)) × औसत AEQ बैलेंस का उपयोग करती है, जहाँ N = पंजीकृत मनुष्य। 1–4 मनुष्य: सीमा = 5× औसत। हर नया मनुष्य 1× जोड़ता है। 25+ पर: स्थायी रूप से 25× पर स्थिर। सीमा हमेशा वर्तमान औसत बैलेंस के साथ बदलती है।',
+  'p0':'बूटस्ट्रैप · 100 से कम मनुष्य · धन सीमा: max(5,min(N,25))× औसत · 25वें मनुष्य तक 5× से 25× तक बढ़ता है · वर्तमान में सक्रिय',
+  'p1':'विकास · 100–10,000 मनुष्य · धन सीमा: 25× औसत बैलेंस',
+  'p2':'स्थिरता · 10,000–1M मनुष्य · धन सीमा: 25× औसत बैलेंस',
+  'p3':'परिपक्वता · 1M+ मनुष्य · धन सीमा: 25× औसत बैलेंस',
   'gini':'जिनी गुणांक','gini-desc':'0 = समान · 1 = असमान',
   'supply-desc':'हमेशा = मनुष्य × 1,000 AEQ',
   'phase':'प्रोटोकॉल चरण','phase-desc':'मानवों की संख्या से स्वचालित रूप से आगे बढ़ता है',
@@ -3570,7 +3599,7 @@ hi:{
   'swap-pool-title':'AEQ / tUSD — पूल स्थिति',
   'swap-pool-aeq':'AEQ रिजर्व','swap-pool-tusd':'tUSD रिजर्व','swap-pool-price':'स्पॉट मूल्य',
   'swap-fee-bps':'स्वैप शुल्क','swap-fee-split':'शुल्क वितरण','swap-fee-split-v':'40% वैलिडेटर / 30% LP / 20% UBI / 10% ट्रेजरी',
-  'swap-pools-addr-title':'टोकनोमिक्स पूल पते',
+  'swap-pools-addr-title':'टोकनोमिक्स पूल पते','pools-addr-title':'पूल अनुबंध पते',
   'swap-validators':'वैलिडेटर (40%)','swap-lps':'लिक्विडिटी प्रदाता (30%)','swap-ubi':'UBI पूल (20%)','swap-treasury':'ट्रेजरी (10%)',
   'ubi-hero-title':'यूनिवर्सल बेसिक इनकम — UBI पूल',
   'ubi-hero-sub':'जमा हो रहा है — अगला भुगतान सभी सत्यापित मनुष्यों को समान रूप से वितरित:',
