@@ -595,6 +595,17 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 	// Replace, not merge: clear every table this snapshot covers before
 	// re-inserting its contents, so stale local rows that no longer exist
 	// in the (authoritative) snapshot don't survive — all within tx now.
+	//
+	// chain_blocks is also cleared so the restart's LoadBlocksFromDB starts
+	// empty: we need all block headers re-synced from genesis (see
+	// max_block_height = "0" below) so dag.blocks is fully populated before
+	// Railway's new blocks arrive. Without this, stale headers (from a
+	// previous run) would set dag.height to the old max, and doSyncOnce
+	// would start from there — leaving a gap whose parent hashes don't
+	// exist in dag.blocks, causing every subsequent block to orphan.
+	if _, err := tx.Exec(`DELETE FROM chain_blocks`); err != nil {
+		return fail(fmt.Errorf("resync: could not clear chain_blocks: %w", err))
+	}
 	if _, err := tx.Exec(`DELETE FROM chain_accounts`); err != nil {
 		return fail(fmt.Errorf("resync: could not clear chain_accounts: %w", err))
 	}
@@ -659,8 +670,20 @@ func (cs *ChainState) ResyncFromSnapshotURL(peerURL, expectedSignerHex string) e
 		if err := cs.setConfigValue("snapshot_import_height", fmt.Sprintf("%d", snap.Height)); err != nil {
 			return fail(fmt.Errorf("resync: could not set snapshot_import_height: %w", err))
 		}
-		if err := cs.setConfigValue("max_block_height", fmt.Sprintf("%d", snap.Height)); err != nil {
-			return fail(fmt.Errorf("resync: could not set max_block_height: %w", err))
+		// Set max_block_height to 0, NOT snap.Height: dag.height is seeded
+		// from max_block_height at startup, and doSyncOnce pages forward from
+		// dag.height - syncOverlap. If we stored snap.Height here, the first
+		// sync cycle would request blocks near snap.Height — but dag.blocks
+		// only contains genesis (chain_blocks was just cleared above), so
+		// every arriving block's parent hash would be missing and the entire
+		// chain would orphan permanently. With max_block_height = 0, the node
+		// restarts at dag.height = 0 and syncs ALL block headers sequentially
+		// from genesis; replay is skipped for heights ≤ snapshot_import_height
+		// (see replayTransactions' skipHeight check), so account state stays
+		// correct. bootHeight is still set correctly via snapshot_import_height
+		// in RefreshBootHeightAfterSnapshotImport.
+		if err := cs.setConfigValue("max_block_height", "0"); err != nil {
+			return fail(fmt.Errorf("resync: could not reset max_block_height: %w", err))
 		}
 	}
 

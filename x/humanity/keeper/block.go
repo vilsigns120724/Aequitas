@@ -412,22 +412,38 @@ return dag
 func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport() {
 	dag.mu.Lock()
 	defer dag.mu.Unlock()
-	var h int64
+
+	// bootHeight = max(max_block_height, snapshot_import_height): controls
+	// replayTransactions' skipHeight so we never re-apply state that the
+	// snapshot already encodes.
+	var bootH int64
 	if persisted := dag.state.getConfigValueDB("max_block_height"); persisted != "" {
-		fmt.Sscanf(persisted, "%d", &h)
+		fmt.Sscanf(persisted, "%d", &bootH)
 	}
 	if snapHeightStr := dag.state.getConfigValueDB("snapshot_import_height"); snapHeightStr != "" {
 		var snapHeight int64
 		fmt.Sscanf(snapHeightStr, "%d", &snapHeight)
-		if snapHeight > h {
-			h = snapHeight
+		if snapHeight > bootH {
+			bootH = snapHeight
 		}
 	}
-	if h > dag.height {
-		dag.height = h
+	if bootH > dag.bootHeight {
+		dag.bootHeight = bootH
 	}
-	if h > dag.bootHeight {
-		dag.bootHeight = h
+
+	// dag.height = max_block_height ONLY — this is the sync frontier
+	// doSyncOnce pages forward from. After a snapshot resync, max_block_height
+	// is reset to 0 (see ResyncFromSnapshotURL) so the node re-downloads all
+	// block headers sequentially from genesis. Raising dag.height here from
+	// snapshot_import_height would cause doSyncOnce to start near the snapshot
+	// height, where dag.blocks is empty (chain_blocks was cleared), making
+	// every incoming block orphan on a missing parent permanently.
+	var maxH int64
+	if persisted := dag.state.getConfigValueDB("max_block_height"); persisted != "" {
+		fmt.Sscanf(persisted, "%d", &maxH)
+	}
+	if maxH > dag.height {
+		dag.height = maxH
 	}
 }
 
