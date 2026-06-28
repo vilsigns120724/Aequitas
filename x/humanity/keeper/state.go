@@ -302,7 +302,11 @@ registered_at TIMESTAMP DEFAULT NOW()
 	// supplies the real wallet), the app itself never computes a commitment
 	// and so can't poll by one. It only ever knows its own bio_hash.
 	dbExec(`ALTER TABLE bio_registrations ADD COLUMN IF NOT EXISTS bio_hash TEXT`)
-	dbExec(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_bio_registrations_bio_hash ON bio_registrations(bio_hash) WHERE bio_hash IS NOT NULL`)
+	// FIX: old index only excluded NULL but not '' — multiple rows with
+	// bio_hash='' (block-replay without real bio_hash) all conflicted.
+	// Drop and recreate with the correct partial condition.
+	dbExec(`DROP INDEX IF EXISTS uidx_bio_registrations_bio_hash`)
+	dbExec(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_bio_registrations_bio_hash ON bio_registrations(bio_hash) WHERE bio_hash IS NOT NULL AND bio_hash != ''`)
 	// Single-row table holding the AEQ<->tUSD pool reserves. A fixed id=1 row
 	// is used instead of a key-value table since there's only ever one pool
 	// right now — simpler queries, and trivial to extend to multiple pools
