@@ -475,12 +475,29 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	if minHeight < 0 || deepScan {
 		minHeight = 0
 	}
-	// Deep-scan: extend the structural-acceptance window to the current tip so
-	// historical blocks from other validators are imported without failing on
-	// StateRoot checks that can't be reproduced from a diverged local state.
-	// Cleared after this call so normal verification resumes for new blocks.
+	// Deep-scan: extend the structural-acceptance window to cover ALL orphaned
+	// blocks, not just those below our own dag.Height(). The key case:
+	// a node with bootHeight=42012 and dag.height=14890 has orphans at heights
+	// 42013-44077. skipHeight = max(bootHeight, catchupHeight) must exceed
+	// 44077 for those orphans to be accepted structurally when their parents
+	// finally arrive via cascade — otherwise they hit the StateRoot check and
+	// fail (the local state at catch-up time can't reproduce a StateRoot the
+	// proposer computed weeks ago from a different accumulated state).
+	// Using max(dag.Height(), highest-orphan-height) + 100 targets exactly the
+	// range we need to relax, without permanently disabling verification for
+	// future blocks. Cleared after this call so new blocks resume full checks.
 	if deepScan {
-		dag.catchupHeight.Store(dag.Height())
+		maxOrphanH := dag.Height()
+		dag.orphansMu.Lock()
+		for _, group := range dag.orphans {
+			for _, ob := range group {
+				if ob.Height > maxOrphanH {
+					maxOrphanH = ob.Height
+				}
+			}
+		}
+		dag.orphansMu.Unlock()
+		dag.catchupHeight.Store(maxOrphanH + 100)
 		defer dag.catchupHeight.Store(0)
 	}
 	totalAdded := 0

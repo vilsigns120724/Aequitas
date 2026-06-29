@@ -837,7 +837,12 @@ func (dag *BlockDAG) WithBlockProductionPaused(fn func()) {
 // trigger under the same catch-up load; does not fix the underlying
 // lossy-on-overflow design (tracked separately — recovery today is a full
 // resync from a signed snapshot, see ImportSnapshotFromURL).
-const maxOrphans = 50000
+// maxOrphans is the orphan-buffer cap. A 3-validator chain at height 44k has
+// up to ~132k distinct block hashes in flight; 200k gives comfortable headroom
+// so a catch-up node can hold ALL historical orphans in memory until the
+// sequential download cascade resolves them, without dropping blocks that would
+// break the resolution chain. At ~500 bytes/block average: ~100 MB peak usage.
+const maxOrphans = 200_000
 
 // orphanAbandonAfter bounds how long this node will keep trying to resolve a
 // single missing-parent hash before giving up on it for good.
