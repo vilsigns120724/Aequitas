@@ -668,10 +668,27 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 	dag.mu.Lock()
 	defer dag.mu.Unlock()
 
+	// Build a quick lookup of all candidate hashes so we can distinguish between
+	// a parent that is truly missing (permanent gap → needs stub) and one that
+	// just hasn't been inserted into dag.blocks yet but IS among the fetched
+	// candidates and will arrive via normal HTTP sync shortly (no stub needed).
+	// Creating stubs for the latter causes BlueScore inflation: the stub gets a
+	// height-approximate score that, once used as a parent for downstream blocks,
+	// bakes in inflated scores permanently even after the real block overwrites
+	// the stub entry (P0-bridge-stub-cascade fix).
+	candidateHashes := make(map[string]bool, len(candidates))
+	for _, b := range candidates {
+		candidateHashes[b.Hash] = true
+	}
+
 	stubsInserted := 0
 	for _, block := range candidates {
 		for _, ph := range block.ParentHashes {
 			if _, exists := dag.blocks[ph]; exists {
+				continue
+			}
+			if candidateHashes[ph] {
+				// Parent is among fetched candidates — will sync normally; no stub needed.
 				continue
 			}
 			stubH := block.Height - 1
