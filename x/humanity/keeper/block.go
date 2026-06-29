@@ -190,6 +190,15 @@ replayedMu             sync.Mutex
 	// to halt production until the operator resolves the issue and restarts.
 	degradedReason string
 	degradedMu     sync.Mutex
+
+	// catchupHeight is set to the current DAG tip height at the START of a
+	// deep-scan cycle. While non-zero, replayTransactions treats blocks at or
+	// below this height as structural-only (same as bootHeight) so that
+	// historical blocks from other validators can be imported into dag.blocks
+	// without requiring StateRoot reproduction against a diverged local state.
+	// Reset to 0 when the deep-scan cycle ends. Uses atomic access so the
+	// sync goroutine can set it without holding any mutex.
+	catchupHeight atomic.Int64
 }
 
 
@@ -1572,6 +1581,16 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	// mandatory ECDSA signature check against BOOTSTRAP_SIGNER — this skip
 	// doesn't grant any trust itself, it just avoids re-deriving what that
 	// signature check already vouched for.
+	// During a deep-scan cycle, catchupHeight is set to the tip height at the
+	// start of the scan. Historical blocks from other validators can't have their
+	// StateRoots reproduced by a node whose local state has already accumulated
+	// thousands of its own blocks on top of the snapshot. Extend the structural-
+	// only window so these blocks are accepted into dag.blocks (resolving orphan
+	// chains) without failing StateRoot checks. New blocks above catchupHeight
+	// are still fully verified — only the catch-up window is relaxed.
+	if ch := dag.catchupHeight.Load(); ch > skipHeight {
+		skipHeight = ch
+	}
 	if skipHeight > 0 && block.Height <= skipHeight {
 		dag.replayedMu.Lock()
 		dag.replayedBlocks[block.Hash] = true

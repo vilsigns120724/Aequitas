@@ -475,6 +475,14 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	if minHeight < 0 || deepScan {
 		minHeight = 0
 	}
+	// Deep-scan: extend the structural-acceptance window to the current tip so
+	// historical blocks from other validators are imported without failing on
+	// StateRoot checks that can't be reproduced from a diverged local state.
+	// Cleared after this call so normal verification resumes for new blocks.
+	if deepScan {
+		dag.catchupHeight.Store(dag.Height())
+		defer dag.catchupHeight.Store(0)
+	}
 	totalAdded := 0
 	for page := 0; page < maxPagesPerCall; page++ {
 		blocks, err := dag.fetchBlocksSince(nodeURL, minHeight, pageSize)
