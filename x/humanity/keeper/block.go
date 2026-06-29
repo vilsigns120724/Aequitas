@@ -127,8 +127,9 @@ replayedMu             sync.Mutex
 	// channel design, which serialized replay the same way but ran it
 	// asynchronously — see AddPeerBlock for why that was a correctness bug,
 	// not just a latency tradeoff.
-	replayMu sync.Mutex
-stateRootMismatches map[string]int // FIX 4: per-proposer StateRoot mismatch counters
+	replayMu            sync.Mutex
+	stateRootMismatches map[string]int // per-proposer StateRoot mismatch counters
+	stateRootMismatchesMu sync.Mutex   // protects stateRootMismatches (written under replayMu+cs.mu, read independently by TotalStateRootMismatches)
 	// lastSuccessfulPeerSyncAt is the Unix timestamp of the last time this
 	// node successfully accepted a peer block via AddPeerBlock. Read/written
 	// with atomic.Int64 (not dag.mu) since it's set from AddPeerBlock's
@@ -924,6 +925,7 @@ func (dag *BlockDAG) popOrphans(parentHash string) []*Block {
 	delete(dag.orphans, parentHash)
 	delete(dag.orphanFirstSeen, parentHash)
 	delete(dag.orphanLastAttempt, parentHash)
+	delete(dag.orphanAttempts, parentHash)
 	return waiting
 }
 
@@ -1099,7 +1101,7 @@ return false
 for _, tx := range block.Transactions {
 switch tx.Type {
 case "", "register_human", "transfer", "swap_aeq_tusd", "swap_tusd_aeq", "add_liquidity", "remove_liquidity", "faucet", "ubi_distribution", "ubi_distribution_finalize",
-	"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release":
+	"validator_distribution", "validator_distribution_pool_zero", "lp_distribution", "lp_distribution_pool_zero", "escrow_move", "escrow_release", "escrow_recover":
 // known / empty — OK
 default:
 fmt.Printf("[DAG] ✗ Rejected peer block #%d: unknown tx type %q\n", block.Height, tx.Type)
@@ -1251,8 +1253,8 @@ return true
 // timestamp of the last accepted peer block (0 if none yet this process) —
 // both exposed via /api/health/combined (Gesamtaudit 2026-06-28, P2-4/P3-7).
 func (dag *BlockDAG) TotalStateRootMismatches() int {
-	dag.mu.RLock()
-	defer dag.mu.RUnlock()
+	dag.stateRootMismatchesMu.Lock()
+	defer dag.stateRootMismatchesMu.Unlock()
 	total := 0
 	for _, n := range dag.stateRootMismatches {
 		total += n
@@ -1812,6 +1814,15 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			}
 			fmt.Printf("[REPLAY] ✓ Applied escrow release %.6f AEQ → UBI pool (block #%d)\n", tx.Amount, block.Height)
 
+		case "escrow_recover":
+			wallet := strings.ToLower(tx.Wallet)
+			if err := dag.state.applyEscrowRecoverDeltaLocked(wallet, tx.Amount); err != nil {
+				fmt.Printf("[REPLAY] ✗ escrow_recover %s: %v (block #%d) — rolling back whole block\n", wallet, err, block.Height)
+				hardFailure = true
+				continue
+			}
+			fmt.Printf("[REPLAY] ✓ Applied escrow recovery %.6f AEQ → %s (block #%d)\n", tx.Amount, wallet, block.Height)
+
 		default:
 			// FIX (audit 2026-06-28 recheck 4, P2-2): unknown TX types used to
 			// be silently ignored — applied no delta, but also didn't reject
@@ -1876,13 +1887,18 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			}
 			fmt.Printf("[REPLAY] ✗ StateRoot mismatch on block #%d (proposer=%s..., local=%s...) — rolled back, block rejected\n",
 				block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
+			dag.stateRootMismatchesMu.Lock()
 			dag.stateRootMismatches[block.Proposer]++
-			if dag.stateRootMismatches[block.Proposer] >= 5 {
+			alert := dag.stateRootMismatches[block.Proposer] >= 5
+			dag.stateRootMismatchesMu.Unlock()
+			if alert {
 				fmt.Printf("[ALERT] 5+ consecutive StateRoot mismatches from proposer %s — state may have diverged. Consider resync.\n", block.Proposer)
 			}
 			return false
 		}
+		dag.stateRootMismatchesMu.Lock()
 		dag.stateRootMismatches[block.Proposer] = 0 // reset on match
+		dag.stateRootMismatchesMu.Unlock()
 	}
 
 	// FIX (audit 2026-06-28 full recheck, P0-4): commit dbTx now that every

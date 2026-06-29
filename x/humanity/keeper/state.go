@@ -1520,7 +1520,9 @@ func (cs *ChainState) settleDemurrageLocked(acc *AccountState) Decimal {
 		return 0
 	}
 	acc.Balance = current
-	cs.distributeSwapFee(lost.Float(), true) // true = denominated in AEQ; reuses the same 40/30/20/10 split as swap fees
+	if err := cs.distributeSwapFee(lost.Float(), true); err != nil {
+		fmt.Printf("[DEMURRAGE] Warning: could not persist pool credits for %s demurrage loss: %v\n", acc.Address, err)
+	}
 	fmt.Printf("[DEMURRAGE] %s: idle balance decayed by %.6f AEQ, redistributed to pools\n", acc.Address, lost.Float())
 	return lost
 }
@@ -1540,7 +1542,9 @@ func (cs *ChainState) applyDemurrageLossLocked(acc *AccountState, lost float64) 
 		return
 	}
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() - lost))
-	cs.distributeSwapFee(lost, true)
+	if err := cs.distributeSwapFee(lost, true); err != nil {
+		fmt.Printf("[DEMURRAGE] Warning: could not persist pool credits for %s demurrage delta: %v\n", acc.Address, err)
+	}
 }
 
 func (cs *ChainState) GetBalance(address string) float64 {
@@ -2171,7 +2175,9 @@ func (cs *ChainState) enforceWealthCapLocked(acc *AccountState) {
 	}
 	excess := acc.Balance.Float() - wealthCapAmt
 	acc.Balance = NewDecimal(wealthCapAmt)
-	cs.distributeSwapFee(excess, true)
+	if err := cs.distributeSwapFee(excess, true); err != nil {
+		fmt.Printf("[WEALTH CAP] Warning: could not persist pool credits for %s excess: %v\n", acc.Address, err)
+	}
 	fmt.Printf("[WEALTH CAP] %s exceeded %.2fx average (%.2f AEQ) — %.4f AEQ excess redistributed to pools\n",
 		acc.Address, multiplier, wealthCapAmt, excess)
 }
@@ -3003,7 +3009,9 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 	if err := cs.savePoolToDB(); err != nil {
 		return 0, 0, fmt.Errorf("could not save pool: %w", err)
 	}
-	cs.distributeSwapFee(fee, aeqToTusd)
+	if err := cs.distributeSwapFee(fee, aeqToTusd); err != nil {
+		return 0, 0, fmt.Errorf("could not persist swap fee distribution: %w", err)
+	}
 	cs.save()
 
 	fmt.Printf("[SWAP] %s: %.4f %s → %.4f %s (fee %.4f)\n",
@@ -3094,32 +3102,38 @@ func (cs *ChainState) reloadPoolFromDB() {
 // AEQ (an AEQ->tUSD swap); false means it was collected in tUSD (a
 // tUSD->AEQ swap) — the split percentages are the same either way, only
 // the currency the fee is credited in differs. Caller must hold cs.mu.
-func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) {
+func (cs *ChainState) distributeSwapFee(fee float64, feeInAEQ bool) error {
 	if fee <= 0 {
-		return
+		return nil
 	}
-	shares := map[string]float64{
-		validatorsPoolAddr: fee * 0.40,
-		lpPoolAddr:         fee * 0.30,
-		ubiPoolAddr:        fee * 0.20,
-		treasuryPoolAddr:   fee * 0.10,
+	shares := [4]struct {
+		addr   string
+		amount float64
+	}{
+		{validatorsPoolAddr, fee * 0.40},
+		{lpPoolAddr, fee * 0.30},
+		{ubiPoolAddr, fee * 0.20},
+		{treasuryPoolAddr, fee * 0.10},
 	}
-	for addr, amount := range shares {
-		if _, ok := cs.accounts[addr]; !ok {
-			cs.accounts[addr] = &AccountState{Address: addr}
+	for _, s := range shares {
+		if _, ok := cs.accounts[s.addr]; !ok {
+			cs.accounts[s.addr] = &AccountState{Address: s.addr}
 		}
 		if feeInAEQ {
-			cs.accounts[addr].Balance = cs.accounts[addr].Balance.Add(NewDecimal(amount))
+			cs.accounts[s.addr].Balance = cs.accounts[s.addr].Balance.Add(NewDecimal(s.amount))
 		} else {
-			cs.accounts[addr].TUsdBalance = cs.accounts[addr].TUsdBalance.Add(NewDecimal(amount))
+			cs.accounts[s.addr].TUsdBalance = cs.accounts[s.addr].TUsdBalance.Add(NewDecimal(s.amount))
 		}
-		cs.saveAccountToDB(cs.accounts[addr])
+		if err := cs.saveAccountToDB(cs.accounts[s.addr]); err != nil {
+			return fmt.Errorf("distributeSwapFee: could not persist %s pool credit: %w", s.addr, err)
+		}
 	}
 	currency := "tUSD"
 	if feeInAEQ {
 		currency = "AEQ"
 	}
 	fmt.Printf("[FEE] Swap fee %.6f %s distributed across validators/lps/ubi/treasury\n", fee, currency)
+	return nil
 }
 
 // AddLiquidity lets a real account deposit AEQ and tUSD into the pool in
@@ -4187,7 +4201,9 @@ func (cs *ChainState) applySwapDeltaLocked(wallet string, amountIn, amountOut fl
 		// 30% LP / 20% UBI / 10% treasury) — mirrors swapLocked() on primary.
 		// Without this the fee-pool addresses stay at 0 on secondaries,
 		// causing StateRoot divergence (pool addresses are included in the hash).
-		cs.distributeSwapFee(fee, aeqToTusd)
+		if err := cs.distributeSwapFee(fee, aeqToTusd); err != nil {
+			return fmt.Errorf("could not persist swap fee distribution: %w", err)
+		}
 	}
 	return nil
 }

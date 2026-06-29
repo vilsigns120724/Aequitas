@@ -248,7 +248,9 @@ func (cs *ChainState) ConfirmAlive(wallet, expectedGuardian string) error {
 		return fmt.Errorf("account %s is not a registered human — guardian confirm-alive not applicable", wallet)
 	}
 	touchActivity(acc)
-	cs.saveAccountToDB(acc)
+	if err := cs.saveAccountToDB(acc); err != nil {
+		return fmt.Errorf("could not persist activity timer reset for %s: %w", wallet, err)
+	}
 	fmt.Printf("[GUARDIAN] ✓ Guardian confirmed %s is alive — activity timer reset\n", wallet)
 	return nil
 }
@@ -274,51 +276,53 @@ func (cs *ChainState) GetEscrow(wallet string) (amount float64, movedAt int64, e
 
 // RecoverFromEscrow lets a wallet owner reclaim their escrowed balance.
 // The caller (API handler) is responsible for signature verification.
-// On success the escrow row is deleted and the balance restored to the wallet.
+// Wrapped in runAtomicWithOutbox so the escrow DELETE, balance credit, and
+// outbox TX are a single all-or-nothing DB transaction: secondary nodes
+// replay this as an "escrow_recover" TX via applyEscrowRecoverDeltaLocked.
 func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 	wallet = strings.ToLower(wallet)
 	if cs.db == nil {
 		return fmt.Errorf("no database")
 	}
+	return cs.runAtomicWithOutbox([]string{wallet}, false, func() (Transaction, error) {
+		// DELETE...RETURNING inside the active DB transaction — atomically
+		// claims the escrow row while joining the same commit/rollback unit
+		// as the subsequent balance credit and outbox insert.
+		var amount float64
+		err := cs.dbExec().QueryRow(
+			`DELETE FROM escrow_accounts WHERE wallet_address = $1 RETURNING amount`,
+			wallet,
+		).Scan(&amount)
+		if err == sql.ErrNoRows {
+			return Transaction{}, fmt.Errorf("no escrow found for wallet %s", wallet)
+		}
+		if err != nil {
+			return Transaction{}, fmt.Errorf("escrow retrieval failed: %w", err)
+		}
+		if amount <= 0 {
+			return Transaction{}, fmt.Errorf("escrow amount is zero")
+		}
 
-	// FIX 8: Use DELETE...RETURNING for an atomic claim. A plain SELECT then
-	// DELETE has a TOCTOU race: two concurrent recovery calls can both pass the
-	// SELECT and then both credit the balance. The atomic DELETE returns the row
-	// only to the goroutine that deletes it — the other gets sql.ErrNoRows.
-	var amount float64
-	var movedAt int64
-	err := cs.db.QueryRow(
-		`DELETE FROM escrow_accounts WHERE wallet_address = $1 RETURNING amount, moved_at`,
-		wallet,
-	).Scan(&amount, &movedAt)
-	if err == sql.ErrNoRows {
-		return fmt.Errorf("no escrow found for wallet %s", wallet)
-	}
-	if err != nil {
-		return fmt.Errorf("escrow retrieval failed: %w", err)
-	}
-	if amount <= 0 {
-		return fmt.Errorf("escrow amount is zero")
-	}
-
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
-	// Credit balance back. If the account was lost from memory (e.g. after a
-	// state reset), recreate it as a human — escrow only exists for registered
-	// humans, so restoring it as non-human would break the supply invariant.
-	if _, ok := cs.accounts[wallet]; !ok {
-		cs.accounts[wallet] = &AccountState{Address: wallet, IsHuman: true}
-	}
-	acc := cs.accounts[wallet]
-	cs.settleDemurrageLocked(acc)
-	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
-	touchActivity(acc) // recovering from escrow resets the inactivity clock
-	cs.enforceWealthCapLocked(acc)
-	cs.saveAccountToDB(acc)
-
-	fmt.Printf("[ESCROW] ✓ %s recovered %.6f AEQ from escrow\n", wallet, amount)
-	return nil
+		// Credit balance back. If the account was lost from memory recreate
+		// it as a human — escrow only exists for registered humans.
+		if _, ok := cs.accounts[wallet]; !ok {
+			cs.accounts[wallet] = &AccountState{Address: wallet, IsHuman: true}
+		}
+		acc := cs.accounts[wallet]
+		cs.settleDemurrageLocked(acc)
+		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
+		touchActivity(acc)
+		cs.enforceWealthCapLocked(acc)
+		if err := cs.saveAccountToDB(acc); err != nil {
+			return Transaction{}, fmt.Errorf("could not persist recovered balance for %s: %w", wallet, err)
+		}
+		fmt.Printf("[ESCROW] ✓ %s recovered %.6f AEQ from escrow\n", wallet, amount)
+		return Transaction{
+			Type:   "escrow_recover",
+			Wallet: wallet,
+			Amount: amount,
+		}, nil
+	})
 }
 
 // ─── DAILY SCHEDULER METHODS ─────────────────────────────────────────────────
@@ -486,4 +490,26 @@ func (cs *ChainState) releaseEscrowToUBILocked() ([]DistributionShare, error) {
 
 	cs.save()
 	return released, nil
+}
+
+// applyEscrowRecoverDeltaLocked is the secondary-node replay handler for an
+// "escrow_recover" TX produced by RecoverFromEscrow on the primary.  The
+// secondary never had an escrow_accounts row (it only zeroed the balance via
+// applyEscrowMoveDeltaLocked), so this just credits the amount back and
+// resets the activity timer — no DELETE needed.  Caller must hold cs.mu.
+func (cs *ChainState) applyEscrowRecoverDeltaLocked(wallet string, amount float64) error {
+	if amount <= 0 {
+		return fmt.Errorf("escrow_recover amount must be positive, got %.6f", amount)
+	}
+	if _, ok := cs.accounts[wallet]; !ok {
+		cs.accounts[wallet] = &AccountState{Address: wallet, IsHuman: true}
+	}
+	acc := cs.accounts[wallet]
+	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
+	touchActivity(acc)
+	cs.enforceWealthCapLocked(acc)
+	if err := cs.saveAccountToDB(acc); err != nil {
+		return fmt.Errorf("could not persist escrow recovery for %s: %w", wallet, err)
+	}
+	return nil
 }

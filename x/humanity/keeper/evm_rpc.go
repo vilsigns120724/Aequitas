@@ -367,7 +367,7 @@ func (s *EVMRPCServer) ethCall(params []json.RawMessage) (interface{}, *RPCError
 	result, callErr := s.evm.CallContract(from, to, data, big.NewInt(0), false)
 	if callErr != nil {
 		fmt.Printf("[RPC] eth_call error: %v\n", callErr)
-		return "0x", nil
+		return nil, &RPCError{Code: -32603, Message: "execution reverted: " + callErr.Error()}
 	}
 
 	return "0x" + hex.EncodeToString(result), nil
