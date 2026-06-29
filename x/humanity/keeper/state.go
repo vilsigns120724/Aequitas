@@ -566,6 +566,25 @@ created_at BIGINT NOT NULL
 		fmt.Printf("[DB] FATAL: InitGuardianTables failed: %v\n", err)
 		panic(err)
 	}
+	// validator_slots and registered_nodes are created on first use inside
+	// BindValidatorSlot / RegisterNode, but GetValidatorKeyPairsForSync and
+	// IncrementBlockCount query/update them unconditionally on every sync cycle
+	// and every accepted block.  Ensure both tables (and their late-added columns)
+	// exist at startup so those calls never fail on a fresh DB.
+	dbExec(`CREATE TABLE IF NOT EXISTS validator_slots (
+operator_wallet TEXT PRIMARY KEY,
+signing_address TEXT NOT NULL,
+claimed_at TIMESTAMP DEFAULT NOW()
+)`)
+	dbExec(`ALTER TABLE validator_slots ADD COLUMN IF NOT EXISTS binding_signature TEXT DEFAULT ''`)
+	dbExec(`CREATE TABLE IF NOT EXISTS registered_nodes (
+wallet_address TEXT PRIMARY KEY,
+signing_address TEXT DEFAULT '',
+registered_at TIMESTAMP DEFAULT NOW(),
+blocks_produced BIGINT NOT NULL DEFAULT 0
+)`)
+	dbExec(`ALTER TABLE registered_nodes ADD COLUMN IF NOT EXISTS blocks_produced BIGINT NOT NULL DEFAULT 0`)
+	dbExec(`ALTER TABLE registered_nodes ADD COLUMN IF NOT EXISTS signing_address TEXT DEFAULT ''`)
 }
 
 // resetDBStateForBootstrap is an explicit operator escape hatch for secondary
