@@ -179,14 +179,23 @@ func (n *P2PNode) handleBlockStream(s network.Stream) {
 
 	// Log only when the block is actually accepted — logging before
 	// AddPeerBlock caused "Received" messages for blocks that were rejected.
+	sender := s.Conn().RemotePeer()
 	if n.dag.AddPeerBlock(&block) {
 		fmt.Printf("[BLOCK-SYNC] ✓ Accepted block #%d from peer %s\n",
-			block.Height, s.Conn().RemotePeer().String()[:12])
+			block.Height, sender.String()[:12])
+		// Relay to all other peers (gossip) so every node sees every block
+		// even when not directly connected to the originator.
+		go n.broadcastExcept(&block, sender)
 	}
 }
 
 // BroadcastBlock — send new block to all connected peers
 func (n *P2PNode) BroadcastBlock(block *Block) {
+	n.broadcastExcept(block, "")
+}
+
+// broadcastExcept — send block to all peers except the given sender (empty = send to all)
+func (n *P2PNode) broadcastExcept(block *Block, exclude peer.ID) {
 	peers := n.host.Network().Peers()
 	if len(peers) == 0 {
 		return
@@ -198,6 +207,9 @@ func (n *P2PNode) BroadcastBlock(block *Block) {
 	}
 
 	for _, peerID := range peers {
+		if peerID == exclude {
+			continue
+		}
 		go func(pid peer.ID) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
