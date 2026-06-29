@@ -138,7 +138,20 @@ func (n *P2PNode) handleStream(s network.Stream) {
 	}
 	msg := string(data)
 	fmt.Printf("[P2P] Message from %s: %s\n", s.Conn().RemotePeer().String()[:12], msg)
-	response := fmt.Sprintf("AEQUITAS_NODE|humans=%d|chainid=aequitas-1", n.keeper.TotalHumans())
+	// FIX (audit 2026-06-29): n.keeper is this package's separate, legacy
+	// in-memory Keeper (keeper.go) — its RegisterHuman has zero callers
+	// anywhere in the codebase, since real registration goes entirely
+	// through ChainState.RegisterHumanAtomic (state.go). n.keeper.humans is
+	// therefore always empty, so this reported "humans=0" regardless of the
+	// chain's actual state. dag.state is the real ChainState (same source
+	// ProduceBlock uses for the block.Humans field — see block.go), and is
+	// always non-nil once SetDAG has been called (which happens before this
+	// stream handler can ever receive a connection).
+	humans := 0
+	if n.dag != nil && n.dag.state != nil {
+		humans = n.dag.state.TotalHumans()
+	}
+	response := fmt.Sprintf("AEQUITAS_NODE|humans=%d|chainid=aequitas-1", humans)
 	s.Write([]byte(response))
 }
 
