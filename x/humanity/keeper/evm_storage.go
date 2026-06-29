@@ -2388,8 +2388,19 @@ func (cs *ChainState) SaveBlockToDB(block *Block) error {
 	return err
 }
 
+// DeleteBlockFromDB removes a block header from chain_blocks.
+// Called when AddPeerBlock's replay fails after the header was pre-saved,
+// so a restart never marks an unapplied block as replayed (P0-02).
+func (cs *ChainState) DeleteBlockFromDB(hash string) error {
+	if cs.db == nil {
+		return nil
+	}
+	_, err := cs.dbExec().Exec(`DELETE FROM chain_blocks WHERE hash=$1`, hash)
+	return err
+}
+
 // SaveGHOSTDAGState updates only the GHOSTDAG columns for an existing block.
-// Used by the one-time startup migration (blocks loaded from a pre-GHOSTDAG DB).
+// Used by the startup migration and after local GHOSTDAG compute in AddPeerBlock (P1-03).
 func (cs *ChainState) SaveGHOSTDAGState(block *Block) error {
 	if cs.db == nil {
 		return nil

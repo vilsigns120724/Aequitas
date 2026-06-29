@@ -858,6 +858,12 @@ if dag.signingKey != nil {
 	}
 }
 
+// P1-04 (audit): compute GHOSTDAG before persisting so the DB row has
+// correct selected_parent/blue_score/blues from the start — no crash window
+// with empty GHOSTDAG fields. dag.mu is already held here; parents are in
+// dag.blocks; the block is not yet in dag.blocks (not needed by compute).
+dag.computeGHOSTDAGState(block)
+
 // P1-06 (audit): persist to DB BEFORE inserting into dag.blocks/dag.tips or
 // returning the block for broadcast. If the DB save fails this block will be
 // lost on restart while peers may have accepted it — return nil to skip
@@ -882,7 +888,7 @@ if nTxsSnapshotted > 0 {
 dag.txMu.Unlock()
 
 dag.blocks[block.Hash] = block
-dag.computeGHOSTDAGState(block)
+// GHOSTDAG already computed above (P1-04); no second call needed.
 dag.replayedMu.Lock()
 dag.replayedBlocks[block.Hash] = true
 dag.replayedMu.Unlock()
@@ -1341,6 +1347,15 @@ return false
 // duration of every peer block's replay otherwise).
 dag.mu.Unlock()
 
+// P1-03 (audit): GHOSTDAG fields (selected_parent, blue_score, blues) are NOT
+// covered by the block hash and can be set to arbitrary values by a peer.
+// Strip them before saving so the DB never holds peer-supplied GHOSTDAG state.
+// computeGHOSTDAGState below will compute the correct values locally, and
+// SaveGHOSTDAGState will persist them immediately after.
+block.SelectedParent = ""
+block.Blues = nil
+block.BlueScore = 0
+
 // P2-05 (audit): persist the block header BEFORE state replay.  Old order
 // was replay-then-save, which could commit account-balance changes to
 // chain_accounts and then fail to write the chain_blocks header — leaving
@@ -1348,9 +1363,8 @@ dag.mu.Unlock()
 // restart) with no way to detect or recover.  Saving first means a DB
 // failure aborts before any state is touched; ON CONFLICT DO NOTHING makes
 // this idempotent if two concurrent deliveries of the same block race here.
-// Failure mode of the new order (save OK, replay fails): block header
-// appears in chain_blocks without applied state — ReconstructState on next
-// restart re-replays it cleanly from the committed header.
+// Failure mode of the new order (save OK, replay fails): P0-02 fix above
+// deletes the pre-saved header when replay fails, so state is always consistent.
 if dag.state != nil {
 	if err := dag.state.SaveBlockToDB(block); err != nil {
 		fmt.Printf("[BLOCK] ✗ Could not save peer block #%d header before replay: %v — skipping\n", block.Height, err)
@@ -1412,6 +1426,16 @@ replayOK := dag.replayInCanonicalOrder(block)
 // older than softRetryTTL (5 min) are abandoned by retryAndFlushSoftRetry.
 if !replayOK {
 	dag.replayMu.Unlock() // P0-01: release on failure — block won't enter DAG
+	// P0-02 (audit): undo the pre-saved header — replay failed, state was
+	// never applied. Without this, a restart would mark this block as
+	// replayed in dag.replayedBlocks while chain_accounts has no record of
+	// its state changes ("header committed, state missing"). Delete now so
+	// the block is re-fetched from peers and replayed cleanly on next sync.
+	if dag.state != nil {
+		if delErr := dag.state.DeleteBlockFromDB(block.Hash); delErr != nil {
+			fmt.Printf("[BLOCK] ⚠ Could not remove unapplied block #%d header: %v\n", block.Height, delErr)
+		}
+	}
 	dag.softRetryMu.Lock()
 	if _, alreadyQueued := dag.softRetryBlocks[block.Hash]; !alreadyQueued {
 		dag.softRetryBlocks[block.Hash] = block
@@ -1425,6 +1449,12 @@ if !replayOK {
 dag.mu.Lock()
 dag.blocks[block.Hash] = block
 dag.computeGHOSTDAGState(block) // real GHOSTDAG: sets SelectedParent, Blues, BlueScore
+// P1-03 (audit): persist locally-computed GHOSTDAG fields immediately.
+// SaveBlockToDB stored zeroes (peer values were stripped above); update now
+// so the DB reflects the same state as dag.blocks after this block is accepted.
+if dag.state != nil {
+	dag.state.SaveGHOSTDAGState(block)
+}
 
 // Remove parents from tips
 for _, ph := range block.ParentHashes {

@@ -6021,7 +6021,7 @@ async function registerValidatorKey() {
 
     // Step 3: Human wallet signs to prove they own this wallet
     statusEl.textContent = 'Sign with your human wallet in MetaMask...'; statusEl.style.color = 'var(--gold)';
-    var humanMsg = 'Aequitas: authorize validator key ' + signingAddr;
+    var humanMsg = 'Aequitas: authorize validator ' + signingAddr; // P1-05: matches peer-registration message
     var humanSig = await window.ethereum.request({ method: 'personal_sign', params: [humanMsg, humanWallet] });
 
     // Step 4: Submit registration

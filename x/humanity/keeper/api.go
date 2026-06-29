@@ -1276,13 +1276,17 @@ func (a *APIServer) handleSignValidatorChallenge(w http.ResponseWriter, r *http.
 // wallet, authorising that signing key to propose blocks.
 //
 // Requires TWO signatures proving control of BOTH keys:
-//   human_signature:      personal_sign("Aequitas: authorize validator key {signing_address}", human_wallet)
+//   human_signature:      personal_sign("Aequitas: authorize validator {signing_address}", human_wallet)
 //   signing_key_signature: personal_sign("Aequitas: validator key linked to human {human_wallet}", signing_address)
 //
 // The double-signature requirement proves the requester controls both the
 // human wallet AND the node signing key, preventing impersonation attacks
 // where someone registers a victim's signing address using their own wallet.
 // UNIQUE(human_wallet) ensures one human = one validator key.
+//
+// P1-05 (audit): the human_signature message is "Aequitas: authorize validator"
+// (without "key") — same as peer-registration (sync_blocks.go) and auto-binding.
+// Old "authorize validator key" variant is accepted as fallback during migration.
 func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1315,10 +1319,15 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		return
 	}
 	// 1. Human wallet proves it authorises this signing key.
-	humanMsg := "Aequitas: authorize validator key " + signingAddr
+	// P1-05 (audit): canonical message is "authorize validator" (no "key").
+	// Accept the old "authorize validator key" variant as a migration fallback.
+	humanMsg := "Aequitas: authorize validator " + signingAddr
 	if err := verifyPersonalSign(humanMsg, req.HumanSignature, humanWallet); err != nil {
-		jsonError(w, "invalid human_signature: "+err.Error(), 400)
-		return
+		oldMsg := "Aequitas: authorize validator key " + signingAddr
+		if err2 := verifyPersonalSign(oldMsg, req.HumanSignature, humanWallet); err2 != nil {
+			jsonError(w, "invalid human_signature: "+err.Error(), 400)
+			return
+		}
 	}
 	// 2. Signing key proves it is linked to this human wallet (key-possession proof).
 	signingMsg := "Aequitas: validator key linked to human " + humanWallet

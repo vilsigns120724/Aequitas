@@ -147,10 +147,19 @@ func (dag *BlockDAG) syncValidatorsFromPeer(peerURL string) {
 		}
 		if err2 := json.Unmarshal(bodyBytes, &oldResult); err2 == nil && len(oldResult.Validators) > 0 {
 			fmt.Printf("[PEERS] ⚠ %s serves old validator list format ([]string) — upgrade recommended\n", peerURL)
+			// P1-06 (audit): old format carries no binding signature or human_wallet,
+			// so any address could be injected by a compromised peer. Only keep
+			// addresses we already trust locally — never add new ones via this path.
 			for _, addr := range oldResult.Validators {
 				addr = strings.ToLower(strings.TrimSpace(addr))
-				if strings.HasPrefix(addr, "0x") && len(addr) == 42 {
-					dag.AddAuthorizedValidator(addr)
+				if !strings.HasPrefix(addr, "0x") || len(addr) != 42 {
+					continue
+				}
+				dag.mu.RLock()
+				alreadyTrusted := dag.authorizedValidators[addr]
+				dag.mu.RUnlock()
+				if !alreadyTrusted {
+					fmt.Printf("[PEERS] ⚠ Ignoring unverified legacy validator %s from %s — no binding signature\n", addr, peerURL)
 				}
 			}
 			return
