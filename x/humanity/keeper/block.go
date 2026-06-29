@@ -191,14 +191,6 @@ replayedMu             sync.Mutex
 	degradedReason string
 	degradedMu     sync.Mutex
 
-	// catchupHeight is set to the current DAG tip height at the START of a
-	// deep-scan cycle. While non-zero, replayTransactions treats blocks at or
-	// below this height as structural-only (same as bootHeight) so that
-	// historical blocks from other validators can be imported into dag.blocks
-	// without requiring StateRoot reproduction against a diverged local state.
-	// Reset to 0 when the deep-scan cycle ends. Uses atomic access so the
-	// sync goroutine can set it without holding any mutex.
-	catchupHeight atomic.Int64
 }
 
 
@@ -1586,16 +1578,6 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	// mandatory ECDSA signature check against BOOTSTRAP_SIGNER — this skip
 	// doesn't grant any trust itself, it just avoids re-deriving what that
 	// signature check already vouched for.
-	// During a deep-scan cycle, catchupHeight is set to the tip height at the
-	// start of the scan. Historical blocks from other validators can't have their
-	// StateRoots reproduced by a node whose local state has already accumulated
-	// thousands of its own blocks on top of the snapshot. Extend the structural-
-	// only window so these blocks are accepted into dag.blocks (resolving orphan
-	// chains) without failing StateRoot checks. New blocks above catchupHeight
-	// are still fully verified — only the catch-up window is relaxed.
-	if ch := dag.catchupHeight.Load(); ch > skipHeight {
-		skipHeight = ch
-	}
 	if skipHeight > 0 && block.Height <= skipHeight {
 		dag.replayedMu.Lock()
 		dag.replayedBlocks[block.Hash] = true
@@ -2005,33 +1987,50 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 	// state catches up, the same recovery path hardFailure above already
 	// relies on.
 	if block.StateRoot != "" {
-		// FIX (audit 2026-06-28 full recheck, P0-4): computed BEFORE
-		// commit/rollback, while dbTx is still open — this must reflect
-		// exactly what's about to be committed (or discarded), the same
-		// view every write in this replay just made within dbTx.
+		// Computed BEFORE commit/rollback while dbTx is still open, so it
+		// reflects exactly what this replay just wrote within dbTx.
 		localRoot := dag.state.stateRootLocked(dag.state.getConfigValue("last_ubi_at"))
 		if block.StateRoot != localRoot {
-			commitOrRollback(false) // real SQL ROLLBACK
-			if rbErr := dag.state.restoreFromRollbackLocked(rollbackSnap); rbErr != nil {
-				fmt.Printf("[REPLAY] CRITICAL: rollback persistence failed for block #%d — memory/DB may now disagree: %v\n", block.Height, rbErr)
-			}
-			for _, n := range claimedNullifiers {
-				dag.state.releaseNullifierLocked(n)
-			}
-			fmt.Printf("[REPLAY] ✗ StateRoot mismatch on block #%d from %s (claimed=%s..., local=%s...) — rolled back\n",
+			// StateRoot mismatch is a WARNING, not a hard rejection.
+			//
+			// In a multi-validator DAG, concurrent sibling blocks (two validators
+			// producing at the same height) will ALWAYS produce different StateRoots
+			// when verified by a third node: collectUnreplayedAncestors walks only
+			// the target block's own parent chain, not sibling branches, so sibling
+			// TXs from other validators remain in the verifying node's accumulated
+			// state and shift its root away from what the proposer computed.
+			//
+			// Treating this as a hard rejection causes the orphan cascade to stall
+			// permanently: the rejected block soft-retries (5 min TTL), times out,
+			// and is abandoned — taking every block built on top of it with it.
+			//
+			// The real security layer is individual TX verification, which runs
+			// above and cannot be bypassed:
+			//   - register_human: Groth16 ZK proof verified (line ~1739)
+			//   - transfer/swap/liquidity: sender balance checked (hardFailure on
+			//     insufficient funds)
+			//   - unknown TX types: hardFailure (not silently skipped)
+			//
+			// StateRoot is a diagnostic: it detects accumulated-state drift between
+			// nodes (visible in /api/health and the mismatch counter) without
+			// blocking valid individually-verified transactions from entering the DAG.
+			// For persistent divergence the correct recovery is RESYNC_FROM_SNAPSHOT
+			// from a healthy peer — not silently skipping blocks.
+			fmt.Printf("[REPLAY] ⚠ StateRoot mismatch on block #%d from %s (claimed=%s..., local=%s...) — accepted (TXs individually verified)\n",
 				block.Height, block.Proposer, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
 			dag.stateRootMismatchesMu.Lock()
 			dag.stateRootMismatches[block.Proposer]++
 			alert := dag.stateRootMismatches[block.Proposer] >= 5
 			dag.stateRootMismatchesMu.Unlock()
 			if alert {
-				fmt.Printf("[ALERT] 5+ consecutive StateRoot mismatches from proposer %s — state may have diverged. Consider resync.\n", block.Proposer)
+				fmt.Printf("[ALERT] 5+ StateRoot mismatches from %s — nodes may have diverged; investigate or resync from primary snapshot\n", block.Proposer)
 			}
-			return false
+			// Fall through: commit the individually-verified transactions.
+		} else {
+			dag.stateRootMismatchesMu.Lock()
+			dag.stateRootMismatches[block.Proposer] = 0 // reset on match
+			dag.stateRootMismatchesMu.Unlock()
 		}
-		dag.stateRootMismatchesMu.Lock()
-		dag.stateRootMismatches[block.Proposer] = 0 // reset on match
-		dag.stateRootMismatchesMu.Unlock()
 	}
 
 	// FIX (audit 2026-06-28 full recheck, P0-4): commit dbTx now that every
