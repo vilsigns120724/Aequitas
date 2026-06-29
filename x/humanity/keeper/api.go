@@ -383,6 +383,7 @@ func (a *APIServer) Start(port int) {
 	mux.HandleFunc("/api/prove/get/", a.handleProveGetProxy)
 	mux.HandleFunc("/api/prove/store", a.handleProveStoreProxy)
 	mux.HandleFunc("/api/proof/check", a.handleProofCheckProxy)
+	mux.HandleFunc("/api/validators", a.handleValidatorList)
 	mux.HandleFunc("/api/peers/challenge", a.handlePeerChallenge)
 	mux.HandleFunc("/api/peers/register", a.handlePeerRegister)
 	mux.HandleFunc("/node-binding", a.handleNodeBinding)
@@ -1299,6 +1300,18 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 		"success":         true,
 		"signing_address": signingAddr,
 		"human_wallet":    humanWallet,
+	})
+}
+
+// handleValidatorList returns the list of Ethereum addresses currently
+// authorized to propose blocks on this node.  Used by peer nodes to learn
+// about validators that registered here but not (yet) with them — see
+// syncValidatorsFromPeer in sync_blocks.go.  No authentication required:
+// validator addresses are already public via /api/blocks.
+func (a *APIServer) handleValidatorList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"validators": a.blockchain.AuthorizedValidatorList(),
 	})
 }
 

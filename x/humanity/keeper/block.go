@@ -302,6 +302,20 @@ func (dag *BlockDAG) AddAuthorizedValidator(addr string) {
 	dag.mu.Unlock()
 }
 
+// AuthorizedValidatorList returns a snapshot of all currently-authorized
+// proposer addresses.  Used by /api/validators so peer nodes can sync the
+// full validator set from each other — removing the need for manual
+// AUTHORIZED_VALIDATORS config as validators join over time.
+func (dag *BlockDAG) AuthorizedValidatorList() []string {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	list := make([]string, 0, len(dag.authorizedValidators))
+	for addr := range dag.authorizedValidators {
+		list = append(list, addr)
+	}
+	return list
+}
+
 func (dag *BlockDAG) AddTransaction(tx Transaction) {
 dag.txMu.Lock()
 defer dag.txMu.Unlock()
@@ -1063,9 +1077,10 @@ if block.Signature != "" && !block.IsGenesis {
 		if len(dag.warnedUnknownProposers) > 500 {
 			dag.warnedUnknownProposers = make(map[string]bool)
 		}
-		if !dag.warnedUnknownProposers[proposer] {
+		firstSeen := !dag.warnedUnknownProposers[proposer]
+		if firstSeen {
 			dag.warnedUnknownProposers[proposer] = true
-			fmt.Printf("[DAG] ✗ Proposer %s is not an authorized validator — add to AUTHORIZED_VALIDATORS env var to accept its blocks\n", proposer)
+			fmt.Printf("[DAG] Unknown proposer %s — fetching validator lists from all peers (block will be accepted if peer registration succeeds)\n", proposer)
 		}
 		hash := block.Hash
 		dag.mu.Unlock()
@@ -1076,6 +1091,13 @@ if block.Signature != "" && !block.IsGenesis {
 		// RecordOrphanAttempt for a "peer has it but we reject it" block, so the
 		// TTL prune in queueOrphan never fires — orphans hang for the full 15 min.
 		dag.abandonOrphansWaitingFor(hash)
+		if firstSeen {
+			// Pull the full validator list from every active sync peer right now.
+			// If this proposer registered with any of them (but not with us),
+			// AddAuthorizedValidator will add them and the next sync cycle will
+			// accept their blocks — no manual AUTHORIZED_VALIDATORS config needed.
+			go dag.syncValidatorsFromAllPeers()
+		}
 		return false
 	}
 }

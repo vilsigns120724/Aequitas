@@ -115,6 +115,59 @@ var httpSyncClient = &http.Client{
 
 const maxSyncPeers = 20
 
+// syncValidatorsFromPeer fetches /api/validators from peerURL and adds any
+// previously-unknown addresses to this node's authorized-validator set.
+//
+// This is how validator registrations propagate across all nodes without
+// requiring manual AUTHORIZED_VALIDATORS env-var maintenance: a new validator
+// registers with ONE node (via /api/peers/register), and every other node
+// that syncs from it — directly or transitively — learns about them here.
+func (dag *BlockDAG) syncValidatorsFromPeer(peerURL string) {
+	resp, err := httpSyncClient.Get(peerURL + "/api/validators")
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+	var result struct {
+		Validators []string `json:"validators"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&result); err != nil {
+		return
+	}
+	for _, addr := range result.Validators {
+		addr = strings.ToLower(strings.TrimSpace(addr))
+		if !strings.HasPrefix(addr, "0x") || len(addr) != 42 {
+			continue
+		}
+		dag.mu.RLock()
+		already := dag.authorizedValidators[addr]
+		dag.mu.RUnlock()
+		if !already {
+			fmt.Printf("[PEERS] Auto-authorized validator from %s: %s\n", peerURL, addr)
+		}
+		dag.AddAuthorizedValidator(addr)
+	}
+}
+
+// syncValidatorsFromAllPeers calls syncValidatorsFromPeer for every currently
+// active sync peer. Called immediately when an unknown proposer is detected so
+// the registration propagates within the current sync cycle rather than
+// waiting up to validatorSyncInterval.
+func (dag *BlockDAG) syncValidatorsFromAllPeers() {
+	dag.syncPeerMu.Lock()
+	peers := make([]string, 0, len(dag.activeSyncPeers))
+	for p := range dag.activeSyncPeers {
+		peers = append(peers, p)
+	}
+	dag.syncPeerMu.Unlock()
+	for _, peer := range peers {
+		dag.syncValidatorsFromPeer(peer)
+	}
+}
+
 // startSyncForPeer starts a long-running syncWithNode goroutine for peerURL.
 // No-op if already syncing that URL or if the peer cap is reached.
 func (dag *BlockDAG) startSyncForPeer(peerURL string) {
@@ -457,15 +510,30 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	return true
 }
 
+// validatorSyncInterval: re-sync the validator list from each peer this often.
+// Ensures a validator that registered with any peer propagates to all nodes
+// within this window, with zero manual configuration.
+const validatorSyncInterval = 50 // ticks at the current 6s base backoff ≈ 5 min
+
 func (dag *BlockDAG) syncWithNode(nodeURL string) {
+	// Fetch validator list immediately on first connect — this is the moment
+	// a new peer (e.g. a VPS with its own validator registrations) becomes
+	// known to us, and we want to accept their blocks from the first sync tick.
+	dag.syncValidatorsFromPeer(nodeURL)
+
 	// Try immediately on first call — no initial delay. doSyncOnce itself
 	// pages through full history starting from whatever we already have
 	// locally, so this one call already performs the initial catch-up.
 	backoff := 6 * time.Second
+	ticks := 0
 	dag.doSyncOnce(nodeURL)
 	ticker := time.NewTicker(backoff)
 	defer ticker.Stop()
 	for range ticker.C {
+		ticks++
+		if ticks%validatorSyncInterval == 0 {
+			dag.syncValidatorsFromPeer(nodeURL)
+		}
 		if !dag.doSyncOnce(nodeURL) {
 			backoff *= 2
 			if backoff > 30*time.Second {
