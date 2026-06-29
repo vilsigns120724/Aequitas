@@ -2347,10 +2347,22 @@ func (cs *ChainState) LoadAndClearPendingTxs() []Transaction {
 // ON CONFLICT DO NOTHING: a block can legitimately be saved twice (e.g. a
 // node that both produced a block and later re-receives it from a peer);
 // the row already reflects the same immutable content keyed by hash.
+// ensureGHOSTDAGColumns adds the three GHOSTDAG columns to chain_blocks if
+// they don't exist yet (one-time migration; idempotent via IF NOT EXISTS).
+func (cs *ChainState) ensureGHOSTDAGColumns() {
+	if cs.db == nil {
+		return
+	}
+	cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS selected_parent TEXT DEFAULT ''`)
+	cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blue_score BIGINT DEFAULT 0`)
+	cs.db.Exec(`ALTER TABLE chain_blocks ADD COLUMN IF NOT EXISTS blues TEXT DEFAULT '[]'`)
+}
+
 func (cs *ChainState) SaveBlockToDB(block *Block) error {
 	if cs.db == nil {
 		return nil
 	}
+	cs.ensureGHOSTDAGColumns()
 	parentHashesJSON, err := json.Marshal(block.ParentHashes)
 	if err != nil {
 		return fmt.Errorf("marshal parent_hashes: %w", err)
@@ -2359,12 +2371,37 @@ func (cs *ChainState) SaveBlockToDB(block *Block) error {
 	if err != nil {
 		return fmt.Errorf("marshal transactions: %w", err)
 	}
+	bluesJSON, err := json.Marshal(block.Blues)
+	if err != nil {
+		bluesJSON = []byte("[]")
+	}
 	_, err = cs.dbExec().Exec(
-		`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp, humans, state_root, signature, transactions)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`INSERT INTO chain_blocks
+		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
+		    signature, transactions, selected_parent, blue_score, blues)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		 ON CONFLICT (hash) DO NOTHING`,
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
+		block.SelectedParent, block.BlueScore, string(bluesJSON),
+	)
+	return err
+}
+
+// SaveGHOSTDAGState updates only the GHOSTDAG columns for an existing block.
+// Used by the one-time startup migration (blocks loaded from a pre-GHOSTDAG DB).
+func (cs *ChainState) SaveGHOSTDAGState(block *Block) error {
+	if cs.db == nil {
+		return nil
+	}
+	cs.ensureGHOSTDAGColumns()
+	bluesJSON, err := json.Marshal(block.Blues)
+	if err != nil {
+		bluesJSON = []byte("[]")
+	}
+	_, err = cs.dbExec().Exec(
+		`UPDATE chain_blocks SET selected_parent=$1, blue_score=$2, blues=$3 WHERE hash=$4`,
+		block.SelectedParent, block.BlueScore, string(bluesJSON), block.Hash,
 	)
 	return err
 }
@@ -2413,12 +2450,19 @@ func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) e
 		}
 	}
 
+	bluesJSON, _ := json.Marshal(block.Blues)
+	if bluesJSON == nil {
+		bluesJSON = []byte("[]")
+	}
 	if _, err := tx.Exec(
-		`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp, humans, state_root, signature, transactions)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`INSERT INTO chain_blocks
+		   (hash, height, parent_hashes, proposer, timestamp, humans, state_root,
+		    signature, transactions, selected_parent, blue_score, blues)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		 ON CONFLICT (hash) DO NOTHING`,
 		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
+		block.SelectedParent, block.BlueScore, string(bluesJSON),
 	); err != nil {
 		rollback()
 		return fmt.Errorf("save block: %w", err)
@@ -2464,7 +2508,12 @@ func (cs *ChainState) LoadBlocksFromDB() (map[string]*Block, error) {
 	if cs.db == nil {
 		return nil, nil
 	}
-	query := `SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root, signature, transactions FROM chain_blocks`
+	// Ensure GHOSTDAG columns exist before reading them (idempotent migration).
+	cs.ensureGHOSTDAGColumns()
+	query := `SELECT hash, height, parent_hashes, proposer, timestamp, humans, state_root,
+	                 signature, transactions,
+	                 COALESCE(selected_parent,''), COALESCE(blue_score,0), COALESCE(blues,'[]')
+	          FROM chain_blocks`
 	rows, err := cs.db.Query(query)
 	if err != nil {
 		fmt.Printf("[BLOCK] LoadBlocksFromDB query error (attempt 1): %v — retrying once\n", err)
@@ -2478,8 +2527,12 @@ func (cs *ChainState) LoadBlocksFromDB() (map[string]*Block, error) {
 	blocks := make(map[string]*Block)
 	for rows.Next() {
 		var b Block
-		var parentHashesRaw, txsRaw string
-		if err := rows.Scan(&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp, &b.Humans, &b.StateRoot, &b.Signature, &txsRaw); err != nil {
+		var parentHashesRaw, txsRaw, bluesRaw string
+		if err := rows.Scan(
+			&b.Hash, &b.Height, &parentHashesRaw, &b.Proposer, &b.Timestamp,
+			&b.Humans, &b.StateRoot, &b.Signature, &txsRaw,
+			&b.SelectedParent, &b.BlueScore, &bluesRaw,
+		); err != nil {
 			fmt.Printf("[BLOCK] LoadBlocksFromDB scan error: %v\n", err)
 			continue
 		}
@@ -2490,6 +2543,11 @@ func (cs *ChainState) LoadBlocksFromDB() (map[string]*Block, error) {
 		if err := json.Unmarshal([]byte(txsRaw), &b.Transactions); err != nil {
 			fmt.Printf("[BLOCK] LoadBlocksFromDB transactions unmarshal error for %s: %v\n", b.Hash, err)
 			continue
+		}
+		if bluesRaw != "" && bluesRaw != "[]" && bluesRaw != "null" {
+			if err := json.Unmarshal([]byte(bluesRaw), &b.Blues); err != nil {
+				b.Blues = nil // will be recomputed in migration pass
+			}
 		}
 		blocks[b.Hash] = &b
 	}

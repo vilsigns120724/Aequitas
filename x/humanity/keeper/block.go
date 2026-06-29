@@ -78,7 +78,13 @@ type Block struct {
 	StateRoot    string        `json:"state_root,omitempty"`
 	Transactions []Transaction `json:"transactions,omitempty"`
 	Signature    string        `json:"signature,omitempty"`
-	BlueScore    int64         `json:"blue_score,omitempty"` // DAG depth ordering key (NOT real GHOSTDAG)
+	// Real GHOSTDAG consensus fields (Sompolinsky-Zohar, 2018).
+	// BlueScore = number of blue blocks in the past of this block (including
+	// the selected-parent chain). Blocks with more blue-score ancestors are
+	// preferred, giving a canonical total order over the DAG.
+	BlueScore      int64    `json:"blue_score,omitempty"`
+	SelectedParent string   `json:"selected_parent,omitempty"` // parent with highest blue score
+	Blues          []string `json:"blues,omitempty"`           // blue blocks in the merge set
 }
 
 // peerChallenge holds a one-time challenge issued to a registering peer.
@@ -163,15 +169,8 @@ replayedMu             sync.Mutex
 	orphanResolveAgain    bool
 	orphanResolveMu       sync.Mutex
 
-	// DAG depth ordering key per block.
-	// NOTE: this is NOT a real GHOSTDAG blue score.  It is simply
-	// max(parent blueScores)+1 — a DAG-depth heuristic that gives a total,
-	// deterministic order over all blocks.  Two blocks at the same height are
-	// ordered by (blueScore DESC, hash ASC) so every node replays siblings
-	// in the same sequence and merge-block StateRoots are reproducible
-	// regardless of P2P delivery order.  The BlueScore JSON field name is
-	// kept for API compatibility with the explorer.
-	blueScore map[string]int64
+	// (blueScore map removed — BlueScore is now stored directly in Block.BlueScore
+	// and persisted to chain_blocks; no separate in-memory map needed)
 
 	// softRetryBlocks holds blocks that failed replayTransactions but may
 	// succeed once a different predecessor's state changes are applied first
@@ -370,7 +369,7 @@ replayedBlocks:         make(map[string]bool),
 	orphanFirstSeen:        make(map[string]time.Time),
 	orphanLastAttempt:      make(map[string]time.Time),
 	orphanAttempts:         make(map[string]int),
-	blueScore:              make(map[string]int64),
+
 	softRetryBlocks:        make(map[string]*Block),
 	softRetryFirstAt:       make(map[string]time.Time),
 }
@@ -442,17 +441,36 @@ if len(loaded) > 0 {
 			dag.tips[hash] = true
 		}
 	}
-	// GHOSTDAG: compute blue scores for all restored blocks in topological order.
-	// Height order = topological order because height = max_parent_height+1.
-	sortedForBlue := make([]*Block, 0, len(loaded))
+	// Sort loaded blocks in topological order (height ASC) for GHOSTDAG computation.
+	sortedForGHOSTDAG := make([]*Block, 0, len(loaded))
 	for _, b := range loaded {
-		sortedForBlue = append(sortedForBlue, b)
+		sortedForGHOSTDAG = append(sortedForGHOSTDAG, b)
 	}
-	sort.Slice(sortedForBlue, func(i, j int) bool {
-		return sortedForBlue[i].Height < sortedForBlue[j].Height
+	sort.Slice(sortedForGHOSTDAG, func(i, j int) bool {
+		return sortedForGHOSTDAG[i].Height < sortedForGHOSTDAG[j].Height
 	})
-	for _, b := range sortedForBlue {
-		dag.updateBlueScore(b)
+	// If any non-genesis block lacks GHOSTDAG data (DB predates persistence
+	// columns), compute it now and save back to DB in the background.
+	needsMigration := false
+	for _, b := range sortedForGHOSTDAG {
+		if !b.IsGenesis && b.Height > 0 && b.SelectedParent == "" {
+			needsMigration = true
+			break
+		}
+	}
+	if needsMigration {
+		fmt.Printf("[BLOCK] GHOSTDAG migration: computing real blue scores for %d blocks...\n", len(sortedForGHOSTDAG))
+		for _, b := range sortedForGHOSTDAG {
+			dag.computeGHOSTDAGState(b)
+		}
+		go func(blocks []*Block, s *ChainState) {
+			for _, b := range blocks {
+				if s != nil {
+					s.SaveGHOSTDAGState(b)
+				}
+			}
+			fmt.Printf("[BLOCK] GHOSTDAG migration: persisted %d blocks\n", len(blocks))
+		}(sortedForGHOSTDAG, state)
 	}
 	fmt.Printf("[BLOCK] Restored %d durable block(s) from chain_blocks — height=%d, tips=%d\n", len(loaded), dag.height, len(dag.tips))
 }
@@ -608,8 +626,10 @@ Humans:       0,
 IsGenesis:    true,
 }
 genesis.Hash = dag.calculateHash(genesis)
+genesis.BlueScore = 0
+genesis.SelectedParent = ""
+genesis.Blues = nil
 dag.blocks[genesis.Hash] = genesis
-dag.blueScore[genesis.Hash] = 0
 dag.tips[genesis.Hash] = true
 dag.height = 0
 fmt.Printf("✓ Genesis Block (DAG): %s\n", genesis.Hash[:16]+"...")
@@ -771,7 +791,7 @@ if nTxsSnapshotted > 0 {
 dag.txMu.Unlock()
 
 dag.blocks[block.Hash] = block
-dag.updateBlueScore(block)
+dag.computeGHOSTDAGState(block)
 dag.replayedMu.Lock()
 dag.replayedBlocks[block.Hash] = true
 dag.replayedMu.Unlock()
@@ -1313,7 +1333,7 @@ if !replayOK {
 
 dag.mu.Lock()
 dag.blocks[block.Hash] = block
-dag.updateBlueScore(block) // DAG depth ordering key (see updateBlueScore)
+dag.computeGHOSTDAGState(block) // real GHOSTDAG: sets SelectedParent, Blues, BlueScore
 
 // Remove parents from tips
 for _, ph := range block.ParentHashes {
@@ -2197,18 +2217,193 @@ func (dag *BlockDAG) verifyZKProof(tx Transaction) bool {
 // during which a sibling block could arrive and unblock the failed replay.
 const softRetryTTL = 5 * time.Minute
 
-// updateBlueScore sets dag.blueScore[block.Hash] = max(parent blueScores) + 1
-// (DAG depth, NOT a real GHOSTDAG blue score).  For genesis the score is 0.
+// ghostdagK is the GHOSTDAG k-parameter: the maximum number of blocks that
+// can be in each other's anticone while all remaining blue.  K=18 matches
+// the reference Kaspa implementation; for our ≤3-validator network every
+// honest block is always blue in practice (merge sets are at most 2 blocks).
+const ghostdagK = 18
+
+// computeGHOSTDAGState computes true GHOSTDAG state for a block and stores
+// the result in block.SelectedParent, block.Blues, and block.BlueScore.
 // Must be called under dag.mu.
-func (dag *BlockDAG) updateBlueScore(block *Block) {
+//
+// Real GHOSTDAG (Sompolinsky-Zohar 2018):
+//   - SelectedParent = parent with highest blue score
+//   - MergeSet       = past(B) ∩ anticone(SelectedParent)  — the "merged" branches
+//   - Blues          = merge-set blocks whose anticone contains ≤K blue blocks
+//   - BlueScore      = blueScore(SP) + 1 + |Blues|
+//
+// Every node that holds the same block graph computes identical GHOSTDAG state,
+// so the canonical ordering (height ASC, blueScore DESC, hash ASC) is
+// deterministic across the network and StateRoots are reproducible.
+func (dag *BlockDAG) computeGHOSTDAGState(block *Block) {
+	if block.IsGenesis || len(block.ParentHashes) == 0 {
+		block.SelectedParent = ""
+		block.Blues = nil
+		block.BlueScore = 0
+		return
+	}
+
+	// Step 1: selected parent = highest-blue-score parent.
 	var maxScore int64 = -1
+	spHash := block.ParentHashes[0]
 	for _, ph := range block.ParentHashes {
-		if s, ok := dag.blueScore[ph]; ok && s > maxScore {
-			maxScore = s
+		if p, ok := dag.blocks[ph]; ok && p.BlueScore > maxScore {
+			maxScore = p.BlueScore
+			spHash = ph
 		}
 	}
-	block.BlueScore = maxScore + 1
-	dag.blueScore[block.Hash] = maxScore + 1
+	block.SelectedParent = spHash
+
+	// Step 2: compute merge set — blocks in past(B) that are NOT in past(SP).
+	// Bounded BFS: we walk back from non-SP parents, collecting blocks that
+	// are not reachable from SP.  The depth limit (2K+1) bounds the search;
+	// for an honest ≤3-validator network merge sets are always ≤2 blocks.
+	mergeSet := dag.ghostdagMergeSet(block, spHash)
+
+	// Step 3: topological sort of the merge set (parents before children).
+	sorted := ghostdagTopoSort(mergeSet, dag.blocks)
+
+	// Step 4: blue / red classification.
+	// A merge-set block M is blue if the number of already-blue merge-set
+	// blocks in M's anticone is ≤ K.
+	blues := make([]string, 0, len(sorted))
+	blueScore := maxScore + 1 // SP always contributes +1
+
+	for _, mHash := range sorted {
+		antiCnt := 0
+		for _, bHash := range blues {
+			// bHash is in M's anticone iff they are concurrent (neither is
+			// an ancestor of the other).
+			if !dag.ghostdagIsAncestor(bHash, mHash) && !dag.ghostdagIsAncestor(mHash, bHash) {
+				antiCnt++
+			}
+		}
+		if antiCnt <= ghostdagK {
+			blues = append(blues, mHash)
+			blueScore++
+		}
+	}
+
+	block.Blues = blues
+	block.BlueScore = blueScore
+}
+
+// ghostdagMergeSet returns the set of blocks in past(block) that are NOT in
+// past(spHash), using a bounded BFS (depth ≤ 2K+1 from each non-SP parent).
+// Must be called under dag.mu.
+func (dag *BlockDAG) ghostdagMergeSet(block *Block, spHash string) map[string]bool {
+	const depthLimit = 2*ghostdagK + 1
+
+	// Build a shallow exclusion set: blocks definitely reachable from SP.
+	excluded := make(map[string]bool)
+	type entry struct {
+		hash  string
+		depth int
+	}
+	stack := []entry{{spHash, 0}}
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if excluded[cur.hash] || cur.depth > depthLimit {
+			continue
+		}
+		excluded[cur.hash] = true
+		if b, ok := dag.blocks[cur.hash]; ok {
+			for _, ph := range b.ParentHashes {
+				if !excluded[ph] {
+					stack = append(stack, entry{ph, cur.depth + 1})
+				}
+			}
+		}
+	}
+
+	// BFS backward from non-SP parents, stopping at excluded blocks.
+	mergeSet := make(map[string]bool)
+	type qentry struct {
+		hash  string
+		depth int
+	}
+	queue := make([]qentry, 0, len(block.ParentHashes))
+	for _, ph := range block.ParentHashes {
+		if ph != spHash && !excluded[ph] {
+			queue = append(queue, qentry{ph, 0})
+		}
+	}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if mergeSet[cur.hash] || excluded[cur.hash] || cur.depth > depthLimit {
+			continue
+		}
+		mergeSet[cur.hash] = true
+		if b, ok := dag.blocks[cur.hash]; ok {
+			for _, ph := range b.ParentHashes {
+				if !excluded[ph] && !mergeSet[ph] {
+					queue = append(queue, qentry{ph, cur.depth + 1})
+				}
+			}
+		}
+	}
+	return mergeSet
+}
+
+// ghostdagIsAncestor returns true if ancestorHash can reach descendantHash
+// by following parent links.  Used for anticone detection in GHOSTDAG.
+// Must be called under dag.mu.
+func (dag *BlockDAG) ghostdagIsAncestor(ancestorHash, descendantHash string) bool {
+	if ancestorHash == descendantHash {
+		return true
+	}
+	visited := make(map[string]bool)
+	queue := []string{descendantHash}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if cur == ancestorHash {
+			return true
+		}
+		if visited[cur] {
+			continue
+		}
+		visited[cur] = true
+		if b, ok := dag.blocks[cur]; ok {
+			queue = append(queue, b.ParentHashes...)
+		}
+	}
+	return false
+}
+
+// ghostdagTopoSort returns merge-set blocks in topological order (parents
+// before children) using DFS reverse-postorder.  Deterministic: keys sorted
+// before DFS so two nodes with the same block set always produce the same order.
+func ghostdagTopoSort(subset map[string]bool, allBlocks map[string]*Block) []string {
+	visited := make(map[string]bool)
+	result := make([]string, 0, len(subset))
+	var dfs func(h string)
+	dfs = func(h string) {
+		if visited[h] {
+			return
+		}
+		visited[h] = true
+		if b, ok := allBlocks[h]; ok {
+			for _, ph := range b.ParentHashes {
+				if subset[ph] {
+					dfs(ph)
+				}
+			}
+		}
+		result = append(result, h)
+	}
+	keys := make([]string, 0, len(subset))
+	for h := range subset {
+		keys = append(keys, h)
+	}
+	sort.Strings(keys)
+	for _, h := range keys {
+		dfs(h)
+	}
+	return result
 }
 
 // collectUnreplayedAncestors returns the subset of block's transitive
@@ -2242,14 +2437,12 @@ func (dag *BlockDAG) collectUnreplayedAncestors(target *Block) []*Block {
 		}
 	}
 	dfs(target)
-	blueScore := dag.blueScore
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Height != result[j].Height {
 			return result[i].Height < result[j].Height
 		}
-		si, sj := blueScore[result[i].Hash], blueScore[result[j].Hash]
-		if si != sj {
-			return si > sj // heavier selected-parent chain first
+		if result[i].BlueScore != result[j].BlueScore {
+			return result[i].BlueScore > result[j].BlueScore // heavier chain first
 		}
 		return result[i].Hash < result[j].Hash
 	})
