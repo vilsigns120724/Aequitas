@@ -18,6 +18,9 @@
 
 # Environment files
 .env
+
+# Go build output — built by Dockerfile, never committed
+/aequitasd
 .env.*
 !.env.example
 

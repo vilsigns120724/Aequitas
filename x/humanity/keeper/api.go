@@ -597,9 +597,14 @@ func (a *APIServer) handleBlockByHash(w http.ResponseWriter, r *http.Request) {
 }
 
 // maxBlocksByHashPerRequest caps how many hashes a single
-// handleBlocksByHash request can ask for, bounding the work this node does
-// per request from an unauthenticated peer.
-const maxBlocksByHashPerRequest = 2000
+// handleBlocksByHash request can ask for.  50 is the sweet spot: large
+// enough for fast ancestor resolution in fetchMissingAncestors, small
+// enough that a worst-case response (blocks with full proof payloads ~2 KB
+// each) stays well under 200 KB — no risk of hitting the 20 MB client read
+// cap and producing a truncated JSON parse error that looks like the peer
+// "doesn't have" the block.  sync_blocks.go sets maxBatchSize = this
+// constant, so client and server stay in sync automatically.
+const maxBlocksByHashPerRequest = 50
 
 // handleBlocksByHash serves POST /api/blocks/by-hash with body {"hashes":[...]}.
 //
@@ -637,6 +642,14 @@ func (a *APIServer) handleBlocksByHash(w http.ResponseWriter, r *http.Request) {
 	}
 	found := make([]*Block, 0, len(req.Hashes))
 	for _, h := range req.Hashes {
+		// Reject non-hex or wrong-length strings before touching any index —
+		// prevents garbage strings from making it into GetBlockByHash lookups.
+		if len(h) != 64 {
+			continue
+		}
+		if _, hexErr := hex.DecodeString(h); hexErr != nil {
+			continue
+		}
 		if b := a.blockchain.GetBlockByHash(h); b != nil {
 			found = append(found, b)
 		}

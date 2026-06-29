@@ -565,6 +565,19 @@ func (dag *BlockDAG) ProduceBlock() *Block {
 dag.mu.Lock()
 defer dag.mu.Unlock()
 
+// After a snapshot resync, bootHeight is set to snapshot_import_height
+// (e.g. 23093) while dag.height starts at 0.  Producing blocks here would
+// create height-1 blocks whose StateRoot encodes the full snapshot state —
+// peers replaying from genesis cannot reach that StateRoot and reject them
+// as orphans.  Gate until the sequential catch-up sync has delivered enough
+// headers that our state is consistent with the blocks we're building on.
+// A 10-block buffer avoids false negatives from in-flight sync races.
+if dag.bootHeight > 0 && dag.height+10 < dag.bootHeight {
+	fmt.Printf("[BLOCK] ⏳ Catch-up in progress (dag.height=%d, bootHeight=%d) — skipping block production\n",
+		dag.height, dag.bootHeight)
+	return nil
+}
+
 // Collect all current tips as parents.
 // Sort deterministically so the hash is identical regardless of map
 // iteration order — both nodes must agree on parent_hashes ordering.

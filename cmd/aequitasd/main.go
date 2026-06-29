@@ -236,6 +236,9 @@ go func() {
 ticker := time.NewTicker(BLOCK_TIME)
 for range ticker.C {
 block := bc.ProduceBlock()
+			if block == nil {
+				continue // catch-up gate — skip this tick
+			}
 			p2pNode.BroadcastBlock(block)
 fmt.Printf("[Block #%d] Hash: %s... | Humans: %d | Time: %s\n",
 block.Height,

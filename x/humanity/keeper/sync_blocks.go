@@ -315,13 +315,24 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 		fetchedThisRound := 0
 		for i := 0; i < len(pending); i += maxBatchSize {
 			chunk := pending[i:min(i+maxBatchSize, len(pending))]
-			for _, h := range chunk {
-				dag.RecordOrphanAttempt(h)
-			}
 			blocks, err := dag.fetchBlocksByHashes(nodeURL, chunk)
 			if err != nil {
 				fmt.Printf("[HTTP-SYNC] ✗ Could not batch-fetch %d missing ancestor(s) from %s: %v\n", len(chunk), nodeURL, err)
-				continue // this chunk failed (network) — still try the rest
+				continue // network failure — don't count as genuine peer confirmation
+			}
+			// Count an attempt only for hashes the peer confirmed it does NOT have
+			// (i.e. the fetch succeeded but the hash was absent from the response).
+			// A network error never counts — it says nothing about whether the peer
+			// has the block, and we must not burn through orphanAbandonAfter budget
+			// on transient connectivity issues.
+			returned := make(map[string]bool, len(blocks))
+			for _, block := range blocks {
+				returned[block.Hash] = true
+			}
+			for _, h := range chunk {
+				if !returned[h] {
+					dag.RecordOrphanAttempt(h)
+				}
 			}
 			for _, block := range blocks {
 				fetchedThisRound++

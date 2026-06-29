@@ -627,6 +627,13 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	if nullifierToStore == "" {
 		nullifierToStore = req.Nullifier
 	}
+	// A missing nullifier means no outbox TX can be created — secondary nodes
+	// would never learn about this registration and balances would diverge.
+	// Reject before submitting the EVM tx so we never reach the EVM-committed-
+	// but-Go-state-failed half-state that requires manual recovery.
+	if nullifierToStore == "" {
+		return "", fmt.Errorf("registration rejected: nullifier missing from proof — re-submit with a valid V3 circuit proof")
+	}
 	commitment := ""
 	if len(req.PubSignals) > 0 {
 		commitment = req.PubSignals[0]
