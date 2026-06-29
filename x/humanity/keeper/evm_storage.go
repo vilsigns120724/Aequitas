@@ -1875,13 +1875,34 @@ func (cs *ChainState) LoadPendingTxs() ([]Transaction, []int64) {
 	rows.Close()
 	for _, br := range corrupt {
 		fmt.Printf("[TX] LoadPendingTxs unmarshal error for id=%d — moving to dead-letter queue: %v\n", br.id, br.errMsg)
-		cs.db.Exec(
+		// FIX (Brutal Audit 2026-06-28, P3-06; confirmed still present
+		// 2026-06-29): both DML statements here used to discard their
+		// errors. A corrupt row's whole point of being routed here is that
+		// it can never be replayed as a normal TX again (its included_at
+		// was already claimed by the UPDATE...RETURNING above) — if the
+		// INSERT into the dead-letter table fails, the row's content is
+		// gone forever the moment the DELETE below still runs anyway, with
+		// no record anywhere of what it contained or why. If the INSERT
+		// succeeds but the DELETE fails, the row stays in pending_txs
+		// forever with included_at already set (non-zero), permanently
+		// invisible to the next LoadPendingTxs call (which only selects
+		// included_at = 0) — silently "lost in place" rather than dead-
+		// lettered, with no log line distinguishing that from a clean
+		// dead-letter. Insert first; only delete from pending_txs if the
+		// insert actually succeeded, so a corrupt row's content is never
+		// destroyed without first being durably preserved somewhere.
+		if _, err := cs.db.Exec(
 			`INSERT INTO pending_txs_dead_letter (id, tx_json, created_at, failed_at, fail_reason)
 			 SELECT id, tx_json, created_at, $1, $2 FROM pending_txs WHERE id = $3
 			 ON CONFLICT (id) DO NOTHING`,
 			time.Now().Unix(), br.errMsg, br.id,
-		)
-		cs.db.Exec(`DELETE FROM pending_txs WHERE id = $1`, br.id)
+		); err != nil {
+			fmt.Printf("[TX] ⚠ ALERT: could not dead-letter corrupt pending_tx id=%d — leaving it in pending_txs (included_at already claimed, so it will NOT be retried; investigate manually): %v\n", br.id, err)
+			continue
+		}
+		if _, err := cs.db.Exec(`DELETE FROM pending_txs WHERE id = $1`, br.id); err != nil {
+			fmt.Printf("[TX] ⚠ ALERT: dead-lettered pending_tx id=%d but could not delete it from pending_txs — row now exists in BOTH tables with included_at already claimed (harmless duplicate record, but investigate): %v\n", br.id, err)
+		}
 	}
 	// UPDATE ... RETURNING does not guarantee output order matches the
 	// subquery's ORDER BY — restore insertion order explicitly, since
@@ -2019,12 +2040,42 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 
 	recovered := 0
 	for _, r := range records {
-		cs.db.Exec(`UPDATE registration_recovery SET attempt_count=attempt_count+1, last_attempt_at=$1 WHERE id=$2`,
-			time.Now().Unix(), r.id)
+		// FIX (Brutal Audit 2026-06-28, P2-05; confirmed still present
+		// 2026-06-29): every cs.db.Exec result in this loop used to be
+		// discarded — a failed bookkeeping UPDATE (attempt_count,
+		// last_error, recovered_at) was indistinguishable from a successful
+		// one anywhere in the logs. None of these are fatal to the retry
+		// itself (best-effort bookkeeping around a real recovery attempt),
+		// so they don't abort the loop — but a failure here being invisible
+		// defeats the entire point of a recovery mechanism whose job is to
+        // surface and resolve exactly this class of problem.
+		if _, err := cs.db.Exec(`UPDATE registration_recovery SET attempt_count=attempt_count+1, last_attempt_at=$1 WHERE id=$2`,
+			time.Now().Unix(), r.id); err != nil {
+			fmt.Printf("[RECOVERY] ⚠ Could not update attempt_count for recovery id=%d (wallet %s): %v\n", r.id, r.wallet, err)
+		}
 
+		// FIX (Brutal Audit P2-05): a corrupt pending_tx_json used to be
+		// silently swallowed (json.Unmarshal error suppressed with
+		// //nolint:errcheck), leaving pendingTx at its zero value — which
+		// then fell through to the weaker cs.RegisterHuman(r.wallet) path
+		// (no nullifier, no outbox TX) as if this record had simply never
+		// had pending_tx_json in the first place. That's a real
+		// "already registered" / outbox-less registration risk hiding
+		// behind data corruption, not a legitimate missing-field case.
+		// Genuinely empty (pre-existing records from before this column
+		// existed) is fine and expected; a non-empty value that fails to
+		// parse is corruption and must be flagged loudly, not silently
+		// downgraded to the weaker recovery path.
 		var pendingTx Transaction
 		if r.pendingJSON != "" {
-			json.Unmarshal([]byte(r.pendingJSON), &pendingTx) //nolint:errcheck
+			if err := json.Unmarshal([]byte(r.pendingJSON), &pendingTx); err != nil {
+				fmt.Printf("[RECOVERY] ✗ Corrupt pending_tx_json for recovery id=%d (wallet %s): %v — skipping this attempt, NOT falling back to RegisterHuman without outbox data\n", r.id, r.wallet, err)
+				if _, dbErr := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`,
+					fmt.Sprintf("corrupt pending_tx_json: %v", err), r.id); dbErr != nil {
+					fmt.Printf("[RECOVERY] ⚠ Could not record corruption error for recovery id=%d: %v\n", r.id, dbErr)
+				}
+				continue
+			}
 		}
 
 		var regErr error
@@ -2039,17 +2090,23 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 			if alreadyDone {
 				// Go-state already has this wallet as human (perhaps recovered
 				// by a previous attempt or by block replay from another node).
-				cs.db.Exec(`UPDATE registration_recovery SET recovered_at=$1, last_error='already registered in go-state — treated as recovered' WHERE id=$2`,
-					time.Now().Unix(), r.id)
+				if _, err := cs.db.Exec(`UPDATE registration_recovery SET recovered_at=$1, last_error='already registered in go-state — treated as recovered' WHERE id=$2`,
+					time.Now().Unix(), r.id); err != nil {
+					fmt.Printf("[RECOVERY] ⚠ Could not mark recovery id=%d as recovered (wallet %s already registered in Go-state — recovery WILL be retried again next cycle): %v\n", r.id, r.wallet, err)
+				}
 				recovered++
 				fmt.Printf("[RECOVERY] ✓ Registration for %s already present in Go-state — marked recovered\n", r.wallet)
 			} else {
-				cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`, regErr.Error(), r.id)
+				if _, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`, regErr.Error(), r.id); err != nil {
+					fmt.Printf("[RECOVERY] ⚠ Could not record retry error for recovery id=%d (wallet %s): %v\n", r.id, r.wallet, err)
+				}
 				fmt.Printf("[RECOVERY] ✗ Retry failed for %s: %v\n", r.wallet, regErr)
 			}
 		} else {
-			cs.db.Exec(`UPDATE registration_recovery SET recovered_at=$1, last_error=NULL WHERE id=$2`,
-				time.Now().Unix(), r.id)
+			if _, err := cs.db.Exec(`UPDATE registration_recovery SET recovered_at=$1, last_error=NULL WHERE id=$2`,
+				time.Now().Unix(), r.id); err != nil {
+				fmt.Printf("[RECOVERY] ⚠ Could not mark recovery id=%d as recovered (wallet %s WAS successfully registered — recovery WILL be retried again next cycle): %v\n", r.id, r.wallet, err)
+			}
 			recovered++
 			fmt.Printf("[RECOVERY] ✓ Successfully recovered Go-state registration for wallet %s\n", r.wallet)
 			cs.SyncBalancesToEVM(V7_CONTRACT_ADDR, r.wallet)
