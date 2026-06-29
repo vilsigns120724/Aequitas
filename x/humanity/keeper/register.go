@@ -594,30 +594,7 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 	// RPCError if the on-chain execution reverts (see evm_rpc.go), so a
 	// non-nil rpcErr here already means the registration genuinely failed —
 	// not just that submission failed.
-	result, rpcErr := evmRPC.sendRawTransaction([]json.RawMessage{
-		mustMarshal(rawHex),
-	})
-	if rpcErr != nil {
-		return "", fmt.Errorf("registration failed on-chain: %s", rpcErr.Message)
-	}
-
-	txHash, ok := result.(string)
-	if !ok {
-		return "", fmt.Errorf("unexpected response from relay")
-	}
-
 	// ── NATIVE BALANCE (Phase 1 of native-coin migration) ────────────────
-	// Previously AEQ only existed as an ERC20-style balanceOf() mapping
-	// inside the V7 contract's EVM storage — eth_getBalance (the actual
-	// native-coin query, what MetaMask would use for the chain's own gas
-	// currency) read from a completely separate, never-updated ChainState/
-	// chain_accounts table. That's why a wallet could show 1,000 AEQ in
-	// MetaMask (via the custom ERC20 token display) while genuinely having
-	// 0 native balance on the chain itself. This call makes ChainState the
-	// real source of truth for the 1,000 AEQ grant — registration remains
-	// fully gasless regardless of this; granting a native balance here has
-	// no gas cost of its own, it's a direct database write, not a
-	// transaction the user pays for.
 	// Always save effectiveNullifier (the ZK-derived one when using v2 circuit),
 	// not just req.Nullifier — req.Nullifier may be empty or the old SHA256 value
 	// while effectiveNullifier is the one actually stored on-chain. Computed
@@ -639,43 +616,64 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		commitment = req.PubSignals[0]
 	}
 
-	// FIX (atomic outbox): RegisterHumanAtomic commits the Go-state
-	// registration and the pending_tx outbox insert as a single DB
-	// transaction (see runAtomicWithOutbox / TransferAtomic's comment),
-	// instead of the old RegisterHuman()-then-SavePendingTx() sequence
-	// where the outbox write could fail independently after the
-	// registration had already committed — permanently hiding a real
-	// registration from every other node (confirmed in production:
-	// "humans: 1" on the primary's own /api/status, with zero secondary
-	// ever learning about it). Only emit a pendingTx when we have a
-	// nullifier — secondary nodes use it as the idempotency key; a TX with
-	// an empty nullifier would be silently dropped by replay anyway.
-	var pendingRegTx Transaction
-	if nullifierToStore != "" {
-		pAslice := []*big.Int{pA[0], pA[1]}
-		pCslice := []*big.Int{pC[0], pC[1]}
-		psSlice := []*big.Int{pubSignals[0], pubSignals[1]}
-		pendingRegTx = Transaction{
-			Type:       "register_human",
-			Wallet:     wallet,
-			TxHash:     txHash,
-			Nullifier:  nullifierToStore,
-			Commitment: commitment,
-			ProofA:     bigIntsToHexStrings(pAslice),
-			ProofB:     bigInt2x2ToHexStrings(pB),
-			ProofC:     bigIntsToHexStrings(pCslice),
-			PubSignals: bigIntsToHexStrings(psSlice),
-		}
+	// Build pendingRegTx before EVM — TxHash is "" initially, filled in after
+	// EVM confirms.  Building it here lets us store the full proof data in the
+	// intent record so background recovery can reconstruct the outbox TX even if
+	// the process crashes between EVM commit and RegisterHumanAtomic.
+	pAslice := []*big.Int{pA[0], pA[1]}
+	pCslice := []*big.Int{pC[0], pC[1]}
+	psSlice := []*big.Int{pubSignals[0], pubSignals[1]}
+	pendingRegTx := Transaction{
+		Type:       "register_human",
+		Wallet:     wallet,
+		Nullifier:  nullifierToStore,
+		Commitment: commitment,
+		ProofA:     bigIntsToHexStrings(pAslice),
+		ProofB:     bigInt2x2ToHexStrings(pB),
+		ProofC:     bigIntsToHexStrings(pCslice),
+		PubSignals: bigIntsToHexStrings(psSlice),
 	}
 
+	// ── REGISTRATION STATE MACHINE (audit P1-02) ─────────────────────────
+	// Step 1: Write a durable intent BEFORE submitting the EVM tx.
+	// If the process crashes after EVM commits but before SaveRegistrationRecovery
+	// is called, the intent is already there for background retry.
+	intentID, intentErr := a.state.SaveRegistrationIntent(wallet, nullifierToStore, pendingRegTx)
+	if intentErr != nil {
+		Log.Error("Could not write registration intent — proceeding without durable pre-EVM record", "err", intentErr)
+	}
+
+	// Step 2: Submit the EVM tx.
+	result, rpcErr := evmRPC.sendRawTransaction([]json.RawMessage{
+		mustMarshal(rawHex),
+	})
+	if rpcErr != nil {
+		if intentID > 0 {
+			a.state.DeleteRegistrationIntent(intentID) // EVM never happened — clean up intent
+		}
+		return "", fmt.Errorf("registration failed on-chain: %s", rpcErr.Message)
+	}
+
+	txHash, ok := result.(string)
+	if !ok {
+		if intentID > 0 {
+			a.state.DeleteRegistrationIntent(intentID)
+		}
+		return "", fmt.Errorf("unexpected response from relay")
+	}
+
+	// Step 3: Stamp the confirmed EVM tx hash on the intent so background retry
+	// knows the EVM part is done and only Go-state needs to be retried.
+	pendingRegTx.TxHash = txHash
+	if intentID > 0 {
+		a.state.UpdateRegistrationIntentEVMTxHash(intentID, txHash)
+	}
+
+	// Step 4: Sync Go-state + outbox atomically.
 	registered := false
 	var regErr error
 	for retry := 1; retry <= 3; retry++ {
-		if nullifierToStore != "" {
-			regErr = a.state.RegisterHumanAtomic(wallet, pendingRegTx)
-		} else {
-			regErr = a.state.RegisterHuman(wallet)
-		}
+		regErr = a.state.RegisterHumanAtomic(wallet, pendingRegTx)
 		if regErr == nil {
 			registered = true
 			break
@@ -685,25 +683,22 @@ func (a *APIServer) registerOnV7(evmRPC *EVMRPCServer, wallet string, req Regist
 		}
 	}
 	if !registered {
-		// FIX (BRUTAL-P1-01, Variant C): EVM committed but Go-state failed 3x.
-		// Write a recovery record so the background RetryRegistrationRecoveries
-		// goroutine can keep retrying until Go-state catches up, and set the
-		// node degraded so operators see it in /api/health/combined.
-		// We do NOT halt block production — a transient DB write failure during
-		// registration must not stop the entire chain; secondary nodes will
-		// eventually replay this registration from the outbox regardless.
-		Log.Error("CRITICAL: RegisterHumanAtomic failed 3x after EVM success — writing recovery record",
-			"wallet", wallet, "txHash", txHash, "error", regErr)
-		if saveErr := a.state.SaveRegistrationRecovery(wallet, txHash, nullifierToStore, pendingRegTx); saveErr != nil {
-			Log.Error("CRITICAL: also failed to write registration_recovery record — manual intervention required",
-				"wallet", wallet, "txHash", txHash, "saveErr", saveErr)
-		}
+		// Step 5 (failure path): the intent already exists in registration_recovery
+		// with evm_tx_hash set — background RetryRegistrationRecoveries will keep
+		// retrying RegisterHumanAtomic until Go-state catches up.
+		Log.Error("CRITICAL: RegisterHumanAtomic failed 3x after EVM success — intent left for background retry",
+			"wallet", wallet, "txHash", txHash, "intentID", intentID, "error", regErr)
 		a.state.SetBootstrapDegraded(fmt.Sprintf(
 			"registration_recovery: EVM tx %s registered %s on-chain but Go-state sync failed (%v) — "+
 				"background recovery is retrying; check /api/admin/registration-recovery",
 			txHash, wallet, regErr))
 		return "", fmt.Errorf("registration succeeded on-chain (tx %s) but failed to sync locally after retries: %w — "+
 			"recovery is queued, check /api/admin/registration-recovery?wallet=%s", txHash, regErr, wallet)
+	}
+
+	// Step 5 (success path): mark the intent closed so it doesn't get retried.
+	if intentID > 0 {
+		a.state.MarkRegistrationIntentRecovered(intentID)
 	}
 	a.state.SyncBalancesToEVM(V7_CONTRACT_ADDR, wallet)
 

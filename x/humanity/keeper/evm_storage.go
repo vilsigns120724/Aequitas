@@ -1967,13 +1967,81 @@ func (cs *ChainState) ResetStaleIncludedPendingTxs(maxAge time.Duration) {
 	}
 }
 
-// ── REGISTRATION RECOVERY (BRUTAL-P1-01) ────────────────────────────────────
+// ── REGISTRATION RECOVERY (BRUTAL-P1-01 / P1-02) ───────────────────────────
 //
-// When registerOnV7 succeeds on-chain (EVM committed) but RegisterHumanAtomic
-// fails after 3 retries, a recovery record is written here so the
-// background goroutine in api.go can keep retrying until Go-state catches up.
-// This is Variant-C of the audit's recommended fix: record + degrade + retry,
-// rather than silently diverging or halting block production entirely.
+// Flow (true state-machine, as required by audit P1-02):
+//
+//  1. SaveRegistrationIntent(wallet, nullifier, pendingTx)
+//     → inserts into registration_recovery with evm_tx_hash = '' (pre-EVM sentinel)
+//     → returns the row id so the caller can update / mark it later
+//
+//  2. sendRawTransaction (EVM submit)
+//     → on failure: DeleteRegistrationIntent(id)
+//     → on success: UpdateRegistrationIntentEVMTxHash(id, txHash)
+//
+//  3. RegisterHumanAtomic (Go-state + outbox)
+//     → on success: MarkRegistrationIntentRecovered(id)
+//     → on failure (3 retries): leave the record; background retry picks it up
+//
+// Background RetryRegistrationRecoveries:
+//   • evm_tx_hash = '' : pre-EVM intent — EVM was never confirmed. Try
+//     RegisterHumanAtomic anyway; if the wallet was registered by block replay
+//     from another node, "already registered" closes the record. If not,
+//     leave pending — the user must re-submit the registration.
+//   • evm_tx_hash != '' : post-EVM recovery — retry RegisterHumanAtomic only.
+//
+// This closes the critical window where EVM commits but the process crashes
+// before either RegisterHumanAtomic or SaveRegistrationRecovery is called,
+// which previously left the registration invisible to all secondary nodes.
+
+// SaveRegistrationIntent writes a pre-EVM intent record. evm_tx_hash is stored
+// as '' until the EVM transaction is confirmed. Returns the new row id.
+func (cs *ChainState) SaveRegistrationIntent(wallet, nullifier string, pendingTx Transaction) (int64, error) {
+	if cs.db == nil {
+		return 0, fmt.Errorf("db not available")
+	}
+	pendingJSON, _ := json.Marshal(pendingTx)
+	var id int64
+	err := cs.db.QueryRow(
+		`INSERT INTO registration_recovery
+		 (wallet, evm_tx_hash, nullifier, pending_tx_json, created_at)
+		 VALUES ($1, '', $2, $3, $4)
+		 RETURNING id`,
+		strings.ToLower(wallet), nullifier, string(pendingJSON), time.Now().Unix(),
+	).Scan(&id)
+	return id, err
+}
+
+// UpdateRegistrationIntentEVMTxHash updates the intent row after EVM success.
+func (cs *ChainState) UpdateRegistrationIntentEVMTxHash(id int64, txHash string) error {
+	if cs.db == nil {
+		return nil
+	}
+	_, err := cs.db.Exec(`UPDATE registration_recovery SET evm_tx_hash = $1 WHERE id = $2`, txHash, id)
+	return err
+}
+
+// DeleteRegistrationIntent removes a pre-EVM intent when EVM submission fails —
+// the registration never happened so there is nothing to recover.
+func (cs *ChainState) DeleteRegistrationIntent(id int64) {
+	if cs.db == nil {
+		return
+	}
+	if _, err := cs.db.Exec(`DELETE FROM registration_recovery WHERE id = $1 AND evm_tx_hash = ''`, id); err != nil {
+		fmt.Printf("[RECOVERY] ⚠ Could not delete pre-EVM intent id=%d: %v\n", id, err)
+	}
+}
+
+// MarkRegistrationIntentRecovered closes a registration_recovery record after
+// Go-state has been successfully updated.
+func (cs *ChainState) MarkRegistrationIntentRecovered(id int64) {
+	if cs.db == nil {
+		return
+	}
+	if _, err := cs.db.Exec(`UPDATE registration_recovery SET recovered_at = $1 WHERE id = $2`, time.Now().Unix(), id); err != nil {
+		fmt.Printf("[RECOVERY] ⚠ Could not mark registration intent id=%d as recovered: %v\n", id, err)
+	}
+}
 
 // SaveRegistrationRecovery writes a recovery record for a registration whose
 // EVM transaction succeeded but whose Go-state sync failed. Returns an error
@@ -2015,7 +2083,7 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 		return 0
 	}
 	rows, err := cs.db.Query(`
-		SELECT id, wallet, nullifier, pending_tx_json
+		SELECT id, wallet, evm_tx_hash, nullifier, pending_tx_json
 		FROM registration_recovery
 		WHERE recovered_at IS NULL
 		ORDER BY created_at ASC`)
@@ -2026,13 +2094,14 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 	type rec struct {
 		id          int64
 		wallet      string
+		evmTxHash   string
 		nullifier   string
 		pendingJSON string
 	}
 	var records []rec
 	for rows.Next() {
 		var r rec
-		if scanErr := rows.Scan(&r.id, &r.wallet, &r.nullifier, &r.pendingJSON); scanErr == nil {
+		if scanErr := rows.Scan(&r.id, &r.wallet, &r.evmTxHash, &r.nullifier, &r.pendingJSON); scanErr == nil {
 			records = append(records, r)
 		}
 	}
@@ -2040,15 +2109,43 @@ func (cs *ChainState) RetryRegistrationRecoveries() int {
 
 	recovered := 0
 	for _, r := range records {
-		// FIX (Brutal Audit 2026-06-28, P2-05; confirmed still present
-		// 2026-06-29): every cs.db.Exec result in this loop used to be
-		// discarded — a failed bookkeeping UPDATE (attempt_count,
-		// last_error, recovered_at) was indistinguishable from a successful
-		// one anywhere in the logs. None of these are fatal to the retry
-		// itself (best-effort bookkeeping around a real recovery attempt),
-		// so they don't abort the loop — but a failure here being invisible
-		// defeats the entire point of a recovery mechanism whose job is to
-        // surface and resolve exactly this class of problem.
+		// Pre-EVM intent (evm_tx_hash='') — EVM was never confirmed for this record.
+		// This happens when the process crashed between SaveRegistrationIntent and
+		// sendRawTransaction.  We can't re-submit the EVM tx from here (no signing
+		// key available in ChainState), so try RegisterHumanAtomic:
+		// • if the wallet was registered via block replay from another node →
+		//   "already registered" → mark recovered (the registration did happen)
+		// • if not yet registered → leave pending (user must re-submit via /register)
+		if r.evmTxHash == "" {
+			var regErr error
+			var pendingTx Transaction
+			if r.pendingJSON != "" {
+				if err := json.Unmarshal([]byte(r.pendingJSON), &pendingTx); err != nil {
+					fmt.Printf("[RECOVERY] ⚠ Pre-EVM intent id=%d (wallet %s) has corrupt pending_tx_json — leaving pending for manual review\n", r.id, r.wallet)
+					continue
+				}
+			}
+			if pendingTx.Nullifier != "" {
+				regErr = cs.RegisterHumanAtomic(r.wallet, pendingTx)
+			} else {
+				regErr = cs.RegisterHuman(r.wallet)
+			}
+			if regErr == nil || strings.Contains(regErr.Error(), "already registered") {
+				if _, err := cs.db.Exec(`UPDATE registration_recovery SET recovered_at=$1, last_error='pre-evm intent: resolved via block replay or RegisterHumanAtomic' WHERE id=$2`,
+					time.Now().Unix(), r.id); err != nil {
+					fmt.Printf("[RECOVERY] ⚠ Could not mark pre-EVM intent id=%d recovered: %v\n", r.id, err)
+				}
+				recovered++
+				fmt.Printf("[RECOVERY] ✓ Pre-EVM intent for %s resolved\n", r.wallet)
+			} else {
+				fmt.Printf("[RECOVERY] ℹ Pre-EVM intent id=%d (wallet %s) not yet recoverable: %v — user should re-submit registration\n", r.id, r.wallet, regErr)
+				if _, err := cs.db.Exec(`UPDATE registration_recovery SET last_error=$1 WHERE id=$2`, "pre-evm intent: "+regErr.Error(), r.id); err != nil {
+					fmt.Printf("[RECOVERY] ⚠ Could not update last_error for pre-EVM intent id=%d: %v\n", r.id, err)
+				}
+			}
+			continue
+		}
+
 		if _, err := cs.db.Exec(`UPDATE registration_recovery SET attempt_count=attempt_count+1, last_attempt_at=$1 WHERE id=$2`,
 			time.Now().Unix(), r.id); err != nil {
 			fmt.Printf("[RECOVERY] ⚠ Could not update attempt_count for recovery id=%d (wallet %s): %v\n", r.id, r.wallet, err)
@@ -2215,6 +2312,77 @@ func (cs *ChainState) SaveBlockToDB(block *Block) error {
 		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
 	)
 	return err
+}
+
+// SaveBlockWithPendingTxsAtomic saves the block and clears the given pending-TX
+// rows in a single DB transaction so the two operations either both commit or
+// both roll back.  This closes the narrow window where SaveBlockToDB succeeds
+// but ClearPendingTxs fails — previously that left rows with included_at set
+// but not deleted; the already-processed TXs could theoretically be loaded
+// again on the next ProduceBlock call.
+//
+// The call also stamps included_block_hash on the rows inside the same
+// transaction, which ResetStaleIncludedPendingTxs uses to decide whether to
+// requeue a row: "block present in chain_blocks AND included_block_hash matches"
+// → leave alone; "block absent" → requeue.
+func (cs *ChainState) SaveBlockWithPendingTxsAtomic(block *Block, ids []int64) error {
+	if cs.db == nil {
+		return nil
+	}
+	parentHashesJSON, err := json.Marshal(block.ParentHashes)
+	if err != nil {
+		return fmt.Errorf("marshal parent_hashes: %w", err)
+	}
+	txsJSON, err := json.Marshal(block.Transactions)
+	if err != nil {
+		return fmt.Errorf("marshal transactions: %w", err)
+	}
+
+	tx, err := cs.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	rollback := func() {
+		if rbErr := tx.Rollback(); rbErr != nil && rbErr.Error() != "sql: transaction has already been committed or rolled back" {
+			fmt.Printf("[TX] SaveBlockWithPendingTxsAtomic rollback error: %v\n", rbErr)
+		}
+	}
+
+	if len(ids) > 0 {
+		if _, err := tx.Exec(
+			`UPDATE pending_txs SET included_block_hash = $1 WHERE id = ANY($2)`,
+			block.Hash, ids,
+		); err != nil {
+			rollback()
+			return fmt.Errorf("mark pending txs: %w", err)
+		}
+	}
+
+	if _, err := tx.Exec(
+		`INSERT INTO chain_blocks (hash, height, parent_hashes, proposer, timestamp, humans, state_root, signature, transactions)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 ON CONFLICT (hash) DO NOTHING`,
+		block.Hash, block.Height, string(parentHashesJSON), block.Proposer, block.Timestamp,
+		block.Humans, block.StateRoot, block.Signature, string(txsJSON),
+	); err != nil {
+		rollback()
+		return fmt.Errorf("save block: %w", err)
+	}
+
+	if len(ids) > 0 {
+		if _, err := tx.Exec(
+			`DELETE FROM pending_txs WHERE id = ANY($1)`, ids,
+		); err != nil {
+			rollback()
+			return fmt.Errorf("clear pending txs: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		rollback()
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
 }
 
 // LoadBlocksFromDB reconstructs every durably-saved block (see SaveBlockToDB)

@@ -656,40 +656,15 @@ dag.blocks[block.Hash] = block
 // blocking the whole chain on a transient DB hiccup would be worse than
 // the narrow durability gap this closes — but it does mean this round's
 // TXs stay safely re-includable instead of being silently dropped.
-// FIX (AQT-NEW-P1-01): stamp included_block_hash BEFORE SaveBlockToDB so
-// ResetStaleIncludedPendingTxs can always distinguish the two crash windows:
-//   • crash after mark but before save → block absent from chain_blocks →
-//     Reset's NOT EXISTS check fires → rows requeued → correct
-//   • crash after save but before clear → block present in chain_blocks →
-//     Reset leaves rows alone → TXs already confirmed → orphan rows harmless
-// Previous order (mark AFTER save) left a window where rows had
-// included_block_hash=NULL but the block was already saved; Reset's
-// "included_block_hash IS NULL" arm would requeue them → double-inclusion.
-if len(pendingTxIDs) > 0 {
-	// FIX (BRUTAL-P2-04): MarkPendingTxsIncluded now returns error.
-	// A failure here means rows keep included_block_hash=NULL even though
-	// the block is about to be saved — ResetStaleIncludedPendingTxs's
-	// "block absent from chain_blocks" arm would requeue them, risking
-	// double-inclusion on the next ProduceBlock. Mark node degraded so
-	// operators can see it; block production continues to avoid halting
-	// the whole chain over a transient DB write.
-	if err := dag.state.MarkPendingTxsIncluded(pendingTxIDs, block.Hash); err != nil {
-		dag.state.SetBootstrapDegraded(fmt.Sprintf(
-			"MarkPendingTxsIncluded failed for block %s: %v — pending TXs may be re-included; check /api/health/combined",
-			block.Hash[:16], err))
-	}
-}
-
-blockSaved := true
-if err := dag.state.SaveBlockToDB(block); err != nil {
-	blockSaved = false
-	fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...) to chain_blocks: %v — outbox rows kept for retry\n", block.Height, block.Hash[:16], err)
-}
-
-if blockSaved && len(pendingTxIDs) > 0 {
-	if err := dag.state.ClearPendingTxs(pendingTxIDs); err != nil {
-		fmt.Printf("[BLOCK] ⚠ ALERT: outbox rows for block #%d could not be cleared — these TX(s) may be duplicated into a future block: %v\n", block.Height, err)
-	}
+// SaveBlockWithPendingTxsAtomic stamps included_block_hash, inserts the block
+// into chain_blocks, and deletes the pending_txs rows in one SQL transaction.
+// Any partial failure rolls back completely — the block is not persisted and
+// the TX rows keep their included_at marker (preventing re-selection by
+// LoadPendingTxs) but will be requeued by ResetStaleIncludedPendingTxs once
+// their included_block_hash is confirmed absent from chain_blocks.
+if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != nil {
+	fmt.Printf("[BLOCK] ⚠ Could not atomically persist block #%d (%s...): %v — outbox rows kept for retry\n",
+		block.Height, block.Hash[:16], err)
 }
 
 // Record that this proposer produced a block — used for proportional
