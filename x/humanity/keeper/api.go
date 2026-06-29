@@ -1972,6 +1972,21 @@ func (a *APIServer) handleSetGuardian(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"POST required"}`, 405)
 		return
 	}
+	// FIX (audit 2026-06-29): every other signature-verification POST
+	// endpoint in this file (handleRecoverEscrow, handleProveProxy,
+	// handleCheckRegistrationByBioHash) rate-limits per IP — this one and
+	// handleConfirmAlive below were the only two that didn't, despite doing
+	// the same ecrecover + DB-write shape of work. Same package-level
+	// registerRateLimit sync.Map, same 30s-per-IP window, keyed separately
+	// from the other endpoints so it can't be used to also throttle them.
+	ip := clientIP(r)
+	if ts, loaded := registerRateLimit.Load("set-guardian:" + ip); loaded {
+		if time.Since(ts.(time.Time)) < 30*time.Second {
+			jsonError(w, "rate limited, try again shortly", 429)
+			return
+		}
+	}
+	registerRateLimit.Store("set-guardian:"+ip, time.Now())
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req struct {
 		Wallet    string `json:"wallet"`
@@ -2024,6 +2039,18 @@ func (a *APIServer) handleConfirmAlive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"POST required"}`, 405)
 		return
 	}
+	// FIX (audit 2026-06-29): see handleSetGuardian's matching comment —
+	// this endpoint did the same ecrecover + DB-write work with no rate
+	// limiting at all, unlike every comparable signature-verification POST
+	// endpoint elsewhere in this file.
+	ip := clientIP(r)
+	if ts, loaded := registerRateLimit.Load("confirm-alive:" + ip); loaded {
+		if time.Since(ts.(time.Time)) < 30*time.Second {
+			jsonError(w, "rate limited, try again shortly", 429)
+			return
+		}
+	}
+	registerRateLimit.Store("confirm-alive:"+ip, time.Now())
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req struct {
 		Wallet    string `json:"wallet"`
