@@ -307,6 +307,7 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"healthy":      status == "healthy", // kept for backward compatibility with existing callers
 			"degraded_reason": degradedReason,
 			"height":       latest.Height,
+			"dag_tips_count": a.blockchain.TipsCount(),
 			"state_root_mismatch_count": mismatchCount,
 			"last_successful_peer_sync_age_secs": lastSyncAgeSecs,
 			"total_humans": a.state.TotalHumans(),

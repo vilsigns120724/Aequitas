@@ -68,16 +68,17 @@ type Transaction struct {
 }
 
 type Block struct {
-Height       int64    `json:"height"`
-Timestamp    int64    `json:"timestamp"`
-ParentHashes []string `json:"parent_hashes"`
-Hash         string   `json:"hash"`
-Proposer     string   `json:"proposer"`
-Humans       int      `json:"humans"`
-IsGenesis    bool     `json:"is_genesis,omitempty"`
-	StateRoot    string   `json:"state_root,omitempty"`
-	Transactions  []Transaction `json:"transactions,omitempty"`
-	Signature    string   `json:"signature,omitempty"`
+	Height       int64         `json:"height"`
+	Timestamp    int64         `json:"timestamp"`
+	ParentHashes []string      `json:"parent_hashes"`
+	Hash         string        `json:"hash"`
+	Proposer     string        `json:"proposer"`
+	Humans       int           `json:"humans"`
+	IsGenesis    bool          `json:"is_genesis,omitempty"`
+	StateRoot    string        `json:"state_root,omitempty"`
+	Transactions []Transaction `json:"transactions,omitempty"`
+	Signature    string        `json:"signature,omitempty"`
+	BlueScore    int64         `json:"blue_score,omitempty"` // GHOSTDAG canonical ordering key
 }
 
 // peerChallenge holds a one-time challenge issued to a registering peer.
@@ -848,6 +849,35 @@ func (dag *BlockDAG) RecordOrphanAttempt(hash string) {
 	dag.orphansMu.Unlock()
 }
 
+// abandonOrphansWaitingFor removes all orphans queued waiting on hash as
+// their missing parent, then recurses into each abandoned block's own hash
+// to clear any further orphans that were waiting on THOSE blocks.
+//
+// Called when a block is permanently rejected (e.g. unauthorized proposer),
+// so descendants can never be resolved either.  Without this, orphans whose
+// only missing parent was a permanently-rejected block would sit in the queue
+// until orphanAbandonAfter — and since fetchMissingAncestors only calls
+// RecordOrphanAttempt when the PEER doesn't have a block (not when AddPeerBlock
+// rejects it), the attempt counter never incremented, so the TTL prune in
+// queueOrphan never triggered.  This function short-circuits that wait.
+func (dag *BlockDAG) abandonOrphansWaitingFor(hash string) {
+	dag.orphansMu.Lock()
+	waiting := dag.orphans[hash]
+	delete(dag.orphans, hash)
+	delete(dag.orphanFirstSeen, hash)
+	delete(dag.orphanLastAttempt, hash)
+	delete(dag.orphanAttempts, hash)
+	dag.orphansMu.Unlock()
+	if len(waiting) == 0 {
+		return
+	}
+	fmt.Printf("[DAG] Abandoned %d orphan block(s) waiting for permanently-rejected block %s… (proposer not in authorized validator set)\n",
+		len(waiting), hash[:min(16, len(hash))])
+	for _, b := range waiting {
+		dag.abandonOrphansWaitingFor(b.Hash)
+	}
+}
+
 // queueOrphan stores block, which is waiting on missingParent to appear,
 // and logs the wait (the old code dropped this case with zero logging).
 func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
@@ -1037,7 +1067,15 @@ if block.Signature != "" && !block.IsGenesis {
 			dag.warnedUnknownProposers[proposer] = true
 			fmt.Printf("[DAG] ✗ Proposer %s is not an authorized validator — add to AUTHORIZED_VALIDATORS env var to accept its blocks\n", proposer)
 		}
+		hash := block.Hash
 		dag.mu.Unlock()
+		// Prune the orphan queue for this hash immediately: any block waiting
+		// on this rejected block as a parent can never be resolved either, so
+		// keeping them only burns through orphan-buffer space and delays the
+		// "gap closed" signal.  Without this, fetchMissingAncestors never calls
+		// RecordOrphanAttempt for a "peer has it but we reject it" block, so the
+		// TTL prune in queueOrphan never fires — orphans hang for the full 15 min.
+		dag.abandonOrphansWaitingFor(hash)
 		return false
 	}
 }
@@ -1252,6 +1290,12 @@ return true
 // mismatch counter, and LastSuccessfulPeerSyncAt returns the Unix
 // timestamp of the last accepted peer block (0 if none yet this process) —
 // both exposed via /api/health/combined (Gesamtaudit 2026-06-28, P2-4/P3-7).
+func (dag *BlockDAG) TipsCount() int {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	return len(dag.tips)
+}
+
 func (dag *BlockDAG) TotalStateRootMismatches() int {
 	dag.stateRootMismatchesMu.Lock()
 	defer dag.stateRootMismatchesMu.Unlock()
@@ -2048,6 +2092,7 @@ func (dag *BlockDAG) updateBlueScore(block *Block) {
 			maxScore = s
 		}
 	}
+	block.BlueScore = maxScore + 1
 	dag.blueScore[block.Hash] = maxScore + 1
 }
 

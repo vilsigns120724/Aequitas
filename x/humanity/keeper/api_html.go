@@ -552,8 +552,8 @@ input[type=number]::-webkit-inner-spin-button{opacity:0.5}
     </div>
     <div class="exp-table-wrap">
       <table class="exp-table">
-        <thead><tr><th>Block #</th><th>Age</th><th>Txns</th><th>Proposer</th><th>Type</th></tr></thead>
-        <tbody id="blocks-list"><tr><td colspan="5" class="exp-empty">Loading blocks...</td></tr></tbody>
+        <thead><tr><th>Block #</th><th>Age</th><th>Txns</th><th>Proposer</th><th>Type</th><th title="GHOSTDAG blue score — canonical ordering key">★ Score</th></tr></thead>
+        <tbody id="blocks-list"><tr><td colspan="6" class="exp-empty">Loading blocks...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -4602,12 +4602,17 @@ async function loadBlocks() {
       return;
     }
     allBlocks = blocks;
-    // Deduplicate by height: keep the block with the most parents (the merge block)
+    // Group by height — pick representative block per height (highest blue_score, then hash ASC for ties).
+    // siblingsAt[h] = total count of blocks at that height (for DAG sibling display).
     const byHeight = {};
+    const siblingsAt = {};
     blocks.forEach(function(b) {
       const h = b.height;
-      const pc = (b.parent_hashes || []).length;
-      if (!byHeight[h] || pc > (byHeight[h].parent_hashes || []).length) byHeight[h] = b;
+      siblingsAt[h] = (siblingsAt[h] || 0) + 1;
+      const cur = byHeight[h];
+      if (!cur) { byHeight[h] = b; return; }
+      const bs = b.blue_score || 0, cs = cur.blue_score || 0;
+      if (bs > cs || (bs === cs && b.hash < cur.hash)) byHeight[h] = b;
     });
     const dedupedBlocks = Object.values(byHeight).sort(function(a, b) { return b.height - a.height; });
     // FIX: this used to show dedupedBlocks.length — the deduped count of
@@ -4623,18 +4628,22 @@ async function loadBlocks() {
         const merge = b.parent_hashes && b.parent_hashes.length > 1;
         const txCount = (b.transactions || []).length;
         const proposer = b.proposer ? short(b.proposer, 6, 4) : '—';
+        const sibCount = siblingsAt[b.height] || 1;
+        const sibBadge = sibCount > 1 ? ' <span style="font-size:0.48rem;color:var(--gold);vertical-align:middle" title="' + sibCount + ' parallel blocks at this height (GHOSTDAG DAG)">⟁' + sibCount + '</span>' : '';
         const typeBadge = merge
           ? '<span class="exp-badge exp-badge-merge">MERGE</span>'
           : '<span class="exp-badge exp-badge-std">STD</span>';
         const txBadge = txCount > 0
           ? '<span class="exp-badge exp-badge-tx">' + txCount + '</span>'
           : '<span class="exp-muted">0</span>';
+        const blueScore = b.blue_score != null ? sanitize(String(b.blue_score)) : '<span class="exp-muted">—</span>';
         return '<tr class="exp-tr" onclick="openBlock(\'' + sanitize(b.hash) + '\')">' +
-          '<td style="color:var(--purple);font-weight:700">#' + sanitize(String(b.height)) + '</td>' +
+          '<td style="color:var(--purple);font-weight:700">#' + sanitize(String(b.height)) + sibBadge + '</td>' +
           '<td class="exp-muted" style="font-size:0.6rem">' + sanitize(timeAgo(b.timestamp)) + '</td>' +
           '<td>' + txBadge + '</td>' +
           '<td class="exp-addr" style="font-size:0.6rem">' + sanitize(proposer) + '</td>' +
           '<td>' + typeBadge + '</td>' +
+          '<td style="color:var(--teal);font-size:0.6rem">' + blueScore + '</td>' +
           '</tr>';
       }).join('');
     }
@@ -4733,6 +4742,10 @@ function openBlock(hash) {
     + (isMerge
       ? '<span class="exp-badge exp-badge-merge">MERGE BLOCK</span> &mdash; ' + sanitize(String(b.parent_hashes.length)) + ' parents merged'
       : '<span class="exp-badge exp-badge-std">STANDARD</span> &mdash; 1 parent') + '</div></div>';
+  if (b.blue_score != null) {
+    html += '<div class="bdc-row"><div class="bdc-k">GHOSTDAG Blue Score</div><div class="bdc-v" style="color:var(--teal);font-weight:700">'
+      + sanitize(String(b.blue_score)) + ' <span style="color:var(--muted);font-weight:400;font-size:0.55rem">canonical ordering key</span></div></div>';
+  }
   html += '<div class="bdc-row"><div class="bdc-k">Proposer</div><div class="bdc-v" style="color:var(--teal);word-break:break-all;font-size:0.54rem">'
     + sanitize(b.proposer || '—') + '</div></div>';
   html += '<div class="bdc-row"><div class="bdc-k">Block Hash</div><div class="bdc-v" style="font-size:0.52rem;word-break:break-all">'

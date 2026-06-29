@@ -336,7 +336,17 @@ func (dag *BlockDAG) fetchMissingAncestors(nodeURL string) {
 			}
 			for _, block := range blocks {
 				fetchedThisRound++
-				dag.AddPeerBlock(block)
+				if !dag.AddPeerBlock(block) {
+					// Block was fetched from the peer but rejected locally
+					// (bad signature, unauthorized proposer, etc.).  Count it
+					// as an attempt so that orphans waiting on this hash can
+					// age out via the normal TTL path instead of hanging
+					// indefinitely.  abandonOrphansWaitingFor (called from
+					// AddPeerBlock on unauthorized-proposer rejection) handles
+					// the immediate cleanup; RecordOrphanAttempt here is a
+					// backstop for other rejection reasons.
+					dag.RecordOrphanAttempt(block.Hash)
+				}
 			}
 		}
 		totalFetched += fetchedThisRound
