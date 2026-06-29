@@ -1303,15 +1303,14 @@ func (a *APIServer) handleRegisterValidatorKey(w http.ResponseWriter, r *http.Re
 	})
 }
 
-// handleValidatorList returns the list of Ethereum addresses currently
-// authorized to propose blocks on this node.  Used by peer nodes to learn
-// about validators that registered here but not (yet) with them — see
-// syncValidatorsFromPeer in sync_blocks.go.  No authentication required:
-// validator addresses are already public via /api/blocks.
+// handleValidatorList returns registered validator key pairs (signing_address +
+// human_wallet) so peer nodes can verify credentials before trusting an address.
+// Peers check IsHuman(human_wallet) locally before calling AddAuthorizedValidator.
+// See syncValidatorsFromPeer in sync_blocks.go for the receiver-side verification.
 func (a *APIServer) handleValidatorList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"validators": a.blockchain.AuthorizedValidatorList(),
+		"validators": a.blockchain.ValidatorKeyPairs(),
 	})
 }
 

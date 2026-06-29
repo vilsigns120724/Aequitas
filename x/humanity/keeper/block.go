@@ -183,6 +183,13 @@ replayedMu             sync.Mutex
 	softRetryBlocks  map[string]*Block
 	softRetryFirstAt map[string]time.Time
 	softRetryMu      sync.Mutex
+
+	// degradedReason is set when a critical storage failure occurs after state
+	// has already been committed to memory (e.g. SaveBlockToDB fails for an
+	// accepted peer block). When non-empty, ProduceBlock returns nil immediately
+	// to halt production until the operator resolves the issue and restarts.
+	degradedReason string
+	degradedMu     sync.Mutex
 }
 
 
@@ -302,6 +309,24 @@ func (dag *BlockDAG) AddAuthorizedValidator(addr string) {
 	dag.mu.Unlock()
 }
 
+// ValidatorKeyPair pairs a block-signing address with the human wallet that
+// authorized it. Returned by /api/validators so peers can verify credentials
+// rather than blindly trusting a raw address list (P1-04 audit fix).
+type ValidatorKeyPair struct {
+	SigningAddress string `json:"signing_address"`
+	HumanWallet   string `json:"human_wallet"`
+}
+
+// ValidatorKeyPairs returns signing/human-wallet pairs for all registered
+// validators, read from both validator_keys and validator_slots. Returns nil
+// when no DB is configured (fresh node, no keys registered yet).
+func (dag *BlockDAG) ValidatorKeyPairs() []ValidatorKeyPair {
+	if dag.state == nil {
+		return nil
+	}
+	return dag.state.GetValidatorKeyPairsForSync()
+}
+
 // AuthorizedValidatorList returns a snapshot of all currently-authorized
 // proposer addresses.  Used by /api/validators so peer nodes can sync the
 // full validator set from each other — removing the need for manual
@@ -313,6 +338,7 @@ func (dag *BlockDAG) AuthorizedValidatorList() []string {
 	for addr := range dag.authorizedValidators {
 		list = append(list, addr)
 	}
+	sort.Strings(list) // P2-11 (audit): deterministic for caches and peer-sync
 	return list
 }
 
@@ -615,8 +641,24 @@ return hex.EncodeToString(hash[:])
 }
 
 func (dag *BlockDAG) ProduceBlock() *Block {
+// P0-01 (audit): acquire replayMu before dag.mu so ProduceBlock cannot
+// interleave with an in-progress AddPeerBlock replay. AddPeerBlock holds
+// replayMu from after its replay until after dag.mu.Unlock() on the success
+// path — both functions take locks in (replayMu, dag.mu) order, no deadlock.
+dag.replayMu.Lock()
+defer dag.replayMu.Unlock()
 dag.mu.Lock()
 defer dag.mu.Unlock()
+
+// P1-05 (audit): halt production when a prior peer-block persistence failure
+// left memory state ahead of durable DB state.
+dag.degradedMu.Lock()
+dr := dag.degradedReason
+dag.degradedMu.Unlock()
+if dr != "" {
+	fmt.Printf("[BLOCK] ✗ Node is degraded (%s) — block production halted. Restart to recover.\n", dr)
+	return nil
+}
 
 // After a snapshot resync, bootHeight is set to snapshot_import_height
 // (e.g. 23093) while dag.height starts at 0.  Producing blocks here would
@@ -697,35 +739,22 @@ if dag.signingKey != nil {
 	}
 }
 
+// P1-06 (audit): persist to DB BEFORE inserting into dag.blocks/dag.tips or
+// returning the block for broadcast. If the DB save fails this block will be
+// lost on restart while peers may have accepted it — return nil to skip
+// broadcast entirely. TXs stay in pending_txs (atomic rollback) for the next
+// ProduceBlock tick to re-include.
+if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != nil {
+	fmt.Printf("[BLOCK] ⚠ Could not persist block #%d (%s...): %v — skipping broadcast, TXs stay queued\n",
+		block.Height, block.Hash[:16], err)
+	return nil
+}
+
 dag.blocks[block.Hash] = block
-// GHOSTDAG: canonical ordering key for this block; marks it replayed so
-// collectUnreplayedAncestors skips it (this node already applied its TXs
-// via the RPC handlers that built the block — no separate replay needed).
 dag.updateBlueScore(block)
 dag.replayedMu.Lock()
 dag.replayedBlocks[block.Hash] = true
 dag.replayedMu.Unlock()
-
-// FIX (audit 2026-06-28 full recheck, P1-3): "durably stored" used to mean
-// only "inserted into dag.blocks" — a Go map that resets to genesis on
-// every restart, not actual durable storage. Persist the block header to
-// chain_blocks BEFORE clearing the outbox: if this save fails, skip the
-// clear below so the TXs survive in pending_txs for the next ProduceBlock
-// attempt to re-include, rather than disappearing from every durable
-// record at once. A save failure does NOT stop block production itself —
-// blocking the whole chain on a transient DB hiccup would be worse than
-// the narrow durability gap this closes — but it does mean this round's
-// TXs stay safely re-includable instead of being silently dropped.
-// SaveBlockWithPendingTxsAtomic stamps included_block_hash, inserts the block
-// into chain_blocks, and deletes the pending_txs rows in one SQL transaction.
-// Any partial failure rolls back completely — the block is not persisted and
-// the TX rows keep their included_at marker (preventing re-selection by
-// LoadPendingTxs) but will be requeued by ResetStaleIncludedPendingTxs once
-// their included_block_hash is confirmed absent from chain_blocks.
-if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != nil {
-	fmt.Printf("[BLOCK] ⚠ Could not atomically persist block #%d (%s...): %v — outbox rows kept for retry\n",
-		block.Height, block.Hash[:16], err)
-}
 
 // Record that this proposer produced a block — used for proportional
 // validator-reward distribution in DistributeValidatorsPool.
@@ -1209,7 +1238,10 @@ dag.mu.Unlock()
 // safe even under concurrent delivery of the same block).
 dag.replayMu.Lock()
 replayOK := dag.replayInCanonicalOrder(block)
-dag.replayMu.Unlock()
+// P0-01 (audit): do NOT release replayMu here on success — hold it through the
+// dag.mu section below so ProduceBlock (which also takes replayMu before dag.mu)
+// cannot read a post-replay state while this block is still absent from
+// dag.blocks/dag.tips. Released on the failure path and after dag.mu.Unlock().
 
 // FIX (block-level atomicity): replayTransactions now rolls back and
 // returns false if any of this block's transactions hit a genuine
@@ -1226,6 +1258,7 @@ dag.replayMu.Unlock()
 // first and Bob has 0, the old code permanently rejected Y).  Entries
 // older than softRetryTTL (5 min) are abandoned by retryAndFlushSoftRetry.
 if !replayOK {
+	dag.replayMu.Unlock() // P0-01: release on failure — block won't enter DAG
 	dag.softRetryMu.Lock()
 	if _, alreadyQueued := dag.softRetryBlocks[block.Hash]; !alreadyQueued {
 		dag.softRetryBlocks[block.Hash] = block
@@ -1239,14 +1272,15 @@ if !replayOK {
 dag.mu.Lock()
 dag.blocks[block.Hash] = block
 dag.updateBlueScore(block) // GHOSTDAG: canonical ordering key
-// FIX (audit 2026-06-28 full recheck, P1-3): same durability gap as
-// ProduceBlock — see its comment. Best-effort here too: a save failure
-// doesn't reject an otherwise-valid, already-replayed peer block (its
-// account-state effects are already committed), it just means this
-// node would need to re-fetch this block from a peer again after a
-// restart instead of having its own durable copy.
+// P1-05 (audit): if SaveBlockToDB fails after in-memory state is committed,
+// halt production (degraded mode) so the node doesn't diverge from durable
+// history. The block remains in dag.blocks — state IS committed, can't undo.
 if err := dag.state.SaveBlockToDB(block); err != nil {
-	fmt.Printf("[BLOCK] ⚠ Could not persist accepted peer block #%d (%s...) to chain_blocks: %v\n", block.Height, block.Hash[:16], err)
+	fmt.Printf("[BLOCK] ✗ CRITICAL: could not persist peer block #%d (%s...): %v — halting production\n",
+		block.Height, block.Hash[:16], err)
+	dag.degradedMu.Lock()
+	dag.degradedReason = fmt.Sprintf("SaveBlockToDB failed for block #%d: %v", block.Height, err)
+	dag.degradedMu.Unlock()
 }
 
 // Remove parents from tips
@@ -1259,13 +1293,12 @@ dag.tips[block.Hash] = true
 
 if block.Height > dag.height {
 	dag.height = block.Height
-	// FIX (double-apply): see the matching comment in ProduceBlock — persist
-	// so a restart resumes from the true cumulative height.
 	dag.state.setConfigValue("max_block_height", fmt.Sprintf("%d", dag.height))
 }
 
 tipCount := len(dag.tips)
 dag.mu.Unlock()
+dag.replayMu.Unlock() // P0-01: released here, after block is fully visible in DAG
 
 // FIX (audit recheck3, P2 — "IncrementBlockCount laeuft asynchron und
 // ist nicht konsensual deterministisch"): this was worse than just
@@ -1381,8 +1414,18 @@ result := make([]*Block, 0, len(dag.blocks))
 for _, b := range dag.blocks {
 result = append(result, b)
 }
-// P3-1: O(n log n) sort instead of O(n^2) bubble sort.
-sort.Slice(result, func(i, j int) bool { return result[i].Height < result[j].Height })
+// P1-03 (audit): stable tie-breaker prevents non-deterministic pagination
+// when same-height siblings exist. Order: height ASC, blueScore DESC, hash ASC.
+sort.Slice(result, func(i, j int) bool {
+	a, b := result[i], result[j]
+	if a.Height != b.Height {
+		return a.Height < b.Height
+	}
+	if a.BlueScore != b.BlueScore {
+		return a.BlueScore > b.BlueScore
+	}
+	return a.Hash < b.Hash
+})
 return result
 }
 
@@ -1951,8 +1994,8 @@ func (dag *BlockDAG) replayTransactions(block *Block) bool {
 			for _, n := range claimedNullifiers {
 				dag.state.releaseNullifierLocked(n)
 			}
-			fmt.Printf("[REPLAY] ✗ StateRoot mismatch on block #%d (proposer=%s..., local=%s...) — rolled back, block rejected\n",
-				block.Height, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
+			fmt.Printf("[REPLAY] ✗ StateRoot mismatch on block #%d from %s (claimed=%s..., local=%s...) — rolled back\n",
+				block.Height, block.Proposer, block.StateRoot[:min(16, len(block.StateRoot))], localRoot[:min(16, len(localRoot))])
 			dag.stateRootMismatchesMu.Lock()
 			dag.stateRootMismatches[block.Proposer]++
 			alert := dag.stateRootMismatches[block.Proposer] >= 5
@@ -2194,6 +2237,19 @@ func (dag *BlockDAG) retryAndFlushSoftRetry() {
 		candidates = append(candidates, b)
 	}
 	dag.softRetryMu.Unlock()
+	// P1-07 (audit): deterministic replay order so state-dependent sibling
+	// blocks (e.g. X funds Bob, Y spends Bob) are always applied in the same
+	// sequence. Sort by (height ASC, blueScore DESC, hash ASC).
+	sort.Slice(candidates, func(i, j int) bool {
+		a, b := candidates[i], candidates[j]
+		if a.Height != b.Height {
+			return a.Height < b.Height
+		}
+		if a.BlueScore != b.BlueScore {
+			return a.BlueScore > b.BlueScore
+		}
+		return a.Hash < b.Hash
+	})
 
 	now := time.Now()
 	for _, b := range candidates {

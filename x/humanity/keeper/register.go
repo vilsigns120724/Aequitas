@@ -226,6 +226,13 @@ func (a *APIServer) handleRegister(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "wallet required"})
 		return
 	}
+	// P2-09 (audit): validate format before locking, EVM, or nullifier work.
+	// common.HexToAddress tolerates malformed input by silently zeroing bytes;
+	// we must reject here so bad inputs never reach consensus state.
+	if !isValidWalletAddr(wallet) {
+		json.NewEncoder(w).Encode(RegisterResponse{Success: false, Message: "invalid wallet address format"})
+		return
+	}
 
 	// Serialize the entire registration flow for this wallet — see
 	// registerWalletLocks doc comment for why this is required, not optional.

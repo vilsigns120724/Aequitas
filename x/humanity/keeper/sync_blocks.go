@@ -131,24 +131,40 @@ func (dag *BlockDAG) syncValidatorsFromPeer(peerURL string) {
 	if resp.StatusCode != http.StatusOK {
 		return
 	}
+	// P1-04 (audit): response now contains ValidatorKeyPair objects with
+	// signing_address + human_wallet. We verify human_wallet is a registered
+	// human on THIS node before trusting the signing address — a compromised
+	// peer cannot inject arbitrary validator addresses without a valid human
+	// wallet backing them.
 	var result struct {
-		Validators []string `json:"validators"`
+		Validators []ValidatorKeyPair `json:"validators"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&result); err != nil {
 		return
 	}
-	for _, addr := range result.Validators {
-		addr = strings.ToLower(strings.TrimSpace(addr))
-		if !strings.HasPrefix(addr, "0x") || len(addr) != 42 {
+	for _, vkp := range result.Validators {
+		signingAddr := strings.ToLower(strings.TrimSpace(vkp.SigningAddress))
+		humanWallet := strings.ToLower(strings.TrimSpace(vkp.HumanWallet))
+		if !strings.HasPrefix(signingAddr, "0x") || len(signingAddr) != 42 {
+			continue
+		}
+		if !strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
+			continue
+		}
+		// Only add a signing address whose operator is a known registered human.
+		// If the human hasn't registered here yet (registration TX not yet synced),
+		// skip for now — the next sync cycle will retry once their TX propagates.
+		if dag.state != nil && !dag.state.IsHuman(humanWallet) {
+			fmt.Printf("[PEERS] Skipping validator %s: human_wallet %s not registered here yet\n", signingAddr, humanWallet)
 			continue
 		}
 		dag.mu.RLock()
-		already := dag.authorizedValidators[addr]
+		already := dag.authorizedValidators[signingAddr]
 		dag.mu.RUnlock()
 		if !already {
-			fmt.Printf("[PEERS] Auto-authorized validator from %s: %s\n", peerURL, addr)
+			fmt.Printf("[PEERS] Auto-authorized validator from %s: %s (human: %s)\n", peerURL, signingAddr, humanWallet)
 		}
-		dag.AddAuthorizedValidator(addr)
+		dag.AddAuthorizedValidator(signingAddr)
 	}
 }
 

@@ -1600,6 +1600,50 @@ claimed_at TIMESTAMP DEFAULT NOW()
 	}
 }
 
+// GetValidatorKeyPairsForSync returns (signing_address, human_wallet) pairs
+// from both validator_keys and validator_slots, deduplicated by signing_address.
+// Used by /api/validators so receiving peers can verify the human_wallet is
+// a registered human before trusting the signing key (P1-04 audit fix).
+func (cs *ChainState) GetValidatorKeyPairsForSync() []ValidatorKeyPair {
+	if cs.db == nil {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var pairs []ValidatorKeyPair
+
+	rows, err := cs.db.Query(`SELECT signing_address, human_wallet FROM validator_keys ORDER BY registered_at`)
+	if err == nil {
+		for rows.Next() {
+			var addr, wallet string
+			rows.Scan(&addr, &wallet)
+			addr = strings.ToLower(strings.TrimSpace(addr))
+			wallet = strings.ToLower(strings.TrimSpace(wallet))
+			if addr != "" && !seen[addr] {
+				seen[addr] = true
+				pairs = append(pairs, ValidatorKeyPair{SigningAddress: addr, HumanWallet: wallet})
+			}
+		}
+		rows.Close()
+	}
+
+	slotRows, err := cs.db.Query(`SELECT signing_address, operator_wallet FROM validator_slots`)
+	if err == nil {
+		for slotRows.Next() {
+			var addr, wallet string
+			slotRows.Scan(&addr, &wallet)
+			addr = strings.ToLower(strings.TrimSpace(addr))
+			wallet = strings.ToLower(strings.TrimSpace(wallet))
+			if addr != "" && !seen[addr] {
+				seen[addr] = true
+				pairs = append(pairs, ValidatorKeyPair{SigningAddress: addr, HumanWallet: wallet})
+			}
+		}
+		slotRows.Close()
+	}
+
+	return pairs
+}
+
 func (cs *ChainState) GetValidatorKeys() []map[string]string {
 	if cs.db == nil {
 		return nil

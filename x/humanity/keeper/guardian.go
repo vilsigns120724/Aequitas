@@ -116,13 +116,20 @@ func (cs *ChainState) SetGuardian(wallet, guardian string) error {
 		return fmt.Errorf("guardian %s already has %d wards (maximum %d)", guardian, wardCount, maxWardsPerGuardian)
 	}
 
-	// FIX 4: Wrap the 7-day timelock check + update in a single transaction with
-	// SELECT FOR UPDATE to prevent concurrent requests from racing past the timelock.
 	tx, err := cs.db.Begin()
 	if err != nil {
 		return fmt.Errorf("could not begin guardian transaction: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
+
+	// P2-10 (audit): acquire an advisory lock on the guardian address before the
+	// ward-count re-check. Two concurrent requests for different wards of the same
+	// guardian can both pass the COUNT(*) check and then both INSERT, exceeding
+	// maxWardsPerGuardian. pg_advisory_xact_lock is transaction-scoped (released
+	// automatically on commit/rollback) and serializes by guardian address hash.
+	if _, err := tx.Exec(`SELECT pg_advisory_xact_lock(abs(hashtext($1)))`, strings.ToLower(guardian)); err != nil {
+		return fmt.Errorf("could not acquire guardian advisory lock: %w", err)
+	}
 
 	var existingSetAt int64
 	rowErr := tx.QueryRow(
@@ -143,9 +150,8 @@ func (cs *ChainState) SetGuardian(wallet, guardian string) error {
 			(setAt-existingSetAt)/86400, daysLeft)
 	}
 
-	// FIX 5: Re-check ward count inside the transaction (under the lock) to
-	// prevent a TOCTOU race where two concurrent requests both pass the pre-check
-	// and then both increment the ward count past the maximum.
+	// Re-check ward count now that we hold the advisory lock — serializes with
+	// any concurrent guardian change for the same guardian address.
 	var currentWards int
 	tx.QueryRow( //nolint:errcheck
 		`SELECT COUNT(*) FROM guardians WHERE lower(guardian_address) = lower($1) AND lower(wallet_address) != lower($2)`,
