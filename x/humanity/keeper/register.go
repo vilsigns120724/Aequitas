@@ -45,6 +45,26 @@ var registerRateLimit sync.Map
 var registerWalletLocks sync.Map
 
 // lockWallet returns the mutex for wallet, creating one on first use.
+//
+// NOTE (audit 2026-06-29, considered and deliberately not "fixed"):
+// registerWalletLocks has no cleanup, unlike registerRateLimit's periodic
+// sweep below — every distinct wallet that ever attempts registration
+// (successful, failed, or retried) leaves a permanent *sync.Mutex entry for
+// the lifetime of the process. This is a genuine, slow unbounded-growth
+// resource use, not nothing — but periodically deleting old entries the
+// way the rate limiter does would be UNSAFE here specifically: a goroutine
+// that already loaded a *sync.Mutex reference via LoadOrStore keeps using
+// that exact object even after a concurrent cleanup pass deletes the map
+// entry, while a NEW caller racing in right after would LoadOrStore a
+// DIFFERENT, freshly-allocated mutex — the two callers would then no
+// longer exclude each other, silently reintroducing the exact
+// double-registration race this map exists to prevent. A correct fix needs
+// reference counting (only delete once no goroutine holds the mutex), not
+// implemented here given how rarely this matters in practice: growth is
+// bounded by the number of distinct wallets that ever attempt registration
+// across the chain's entire lifetime, which for a one-time-per-human action
+// stays orders of magnitude below the point where a few KB of *sync.Mutex
+// overhead per entry would be a real operational concern.
 func lockWallet(wallet string) *sync.Mutex {
 	v, _ := registerWalletLocks.LoadOrStore(wallet, &sync.Mutex{})
 	return v.(*sync.Mutex)
