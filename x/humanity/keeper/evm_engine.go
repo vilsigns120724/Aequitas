@@ -167,6 +167,24 @@ if err != nil {
 return common.Address{}, nil, fmt.Errorf("stateDB: %w", err)
 }
 
+// NOTE (audit 2026-06-29, considered, not changed): when called from
+// eth_sendRawTransaction, evm_rpc.go's nonce reservation has already
+// committed nonce+1 to the DB by the time we get here (see its own
+// comment: "Do NOT call SaveNonce here"), so LoadNonce returns nonce+1,
+// not the tx's actual tx.Nonce(). evm.Create derives the new contract's
+// address from (from, nonce-as-set-on-sdb), so the address computed
+// here is offset by one from what a standards-compliant Ethereum CREATE
+// would produce for the same signed transaction. Not fixed: contract
+// deployment is restricted to RELAYER_ADDRESS/the node's own signing
+// key (see the caller's own access check), used only for this chain's
+// own one-time bootstrap deploys (V7, BioVerifier — both already live
+// at their hardcoded addresses), and nothing here cross-checks the
+// resulting address against an independent CREATE computation — so the
+// address this function produces is used consistently by this same
+// implementation going forward. Restructuring DeployContract to accept
+// the pre-reservation nonce as an explicit parameter would fix the
+// offset but touches a rarely-exercised, already-completed code path
+// for no live consensus or fund-safety benefit.
 nonce := e.chainState.LoadNonce(strings.ToLower(from.Hex()))
 sdb.SetNonce(from, nonce)
 
