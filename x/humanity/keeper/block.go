@@ -160,6 +160,27 @@ stateRootMismatches map[string]int // FIX 4: per-proposer StateRoot mismatch cou
 	orphanResolveInFlight bool
 	orphanResolveAgain    bool
 	orphanResolveMu       sync.Mutex
+
+	// GHOSTDAG: canonical ordering key per block.
+	// blueScore[h] = max(parent blue scores) + 1.  Two blocks at the same
+	// height are ordered by (blueScore DESC, hash ASC) — the block on the
+	// "heavier" selected-parent chain goes first.  This gives a total,
+	// deterministic order over the DAG that every node computes identically
+	// from the same block graph, so sibling blocks are always replayed in the
+	// same sequence and merge-block StateRoots are reproducible regardless of
+	// P2P delivery order.
+	blueScore map[string]int64
+
+	// softRetryBlocks holds blocks that failed replayTransactions but may
+	// succeed once a different predecessor's state changes are applied first
+	// (e.g. Block Y transfers Bob→Carol, but Bob's balance came from Block X
+	// which hadn't been applied yet when Y arrived).  After every successful
+	// AddPeerBlock, all entries are retried; entries older than softRetryTTL
+	// are abandoned.  Coordinated by softRetryMu, separate from replayMu so
+	// retries can be dispatched from a goroutine without deadlocking.
+	softRetryBlocks  map[string]*Block
+	softRetryFirstAt map[string]time.Time
+	softRetryMu      sync.Mutex
 }
 
 
@@ -302,6 +323,9 @@ replayedBlocks:         make(map[string]bool),
 	orphanFirstSeen:        make(map[string]time.Time),
 	orphanLastAttempt:      make(map[string]time.Time),
 	orphanAttempts:         make(map[string]int),
+	blueScore:              make(map[string]int64),
+	softRetryBlocks:        make(map[string]*Block),
+	softRetryFirstAt:       make(map[string]time.Time),
 }
 if pk := strings.TrimPrefix(os.Getenv("RELAYER_PRIVATE_KEY"), "0x"); pk != "" {
 	if key, err := crypto.HexToECDSA(pk); err == nil {
@@ -370,6 +394,18 @@ if len(loaded) > 0 {
 		if !referenced[hash] {
 			dag.tips[hash] = true
 		}
+	}
+	// GHOSTDAG: compute blue scores for all restored blocks in topological order.
+	// Height order = topological order because height = max_parent_height+1.
+	sortedForBlue := make([]*Block, 0, len(loaded))
+	for _, b := range loaded {
+		sortedForBlue = append(sortedForBlue, b)
+	}
+	sort.Slice(sortedForBlue, func(i, j int) bool {
+		return sortedForBlue[i].Height < sortedForBlue[j].Height
+	})
+	for _, b := range sortedForBlue {
+		dag.updateBlueScore(b)
 	}
 	fmt.Printf("[BLOCK] Restored %d durable block(s) from chain_blocks — height=%d, tips=%d\n", len(loaded), dag.height, len(dag.tips))
 }
@@ -526,6 +562,7 @@ IsGenesis:    true,
 }
 genesis.Hash = dag.calculateHash(genesis)
 dag.blocks[genesis.Hash] = genesis
+dag.blueScore[genesis.Hash] = 0
 dag.tips[genesis.Hash] = true
 dag.height = 0
 fmt.Printf("✓ Genesis Block (DAG): %s\n", genesis.Hash[:16]+"...")
@@ -645,6 +682,13 @@ if dag.signingKey != nil {
 }
 
 dag.blocks[block.Hash] = block
+// GHOSTDAG: canonical ordering key for this block; marks it replayed so
+// collectUnreplayedAncestors skips it (this node already applied its TXs
+// via the RPC handlers that built the block — no separate replay needed).
+dag.updateBlueScore(block)
+dag.replayedMu.Lock()
+dag.replayedBlocks[block.Hash] = true
+dag.replayedMu.Unlock()
 
 // FIX (audit 2026-06-28 full recheck, P1-3): "durably stored" used to mean
 // only "inserted into dag.blocks" — a Go map that resets to genesis on
@@ -1102,7 +1146,7 @@ dag.mu.Unlock()
 // instead of dropping, and replayTransactions' own dedup guard makes that
 // safe even under concurrent delivery of the same block).
 dag.replayMu.Lock()
-replayOK := dag.replayTransactions(block)
+replayOK := dag.replayInCanonicalOrder(block)
 dag.replayMu.Unlock()
 
 // FIX (block-level atomicity): replayTransactions now rolls back and
@@ -1111,17 +1155,28 @@ dag.replayMu.Unlock()
 // "already registered"), OR if the post-replay StateRoot doesn't match
 // the producer's claimed root (audit recheck 2, P0 #1 — moved into
 // replayTransactions itself so a mismatch can use that function's own
-// rollback snapshot; see its comment). Treat either exactly like any
-// other validation failure: the block is rejected outright, never
-// inserted into dag.blocks/dag.tips. A later sync cycle or orphan-retry
-// may succeed once local state has caught up with whatever caused the
-// mismatch.
+// rollback snapshot; see its comment).
+//
+// GHOSTDAG soft-retry: instead of permanently rejecting a replay failure,
+// queue the block for a retry after the next successful peer block is
+// accepted (which may have applied the state this block depends on —
+// e.g. Block X gives Bob 100, Block Y spends Bob→Carol 50; if Y arrives
+// first and Bob has 0, the old code permanently rejected Y).  Entries
+// older than softRetryTTL (5 min) are abandoned by retryAndFlushSoftRetry.
 if !replayOK {
+	dag.softRetryMu.Lock()
+	if _, alreadyQueued := dag.softRetryBlocks[block.Hash]; !alreadyQueued {
+		dag.softRetryBlocks[block.Hash] = block
+		dag.softRetryFirstAt[block.Hash] = time.Now()
+		fmt.Printf("[GHOSTDAG] Soft-retry queued block #%d (%s...)\n", block.Height, block.Hash[:16])
+	}
+	dag.softRetryMu.Unlock()
 	return false
 }
 
 dag.mu.Lock()
 dag.blocks[block.Hash] = block
+dag.updateBlueScore(block) // GHOSTDAG: canonical ordering key
 // FIX (audit 2026-06-28 full recheck, P1-3): same durability gap as
 // ProduceBlock — see its comment. Best-effort here too: a save failure
 // doesn't reject an otherwise-valid, already-replayed peer block (its
@@ -1177,6 +1232,14 @@ dag.state.IncrementBlockCount(block.Proposer)
 for _, waiting := range dag.popOrphans(block.Hash) {
 	dag.AddPeerBlock(waiting)
 }
+
+// GHOSTDAG soft-retry: now that a new block's state changes are committed,
+// blocks that previously failed replayTransactions due to a state dependency
+// (e.g. insufficient balance because a sibling block hadn't applied yet)
+// get another chance.  Runs in a goroutine so the current AddPeerBlock call
+// returns promptly — retries cascade through AddPeerBlock's own orphan
+// resolution if they succeed.
+go dag.retryAndFlushSoftRetry()
 
 dag.lastSuccessfulPeerSyncAt.Store(time.Now().Unix())
 fmt.Printf("[DAG] ✓ Added peer block #%d | Tips: %d\n", block.Height, tipCount)
@@ -1953,4 +2016,139 @@ func (dag *BlockDAG) verifyZKProof(tx Transaction) bool {
 		return false
 	}
 	return true
+}
+
+// softRetryTTL is how long a soft-retry block stays in the queue before
+// being abandoned.  Five minutes comfortably exceeds any reasonable window
+// during which a sibling block could arrive and unblock the failed replay.
+const softRetryTTL = 5 * time.Minute
+
+// updateBlueScore sets dag.blueScore[block.Hash] = max(parent blue scores) + 1.
+// For genesis (no parents) the score is 0.  Must be called under dag.mu.
+func (dag *BlockDAG) updateBlueScore(block *Block) {
+	var maxScore int64 = -1
+	for _, ph := range block.ParentHashes {
+		if s, ok := dag.blueScore[ph]; ok && s > maxScore {
+			maxScore = s
+		}
+	}
+	dag.blueScore[block.Hash] = maxScore + 1
+}
+
+// collectUnreplayedAncestors returns the subset of block's transitive
+// ancestors that are in dag.blocks but have not yet been applied to state
+// (i.e. not in dag.replayedBlocks), sorted in canonical GHOSTDAG order:
+// height ASC, blueScore DESC, hash ASC.  This total order is identical on
+// every node that holds the same DAG graph, so sibling blocks are always
+// applied in the same sequence regardless of P2P delivery order.
+// Must be called under dag.mu.
+func (dag *BlockDAG) collectUnreplayedAncestors(target *Block) []*Block {
+	visited := make(map[string]bool)
+	var result []*Block
+	var dfs func(b *Block)
+	dfs = func(b *Block) {
+		for _, ph := range b.ParentHashes {
+			if visited[ph] {
+				continue
+			}
+			visited[ph] = true
+			parent, ok := dag.blocks[ph]
+			if !ok {
+				continue
+			}
+			dag.replayedMu.Lock()
+			replayed := dag.replayedBlocks[ph]
+			dag.replayedMu.Unlock()
+			if !replayed {
+				result = append(result, parent)
+				dfs(parent)
+			}
+		}
+	}
+	dfs(target)
+	blueScore := dag.blueScore
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Height != result[j].Height {
+			return result[i].Height < result[j].Height
+		}
+		si, sj := blueScore[result[i].Hash], blueScore[result[j].Hash]
+		if si != sj {
+			return si > sj // heavier selected-parent chain first
+		}
+		return result[i].Hash < result[j].Hash
+	})
+	return result
+}
+
+// replayInCanonicalOrder replays all unreplayed ancestors of block in canonical
+// GHOSTDAG order, then replays block itself.  Ensures every node applies
+// sibling blocks in the same sequence even if they arrived out of order.
+// Caller must hold dag.replayMu; dag.mu must NOT be held.
+func (dag *BlockDAG) replayInCanonicalOrder(block *Block) bool {
+	dag.mu.RLock()
+	ancestors := dag.collectUnreplayedAncestors(block)
+	dag.mu.RUnlock()
+	for _, anc := range ancestors {
+		if !dag.replayTransactions(anc) {
+			return false
+		}
+	}
+	return dag.replayTransactions(block)
+}
+
+// retryAndFlushSoftRetry re-attempts every block in the soft-retry queue.
+// Called as a goroutine after each successful AddPeerBlock: new state may
+// have been applied that unblocks previously failing transactions.
+// Entries older than softRetryTTL are silently abandoned.
+func (dag *BlockDAG) retryAndFlushSoftRetry() {
+	dag.softRetryMu.Lock()
+	if len(dag.softRetryBlocks) == 0 {
+		dag.softRetryMu.Unlock()
+		return
+	}
+	candidates := make([]*Block, 0, len(dag.softRetryBlocks))
+	for _, b := range dag.softRetryBlocks {
+		candidates = append(candidates, b)
+	}
+	dag.softRetryMu.Unlock()
+
+	now := time.Now()
+	for _, b := range candidates {
+		dag.softRetryMu.Lock()
+		firstAt, exists := dag.softRetryFirstAt[b.Hash]
+		dag.softRetryMu.Unlock()
+		if !exists {
+			continue // already resolved by a concurrent retry pass
+		}
+		if now.Sub(firstAt) > softRetryTTL {
+			dag.softRetryMu.Lock()
+			delete(dag.softRetryBlocks, b.Hash)
+			delete(dag.softRetryFirstAt, b.Hash)
+			dag.softRetryMu.Unlock()
+			fmt.Printf("[GHOSTDAG] Abandoned soft-retry block #%d (%s...) after TTL\n", b.Height, b.Hash[:16])
+			continue
+		}
+		// All parents must be in dag.blocks before retrying replay.
+		dag.mu.RLock()
+		allPresent := true
+		for _, ph := range b.ParentHashes {
+			if _, ok := dag.blocks[ph]; !ok {
+				allPresent = false
+				break
+			}
+		}
+		dag.mu.RUnlock()
+		if !allPresent {
+			continue
+		}
+		// AddPeerBlock re-validates and handles insertion, blue-score update,
+		// tips management, orphan resolution, and further soft-retry triggers.
+		if dag.AddPeerBlock(b) {
+			dag.softRetryMu.Lock()
+			delete(dag.softRetryBlocks, b.Hash)
+			delete(dag.softRetryFirstAt, b.Hash)
+			dag.softRetryMu.Unlock()
+			fmt.Printf("[GHOSTDAG] Soft-retry succeeded for block #%d (%s...)\n", b.Height, b.Hash[:16])
+		}
+	}
 }
