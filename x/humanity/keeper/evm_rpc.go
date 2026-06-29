@@ -558,6 +558,12 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		}
 		if senderAddr != allowedDeployer {
 			fmt.Printf("[RPC] ✗ Deploy rejected from %s (only %s may deploy)\n", senderAddr, allowedDeployer)
+			// FIX (audit 2026-06-29, Brutal-Audit P2-04): nonce already
+			// reserved above — without a receipt, txHash stays "pending"
+			// forever from the wallet's point of view. See the matching fix
+			// a little further down in this function (the !isV7 branch) for
+			// the full explanation; same pattern here.
+			s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x0", "")
 			return nil, &RPCError{Code: -32603, Message: "contract deployment restricted to authorized address"}
 		}
 
@@ -566,6 +572,8 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		contractAddr, _, deployErr := s.evm.DeployContract(sender, tx.Data(), tx.Value())
 		if deployErr != nil {
 			fmt.Printf("[RPC] ✗ Deploy failed: %v\n", deployErr)
+			// FIX (audit 2026-06-29, Brutal-Audit P2-04): same receipt gap.
+			s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x0", "")
 			return nil, &RPCError{Code: -32603, Message: "Deploy failed: " + deployErr.Error()}
 		}
 
@@ -622,6 +630,16 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		// verifyProof is always invoked read-only, persist=false, elsewhere),
 		// so reject it outright rather than letting it pass uninspected.
 		if !isV7 {
+			// FIX (audit 2026-06-29, Brutal-Audit P2-04): the nonce was already
+			// reserved above before this gate runs. Returning bare without ever
+			// calling SaveTxReceipt left txHash permanently receipt-less even
+			// though its nonce slot was consumed — getTransactionReceipt(txHash)
+			// returns null forever, which MetaMask renders as "still pending"
+			// rather than failed, instead of resolving one way or the other.
+			// Persist a failed (0x0) receipt, matching the pattern every other
+			// reject-after-reservation path in this function already uses
+			// (lines ~499, ~542, ~681), so the wallet gets a definitive answer.
+			s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x0", "")
 			return nil, &RPCError{Code: -32603, Message: "state-changing calls via /rpc are only supported for the V7 contract"}
 		}
 		if !knownPublicSelectors[sel] {
@@ -635,10 +653,15 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 					relayerAddr = strings.ToLower(crypto.PubkeyToAddress(s.dag.GetSigningKey().PublicKey).Hex())
 				}
 				if relayerAddr == "" || strings.ToLower(senderAddr) != relayerAddr {
+					// FIX (audit 2026-06-29, Brutal-Audit P2-04): same
+					// receipt-less-but-nonce-consumed gap as the !isV7 branch above.
+					s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x0", "")
 					return nil, &RPCError{Code: -32603, Message: "registerWithSig must be called via /api/register (direct RPC calls bypass Go-state updates)"}
 				}
 				// Allow: relayer is calling on behalf of /api/register
 			} else {
+				// FIX (audit 2026-06-29, Brutal-Audit P2-04): same gap as above.
+				s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x0", "")
 				return nil, &RPCError{Code: -32603, Message: "selector " + sel + " not supported directly via /rpc — use /api/* endpoints"}
 			}
 		}
@@ -687,6 +710,15 @@ func (s *EVMRPCServer) sendRawTransaction(params []json.RawMessage) (interface{}
 		return txHash, nil
 	}
 
+	// FIX (audit 2026-06-29, Brutal-Audit P2-04): reachable for a legitimate
+	// but unusual raw tx shape — zero value, empty data, to != nil (a pure
+	// nonce-advancing no-op), or to == nil with empty data — that none of
+	// the transfer/deploy/call branches above match. The nonce was already
+	// reserved at the top of this function; without this, txHash would have
+	// no receipt at all despite consuming a nonce slot, same "stuck
+	// pending forever" gap as the other reject paths fixed above. Trivially
+	// succeeds since there's nothing to execute.
+	s.state.SaveTxReceipt(txHash, senderAddr, toAddrForReceipt, "0x1", "")
 	return txHash, nil
 }
 
@@ -821,6 +853,28 @@ func (s *EVMRPCServer) getTransactionByHash(params []json.RawMessage) (interface
 }
 
 func (s *EVMRPCServer) getBlockByNumber(params []json.RawMessage) (interface{}, *RPCError) {
+	// FIX (audit 2026-06-29): this used to ignore params entirely and always
+	// return the latest block, even when a caller asked for a specific
+	// historical height — silently wrong for any client that fetches a
+	// block by number to verify something about that exact height (a block
+	// explorer, a confirmation-count check). dag.GetBlockByHeight already
+	// existed for this (used elsewhere for the real /api/blocks lookups)
+	// but wasn't wired up here. "latest"/"pending"/"earliest" and any
+	// unparseable value keep the old always-return-latest behavior, which
+	// is the correct interpretation for those tags anyway.
+	var tag string
+	if len(params) > 0 {
+		json.Unmarshal(params[0], &tag) //nolint:errcheck — fall through to latest on bad input
+	}
+	if tag != "" && tag != "latest" && tag != "pending" && tag != "earliest" {
+		var height int64
+		if _, err := fmt.Sscanf(strings.TrimPrefix(tag, "0x"), "%x", &height); err == nil {
+			if block := s.dag.GetBlockByHeight(height); block != nil {
+				return s.blockToMap(block), nil
+			}
+			return nil, nil
+		}
+	}
 	block := s.dag.LatestBlock()
 	if block == nil {
 		return nil, nil
@@ -829,6 +883,20 @@ func (s *EVMRPCServer) getBlockByNumber(params []json.RawMessage) (interface{}, 
 }
 
 func (s *EVMRPCServer) getBlockByHash(params []json.RawMessage) (interface{}, *RPCError) {
+	// FIX (audit 2026-06-29): same gap as getBlockByNumber above — a
+	// specific requested hash was always ignored in favor of the latest
+	// block. dag.GetBlockByHash already existed; wire it up.
+	var hash string
+	if len(params) > 0 {
+		json.Unmarshal(params[0], &hash) //nolint:errcheck — fall through to latest on bad input
+	}
+	hash = strings.TrimPrefix(strings.ToLower(hash), "0x")
+	if hash != "" {
+		if block := s.dag.GetBlockByHash(hash); block != nil {
+			return s.blockToMap(block), nil
+		}
+		return nil, nil
+	}
 	block := s.dag.LatestBlock()
 	if block == nil {
 		return nil, nil
