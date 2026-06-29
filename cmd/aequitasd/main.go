@@ -174,14 +174,15 @@ p2pNode.SetDAG(bc)
 	// what caused the orphan-buffer abandonment storm during a large catch-up.
 	bc.RefreshBootHeightAfterSnapshotImport(resyncSucceeded)
 
-	// After a resync, historical blocks that no longer exist on any peer
-	// would stall sync forever (their parent hashes can never be fetched).
-	// Bridge the gap by inserting synthetic checkpoint stubs so AddPeerBlock
-	// can resume from the first available block above the gap.
-	if resyncSucceeded {
-		if pURL := strings.TrimRight(keeper.NormalizeNodeURL(os.Getenv("PRIMARY_NODE_URL")), "/"); pURL != "" {
-			bc.BridgeHistoricalGap([]string{pURL})
-		}
+	// Bridge permanent historical gaps unconditionally on every startup.
+	// A node may be stuck below bootHeight not only after a fresh RESYNC
+	// but also after any restart where the gap pre-dates this run (e.g. a
+	// secondary node stuck at dag.height=395, bootHeight=45361 because a
+	// previous primary RESYNC wiped blocks 396-44367 from the network).
+	// BridgeHistoricalGap returns immediately if bootHeight is within 100
+	// blocks of dag.height, so calling it unconditionally is cheap.
+	if pURL := strings.TrimRight(keeper.NormalizeNodeURL(os.Getenv("PRIMARY_NODE_URL")), "/"); pURL != "" {
+		bc.BridgeHistoricalGap([]string{pURL})
 	}
 
 	// Save price snapshots every 30 seconds so the chart interval buttons
