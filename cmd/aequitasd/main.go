@@ -189,7 +189,14 @@ p2pNode.SetDAG(bc)
 	// sync from itself and generate spurious hash-mismatch rejections.
 	selfURL := os.Getenv("SELF_URL")
 	if selfURL == "" {
-		selfURL = "https://aequitas.digital" // default; override with SELF_URL env var
+		// P2-09 (audit): defaulting to "https://aequitas.digital" when SELF_URL
+		// is unset caused secondary nodes that forgot the env var to register as
+		// the primary domain — overwriting the primary's peer record and making
+		// the real primary invisible to the network.  Now: if SELF_URL is not
+		// set, run in isolated mode (no peer registration, no sync goroutine
+		// started).  The node can still accept inbound connections and produce
+		// blocks; it just won't actively register with any primary.
+		fmt.Println("[WARN] SELF_URL not set — running in isolated mode (no peer registration). Set SELF_URL to this node's public URL to participate in peer discovery.")
 	}
 	// FIX: Railway's RAILWAY_PUBLIC_DOMAIN variable (commonly used to set
 	// SELF_URL, e.g. SELF_URL=${{RAILWAY_PUBLIC_DOMAIN}}) never includes a

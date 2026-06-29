@@ -524,10 +524,46 @@ func (a *APIServer) handleBlocks(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"invalid min_height parameter"}`, http.StatusBadRequest)
 			return
 		}
+		// P1-02: support cursor-based pagination via ?after_hash=HASH so the
+		// client can request "blocks at height >= minHeight that come after
+		// this hash in canonical order".  Without this, a page of N blocks all
+		// at the same height advances minHeight to H and the next request
+		// (?min_height=H) uses Height > H — permanently skipping any remaining
+		// siblings at height H that didn't fit in the first page.
+		afterHash := r.URL.Query().Get("after_hash")
 		result := make([]*Block, 0, limit)
-		for _, b := range blocks {
-			if b.Height > minHeight {
-				result = append(result, b)
+		if afterHash == "" {
+			// No cursor — original behavior: blocks with Height > minHeight.
+			for _, b := range blocks {
+				if b.Height > minHeight {
+					result = append(result, b)
+					if len(result) >= limit {
+						break
+					}
+				}
+			}
+		} else {
+			// Cursor mode: return all blocks that come AFTER the block
+			// identified by (minHeight, afterHash) in canonical order
+			// (height ASC, blueScore DESC, hash ASC).
+			// Scan through the sorted list; start collecting once we pass
+			// the cursor position (the cursor block itself is excluded).
+			pastCursor := false
+			for _, b := range blocks {
+				if !pastCursor {
+					if b.Height > minHeight {
+						// Past the cursor height — include from here.
+						pastCursor = true
+						result = append(result, b)
+					} else if b.Height == minHeight && b.Hash == afterHash {
+						// Found the cursor block — include everything after it.
+						pastCursor = true
+					}
+					// blocks with Height < minHeight or Height == minHeight
+					// but Hash != afterHash (and not yet past cursor) are skipped.
+				} else {
+					result = append(result, b)
+				}
 				if len(result) >= limit {
 					break
 				}
@@ -1496,7 +1532,7 @@ func (a *APIServer) handlePeerRegister(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, `{"error":"operator_binding_signature missing or invalid — sign 'Aequitas: authorize validator <your signing address>' with your NODE_OPERATOR_WALLET to prove ownership (see /node-binding)"}`, http.StatusForbidden)
 				return
 			}
-			if err := a.state.BindValidatorSlot(nodeWallet, addr); err != nil {
+			if err := a.state.BindValidatorSlot(nodeWallet, addr, req.OperatorBindingSignature); err != nil {
 				fmt.Printf("[PEERS] Rejected %s: could not bind validator slot for %s: %v\n", addr, nodeWallet, err)
 				http.Error(w, `{"error":"internal error binding validator slot"}`, http.StatusInternalServerError)
 				return

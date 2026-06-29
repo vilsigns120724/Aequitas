@@ -78,7 +78,7 @@ type Block struct {
 	StateRoot    string        `json:"state_root,omitempty"`
 	Transactions []Transaction `json:"transactions,omitempty"`
 	Signature    string        `json:"signature,omitempty"`
-	BlueScore    int64         `json:"blue_score,omitempty"` // GHOSTDAG canonical ordering key
+	BlueScore    int64         `json:"blue_score,omitempty"` // DAG depth ordering key (NOT real GHOSTDAG)
 }
 
 // peerChallenge holds a one-time challenge issued to a registering peer.
@@ -163,14 +163,14 @@ replayedMu             sync.Mutex
 	orphanResolveAgain    bool
 	orphanResolveMu       sync.Mutex
 
-	// GHOSTDAG: canonical ordering key per block.
-	// blueScore[h] = max(parent blue scores) + 1.  Two blocks at the same
-	// height are ordered by (blueScore DESC, hash ASC) — the block on the
-	// "heavier" selected-parent chain goes first.  This gives a total,
-	// deterministic order over the DAG that every node computes identically
-	// from the same block graph, so sibling blocks are always replayed in the
-	// same sequence and merge-block StateRoots are reproducible regardless of
-	// P2P delivery order.
+	// DAG depth ordering key per block.
+	// NOTE: this is NOT a real GHOSTDAG blue score.  It is simply
+	// max(parent blueScores)+1 — a DAG-depth heuristic that gives a total,
+	// deterministic order over all blocks.  Two blocks at the same height are
+	// ordered by (blueScore DESC, hash ASC) so every node replays siblings
+	// in the same sequence and merge-block StateRoots are reproducible
+	// regardless of P2P delivery order.  The BlueScore JSON field name is
+	// kept for API compatibility with the explorer.
 	blueScore map[string]int64
 
 	// softRetryBlocks holds blocks that failed replayTransactions but may
@@ -312,10 +312,14 @@ func (dag *BlockDAG) AddAuthorizedValidator(addr string) {
 
 // ValidatorKeyPair pairs a block-signing address with the human wallet that
 // authorized it. Returned by /api/validators so peers can verify credentials
-// rather than blindly trusting a raw address list (P1-04 audit fix).
+// rather than blindly trusting a raw address list.
+// OperatorBindingSignature is the EIP-191 personal_sign of
+// "Aequitas: authorize validator <signing_address>" by human_wallet,
+// proving the human explicitly delegated this signing key (P1-03).
 type ValidatorKeyPair struct {
-	SigningAddress string `json:"signing_address"`
-	HumanWallet   string `json:"human_wallet"`
+	SigningAddress           string `json:"signing_address"`
+	HumanWallet              string `json:"human_wallet"`
+	OperatorBindingSignature string `json:"operator_binding_signature,omitempty"`
 }
 
 // ValidatorKeyPairs returns signing/human-wallet pairs for all registered
@@ -696,7 +700,10 @@ maxParentHeight = parent.Height
 dag.txMu.Lock()
 txs := make([]Transaction, len(dag.pendingTxs))
 copy(txs, dag.pendingTxs)
-dag.pendingTxs = nil
+// P2-06: do NOT clear pendingTxs here — if SaveBlockWithPendingTxsAtomic
+// fails below, in-memory TXs would be permanently lost.  Clear only the
+// snapshot count AFTER a successful save (see post-save section below).
+nTxsSnapshotted := len(txs)
 dag.txMu.Unlock()
 
 // Drain DB-persisted pending TXs — these survived a node restart and
@@ -750,6 +757,18 @@ if err := dag.state.SaveBlockWithPendingTxsAtomic(block, pendingTxIDs); err != n
 		block.Height, block.Hash[:16], err)
 	return nil
 }
+
+// P2-06: clear exactly the TXs we snapshotted — any TXs queued AFTER the
+// snapshot (positions [nTxsSnapshotted:]) stay for the next block.
+dag.txMu.Lock()
+if nTxsSnapshotted > 0 {
+	if nTxsSnapshotted <= len(dag.pendingTxs) {
+		dag.pendingTxs = dag.pendingTxs[nTxsSnapshotted:]
+	} else {
+		dag.pendingTxs = nil
+	}
+}
+dag.txMu.Unlock()
 
 dag.blocks[block.Hash] = block
 dag.updateBlueScore(block)
@@ -1211,6 +1230,23 @@ return false
 // duration of every peer block's replay otherwise).
 dag.mu.Unlock()
 
+// P2-05 (audit): persist the block header BEFORE state replay.  Old order
+// was replay-then-save, which could commit account-balance changes to
+// chain_accounts and then fail to write the chain_blocks header — leaving
+// the node in an inconsistent state (state committed, block invisible on
+// restart) with no way to detect or recover.  Saving first means a DB
+// failure aborts before any state is touched; ON CONFLICT DO NOTHING makes
+// this idempotent if two concurrent deliveries of the same block race here.
+// Failure mode of the new order (save OK, replay fails): block header
+// appears in chain_blocks without applied state — ReconstructState on next
+// restart re-replays it cleanly from the committed header.
+if dag.state != nil {
+	if err := dag.state.SaveBlockToDB(block); err != nil {
+		fmt.Printf("[BLOCK] ✗ Could not save peer block #%d header before replay: %v — skipping\n", block.Height, err)
+		return false
+	}
+}
+
 // FIX (the actual BlockDAG correctness bug, not just a hardening pass):
 // this used to (1) compare block.StateRoot against dag.state.StateRoot()
 // BEFORE replaying this block's own transactions, and (2) insert the block
@@ -1277,17 +1313,7 @@ if !replayOK {
 
 dag.mu.Lock()
 dag.blocks[block.Hash] = block
-dag.updateBlueScore(block) // GHOSTDAG: canonical ordering key
-// P1-05 (audit): if SaveBlockToDB fails after in-memory state is committed,
-// halt production (degraded mode) so the node doesn't diverge from durable
-// history. The block remains in dag.blocks — state IS committed, can't undo.
-if err := dag.state.SaveBlockToDB(block); err != nil {
-	fmt.Printf("[BLOCK] ✗ CRITICAL: could not persist peer block #%d (%s...): %v — halting production\n",
-		block.Height, block.Hash[:16], err)
-	dag.degradedMu.Lock()
-	dag.degradedReason = fmt.Sprintf("SaveBlockToDB failed for block #%d: %v", block.Height, err)
-	dag.degradedMu.Unlock()
-}
+dag.updateBlueScore(block) // DAG depth ordering key (see updateBlueScore)
 
 // Remove parents from tips
 for _, ph := range block.ParentHashes {
@@ -2171,8 +2197,9 @@ func (dag *BlockDAG) verifyZKProof(tx Transaction) bool {
 // during which a sibling block could arrive and unblock the failed replay.
 const softRetryTTL = 5 * time.Minute
 
-// updateBlueScore sets dag.blueScore[block.Hash] = max(parent blue scores) + 1.
-// For genesis (no parents) the score is 0.  Must be called under dag.mu.
+// updateBlueScore sets dag.blueScore[block.Hash] = max(parent blueScores) + 1
+// (DAG depth, NOT a real GHOSTDAG blue score).  For genesis the score is 0.
+// Must be called under dag.mu.
 func (dag *BlockDAG) updateBlueScore(block *Block) {
 	var maxScore int64 = -1
 	for _, ph := range block.ParentHashes {
@@ -2186,7 +2213,7 @@ func (dag *BlockDAG) updateBlueScore(block *Block) {
 
 // collectUnreplayedAncestors returns the subset of block's transitive
 // ancestors that are in dag.blocks but have not yet been applied to state
-// (i.e. not in dag.replayedBlocks), sorted in canonical GHOSTDAG order:
+// (i.e. not in dag.replayedBlocks), sorted in canonical DAG depth order:
 // height ASC, blueScore DESC, hash ASC.  This total order is identical on
 // every node that holds the same DAG graph, so sibling blocks are always
 // applied in the same sequence regardless of P2P delivery order.

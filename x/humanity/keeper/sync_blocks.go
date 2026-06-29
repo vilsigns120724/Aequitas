@@ -131,17 +131,34 @@ func (dag *BlockDAG) syncValidatorsFromPeer(peerURL string) {
 	if resp.StatusCode != http.StatusOK {
 		return
 	}
-	// P1-04 (audit): response now contains ValidatorKeyPair objects with
-	// signing_address + human_wallet. We verify human_wallet is a registered
-	// human on THIS node before trusting the signing address — a compromised
-	// peer cannot inject arbitrary validator addresses without a valid human
-	// wallet backing them.
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+
+	// P2-07: /api/validators has two historical formats:
+	//   old nodes:  {"validators":["0xABCD...","0x1234..."]}  ([]string)
+	//   new nodes:  {"validators":[{"signing_address":"0x...","human_wallet":"0x...","operator_binding_signature":"0x..."}]}
+	// Try the new structured format first; fall back to the old string list.
 	var result struct {
 		Validators []ValidatorKeyPair `json:"validators"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&result); err != nil {
+	if err := json.Unmarshal(bodyBytes, &result); err != nil || (len(result.Validators) == 0) {
+		// Try old format: {"validators":["0x..."]}
+		var oldResult struct {
+			Validators []string `json:"validators"`
+		}
+		if err2 := json.Unmarshal(bodyBytes, &oldResult); err2 == nil && len(oldResult.Validators) > 0 {
+			fmt.Printf("[PEERS] ⚠ %s serves old validator list format ([]string) — upgrade recommended\n", peerURL)
+			for _, addr := range oldResult.Validators {
+				addr = strings.ToLower(strings.TrimSpace(addr))
+				if strings.HasPrefix(addr, "0x") && len(addr) == 42 {
+					dag.AddAuthorizedValidator(addr)
+				}
+			}
+			return
+		}
+		// Both decode attempts failed or body is empty — nothing to do.
 		return
 	}
+
 	for _, vkp := range result.Validators {
 		signingAddr := strings.ToLower(strings.TrimSpace(vkp.SigningAddress))
 		humanWallet := strings.ToLower(strings.TrimSpace(vkp.HumanWallet))
@@ -150,6 +167,30 @@ func (dag *BlockDAG) syncValidatorsFromPeer(peerURL string) {
 		}
 		if !strings.HasPrefix(humanWallet, "0x") || len(humanWallet) != 42 {
 			continue
+		}
+		// P1-03: verify the operator_binding_signature before trusting this
+		// signing address.  A malicious peer cannot pair an arbitrary signing
+		// key with a known human wallet without also forging the human's
+		// personal_sign over "Aequitas: authorize validator <signing_address>".
+		// Nodes that predate P1-03 will send an empty signature — accept them
+		// with a warning (backward compat) until all nodes are updated.
+		if vkp.OperatorBindingSignature != "" {
+			bindingMsg := "Aequitas: authorize validator " + signingAddr
+			if err := verifyPersonalSign(bindingMsg, vkp.OperatorBindingSignature, humanWallet); err != nil {
+				fmt.Printf("[PEERS] ✗ Rejected validator %s from %s: binding signature invalid (%v)\n", signingAddr, peerURL, err)
+				continue
+			}
+		} else {
+			// Binding signature absent — only accept if we already trust this
+			// address (i.e. it was authorized via local registration), so we
+			// don't silently downgrade security for new-to-us addresses.
+			dag.mu.RLock()
+			alreadyTrusted := dag.authorizedValidators[signingAddr]
+			dag.mu.RUnlock()
+			if !alreadyTrusted {
+				fmt.Printf("[PEERS] ⚠ Skipping validator %s from %s: no binding signature (upgrade peer to propagate it)\n", signingAddr, peerURL)
+				continue
+			}
 		}
 		// Only add a signing address whose operator is a known registered human.
 		// If the human hasn't registered here yet (registration TX not yet synced),
@@ -213,9 +254,16 @@ func (dag *BlockDAG) startSyncForPeer(peerURL string) {
 }
 
 // fetchBlocksSince fetches up to `limit` blocks with Height > minHeight from
-// nodeURL, via the height-based ?min_height=&limit= pagination on /api/blocks.
-func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, limit int) ([]*Block, error) {
-	resp, err := httpSyncClient.Get(fmt.Sprintf("%s/api/blocks?min_height=%d&limit=%d", nodeURL, minHeight, limit))
+// nodeURL. afterHash, when non-empty, uses cursor-based pagination to return
+// blocks after (minHeight, afterHash) in canonical order — avoiding the
+// same-height sibling skip bug (P1-02) where advancing min_height to the
+// last-seen height could miss siblings that didn't fit on the previous page.
+func (dag *BlockDAG) fetchBlocksSince(nodeURL string, minHeight int64, afterHash string, limit int) ([]*Block, error) {
+	url := fmt.Sprintf("%s/api/blocks?min_height=%d&limit=%d", nodeURL, minHeight, limit)
+	if afterHash != "" {
+		url += "&after_hash=" + afterHash
+	}
+	resp, err := httpSyncClient.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -476,8 +524,13 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		minHeight = 0
 	}
 	totalAdded := 0
+	// P1-02: track (minHeight, afterHash) cursor so same-height siblings that
+	// don't fit in one page are not skipped.  afterHash is empty for the first
+	// page (ordinary Height > minHeight query) and set to the last block's hash
+	// whenever a full page is returned, advancing the cursor into the next page.
+	var afterHash string
 	for page := 0; page < maxPagesPerCall; page++ {
-		blocks, err := dag.fetchBlocksSince(nodeURL, minHeight, pageSize)
+		blocks, err := dag.fetchBlocksSince(nodeURL, minHeight, afterHash, pageSize)
 		if err != nil {
 			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (min_height=%d) from %s: %v\n", minHeight, nodeURL, err)
 			if page == 0 {
@@ -508,16 +561,17 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		}
 		totalAdded += addedThisPage
 		if len(blocks) < pageSize {
-			break // last page (peer's tip is within this page)
+			afterHash = "" // last page — reset cursor
+			break          // peer's tip is within this page
 		}
-		// Advance minHeight to the highest block on this page so the next
-		// page starts where this one left off (not re-derived from dag.Height()
-		// which would reset us to the recent window on every iteration).
-		for _, b := range blocks {
-			if b.Height > minHeight {
-				minHeight = b.Height
-			}
-		}
+		// Full page returned: advance the cursor to the last block so the
+		// next request picks up from that exact position in canonical order.
+		// This avoids the same-height sibling skip: if all 500 blocks are at
+		// height H, the next request uses ?min_height=H&after_hash=<last>
+		// instead of ?min_height=H (which would re-fetch the same 500 blocks).
+		lastBlock := blocks[len(blocks)-1]
+		minHeight = lastBlock.Height
+		afterHash = lastBlock.Hash
 		if addedThisPage == 0 {
 			if !deepScan {
 				// Normal mode: nothing new in a full page — stop.

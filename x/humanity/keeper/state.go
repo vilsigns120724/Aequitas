@@ -1591,7 +1591,7 @@ func (cs *ChainState) GetBalance(address string) float64 {
 // signature alone re-proves the same ownership the original bind relied
 // on. Overwriting is therefore always safe to allow once the signature
 // checks out; there is no "permanent lock-in" to defend against anymore.
-func (cs *ChainState) BindValidatorSlot(operatorWallet, signingAddress string) error {
+func (cs *ChainState) BindValidatorSlot(operatorWallet, signingAddress, bindingSig string) error {
 	if cs.db == nil {
 		return nil // no DB → single-node mode, nothing to enforce
 	}
@@ -1602,10 +1602,15 @@ operator_wallet TEXT PRIMARY KEY,
 signing_address TEXT NOT NULL,
 claimed_at TIMESTAMP DEFAULT NOW()
 )`)
+	// P1-03: persist the binding signature so /api/validators can propagate
+	// it to peers; peers verify it in syncValidatorsFromPeer before trusting
+	// the signing address.  ADD COLUMN IF NOT EXISTS is idempotent on
+	// existing tables that predate this column.
+	cs.db.Exec(`ALTER TABLE validator_slots ADD COLUMN IF NOT EXISTS binding_signature TEXT DEFAULT ''`)
 	_, err := cs.db.Exec(
-		`INSERT INTO validator_slots (operator_wallet, signing_address, claimed_at) VALUES ($1, $2, NOW())
-ON CONFLICT (operator_wallet) DO UPDATE SET signing_address = EXCLUDED.signing_address, claimed_at = NOW()`,
-		operatorWallet, signingAddress,
+		`INSERT INTO validator_slots (operator_wallet, signing_address, binding_signature, claimed_at) VALUES ($1, $2, $3, NOW())
+ON CONFLICT (operator_wallet) DO UPDATE SET signing_address = EXCLUDED.signing_address, binding_signature = EXCLUDED.binding_signature, claimed_at = NOW()`,
+		operatorWallet, signingAddress, bindingSig,
 	)
 	if err != nil {
 		return fmt.Errorf("could not bind validator slot for %s: %w", operatorWallet, err)
@@ -3653,21 +3658,25 @@ func (cs *ChainState) stateRootLocked(lastUBIAt string) string {
 			// balances but handle future UBI distribution differently.
 			// P1-9: LastActivityAt excluded — wall-clock differs between nodes
 			// for the same TX, causing StateRoot mismatch and peer block rejection.
-			fmt.Fprintf(&sb, "%s:%.6f:%.6f:%.6f:h=%v:fc=%v:",
+			// P2-10: use integer micro-units (Decimal is int64) instead of
+			// float — float64 loses sub-micro precision below 1e-6, so two nodes
+			// with identical account state (same int64 micro-value) could compute
+			// different StateRoot hashes after float conversion.
+			fmt.Fprintf(&sb, "%s:%d:%d:%d:h=%v:fc=%v:",
 				a,
-				round6(acc.Balance.Float()),
-				round6(acc.TUsdBalance.Float()),
-				round6(acc.LPShares.Float()),
+				acc.Balance.Micro(),
+				acc.TUsdBalance.Micro(),
+				acc.LPShares.Micro(),
 				acc.IsHuman,
 				acc.FaucetClaimed)
 		}
 	}
-	// Include pool state: reserves and total LP shares
+	// Include pool state: reserves and total LP shares (P2-10: integer atoms)
 	if cs.pool != nil {
-		fmt.Fprintf(&sb, "pool:%.6f:%.6f:%.6f",
-			round6(cs.pool.ReserveAEQ.Float()),
-			round6(cs.pool.ReserveTUSD.Float()),
-			round6(cs.pool.TotalLPShares.Float()))
+		fmt.Fprintf(&sb, "pool:%d:%d:%d",
+			cs.pool.ReserveAEQ.Micro(),
+			cs.pool.ReserveTUSD.Micro(),
+			cs.pool.TotalLPShares.Micro())
 	}
 	// Include nullifier count (hash of keys, not values, for privacy)
 	nullKeys := make([]string, 0, len(cs.nullifiers))

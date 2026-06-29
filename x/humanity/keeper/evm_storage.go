@@ -1574,8 +1574,11 @@ func (cs *ChainState) LoadValidatorKeysIntoDAG(dag interface{ AddAuthorizedValid
 	if cs.db == nil {
 		return
 	}
+	// P2-08: log errors instead of silently returning a partial result.
 	rows, err := cs.db.Query(`SELECT signing_address FROM validator_keys`)
-	if err == nil {
+	if err != nil {
+		fmt.Printf("[VALIDATORS] ⚠ LoadValidatorKeysIntoDAG: validator_keys query failed: %v\n", err)
+	} else {
 		for rows.Next() {
 			var addr string
 			rows.Scan(&addr)
@@ -1590,6 +1593,7 @@ claimed_at TIMESTAMP DEFAULT NOW()
 )`)
 	slotRows, err := cs.db.Query(`SELECT signing_address FROM validator_slots`)
 	if err != nil {
+		fmt.Printf("[VALIDATORS] ⚠ LoadValidatorKeysIntoDAG: validator_slots query failed: %v\n", err)
 		return
 	}
 	defer slotRows.Close()
@@ -1611,8 +1615,11 @@ func (cs *ChainState) GetValidatorKeyPairsForSync() []ValidatorKeyPair {
 	seen := make(map[string]bool)
 	var pairs []ValidatorKeyPair
 
+	// P2-08: log DB errors instead of silently returning a partial result.
 	rows, err := cs.db.Query(`SELECT signing_address, human_wallet FROM validator_keys ORDER BY registered_at`)
-	if err == nil {
+	if err != nil {
+		fmt.Printf("[VALIDATORS] ⚠ GetValidatorKeyPairsForSync: validator_keys query failed: %v\n", err)
+	} else {
 		for rows.Next() {
 			var addr, wallet string
 			rows.Scan(&addr, &wallet)
@@ -1626,16 +1633,20 @@ func (cs *ChainState) GetValidatorKeyPairsForSync() []ValidatorKeyPair {
 		rows.Close()
 	}
 
-	slotRows, err := cs.db.Query(`SELECT signing_address, operator_wallet FROM validator_slots`)
-	if err == nil {
+	// P1-03: include binding_signature (may be absent on older rows — COALESCE
+	// to empty string for backward compatibility).
+	slotRows, err := cs.db.Query(`SELECT signing_address, operator_wallet, COALESCE(binding_signature,'') FROM validator_slots`)
+	if err != nil {
+		fmt.Printf("[VALIDATORS] ⚠ GetValidatorKeyPairsForSync: validator_slots query failed: %v\n", err)
+	} else {
 		for slotRows.Next() {
-			var addr, wallet string
-			slotRows.Scan(&addr, &wallet)
+			var addr, wallet, bindingSig string
+			slotRows.Scan(&addr, &wallet, &bindingSig)
 			addr = strings.ToLower(strings.TrimSpace(addr))
 			wallet = strings.ToLower(strings.TrimSpace(wallet))
 			if addr != "" && !seen[addr] {
 				seen[addr] = true
-				pairs = append(pairs, ValidatorKeyPair{SigningAddress: addr, HumanWallet: wallet})
+				pairs = append(pairs, ValidatorKeyPair{SigningAddress: addr, HumanWallet: wallet, OperatorBindingSignature: bindingSig})
 			}
 		}
 		slotRows.Close()
