@@ -631,21 +631,32 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 		return // gap small or absent — normal sync handles it
 	}
 
-	// Fetch a sample of blocks just above our current height from each peer.
+	// Fetch candidates from two probe points:
+	//   1. Just above myHeight — catches gaps immediately above the current frontier.
+	//   2. bootH-1000       — catches gaps that pre-date myHeight (e.g. after a fresh
+	//      RESYNC where myHeight=0 but the real gap is at heights 396-44367: probing
+	//      at bootH-1000=44361 returns block 44368 whose parent is in the gap).
+	// Both sets are merged; duplicate hashes are deduplicated via `seen`.
 	var candidates []*Block
 	seen := make(map[string]bool)
+	probeHeights := []int64{myHeight}
+	if probe2 := bootH - 1000; probe2 > myHeight {
+		probeHeights = append(probeHeights, probe2)
+	}
 	for _, u := range peerURLs {
 		if u == "" {
 			continue
 		}
-		blocks, err := dag.fetchBlocksSince(u, myHeight, "", 50)
-		if err != nil || len(blocks) == 0 {
-			continue
-		}
-		for _, b := range blocks {
-			if !seen[b.Hash] {
-				seen[b.Hash] = true
-				candidates = append(candidates, b)
+		for _, ph := range probeHeights {
+			blocks, err := dag.fetchBlocksSince(u, ph, "", 50)
+			if err != nil || len(blocks) == 0 {
+				continue
+			}
+			for _, b := range blocks {
+				if !seen[b.Hash] {
+					seen[b.Hash] = true
+					candidates = append(candidates, b)
+				}
 			}
 		}
 	}
