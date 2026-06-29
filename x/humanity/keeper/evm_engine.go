@@ -548,22 +548,18 @@ func (e *EVMEngine) persistStorageFromDB(sdb *state.StateDB, addr common.Address
 e.PersistContractStorage(addr)
 }
 
-// syncBalancesFromDB updates PostgreSQL balances from stateDB after a state-changing call
-func (e *EVMEngine) syncBalancesFromDB(sdb *state.StateDB) {
-accounts := e.chainState.GetAllAccounts()
-decimals := new(big.Float).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
-for _, acc := range accounts {
-addr := common.HexToAddress(acc.Address)
-wei := sdb.GetBalance(addr)
-if wei == nil || wei.Sign() == 0 {
-continue
-}
-balAEQ, _ := new(big.Float).Quo(new(big.Float).SetInt(wei), decimals).Float64()
-if balAEQ > 0 && balAEQ != acc.Balance.Float() {
-e.chainState.SetBalance(acc.Address, balAEQ)
-}
-}
-}
+// FIX (audit 2026-06-29): syncBalancesFromDB was supposedly already removed
+// by P0-3 (see the comment at this function's former only call site,
+// elsewhere in this file: "Removed syncBalancesFromDB — it overwrote
+// correct Go-state with stale EVM-memory values causing balance
+// divergence") — but only that ONE call site was actually deleted. The
+// function itself, and ChainState.SetBalance (state.go) which it was the
+// only caller of, were both left in place: dead code, but still fully
+// reachable to any future caller within this package, with no warning at
+// the definition itself (only at the unrelated call site 200 lines away)
+// that calling it re-introduces exactly the Go-state-authority violation
+// P0-3 was about. Confirmed zero remaining callers of either function
+// before deleting both here and in state.go.
 
 func (e *EVMEngine) LoadContractStorage(addr common.Address) {
 // No-op: storage loaded in newStateDB()

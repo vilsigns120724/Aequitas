@@ -26,7 +26,20 @@ func NewDecimal(aeq float64) Decimal {
 	// math.Round on a value > ~9.2e12 AEQ (9.2e18 micro-units) would
 	// overflow int64, producing a large negative or garbage value.
 	result := math.Round(aeq * float64(DecimalPrecision))
-	if result > float64(math.MaxInt64) || result < float64(math.MinInt64) {
+	// FIX (audit 2026-06-29): float64(math.MaxInt64) itself rounds UP to
+	// 2^63 (9223372036854775808.0) when converted to float64, since
+	// math.MaxInt64 (2^63-1) isn't exactly representable in float64. A
+	// `result` of exactly 2^63 therefore failed this ">" check (2^63 is
+	// not > 2^63) and fell through to Decimal(result) — converting an
+	// out-of-int64-range float64 to int64 in Go is implementation-defined
+	// for that exact boundary and reliably yields math.MinInt64 on amd64
+	// (the CVTTSD2SI "invalid" sentinel), silently turning a huge positive
+	// input into a huge negative balance. Reachable from attacker-supplied
+	// JSON via UnmarshalJSON below, not just internal callers. ">=" closes
+	// the exact boundary value the float64 rounding created; the lower
+	// bound has no equivalent gap since math.MinInt64 (-2^63) IS exactly
+	// representable in float64.
+	if result >= float64(math.MaxInt64) || result < float64(math.MinInt64) {
 		return 0
 	}
 	return Decimal(result)
@@ -51,8 +64,14 @@ func (d Decimal) Sub(other Decimal) Decimal { return d - other }
 func (d Decimal) MulFloat(f float64) Decimal {
 	// P3-10: guard against int64 overflow when f > 1 and d is large
 	result := math.Round(float64(d) * f)
+	// FIX (audit 2026-06-29): same off-by-one as NewDecimal's overflow
+	// guard — float64(math.MaxInt64) rounds up to exactly 2^63, so a
+	// `result` of precisely 2^63 passed this "> maxD" check uncaught and
+	// fell through to Decimal(result), an out-of-range float64->int64
+	// conversion that reliably yields math.MinInt64 on amd64 instead of
+	// the clamped math.MaxInt64 this guard exists to produce.
 	const maxD = float64(math.MaxInt64)
-	if result > maxD {
+	if result >= maxD {
 		return Decimal(math.MaxInt64)
 	}
 	if result < -maxD {
@@ -67,10 +86,34 @@ func (d Decimal) DivDecimal(other Decimal) Decimal {
 	if other == 0 {
 		return 0
 	}
-	return Decimal(new(big.Int).Div(
+	// FIX (audit 2026-06-29): two real bugs, both latent (no current
+	// caller, but this is exported and the next caller inherits them
+	// silently):
+	//  1. big.Int.Div implements Euclidean division (Knuth), not the
+	//     truncated-toward-zero division every other signed-arithmetic
+	//     path in this type uses (NewDecimal rounds half-away-from-zero;
+	//     native int64 "/" truncates toward zero). For a negative
+	//     numerator these disagree — e.g. Div(-7,2)=-4 vs the expected
+	//     Quo(-7,2)=-3 — silently giving a wrong result for any negative
+	//     Decimal (a debt/negative balance, which IsNegative()/Neg() show
+	//     this type is meant to support). Quo matches the rest of this
+	//     file's semantics.
+	//  2. The result was never bounds-checked before .Int64(): per
+	//     math/big's own docs, Int64() "is undefined" if the value doesn't
+	//     fit — unlike AMMSwapOut below, which guards exactly this with
+	//     BitLen(). A large d with a small other can overflow int64 here
+	//     just as easily as there.
+	result := new(big.Int).Quo(
 		new(big.Int).Mul(big.NewInt(int64(d)), big.NewInt(DecimalPrecision)),
 		big.NewInt(int64(other)),
-	).Int64())
+	)
+	if result.BitLen() > 63 {
+		if result.Sign() < 0 {
+			return Decimal(math.MinInt64)
+		}
+		return Decimal(math.MaxInt64)
+	}
+	return Decimal(result.Int64())
 }
 
 // IsZero returns true when d == 0.

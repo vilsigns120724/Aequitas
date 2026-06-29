@@ -2219,13 +2219,30 @@ func (cs *ChainState) GetDemurrageStatus(address string) DemurrageStatus {
 			// P1-5: set in-memory flag SYNCHRONOUSLY to prevent duplicate notices on parallel requests.
 			// DB write is async to avoid blocking the GET path.
 			acc.Demurrage14DayWarningShown = true
-			// FIX-11: capture account by value before launching goroutine so the
-			// goroutine does not need to re-acquire cs.mu (which would block until
-			// the outer write-lock is released anyway, but a value copy is safer
-			// against concurrent mutations and eliminates any lock ordering concerns).
-			accCopy := *acc
+			// FIX (audit 2026-06-29): this used to call cs.saveAccountToDB,
+			// which internally calls cs.dbExec() — reading cs.activeTx. That
+			// read is only synchronized by cs.mu (see activeTx's own field
+			// comment), but this goroutine runs detached, after the caller's
+			// deferred cs.mu.Unlock() has very likely already fired — a
+			// genuine, unsynchronized data race against whatever atomic
+			// operation (runAtomicWithOutbox/runAtomicDistributionWithOutbox)
+			// happens to be setting/clearing cs.activeTx concurrently. Worse
+			// than just a race: if it happened to observe a DIFFERENT,
+			// unrelated in-flight transaction, this write could silently
+			// become part of that operation and get rolled back with it (or
+			// committed as a side effect of it) — breaking the isolation the
+			// whole activeTx mechanism exists to provide. This field isn't
+			// StateRoot-relevant (losing the write just means the notice can
+			// show once more), so there's no need to participate in any
+			// transaction at all: write straight to cs.db, never cs.activeTx.
+			addr := acc.Address
 			go func() {
-				cs.saveAccountToDB(&accCopy)
+				if cs.db == nil {
+					return
+				}
+				if _, err := cs.db.Exec(`UPDATE chain_accounts SET demurrage_14_day_warning_shown = true WHERE address = $1`, addr); err != nil {
+					fmt.Printf("[DB] Warning: could not persist 14-day demurrage notice flag for %s: %v\n", addr, err)
+				}
 			}()
 		}
 	}
@@ -3600,8 +3617,23 @@ func (cs *ChainState) stateRootLocked(lastUBIAt string) string {
 	var sb strings.Builder
 	for _, a := range addrs {
 		acc := cs.accounts[a]
-		// Include ALL accounts with non-zero AEQ or tUSD balances (not only humans)
-		if acc.IsHuman || acc.Balance > 0 || acc.TUsdBalance > 0 || acc.LPShares > 0 {
+		// Include ALL accounts with non-zero AEQ or tUSD balances (not only humans).
+		// FIX (audit 2026-06-29): used ">0" — Decimal is a signed type
+		// (IsNegative/Neg exist and are used elsewhere in this file), so an
+		// account that somehow went negative (a bug in some other code path,
+		// not something this function should assume can never happen) would
+		// be silently excluded from the hash, indistinguishable from a
+		// genuinely-absent account. Two nodes that diverged only in HOW
+		// negative such a balance was would still compute the identical
+		// StateRoot — exactly the kind of "different economic states hash
+		// identically" gap this function's own doc comment says it exists to
+		// close. "!=0" is a strict superset of ">0" for every value seen in
+		// current production state (all balances are non-negative today), so
+		// this changes nothing about the StateRoot any existing node
+		// computes right now — it only closes the gap for a balance that
+		// should never go negative but, if it ever did due to some other
+		// bug, would otherwise make that bug invisible to consensus checks.
+		if acc.IsHuman || acc.Balance != 0 || acc.TUsdBalance != 0 || acc.LPShares != 0 {
 			// FaucetClaimed and LastActivityAt must be included: two nodes that
 			// processed different sets of faucet claims would produce the same
 			// balances but handle future UBI distribution differently.
@@ -3712,19 +3744,21 @@ func (cs *ChainState) CalcPhase() int {
 	}
 }
 
-func (cs *ChainState) SetBalance(address string, amount float64) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-	address = strings.ToLower(address)
-	if acc, ok := cs.accounts[address]; ok {
-		acc.Balance = NewDecimal(amount)
-		cs.saveAccountToDB(acc)
-	} else {
-		acc = &AccountState{Address: address, Balance: NewDecimal(amount)}
-		cs.accounts[address] = acc
-		cs.saveAccountToDB(acc)
-	}
-}
+// FIX (audit 2026-06-29): SetBalance removed — confirmed zero remaining
+// callers after deleting its only caller, EVMEngine.syncBalancesFromDB
+// (evm_engine.go), which P0-3 had already (correctly) stopped invoking but
+// never actually deleted. This was a real landmine left in place: an
+// unconditional acc.Balance = NewDecimal(amount) that bypassed
+// settleDemurrageLocked, enforceWealthCapLocked, touchActivity, AND —
+// critically — the pending_tx outbox every other balance mutation in this
+// file goes through. Had anything ever called this again, the change
+// would never have been recorded as a Transaction, so secondary nodes
+// would have had no way to replay it: an instant, permanent StateRoot
+// divergence between the node that called it and every other node on the
+// network. Any future legitimate need to set a balance directly (tests,
+// admin tooling) should go through the same Apply*Delta/
+// runAtomicWithOutbox pattern every other mutation in this file uses, not
+// a shortcut that skips all of it.
 
 // -- SECONDARY-NODE REPLAY DELTA METHODS -----------------------------------
 // These methods are called exclusively by replayTransactions on secondary nodes.
