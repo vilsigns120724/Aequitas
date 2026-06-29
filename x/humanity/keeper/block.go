@@ -600,6 +600,97 @@ func (dag *BlockDAG) RefreshBootHeightAfterSnapshotImport(resyncHappened bool) {
 	}
 }
 
+// BootHeight returns the boot height (the DB-persisted chain height or
+// snapshot import height, whichever is larger) — the frontier below which
+// replayTransactions already encodes state and blocks need not be re-applied.
+func (dag *BlockDAG) BootHeight() int64 {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	return dag.bootHeight
+}
+
+// BridgeHistoricalGap handles a "permanent historical gap" that arises after a
+// full RESYNC_FROM_SNAPSHOT when the blocks covering the gap no longer exist on
+// any peer.  Without bridging, the first block above the gap references a parent
+// that can never be downloaded, causing every subsequent block to orphan forever.
+//
+// The fix: fetch a page of blocks from each peer starting just above our current
+// height, find any whose parent hash is not in dag.blocks, and insert a
+// "synthetic checkpoint" stub with that exact hash.  The stub carries no
+// transactions and is never replayed (bootHeight prevents it).  Its only purpose
+// is to satisfy AddPeerBlock's parent-existence check so normal sync can resume.
+//
+// Call this after RefreshBootHeightAfterSnapshotImport (resyncHappened=true),
+// before StartHTTPBlockSync.
+func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
+	myHeight := dag.Height()
+	dag.mu.RLock()
+	bootH := dag.bootHeight
+	dag.mu.RUnlock()
+	if bootH <= myHeight+100 {
+		return // gap small or absent — normal sync handles it
+	}
+
+	// Fetch a sample of blocks just above our current height from each peer.
+	var candidates []*Block
+	seen := make(map[string]bool)
+	for _, u := range peerURLs {
+		if u == "" {
+			continue
+		}
+		blocks, err := dag.fetchBlocksSince(u, myHeight, "", 50)
+		if err != nil || len(blocks) == 0 {
+			continue
+		}
+		for _, b := range blocks {
+			if !seen[b.Hash] {
+				seen[b.Hash] = true
+				candidates = append(candidates, b)
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		fmt.Printf("[BRIDGE] No blocks available from peers — cannot detect historical gap (will retry on next sync cycle)\n")
+		return
+	}
+
+	dag.mu.Lock()
+	defer dag.mu.Unlock()
+
+	stubsInserted := 0
+	for _, block := range candidates {
+		for _, ph := range block.ParentHashes {
+			if _, exists := dag.blocks[ph]; exists {
+				continue
+			}
+			stubH := block.Height - 1
+			if stubH < 0 {
+				stubH = 0
+			}
+			dag.blocks[ph] = &Block{
+				Hash:         ph,
+				Height:       stubH,
+				BlueScore:    stubH, // approximate for a mostly-linear chain
+				Proposer:     "synthetic-checkpoint",
+				ParentHashes: []string{},
+			}
+			dag.tips[ph] = true
+			stubsInserted++
+			displayHash := ph
+			if len(displayHash) > 16 {
+				displayHash = displayHash[:16]
+			}
+			fmt.Printf("[BRIDGE] ✓ Synthetic checkpoint at height %d (hash %s...) — bridging permanent gap in block history\n", stubH, displayHash)
+		}
+	}
+
+	if stubsInserted == 0 {
+		fmt.Printf("[BRIDGE] No gap detected at height %d — all parent hashes present in local DAG\n", myHeight)
+	} else {
+		fmt.Printf("[BRIDGE] Inserted %d synthetic stubs; sync will now proceed past the historical gap (height %d → %d+)\n", stubsInserted, myHeight, bootH)
+	}
+}
+
 func (dag *BlockDAG) createGenesisBlock() {
 genesis := &Block{
 Height:       0,

@@ -174,6 +174,16 @@ p2pNode.SetDAG(bc)
 	// what caused the orphan-buffer abandonment storm during a large catch-up.
 	bc.RefreshBootHeightAfterSnapshotImport(resyncSucceeded)
 
+	// After a resync, historical blocks that no longer exist on any peer
+	// would stall sync forever (their parent hashes can never be fetched).
+	// Bridge the gap by inserting synthetic checkpoint stubs so AddPeerBlock
+	// can resume from the first available block above the gap.
+	if resyncSucceeded {
+		if pURL := strings.TrimRight(keeper.NormalizeNodeURL(os.Getenv("PRIMARY_NODE_URL")), "/"); pURL != "" {
+			bc.BridgeHistoricalGap([]string{pURL})
+		}
+	}
+
 	// Save price snapshots every 30 seconds so the chart interval buttons
 	// (1m/5m/30m/1h/4h) show meaningful historical data even without swaps.
 	go func() {
