@@ -446,12 +446,21 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// cheap (AddPeerBlock dedupes by hash) and guarantees sibling forks
 	// from other validators get imported before something builds on them.
 	const syncOverlap = 20
+	// deepScan: when we have orphan blocks whose parents aren't in our normal
+	// overlap window, drop all the way to height 0 and scan forward.  The
+	// hash-by-hash approach (fetchMissingAncestors) can only walk back one
+	// level per HTTP request — for a peer whose validator chain started
+	// thousands of blocks ago that takes hours.  Fetching in height-ordered
+	// pages is O(N/pageSize) requests for N missing blocks, not O(N).
+	// deepScan stays true for the duration of this call; the next call will
+	// re-evaluate whether orphans still exist.
+	deepScan := len(dag.MissingParentHashes()) > 0
+	minHeight := dag.Height() - syncOverlap
+	if minHeight < 0 || deepScan {
+		minHeight = 0
+	}
 	totalAdded := 0
 	for page := 0; page < maxPagesPerCall; page++ {
-		minHeight := dag.Height() - syncOverlap
-		if minHeight < 0 {
-			minHeight = 0
-		}
 		blocks, err := dag.fetchBlocksSince(nodeURL, minHeight, pageSize)
 		if err != nil {
 			fmt.Printf("[HTTP-SYNC] ✗ Could not fetch page (min_height=%d) from %s: %v\n", minHeight, nodeURL, err)
@@ -485,14 +494,25 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 		if len(blocks) < pageSize {
 			break // last page (peer's tip is within this page)
 		}
+		// Advance minHeight to the highest block on this page so the next
+		// page starts where this one left off (not re-derived from dag.Height()
+		// which would reset us to the recent window on every iteration).
+		for _, b := range blocks {
+			if b.Height > minHeight {
+				minHeight = b.Height
+			}
+		}
 		if addedThisPage == 0 {
-			// Fetched a full page (peer has more beyond this window) but
-			// nothing in it was new/acceptable — e.g. every block was
-			// already known, or rejected for a bad signature/parent.
-			// Looping again would request virtually the same overlap
-			// window and get the exact same page forever.
-			fmt.Printf("[HTTP-SYNC] ⚠ Page above height %d added 0 of %d blocks — stopping sync from %s for this cycle\n", minHeight, len(blocks), nodeURL)
-			break
+			if !deepScan {
+				// Normal mode: nothing new in a full page — stop.
+				// Looping again would get the same page forever.
+				fmt.Printf("[HTTP-SYNC] ⚠ Page above height %d added 0 of %d blocks — stopping sync from %s for this cycle\n", minHeight, len(blocks), nodeURL)
+				break
+			}
+			// Deep-scan mode: empty pages are expected while scanning
+			// through the historical region before the missing chain starts.
+			// Keep going — the first block of the missing validator chain
+			// is somewhere ahead.
 		}
 	}
 	if totalAdded > 0 {
