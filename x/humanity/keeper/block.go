@@ -1184,11 +1184,29 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 				dag.tips[missingParent] = true
 			}
 			dag.mu.Unlock()
-			fmt.Printf("[DAG] (housekeeping) bridged permanently-unresolvable parent %s... (height ~%d) with a synthetic checkpoint — retrying %d block(s) that were waiting on it, no effect on account balances\n",
+			fmt.Printf("[DAG] (housekeeping) bridged permanently-unresolvable parent %s... (height ~%d) with a synthetic checkpoint — retrying %d block(s) that were waiting on it in the background, no effect on account balances\n",
 				missingParent[:min(16, len(missingParent))], stubH, len(waiting))
-			for _, b := range waiting {
-				dag.AddPeerBlock(b)
-			}
+			// FIX (2026-06-30, confirmed live on Contabo): retrying `waiting`
+			// SYNCHRONOUSLY here (calling AddPeerBlock directly in this call
+			// stack) could cascade into many nested AddPeerBlock calls — each
+			// waiting block can itself be blocking on another hash whose own
+			// 15-minute window has also just expired (a burst of orphans queued
+			// around the same time during catch-up tends to expire together) —
+			// and each successful add holds dag.mu for its full GHOSTDAG-compute
+			// + DB-write duration. A long synchronous chain of those starved
+			// every other goroutine waiting on dag.mu, including the health
+			// endpoint's read lock: confirmed live as a 90+ second stretch of
+			// zero new log output at 200-500% CPU with the HTTP API timing out.
+			// A background goroutine still does the same retries (still bounded
+			// by dag.mu's normal fairness — no special priority) but lets THIS
+			// call return immediately instead of making the original
+			// AddPeerBlock caller (and everything waiting on dag.mu behind it)
+			// block for however long the whole retry chain takes.
+			go func(toRetry []*Block) {
+				for _, b := range toRetry {
+					dag.AddPeerBlock(b)
+				}
+			}(waiting)
 			return
 		}
 	} else {
