@@ -1140,19 +1140,55 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 	now := time.Now()
 	if first, ok := dag.orphanFirstSeen[missingParent]; ok {
 		if now.Sub(first) > orphanAbandonAfter && dag.orphanAttempts[missingParent] >= minOrphanAttemptsBeforeAbandon {
-			abandoned := len(dag.orphans[missingParent]) + 1 // + this block
+			waiting := append([]*Block{}, dag.orphans[missingParent]...)
+			waiting = append(waiting, block) // this delivery too — it's the one that triggered this check
 			delete(dag.orphans, missingParent)
 			delete(dag.orphanFirstSeen, missingParent)
 			delete(dag.orphanLastAttempt, missingParent)
 			delete(dag.orphanAttempts, missingParent)
 			dag.orphansMu.Unlock()
-			// FIX (2026-06-28): downgraded from a skull-emoji "Abandoning" line —
-			// new node operators reading deploy logs during catch-up read this
-			// as their node being broken. It isn't: this is a dead-end sibling
-			// block from concurrent multi-validator production, not present on
-			// any currently-synced peer, with zero effect on account state.
-			fmt.Printf("[DAG] (housekeeping) discarded %d dead-end sibling block(s) for missing parent %s... — normal during catch-up, no peer still has it, no effect on account balances\n",
-				abandoned, missingParent[:min(16, len(missingParent))])
+			// FIX (2026-06-30, confirmed live on Contabo): this used to just
+			// discard `waiting` — correct for a genuine dead-end sibling, but
+			// WRONG for a block whose only problem is depending on a
+			// permanently-missing-from-every-peer ancestor (e.g. one of this
+			// node's own stray blocks from an earlier broken run, embedded as a
+			// merge-set parent deep in a peer's real chain — see
+			// BridgeHistoricalGap's comment for the same class of gap). Without
+			// this, every block depending — even transitively — on such a hash
+			// was lost forever, and dag.height could never advance past it: a
+			// fresh RESYNC just relocates the exact same wall to wherever the
+			// next unresolvable historical reference happens to sit. Bridge it
+			// the same way BridgeHistoricalGap does at startup (synthetic
+			// checkpoint stub, BlueScore 0 — see its P1-05 comment for why),
+			// then retry every block that was waiting on it through the normal
+			// AddPeerBlock path instead of dropping them.
+			minWaitingHeight := waiting[0].Height
+			for _, b := range waiting {
+				if b.Height < minWaitingHeight {
+					minWaitingHeight = b.Height
+				}
+			}
+			stubH := minWaitingHeight - 1
+			if stubH < 0 {
+				stubH = 0
+			}
+			dag.mu.Lock()
+			if _, exists := dag.blocks[missingParent]; !exists {
+				dag.blocks[missingParent] = &Block{
+					Hash:         missingParent,
+					Height:       stubH,
+					BlueScore:    0,
+					Proposer:     "synthetic-checkpoint",
+					ParentHashes: []string{},
+				}
+				dag.tips[missingParent] = true
+			}
+			dag.mu.Unlock()
+			fmt.Printf("[DAG] (housekeeping) bridged permanently-unresolvable parent %s... (height ~%d) with a synthetic checkpoint — retrying %d block(s) that were waiting on it, no effect on account balances\n",
+				missingParent[:min(16, len(missingParent))], stubH, len(waiting))
+			for _, b := range waiting {
+				dag.AddPeerBlock(b)
+			}
 			return
 		}
 	} else {
