@@ -775,7 +775,23 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 				Proposer:     "synthetic-checkpoint",
 				ParentHashes: []string{},
 			}
-			dag.tips[ph] = true
+			// FIX (2026-06-30, confirmed live in production): do NOT mark the
+			// stub as a tip. Nothing ever legitimately builds on top of one
+			// (it's a placeholder for a permanently-missing peer block, not
+			// something other nodes know about or will ever reference as
+			// THEIR parent), so unlike a real tip it's never removed from
+			// dag.tips by the normal "delete(dag.tips, parentHash)" path —
+			// it just accumulates forever. ProduceBlock uses every entry in
+			// dag.tips as the new block's parent set, so each accumulated
+			// stub permanently bloats every future block's merge-set
+			// computation. Confirmed live: primary's dag.tips grew to 123+
+			// entries (mostly stubs) after this session's bridging, and
+			// ProduceBlock's computeGHOSTDAGState call started taking long
+			// enough — walking/comparing across all of them — to hold dag.mu
+			// long enough to starve every other dag.mu consumer (API reads,
+			// peer sync) for extended stretches. The stub still does its one
+			// real job (satisfying AddPeerBlock's parent-existence check via
+			// dag.blocks) without needing to be in dag.tips for that.
 			stubsInserted++
 			displayHash := ph
 			if len(displayHash) > 16 {
@@ -1212,7 +1228,12 @@ func (dag *BlockDAG) queueOrphan(missingParent string, block *Block) {
 					Proposer:     "synthetic-checkpoint",
 					ParentHashes: []string{},
 				}
-				dag.tips[missingParent] = true
+				// FIX (2026-06-30, confirmed live in production): deliberately
+				// NOT added to dag.tips — see BridgeHistoricalGap's identical
+				// fix/comment for why an accumulating stub-as-tip bloats every
+				// future ProduceBlock's merge-set computation enough to starve
+				// the whole node. The stub only needs to exist in dag.blocks to
+				// satisfy AddPeerBlock's parent-existence check.
 			}
 			dag.mu.Unlock()
 			fmt.Printf("[DAG] (housekeeping) bridged permanently-unresolvable parent %s... (height ~%d) with a synthetic checkpoint — retrying %d block(s) that were waiting on it in the background, no effect on account balances\n",
