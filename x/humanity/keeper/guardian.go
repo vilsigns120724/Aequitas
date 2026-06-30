@@ -315,7 +315,9 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 			cs.accounts[wallet] = &AccountState{Address: wallet, IsHuman: true}
 		}
 		acc := cs.accounts[wallet]
-		cs.settleDemurrageLocked(acc)
+		if _, err := cs.settleDemurrageLocked(acc); err != nil {
+			return Transaction{}, fmt.Errorf("could not settle demurrage for %s: %w", wallet, err)
+		}
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
 		touchActivity(acc)
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
@@ -390,7 +392,10 @@ func (cs *ChainState) checkAndMoveToEscrowLocked() ([]DistributionShare, error) 
 		}
 
 		// Settle demurrage first so Balance reflects reality.
-		lost := cs.settleDemurrageLocked(acc)
+		lost, err := cs.settleDemurrageLocked(acc)
+		if err != nil {
+			return nil, fmt.Errorf("could not settle demurrage for %s: %w", addr, err)
+		}
 		bal = round6(acc.Balance.Float())
 		if bal <= 0 {
 			continue

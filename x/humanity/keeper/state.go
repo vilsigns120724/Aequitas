@@ -1527,23 +1527,30 @@ func effectiveBalance(acc *AccountState) Decimal {
 // nodes replay this exact figure via applyDemurrageLossLocked instead of
 // recomputing it themselves (which would use their own wall-clock time and
 // diverge from the primary's StateRoot; see ApplyTransferDelta etc.).
-func (cs *ChainState) settleDemurrageLocked(acc *AccountState) Decimal {
+// Returns an error (audit fresh-pass finding, 2026-06-30 — same class as
+// enforceWealthCapLocked's fix, see its comment) instead of just logging one:
+// it used to deduct the decay from acc.Balance FIRST and only THEN try to
+// credit the pools via distributeSwapFee, silently discarding the AEQ if
+// that credit failed. Every call site already runs inside
+// runAtomicWithOutbox (directly or via its caller), so returning the error
+// here lets it reach that transaction's fn() and trigger a real rollback.
+func (cs *ChainState) settleDemurrageLocked(acc *AccountState) (Decimal, error) {
 	// P0-FIX: pool addresses are tokenomics infrastructure — never apply
 	// demurrage to them. Doing so would drain pool balances incorrectly.
 	if isTokenomicsPoolAddress(acc.Address) {
-		return 0
+		return 0, nil
 	}
 	current := effectiveBalance(acc)
 	lost := acc.Balance.Sub(current)
 	if lost <= 0 {
-		return 0
+		return 0, nil
 	}
 	acc.Balance = current
 	if err := cs.distributeSwapFee(lost.Float(), true); err != nil {
-		fmt.Printf("[DEMURRAGE] Warning: could not persist pool credits for %s demurrage loss: %v\n", acc.Address, err)
+		return 0, fmt.Errorf("demurrage: could not persist pool credits for %s: %w", acc.Address, err)
 	}
 	fmt.Printf("[DEMURRAGE] %s: idle balance decayed by %.6f AEQ, redistributed to pools\n", acc.Address, lost.Float())
-	return lost
+	return lost, nil
 }
 
 // applyDemurrageLossLocked applies a demurrage loss already decided by the
@@ -1846,7 +1853,10 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 			cs.accounts[wallet] = &AccountState{Address: wallet}
 		}
 		acc := cs.accounts[wallet]
-		lost := cs.settleDemurrageLocked(acc)
+		lost, err := cs.settleDemurrageLocked(acc)
+		if err != nil {
+			return nil, fmt.Errorf("could not settle demurrage for %s: %w", wallet, err)
+		}
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 		touchActivity(acc)
 		if err := cs.enforceWealthCapLocked(acc); err != nil {
@@ -1931,7 +1941,11 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 	demurrageLost := make(map[string]float64, len(holders))
 	for _, h := range holders {
 		acc := cs.accounts[h.addr]
-		demurrageLost[h.addr] = cs.settleDemurrageLocked(acc).Float()
+		lost, err := cs.settleDemurrageLocked(acc)
+		if err != nil {
+			return nil, fmt.Errorf("could not settle demurrage for %s: %w", h.addr, err)
+		}
+		demurrageLost[h.addr] = lost.Float()
 	}
 	// Re-check totalShares after demurrage settlement — shares could have gone to zero.
 	if totalShares <= 0 {
@@ -2059,7 +2073,11 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 	// the returned DistributionShare — see the function comment above.
 	demurrageLost := make(map[string]float64, len(humanAddrs))
 	for _, addr := range humanAddrs {
-		demurrageLost[addr] = cs.settleDemurrageLocked(cs.accounts[addr]).Float()
+		lost, err := cs.settleDemurrageLocked(cs.accounts[addr])
+		if err != nil {
+			return nil, fmt.Errorf("could not settle demurrage for %s: %w", addr, err)
+		}
+		demurrageLost[addr] = lost.Float()
 	}
 	// NOW read pool balance — includes any demurrage credits just added.
 	poolAcc, ok = cs.accounts[ubiPoolAddr]
@@ -2747,7 +2765,10 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 	if !ok {
 		return 0, 0, fmt.Errorf("insufficient balance")
 	}
-	fromLost := cs.settleDemurrageLocked(fromAcc) // make sure we're checking against the real, decayed balance
+	fromLost, err := cs.settleDemurrageLocked(fromAcc) // make sure we're checking against the real, decayed balance
+	if err != nil {
+		return 0, 0, fmt.Errorf("could not settle demurrage for sender: %w", err)
+	}
 	if fromAcc.Balance.Float() < amount {
 		return 0, 0, fmt.Errorf("insufficient balance")
 	}
@@ -2764,7 +2785,10 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 	if _, ok := cs.accounts[to]; !ok {
 		cs.accounts[to] = &AccountState{Address: to}
 	}
-	toLost := cs.settleDemurrageLocked(cs.accounts[to])
+	toLost, err := cs.settleDemurrageLocked(cs.accounts[to])
+	if err != nil {
+		return 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
+	}
 	cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + amount))
 	touchActivity(cs.accounts[to]) // receiving also resets the clock on the recipient's whole balance
 	if err := cs.enforceWealthCapLocked(cs.accounts[to]); err != nil {
@@ -2834,7 +2858,10 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 	if !ok {
 		return 0, 0, 0, fmt.Errorf("insufficient balance")
 	}
-	fromLost := cs.settleDemurrageLocked(fromAcc)
+	fromLost, err := cs.settleDemurrageLocked(fromAcc)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("could not settle demurrage for sender: %w", err)
+	}
 	if fromAcc.Balance.Float() < amount {
 		return 0, 0, 0, fmt.Errorf("insufficient balance")
 	}
@@ -2865,7 +2892,10 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 	if _, ok := cs.accounts[to]; !ok {
 		cs.accounts[to] = &AccountState{Address: to}
 	}
-	toLost := cs.settleDemurrageLocked(cs.accounts[to])
+	toLost, err := cs.settleDemurrageLocked(cs.accounts[to])
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("could not settle demurrage for recipient: %w", err)
+	}
 	cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + netToRecipient))
 	touchActivity(cs.accounts[to])
 	if err := cs.enforceWealthCapLocked(cs.accounts[to]); err != nil {
@@ -3004,7 +3034,10 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 	if !ok {
 		return 0, 0, fmt.Errorf("account not found")
 	}
-	lost := cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
+	lost, err := cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
+	if err != nil {
+		return 0, 0, fmt.Errorf("could not settle demurrage: %w", err)
+	}
 
 	if aeqToTusd {
 		if acc.Balance.Float() < amountIn {
@@ -3254,7 +3287,10 @@ func (cs *ChainState) addLiquidityLocked(address string, amountAEQ, amountTUSD f
 	if !ok {
 		return 0, fmt.Errorf("account not found")
 	}
-	lost := cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
+	lost, err := cs.settleDemurrageLocked(acc) // settle decay before checking/using the AEQ balance below
+	if err != nil {
+		return 0, fmt.Errorf("could not settle demurrage: %w", err)
+	}
 	if acc.Balance.Float() < amountAEQ {
 		return 0, fmt.Errorf("insufficient AEQ balance")
 	}
@@ -3375,7 +3411,10 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 	// wealthy account could dodge decay indefinitely by periodically
 	// removing/re-adding trivial liquidity amounts (touchActivity() below
 	// resets the decay clock without the decay ever having been applied).
-	lost := cs.settleDemurrageLocked(acc)
+	lost, err := cs.settleDemurrageLocked(acc)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("could not settle demurrage: %w", err)
+	}
 
 	// F17-BOUNDARY: If TotalLPShares rounds to 0 but the user still has LP shares
 	// (dust rounding edge case), allow them to drain the entire pool — they are
