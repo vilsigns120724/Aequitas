@@ -473,18 +473,34 @@ if len(loaded) > 0 {
 		}
 	}
 	if needsMigration {
-		fmt.Printf("[BLOCK] GHOSTDAG migration: computing real blue scores for %d blocks...\n", len(sortedForGHOSTDAG))
-		for _, b := range sortedForGHOSTDAG {
-			dag.computeGHOSTDAGState(b)
-		}
-		go func(blocks []*Block, s *ChainState) {
+		// FIX (2026-06-30, confirmed live in production): this used to compute
+		// GHOSTDAG state for every block SYNCHRONOUSLY here, before
+		// NewBlockchain (and everything that calls it, including main.go's
+		// http.ListenAndServe) ever returns. At chain length ~50,000 with
+		// 18,148 blocks needing migration, that held up the HTTP listener
+		// itself for minutes with zero progress output — Railway's proxy saw
+		// "Application failed to respond" the whole time because nothing was
+		// listening on the port yet, not because anything was deadlocked.
+		// Run the compute + save both in the background instead: dag.mu is
+		// now acquired per-block (not once for the whole migration) so normal
+		// traffic (new peer blocks, ProduceBlock, API reads) interleaves with
+		// migration progress instead of queuing behind it for the full
+		// duration. A block touched by normal traffic before its turn in this
+		// loop already has real GHOSTDAG data (SelectedParent != ""), so the
+		// migration's own !exists-style skip isn't needed — computeGHOSTDAGState
+		// is idempotent and just recomputes the same deterministic result.
+		fmt.Printf("[BLOCK] GHOSTDAG migration: computing real blue scores for %d blocks in the background...\n", len(sortedForGHOSTDAG))
+		go func(blocks []*Block, d *BlockDAG, s *ChainState) {
 			for _, b := range blocks {
+				d.mu.Lock()
+				d.computeGHOSTDAGState(b)
+				d.mu.Unlock()
 				if s != nil {
 					s.SaveGHOSTDAGState(b)
 				}
 			}
-			fmt.Printf("[BLOCK] GHOSTDAG migration: persisted %d blocks\n", len(blocks))
-		}(sortedForGHOSTDAG, state)
+			fmt.Printf("[BLOCK] GHOSTDAG migration: computed and persisted %d blocks\n", len(blocks))
+		}(sortedForGHOSTDAG, dag, state)
 	}
 	fmt.Printf("[BLOCK] Restored %d durable block(s) from chain_blocks — height=%d, tips=%d\n", len(loaded), dag.height, len(dag.tips))
 }
