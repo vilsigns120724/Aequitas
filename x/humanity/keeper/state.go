@@ -235,8 +235,48 @@ func NewChainState(dataFile string) *ChainState {
 				dbURL += "?sslmode=disable"
 			}
 		}
+		// FIX (2026-06-30, confirmed live in production): this connection had
+		// NO timeout of any kind — no connect_timeout, no statement_timeout, no
+		// pool limits — and every call site uses db.Exec/db.QueryRow (not the
+		// *Context variants), so nothing in this codebase could ever cancel a
+		// stuck query. A single transient network hiccup against the remote
+		// Postgres (acela.proxy.rlwy.net — a Railway-managed proxy, not
+		// localhost) could hang a query indefinitely, and since DB writes like
+		// SaveGHOSTDAGState/SaveBlockToDB run WHILE dag.mu is held, that one
+		// stuck connection silently froze the entire node: ProduceBlock,
+		// AddPeerBlock, and every dag.mu-dependent API endpoint (status,
+		// blocks, health) all queued behind it with zero log output and no
+		// timeout to ever break the wait. Confirmed live: primary went
+		// unresponsive on /api/status etc. for extended periods while static,
+		// non-dag.mu pages kept responding normally — consistent with a
+		// single stuck goroutine holding dag.mu, not a deadlock or crash.
+		// statement_timeout is a Postgres-side GUC (recognized by lib/pq as a
+		// connection string parameter): the SERVER itself cancels any query
+		// running longer than this and returns an error, which is the only
+		// way to bound an already-in-flight query — a client-side context
+		// timeout can abandon the wait locally but can't stop network-level
+		// blocking the same way. connect_timeout bounds the initial TCP/auth
+		// handshake the same way for a connection that hasn't been
+		// established yet.
+		if !strings.Contains(dbURL, "statement_timeout") {
+			sep := "&"
+			if !strings.Contains(dbURL, "?") {
+				sep = "?"
+			}
+			dbURL += sep + "statement_timeout=30000&connect_timeout=10"
+		}
 		db, err := sql.Open("postgres", dbURL)
 		if err == nil {
+			// Bound the pool itself: an unlimited pool under a burst of
+			// concurrent saves (e.g. catching up on a flood of peer blocks
+			// after being offline) can pile up far more open connections than
+			// the remote Postgres's own max_connections allows, and stale
+			// connections were never recycled (ConnMaxLifetime defaults to
+			// "forever"). These limits are generous, not tight — the goal is
+			// "bounded", not "minimal".
+			db.SetMaxOpenConns(20)
+			db.SetMaxIdleConns(5)
+			db.SetConnMaxLifetime(5 * time.Minute)
 			err = db.Ping()
 			if err == nil {
 				cs.db = db
