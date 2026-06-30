@@ -527,7 +527,30 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 	// pages is O(N/pageSize) requests for N missing blocks, not O(N).
 	// deepScan stays true for the duration of this call; the next call will
 	// re-evaluate whether orphans still exist.
-	deepScan := len(dag.MissingParentHashes()) > 0
+	//
+	// THROTTLE (P2-01 audit, confirmed live on Contabo 2026-06-30): a large
+	// genuinely-unresolvable orphan backlog (stale references to a node's own
+	// pre-fix bad blocks, never resolvable from any peer) keeps
+	// MissingParentHashes() non-empty for the full 15-minute
+	// orphanAbandonAfter window. Without this throttle, every 6s sync tick
+	// re-ran the O(chain length) full walk for that entire window — confirmed
+	// live: 99% CPU sustained for minutes at chain length ~50,000 with ~8,500
+	// distinct missing parents pending abandonment, and the normal windowed
+	// sync below (which WOULD have kept making real progress) never got a
+	// chance to run because deepScan always took over. At most one full
+	// height-0 walk per deepScanMinInterval; fetchMissingAncestors (the
+	// cheap, targeted hash lookup) still runs every single cycle regardless.
+	const deepScanMinInterval = 30 * time.Second
+	wantDeepScan := len(dag.MissingParentHashes()) > 0
+	deepScan := false
+	if wantDeepScan {
+		now := time.Now().Unix()
+		last := dag.lastDeepScanAt.Load()
+		if now-last >= int64(deepScanMinInterval.Seconds()) {
+			deepScan = true
+			dag.lastDeepScanAt.Store(now)
+		}
+	}
 	minHeight := dag.Height() - syncOverlap
 	if minHeight < 0 || deepScan {
 		minHeight = 0

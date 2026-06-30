@@ -144,6 +144,17 @@ replayedMu             sync.Mutex
 	// /api/health/combined (Gesamtaudit 2026-06-28, P2-4/P3-7: "Health/API
 	// zeigt nicht ... seit wann [ein StateRoot-Mismatch existiert]").
 	lastSuccessfulPeerSyncAt atomic.Int64
+	// lastDeepScanAt (P2-01 audit, confirmed live on Contabo 2026-06-30):
+	// throttles how often doSyncOnce's deepScan mode is allowed to do a full
+	// height-0 re-walk of the entire known chain. See doSyncOnce's own
+	// comment for why this exists — a large, genuinely-unresolvable orphan
+	// backlog (stale references to a node's own pre-fix bad blocks) keeps
+	// MissingParentHashes() non-empty for the full 15-minute orphanAbandonAfter
+	// window, and without this throttle every single 6s sync tick repeated an
+	// O(chain length) re-scan for that entire window — confirmed live: 99%
+	// CPU sustained for minutes with chain length ~50,000 and ~8,500 distinct
+	// missing parents pending abandonment.
+	lastDeepScanAt atomic.Int64
 	// orphans holds blocks whose parent isn't known yet, keyed by the missing
 	// parent's hash. When that parent is later added, every block waiting on
 	// it is retried automatically. See AddPeerBlock for why this exists —
