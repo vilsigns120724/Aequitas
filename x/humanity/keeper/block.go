@@ -491,10 +491,25 @@ if len(loaded) > 0 {
 		// is idempotent and just recomputes the same deterministic result.
 		fmt.Printf("[BLOCK] GHOSTDAG migration: computing real blue scores for %d blocks in the background...\n", len(sortedForGHOSTDAG))
 		go func(blocks []*Block, d *BlockDAG, s *ChainState) {
-			for _, b := range blocks {
+			for i, b := range blocks {
 				d.mu.Lock()
 				d.computeGHOSTDAGState(b)
 				d.mu.Unlock()
+				// FIX (2026-06-30, confirmed live in production — second half of
+				// the same incident): per-block locking alone isn't enough. A
+				// goroutine that does lock→tiny-amount-of-work→unlock→immediately
+				// re-lock in a tight loop tends to win the re-acquisition race
+				// against other goroutines that only just started waiting,
+				// because Go's sync.Mutex has no FIFO fairness guarantee under
+				// fast contention — confirmed live: block production, peer sync,
+				// and even /api/status all starved for the migration's entire
+				// duration (no new blocks produced, no logged sync activity)
+				// despite the lock technically being released between every
+				// single iteration. A short sleep every so often forces a real
+				// scheduling gap so waiting goroutines actually get a turn.
+				if i%20 == 19 {
+					time.Sleep(5 * time.Millisecond)
+				}
 				if s != nil {
 					s.SaveGHOSTDAGState(b)
 				}
