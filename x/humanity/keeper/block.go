@@ -185,8 +185,11 @@ replayedMu             sync.Mutex
 
 	// degradedReason is set when a critical storage failure occurs after state
 	// has already been committed to memory (e.g. SaveBlockToDB fails for an
-	// accepted peer block). When non-empty, ProduceBlock returns nil immediately
-	// to halt production until the operator resolves the issue and restarts.
+	// accepted peer block, or — audit P1-01/P1-02 — DeleteBlockFromDB fails
+	// after a replay failure, or SaveGHOSTDAGState fails after a success).
+	// When non-empty, ProduceBlock returns nil immediately to halt production
+	// until the operator resolves the issue and restarts. Also surfaced via
+	// /api/health so it's visible without a log dive.
 	degradedReason string
 	degradedMu     sync.Mutex
 
@@ -609,6 +612,21 @@ func (dag *BlockDAG) BootHeight() int64 {
 	return dag.bootHeight
 }
 
+// IsDegraded and DegradedReason (audit P1-01/P1-02) report whether a DB
+// write that keeps chain_blocks consistent with in-memory state has failed
+// persistently this run. See the degradedReason field's struct comment.
+func (dag *BlockDAG) IsDegraded() bool {
+	dag.degradedMu.Lock()
+	defer dag.degradedMu.Unlock()
+	return dag.degradedReason != ""
+}
+
+func (dag *BlockDAG) DegradedReason() string {
+	dag.degradedMu.Lock()
+	defer dag.degradedMu.Unlock()
+	return dag.degradedReason
+}
+
 // BridgeHistoricalGap handles a "permanent historical gap" that arises after a
 // full RESYNC_FROM_SNAPSHOT when the blocks covering the gap no longer exist on
 // any peer.  Without bridging, the first block above the gap references a parent
@@ -696,9 +714,22 @@ func (dag *BlockDAG) BridgeHistoricalGap(peerURLs []string) {
 				stubH = 0
 			}
 			dag.blocks[ph] = &Block{
-				Hash:         ph,
-				Height:       stubH,
-				BlueScore:    stubH, // approximate for a mostly-linear chain
+				Hash:   ph,
+				Height: stubH,
+				// P1-05 (audit): BlueScore=0, NOT stubH. computeGHOSTDAGState picks
+				// the parent with the HIGHEST BlueScore as SelectedParent — a
+				// height-approximated score here (e.g. ~48000) would always beat a
+				// real block's honestly-accumulated score (which grows far slower
+				// than raw height once GHOSTDAG's K-bound starts reddening blocks,
+				// confirmed live: primary's BlueScore was ~2053 at height ~45878).
+				// A descendant that picks this stub as SelectedParent would then
+				// inherit stubH+1 as ITS score, permanently baking in an inflated
+				// baseline downstream — this is what caused cd20's BlueScore to
+				// read ~46896 against primary's ~2053 at the same height. BlueScore
+				// 0 still lets the stub serve its one real purpose (satisfying the
+				// parent-existence check for the child that references it) without
+				// ever winning the max-score comparison against a real block.
+				BlueScore:    0,
 				Proposer:     "synthetic-checkpoint",
 				ParentHashes: []string{},
 			}
@@ -1459,9 +1490,25 @@ if !replayOK {
 	// replayed in dag.replayedBlocks while chain_accounts has no record of
 	// its state changes ("header committed, state missing"). Delete now so
 	// the block is re-fetched from peers and replayed cleanly on next sync.
+	// P1-01 (audit): a single failed delete used to just log a warning and
+	// move on, leaving open the "header persisted, state missing" window
+	// across a restart. Retry a few times (DB errors here are typically a
+	// transient connection blip) and if it still fails, mark the node
+	// degraded so /api/health surfaces it rather than silently continuing
+	// on a DB that may now disagree with in-memory state after a restart.
 	if dag.state != nil {
-		if delErr := dag.state.DeleteBlockFromDB(block.Hash); delErr != nil {
-			fmt.Printf("[BLOCK] ⚠ Could not remove unapplied block #%d header: %v\n", block.Height, delErr)
+		var delErr error
+		for attempt := 0; attempt < 3; attempt++ {
+			if delErr = dag.state.DeleteBlockFromDB(block.Hash); delErr == nil {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		if delErr != nil {
+			dag.degradedMu.Lock()
+			dag.degradedReason = fmt.Sprintf("DeleteBlockFromDB failed for block #%d: %v", block.Height, delErr)
+			dag.degradedMu.Unlock()
+			fmt.Printf("[BLOCK] ✗ DEGRADED: could not remove unapplied block #%d header after 3 attempts: %v\n", block.Height, delErr)
 		}
 	}
 	dag.softRetryMu.Lock()
@@ -1480,8 +1527,22 @@ dag.computeGHOSTDAGState(block) // real GHOSTDAG: sets SelectedParent, Blues, Bl
 // P1-03 (audit): persist locally-computed GHOSTDAG fields immediately.
 // SaveBlockToDB stored zeroes (peer values were stripped above); update now
 // so the DB reflects the same state as dag.blocks after this block is accepted.
+// P1-02 (audit): an unhandled error here used to be silently dropped — DB
+// would keep the zeroed GHOSTDAG fields from SaveBlockToDB while dag.blocks
+// has the real computed ones, so a restart loads different SelectedParent/
+// Blues/BlueScore than this run is currently using, which can shift tip
+// selection and merge-set computation. One retry (transient blips), then
+// mark degraded so /api/health surfaces the divergence risk.
 if dag.state != nil {
-	dag.state.SaveGHOSTDAGState(block)
+	if saveErr := dag.state.SaveGHOSTDAGState(block); saveErr != nil {
+		time.Sleep(200 * time.Millisecond)
+		if saveErr = dag.state.SaveGHOSTDAGState(block); saveErr != nil {
+			dag.degradedMu.Lock()
+			dag.degradedReason = fmt.Sprintf("SaveGHOSTDAGState failed for block #%d: %v", block.Height, saveErr)
+			dag.degradedMu.Unlock()
+			fmt.Printf("[BLOCK] ✗ DEGRADED: could not persist GHOSTDAG state for block #%d: %v\n", block.Height, saveErr)
+		}
+	}
 }
 
 // Remove parents from tips
@@ -1550,6 +1611,26 @@ func (dag *BlockDAG) TipsCount() int {
 	dag.mu.RLock()
 	defer dag.mu.RUnlock()
 	return len(dag.tips)
+}
+
+// SyntheticCheckpointCount (audit P1-04) reports how many synthetic-checkpoint
+// stubs BridgeHistoricalGap has inserted into the in-memory DAG that haven't
+// yet been overwritten by the real block syncing in behind them. The audit's
+// concern was that a node could silently enter this "trust bootstrap" mode
+// without operator visibility — surfacing the count (and its boolean trust_mode
+// derivative) in /api/health makes it visible without a log dive, without
+// requiring a new mandatory env flag that operators could forget to set on a
+// node that genuinely needs it (as Contabo did on 2026-06-30).
+func (dag *BlockDAG) SyntheticCheckpointCount() int {
+	dag.mu.RLock()
+	defer dag.mu.RUnlock()
+	count := 0
+	for _, b := range dag.blocks {
+		if b.Proposer == "synthetic-checkpoint" {
+			count++
+		}
+	}
+	return count
 }
 
 func (dag *BlockDAG) TotalStateRootMismatches() int {

@@ -242,6 +242,13 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 	if os.Getenv("RESET_STATE") == "true" {
 		destructiveFlagsSet = append(destructiveFlagsSet, "RESET_STATE")
 	}
+	// Monster-Audit P1-06: ALLOW_PEER_SECRET_BYPASS lets any caller register
+	// as a peer without the shared PEER_SECRET — fine for testnet/bootstrap,
+	// a real security hole if left on in production. Surface it the same way
+	// as the other destructive flags so it isn't silently forgotten.
+	if os.Getenv("ALLOW_PEER_SECRET_BYPASS") == "true" {
+		destructiveFlagsSet = append(destructiveFlagsSet, "ALLOW_PEER_SECRET_BYPASS")
+	}
 
 	// FIX (Gesamtaudit 2026-06-28, P2-4/P3-7): "healthy":true used to be
 	// hardcoded. Compute a real tri-state (healthy/warn/unhealthy) from the
@@ -299,6 +306,24 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 				"background recovery is retrying; see /api/admin/registration-recovery",
 			registrationRecoveryCount))
 	}
+	// Monster-Audit P1-01/P1-02: a chain_blocks write that keeps the DB
+	// consistent with in-memory GHOSTDAG/replay state failed persistently
+	// this run — see BlockDAG.degraded's struct comment.
+	dagDegraded := a.blockchain.IsDegraded()
+	dagDegradedReason := a.blockchain.DegradedReason()
+	if dagDegraded {
+		status = "unhealthy"
+		notes = append(notes, "DAG degraded: "+dagDegradedReason)
+	}
+	// Monster-Audit P1-04: surface synthetic-checkpoint trust-bootstrap mode
+	// instead of letting it run invisibly. Not an error by itself (it self-heals
+	// as real blocks sync in behind it) — informational unless it persists.
+	syntheticCheckpointCount := a.blockchain.SyntheticCheckpointCount()
+	checkpointTrustMode := syntheticCheckpointCount > 0
+	if checkpointTrustMode && status == "healthy" {
+		status = "warn"
+		notes = append(notes, fmt.Sprintf("%d synthetic-checkpoint stub(s) active — bridging a historical gap from peer snapshot trust, not full verification; normally self-heals as real blocks sync in behind them", syntheticCheckpointCount))
+	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"chain": map[string]interface{}{
@@ -306,6 +331,10 @@ func (a *APIServer) handleCombinedHealth(w http.ResponseWriter, r *http.Request)
 			"notes":        notes,
 			"healthy":      status == "healthy", // kept for backward compatibility with existing callers
 			"degraded_reason": degradedReason,
+			"dag_degraded": dagDegraded,
+			"dag_degraded_reason": dagDegradedReason,
+			"checkpoint_trust_mode": checkpointTrustMode,
+			"synthetic_checkpoint_count": syntheticCheckpointCount,
 			"height":       latest.Height,
 			"dag_tips_count": a.blockchain.TipsCount(),
 			"state_root_mismatch_count": mismatchCount,

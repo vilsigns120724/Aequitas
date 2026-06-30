@@ -569,7 +569,22 @@ func (dag *BlockDAG) doSyncOnce(nodeURL string) (ok bool) {
 			}
 		}
 		totalAdded += addedThisPage
-		if len(blocks) < pageSize {
+		// FIX (P2-01 audit, confirmed live on Contabo 2026-06-30): a
+		// short page (< pageSize) does NOT reliably mean "peer's tip is
+		// within this page" once a deep scan is re-walking ALREADY-KNOWN
+		// history. Block production isn't uniformly dense across height —
+		// a sparse window (e.g. an early region with fewer concurrent
+		// validators) can return fewer than pageSize blocks despite being
+		// nowhere near the actual tip. Breaking here during deepScan made
+		// every cycle restart from height 0 and exit at the exact same
+		// premature sparse window, never reaching the real frontier —
+		// confirmed live: dag.height sat motionless for 10+ minutes while
+		// orphan housekeeping discarded hundreds of dead-end siblings,
+		// because the one page containing the real next height was never
+		// fetched. Outside deepScan this remains a correct, cheap signal
+		// (normal forward sync only ever requests pages it expects to be
+		// at or near the tip), so only deepScan skips the early break.
+		if len(blocks) < pageSize && !deepScan {
 			afterHash = "" // last page — reset cursor
 			break          // peer's tip is within this page
 		}
