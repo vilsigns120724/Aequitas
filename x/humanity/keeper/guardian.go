@@ -318,7 +318,9 @@ func (cs *ChainState) RecoverFromEscrow(wallet string) error {
 		cs.settleDemurrageLocked(acc)
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
 		touchActivity(acc)
-		cs.enforceWealthCapLocked(acc)
+		if err := cs.enforceWealthCapLocked(acc); err != nil {
+			return Transaction{}, fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)
+		}
 		if err := cs.saveAccountToDB(acc); err != nil {
 			return Transaction{}, fmt.Errorf("could not persist recovered balance for %s: %w", wallet, err)
 		}
@@ -513,7 +515,9 @@ func (cs *ChainState) applyEscrowRecoverDeltaLocked(wallet string, amount float6
 	acc := cs.accounts[wallet]
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
 	touchActivity(acc)
-	cs.enforceWealthCapLocked(acc)
+	if err := cs.enforceWealthCapLocked(acc); err != nil {
+		return fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)
+	}
 	if err := cs.saveAccountToDB(acc); err != nil {
 		return fmt.Errorf("could not persist escrow recovery for %s: %w", wallet, err)
 	}

@@ -1849,7 +1849,9 @@ func (cs *ChainState) distributeValidatorsPoolLocked() ([]DistributionShare, err
 		lost := cs.settleDemurrageLocked(acc)
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 		touchActivity(acc)
-		cs.enforceWealthCapLocked(acc)
+		if err := cs.enforceWealthCapLocked(acc); err != nil {
+			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", wallet, err)
+		}
 		if err := cs.saveAccountToDB(acc); err != nil {
 			return nil, fmt.Errorf("could not save validator reward for %s: %w", wallet, err)
 		}
@@ -1969,7 +1971,9 @@ func (cs *ChainState) distributeLPPoolLocked() ([]DistributionShare, error) {
 		acc := cs.accounts[h.addr]
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 		touchActivity(acc)
-		cs.enforceWealthCapLocked(acc)
+		if err := cs.enforceWealthCapLocked(acc); err != nil {
+			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", h.addr, err)
+		}
 		if err := cs.saveAccountToDB(acc); err != nil {
 			return nil, fmt.Errorf("could not save LP reward for %s: %w", h.addr, err)
 		}
@@ -2078,7 +2082,9 @@ func (cs *ChainState) distributeUBIPoolLocked() ([]DistributionShare, error) {
 		acc := cs.accounts[addr]
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + share))
 		touchActivity(acc)
-		cs.enforceWealthCapLocked(acc)
+		if err := cs.enforceWealthCapLocked(acc); err != nil {
+			return nil, fmt.Errorf("could not enforce wealth cap for %s: %w", addr, err)
+		}
 		if err := cs.saveAccountToDB(acc); err != nil {
 			return nil, fmt.Errorf("could not save UBI reward for %s: %w", addr, err)
 		}
@@ -2177,9 +2183,22 @@ func (cs *ChainState) bootstrapMultiplierLocked() float64 {
 	return m
 }
 
-func (cs *ChainState) enforceWealthCapLocked(acc *AccountState) {
+// enforceWealthCapLocked caps acc's balance and redistributes the excess to
+// the pools. Returns an error (audit fresh-pass finding, 2026-06-30) instead
+// of just logging one: it used to deduct the excess from acc.Balance FIRST
+// and only THEN try to credit the pools via distributeSwapFee — if that
+// credit failed (e.g. an optimistic-locking version conflict on a pool
+// address, which doesn't poison the enclosing DB transaction the way a hard
+// SQL error would, so runAtomicWithOutbox's eventual Commit would still
+// succeed), the deducted AEQ vanished: not in the user's balance, not in any
+// pool, with only a printf to show for it. Every call site already runs
+// inside runAtomicWithOutbox (directly or via its caller), so returning the
+// error here lets it reach that transaction's fn() and trigger a real
+// rollback — the same fix class already applied to ApplyUBIDelta,
+// transferLocked, etc. (see their "audit recheck2, P0 #3" comments).
+func (cs *ChainState) enforceWealthCapLocked(acc *AccountState) error {
 	if isTokenomicsPoolAddress(acc.Address) {
-		return
+		return nil
 	}
 	// Deliberately NOT gated on acc.IsHuman: capping only registered
 	// humans would let someone bypass the entire mechanism just by
@@ -2190,20 +2209,21 @@ func (cs *ChainState) enforceWealthCapLocked(acc *AccountState) {
 	// mean anything.
 	avg := cs.getAverageBalanceLocked()
 	if avg <= 0 {
-		return // no meaningful average yet (e.g. only one human registered so far)
+		return nil // no meaningful average yet (e.g. only one human registered so far)
 	}
 	multiplier := cs.bootstrapMultiplierLocked()
 	wealthCapAmt := avg * multiplier
 	if acc.Balance.Float() <= wealthCapAmt {
-		return
+		return nil
 	}
 	excess := acc.Balance.Float() - wealthCapAmt
 	acc.Balance = NewDecimal(wealthCapAmt)
 	if err := cs.distributeSwapFee(excess, true); err != nil {
-		fmt.Printf("[WEALTH CAP] Warning: could not persist pool credits for %s excess: %v\n", acc.Address, err)
+		return fmt.Errorf("wealth cap: could not persist pool credits for %s excess: %w", acc.Address, err)
 	}
 	fmt.Printf("[WEALTH CAP] %s exceeded %.2fx average (%.2f AEQ) — %.4f AEQ excess redistributed to pools\n",
 		acc.Address, multiplier, wealthCapAmt, excess)
+	return nil
 }
 
 // DemurrageStatus describes whether/when an idle account's AEQ will
@@ -2362,7 +2382,9 @@ func (cs *ChainState) registerHumanLocked(address string) error {
 	cs.accounts[address].IsHuman = true
 	cs.accounts[address].Balance = cs.accounts[address].Balance.Add(NewDecimal(1000))
 	touchActivity(cs.accounts[address]) // starts this 1,000 AEQ's own grace period fresh
-	cs.enforceWealthCapLocked(cs.accounts[address])
+	if err := cs.enforceWealthCapLocked(cs.accounts[address]); err != nil {
+		return fmt.Errorf("could not enforce wealth cap: %w", err)
+	}
 	if err := cs.saveAccountToDB(cs.accounts[address]); err != nil {
 		return fmt.Errorf("could not save account: %w", err)
 	}
@@ -2745,7 +2767,9 @@ func (cs *ChainState) transferLocked(from, to string, amount float64) (float64, 
 	toLost := cs.settleDemurrageLocked(cs.accounts[to])
 	cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + amount))
 	touchActivity(cs.accounts[to]) // receiving also resets the clock on the recipient's whole balance
-	cs.enforceWealthCapLocked(cs.accounts[to])
+	if err := cs.enforceWealthCapLocked(cs.accounts[to]); err != nil {
+		return 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
+	}
 	if err := cs.saveAccountToDB(cs.accounts[to]); err != nil {
 		return 0, 0, fmt.Errorf("could not save recipient account: %w", err)
 	}
@@ -2844,7 +2868,9 @@ func (cs *ChainState) transferWithV7FeeLocked(from, to string, amount float64) (
 	toLost := cs.settleDemurrageLocked(cs.accounts[to])
 	cs.accounts[to].Balance = NewDecimal(round6(cs.accounts[to].Balance.Float() + netToRecipient))
 	touchActivity(cs.accounts[to])
-	cs.enforceWealthCapLocked(cs.accounts[to])
+	if err := cs.enforceWealthCapLocked(cs.accounts[to]); err != nil {
+		return 0, 0, 0, fmt.Errorf("could not enforce wealth cap for recipient: %w", err)
+	}
 	if err := cs.saveAccountToDB(cs.accounts[to]); err != nil {
 		return 0, 0, 0, fmt.Errorf("could not save recipient account: %w", err)
 	}
@@ -3024,7 +3050,9 @@ func (cs *ChainState) swapLocked(address string, amountIn float64, aeqToTusd boo
 	}
 	touchActivity(acc) // swapping (either direction) counts as using the AEQ side
 	if !aeqToTusd {
-		cs.enforceWealthCapLocked(acc) // AEQ just arrived via this swap direction — check the cap
+		if err := cs.enforceWealthCapLocked(acc); err != nil { // AEQ just arrived via this swap direction — check the cap
+			return 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
+		}
 	}
 
 	if err := cs.saveAccountToDB(acc); err != nil {
@@ -3360,7 +3388,9 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 			acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
 			acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
 			touchActivity(acc)
-			cs.enforceWealthCapLocked(acc)
+			if err := cs.enforceWealthCapLocked(acc); err != nil {
+				return 0, 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
+			}
 			cs.pool.ReserveAEQ = NewDecimal(0)
 			cs.pool.ReserveTUSD = NewDecimal(0)
 			cs.pool.TotalLPShares = NewDecimal(0)
@@ -3411,7 +3441,9 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ17))
 		acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD17))
 		touchActivity(acc)
-		cs.enforceWealthCapLocked(acc)
+		if err := cs.enforceWealthCapLocked(acc); err != nil {
+			return 0, 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
+		}
 		newResAEQ17 := round6(cs.pool.ReserveAEQ.Float() - outAEQ17)
 		newResTUSD17 := round6(cs.pool.ReserveTUSD.Float() - outTUSD17)
 		if newResAEQ17 < 0 {
@@ -3453,7 +3485,9 @@ func (cs *ChainState) removeLiquidityLocked(address string, sharesToBurn float64
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + outAEQ))
 	acc.TUsdBalance = NewDecimal(round6(acc.TUsdBalance.Float() + outTUSD))
 	touchActivity(acc) // receiving AEQ back from the pool counts as using it
-	cs.enforceWealthCapLocked(acc)
+	if err := cs.enforceWealthCapLocked(acc); err != nil {
+		return 0, 0, 0, fmt.Errorf("could not enforce wealth cap: %w", err)
+	}
 	newReserveAEQ := round6(cs.pool.ReserveAEQ.Float() - outAEQ)
 	newReserveTUSD := round6(cs.pool.ReserveTUSD.Float() - outTUSD)
 	if newReserveAEQ < 0 {
@@ -4421,7 +4455,9 @@ func (cs *ChainState) applyUBIDeltaLocked(amountPerHuman float64, ubiAt int64) e
 		}
 		acc.Balance = NewDecimal(round6(acc.Balance.Float() + amountPerHuman))
 		touchActivity(acc)
-		cs.enforceWealthCapLocked(acc)
+		if err := cs.enforceWealthCapLocked(acc); err != nil {
+			return fmt.Errorf("ubi (legacy flat): could not enforce wealth cap for %s: %w", addr, err)
+		}
 		if err := cs.saveAccountToDB(acc); err != nil {
 			return fmt.Errorf("ubi (legacy flat): could not save account %s: %w", addr, err)
 		}
@@ -4466,7 +4502,9 @@ func (cs *ChainState) applyUBIRewardDeltaLocked(wallet string, amount, demurrage
 	cs.applyDemurrageLossLocked(acc, demurrageLost)
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
 	touchActivity(acc)
-	cs.enforceWealthCapLocked(acc)
+	if err := cs.enforceWealthCapLocked(acc); err != nil {
+		return fmt.Errorf("ubi reward: could not enforce wealth cap for %s: %w", wallet, err)
+	}
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
 	if err := cs.saveAccountToDB(acc); err != nil {
 		return fmt.Errorf("ubi reward: could not save account %s: %w", wallet, err)
@@ -4532,7 +4570,9 @@ func (cs *ChainState) applyValidatorRewardDeltaLocked(wallet string, amount, dem
 	cs.applyDemurrageLossLocked(acc, demurrageLost)
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
 	touchActivity(acc)
-	cs.enforceWealthCapLocked(acc)
+	if err := cs.enforceWealthCapLocked(acc); err != nil {
+		return fmt.Errorf("validator reward: could not enforce wealth cap for %s: %w", wallet, err)
+	}
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
 	if err := cs.saveAccountToDB(acc); err != nil {
 		return fmt.Errorf("validator reward: could not save account %s: %w", wallet, err)
@@ -4595,7 +4635,9 @@ func (cs *ChainState) applyLPRewardDeltaLocked(wallet string, amount, demurrageL
 	cs.applyDemurrageLossLocked(acc, demurrageLost)
 	acc.Balance = NewDecimal(round6(acc.Balance.Float() + amount))
 	touchActivity(acc)
-	cs.enforceWealthCapLocked(acc)
+	if err := cs.enforceWealthCapLocked(acc); err != nil {
+		return fmt.Errorf("lp reward: could not enforce wealth cap for %s: %w", wallet, err)
+	}
 	// FIX (audit recheck2, P0 #3): see ApplyTransferDelta's comment.
 	if err := cs.saveAccountToDB(acc); err != nil {
 		return fmt.Errorf("lp reward: could not save account %s: %w", wallet, err)
